@@ -61,6 +61,16 @@ git tag v0.9.0-beta
 git push origin v0.9.0-beta
 ```
 
+### After a WoW patch
+
+```powershell
+./scripts/sync-version.ps1    # sets ## Interface in the toc from your installed client
+```
+
+Commit and tag as above. The CurseForge upload works out its game version
+from that toc line (interface 16001 is 1.60.1); if CurseForge does not list
+the new patch yet, it uses the newest listed one and warns in the log.
+
 ## Branding
 
 `branding/` holds the icon and header art as SVG/HTML sources plus rendered

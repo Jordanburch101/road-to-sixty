@@ -2,13 +2,14 @@
 # then a GitHub release with the zip. Tags with "alpha" or "beta" are marked
 # as pre-releases.
 #
-# Optional CurseForge upload, skipped until all three are set in the repo
+# Optional CurseForge upload, skipped until these are set in the repo
 # settings (Settings > Secrets and variables > Actions):
 #   secret   CF_API_TOKEN      from https://legacy.curseforge.com/account/api-tokens
 #   variable CF_PROJECT_ID     the project ID shown on the CurseForge project page
-#   variable CF_GAME_VERSIONS  comma-separated game versions, by name ("1.60.1")
-#                              or ID; scripts/curseforge.sh looks up the IDs
-# Run the "CurseForge check" workflow to test these without uploading.
+# The game version comes from "## Interface" in the toc (run
+# scripts/sync-version.ps1 after a patch). A CF_GAME_VERSIONS variable, if
+# set, overrides it. Run the "CurseForge check" workflow to test without
+# uploading.
 name: Release
 
 on:
@@ -64,7 +65,7 @@ jobs:
           CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_PROJECT_ID" ] || [ -z "$CF_GAME_VERSIONS" ]; then
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_PROJECT_ID" ]; then
             echo "CurseForge upload not configured, skipping."
             exit 0
           fi

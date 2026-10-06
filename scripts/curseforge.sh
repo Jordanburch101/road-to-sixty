@@ -7,13 +7,23 @@
 # Environment:
 #   CF_API_TOKEN      API token (legacy.curseforge.com > Account > API Tokens)
 #   CF_PROJECT_ID     project ID (upload only)
-#   CF_GAME_VERSIONS  comma-separated game versions, by name ("1.60.1") or ID
+#   CF_GAME_VERSIONS  optional override: comma-separated game versions, by
+#                     name ("1.60.1") or ID. Normally unset: the version comes
+#                     from "## Interface" in the toc (16001 is 1.60.1), which
+#                     scripts/sync-version.ps1 keeps in step with the client.
 set -euo pipefail
 
 API="https://wow.curseforge.com/api"
+TOC="$(dirname "$0")/../RoadToSixty/RoadToSixty.toc"
 
 : "${CF_API_TOKEN:?CF_API_TOKEN is not set}"
-: "${CF_GAME_VERSIONS:?CF_GAME_VERSIONS is not set}"
+
+if [ -z "${CF_GAME_VERSIONS:-}" ]; then
+    interface=$(grep -m1 '^## Interface:' "$TOC" | sed 's/[^0-9,]//g' | cut -d, -f1)
+    [ -z "$interface" ] && { echo "No ## Interface line in $TOC" >&2; exit 1; }
+    CF_GAME_VERSIONS="$((interface / 10000)).$((interface / 100 % 100)).$((interface % 100))"
+    echo "Game version from the toc: interface $interface is $CF_GAME_VERSIONS" >&2
+fi
 
 # Prints the IDs for CF_GAME_VERSIONS as a JSON array. A name may match
 # versions of several game flavours; all matches are printed to stderr so the
@@ -29,6 +39,16 @@ resolve_versions() {
             matches=$(jq -c --argjson id "$entry" '[.[] | select(.id == $id)]' <<< "$all")
         else
             matches=$(jq -c --arg name "$entry" '[.[] | select(.name == $name)]' <<< "$all")
+        fi
+        # A new patch can reach players before CurseForge lists it: use the
+        # newest listed patch of the same major.minor below it, with a warning.
+        if [ "$(jq length <<< "$matches")" = "0" ] && [[ "$entry" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+            fallback=$(jq -r --arg p "${BASH_REMATCH[1]}." '.[] | select(.name | startswith($p)) | .name' <<< "$all" \
+                | { cat; echo "$entry"; } | sort -uV | grep -B1 -x -F "$entry" | head -n1)
+            if [ -n "$fallback" ] && [ "$fallback" != "$entry" ]; then
+                echo "::warning::CurseForge has no game version $entry yet; using $fallback" >&2
+                matches=$(jq -c --arg name "$fallback" '[.[] | select(.name == $name)]' <<< "$all")
+            fi
         fi
         if [ "$(jq length <<< "$matches")" = "0" ]; then
             echo "No CurseForge game version matches \"$entry\". Versions with a similar name:" >&2
