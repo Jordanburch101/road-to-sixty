@@ -16,6 +16,7 @@ local addonName, ns = ...
 --   out  instanceID, summary       left it; summary of the run, see EndRun
 --   loot itemLink, quality, instanceID   looted an item of green quality or
 --                                  better; instanceID if inside one
+--   eq   slot, itemID              equipment changed; itemID 0 when emptied
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}
@@ -48,6 +49,19 @@ function ns.CaptureGear()
     end
     return gear
 end
+
+-- Logs real equipment changes, so a replay can show gear changing between
+-- level ups. ns.char.gear is the gear last seen (set at login), so swapping
+-- an item for the same one logs nothing.
+ns.On("PLAYER_EQUIPMENT_CHANGED", function(slot)
+    local gear = ns.char.gear
+    if not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
+    local itemID = GetInventoryItemID("player", slot) or 0
+    if (gear[slot] or 0) ~= itemID then
+        gear[slot] = itemID ~= 0 and itemID or nil
+        Journal:Log("eq", slot, itemID)
+    end
+end)
 
 local function Snapshot(level, partial)
     local totals = ns.char.totals
@@ -140,6 +154,7 @@ ns.On("PLAYER_LOGIN", function()
         snapshot.gear = ns.CaptureGear()
         snapshot.gearLater = true
     end
+    ns.char.gear = ns.CaptureGear()
     Journal:Log("on", level)
 end)
 

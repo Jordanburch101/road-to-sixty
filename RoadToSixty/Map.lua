@@ -1721,6 +1721,9 @@ local function ApplyCursor()
     state.markerNow = (seq >= state.n) and math.huge or (state.pt[seq] or 0)
     UpdateMarkers()
     ns.Panel:SetTime(state.markerNow)
+    if ns.db.showGear then
+        ns.GearCard:Follow(state.markerNow)
+    end
 
     PlaceHead()
     if seq >= 1 and seq <= state.n then
@@ -2211,10 +2214,24 @@ local function CreateWindow()
     terrainButton:SetPoint("LEFT", fitButton, "RIGHT", 4, 0)
     UpdateTerrainButton()
 
+    -- Gear card in the map's corner, following the replay.
+    ns.GearCard:Dock(overlay)
+    local gearButton = CreateButton(80, "", function(self)
+        ns.db.showGear = not ns.db.showGear
+        self:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
+        if ns.db.showGear then
+            ns.GearCard:Follow(state.markerNow)
+        else
+            ns.GearCard:Undock()
+        end
+    end)
+    gearButton:SetPoint("LEFT", terrainButton, "RIGHT", 4, 0)
+    gearButton:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
+
     CreateScrub()
 
     infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    infoText:SetPoint("LEFT", terrainButton, "RIGHT", 14, 0)
+    infoText:SetPoint("LEFT", gearButton, "RIGHT", 14, 0)
     infoText:SetJustifyH("LEFT")
 
     local help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -2249,6 +2266,7 @@ function Map:Open()
     started = debugprofilestop()
     BuildPoints(paths)
     BuildMarkers()
+    ns.GearCard:Rebuild()
     StartWarmUp()
     state.perf.setup = debugprofilestop() - started
 

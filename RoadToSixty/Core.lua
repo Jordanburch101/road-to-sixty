@@ -7,6 +7,7 @@ local defaults = {
     showPaths = {},     -- roster key -> true to draw that character's path on the map
     historyFilter = {}, -- history category -> false when hidden
     minimap = { angle = 215, hide = false },  -- minimap button, angle in degrees
+    showGear = false,   -- gear card on the journey map, following the replay
 }
 
 -- Per-character journey data. Bump version when the layout changes.

@@ -35,6 +35,38 @@ local SEED_ITEMS = {
     2244, 873, 1728, 2243, 647, 1263,
 }
 
+-- Gear the seeded character puts on as it levels: { item ID, level }. Real
+-- Classic items; each item's slot comes from the client (GetItemInfoInstant),
+-- so a wrong ID is left out rather than worn in the wrong place.
+local GEAR_POOL = {
+    -- starting gear
+    { 38, 1 }, { 39, 1 }, { 40, 1 }, { 25, 1 }, { 2362, 1 },
+    { 2504, 5 }, { 15210, 8 }, { 15211, 12 },
+    -- Deadmines: Blackened Defias set, Cruel Barb
+    { 10399, 17 }, { 10400, 17 }, { 10401, 18 }, { 10402, 18 }, { 10403, 19 }, { 5191, 19 },
+    -- Shadowfang Keep: Wolfmaster Cape, Shadowfang
+    { 6314, 22 }, { 1482, 23 }, { 1981, 26 },
+    -- Scarlet Monastery: Scarlet set, Herod's Shoulder, Raging Berserker's Helm, Ravager
+    { 10328, 29 }, { 10330, 29 }, { 10331, 30 }, { 10332, 30 }, { 10329, 30 }, { 10333, 30 },
+    { 7719, 33 }, { 7718, 34 }, { 7717, 36 },
+    { 810, 40 }, { 2244, 45 }, { 1728, 50 },
+    -- Battlegear of Valor
+    { 16731, 54 }, { 16733, 55 }, { 16730, 56 }, { 16737, 56 }, { 16732, 57 }, { 16734, 57 },
+    { 16736, 58 }, { 16735, 58 },
+    { 647, 60 },
+}
+
+-- Equip location -> inventory slot. Rings and trinkets are not in the pool.
+local EQUIP_SLOTS = {
+    INVTYPE_HEAD = 1, INVTYPE_NECK = 2, INVTYPE_SHOULDER = 3, INVTYPE_BODY = 4,
+    INVTYPE_CHEST = 5, INVTYPE_ROBE = 5, INVTYPE_WAIST = 6, INVTYPE_LEGS = 7,
+    INVTYPE_FEET = 8, INVTYPE_WRIST = 9, INVTYPE_HAND = 10, INVTYPE_CLOAK = 15,
+    INVTYPE_WEAPON = 16, INVTYPE_WEAPONMAINHAND = 16, INVTYPE_2HWEAPON = 16,
+    INVTYPE_SHIELD = 17, INVTYPE_HOLDABLE = 17, INVTYPE_WEAPONOFFHAND = 17,
+    INVTYPE_RANGED = 18, INVTYPE_RANGEDRIGHT = 18, INVTYPE_THROWN = 18, INVTYPE_TABARD = 19,
+}
+local OFF_HAND = 17
+
 local random, floor, sqrt, cos, sin, atan2, pi =
     math.random, math.floor, math.sqrt, math.cos, math.sin, math.atan2, math.pi
 
@@ -126,9 +158,57 @@ local function Log(kind, ...)
     table.insert(G.char.events, { G.t, kind, G.c, round(G.x), round(G.y), ... })
 end
 
+-- GEAR_POOL with slots from the client, in level order: { level, slot, id,
+-- twoHand }. Empty if the client cannot tell (offline tests).
+local function BuildGearPool()
+    local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    local pool = {}
+    if not info then return pool end
+    for _, entry in ipairs(GEAR_POOL) do
+        local equipLoc = select(4, info(entry[1]))
+        local slot = EQUIP_SLOTS[equipLoc]
+        if slot then
+            pool[#pool + 1] = { level = entry[2], slot = slot, id = entry[1], twoHand = equipLoc == "INVTYPE_2HWEAPON" }
+        end
+    end
+    table.sort(pool, function(a, b) return a.level < b.level end)
+    return pool
+end
+
+-- Wears an item, logged like Journal.lua's "eq" events unless silent. A
+-- two-handed weapon takes the off hand too.
+local function Equip(slot, itemID, silent)
+    G.gear[slot] = itemID ~= 0 and itemID or nil
+    if not silent then
+        Log("eq", slot, itemID)
+    end
+end
+
+-- Puts on every pool item up to level not yet worn.
+local function GearUpTo(level, silent)
+    local pool = G.gearPool
+    while G.gearNext <= #pool and pool[G.gearNext].level <= level do
+        local item = pool[G.gearNext]
+        Equip(item.slot, item.id, silent)
+        if item.twoHand and G.gear[OFF_HAND] then
+            Equip(OFF_HAND, 0, silent)
+        end
+        G.gearNext = G.gearNext + 1
+    end
+end
+
+local function CopyGear()
+    local copy = {}
+    for slot, id in pairs(G.gear) do
+        copy[slot] = id
+    end
+    return copy
+end
+
 local function Snapshot(level)
     local totals = G.char.totals
     G.char.levels[level] = {
+        gear = CopyGear(),
         t = G.t,
         money = level * level * 250,
         kills = totals.kills,
@@ -164,6 +244,7 @@ local function CheckLevel()
     while G.level < level do
         G.level = G.level + 1
         Log("lvl", G.level)
+        GearUpTo(G.level)
         Snapshot(G.level)
     end
 end
@@ -339,10 +420,12 @@ local function Begin(zone, x, y, daysAgo, items, settings)
         c = zone.c, x = x, y = y,
         t = time() - daysAgo * 86400,
         items = items,
+        gear = {}, gearPool = BuildGearPool(), gearNext = 1,
     }
     for k, v in pairs(settings) do
         G[k] = v
     end
+    GearUpTo(1, true)
     Log("on", 1)
     Snapshot(1)
     OpenSegment("w")
@@ -356,6 +439,7 @@ local function Finish(maxLevel, started, label)
     while G.level < maxLevel do
         G.level = G.level + 1
         Log("lvl", G.level)
+        GearUpTo(G.level)
         Snapshot(G.level)
     end
     CloseSegment()

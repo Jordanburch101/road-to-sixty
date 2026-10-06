@@ -43,6 +43,16 @@ GetItemInfo = function(id)
     if quality then return "Item " .. id, "|cff1eff00|Hitem:" .. id .. "|h[Item]|h|r", quality end
 end
 
+-- Equip locations for some of the seed's gear pool.
+local EQUIP_LOCS = {
+    [38] = "INVTYPE_BODY", [39] = "INVTYPE_LEGS", [40] = "INVTYPE_FEET", [25] = "INVTYPE_WEAPON",
+    [2362] = "INVTYPE_SHIELD", [10399] = "INVTYPE_CHEST", [10328] = "INVTYPE_CHEST",
+    [5191] = "INVTYPE_WEAPONMAINHAND", [7717] = "INVTYPE_2HWEAPON",
+}
+GetItemInfoInstant = function(id)
+    return id, nil, nil, EQUIP_LOCS[id]
+end
+
 assert(loadfile("RoadToSixty/Seed.lua"))("RoadToSixty", ns)
 local started = os.clock()
 commands.seed("confirm")
@@ -76,6 +86,14 @@ check(char.totals.deaths >= 10 and char.totals.deaths <= 60, "about a death a le
 check((counts["in"] or 0) == 4, "four Alliance dungeons, got " .. tostring(counts["in"]))
 check((reasons.b or 0) >= 2, "boats between continents on the Human route")
 check((counts.loot or 0) > 5, "some loot")
+
+-- Gear: starting gear at level 1, upgrades logged as "eq" events, and each
+-- level snapshot holds the gear worn then.
+local g1, g30 = char.levels[1].gear, char.levels[30].gear
+check(g1 and g1[4] == 38 and g1[16] == 25 and g1[17] == 2362, "starting gear at level 1")
+check(g30 and g30[5] == 10328 and g30[16] == 5191, "Scarlet chest and Cruel Barb by level 30")
+check(g30 and g30[17] == 2362, "a one-handed weapon keeps the shield")
+check((counts.eq or 0) >= 3, "gear changes logged, got " .. tostring(counts.eq))
 
 -- Time only moves forward.
 local last = 0
