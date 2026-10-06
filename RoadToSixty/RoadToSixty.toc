@@ -2,6 +2,7 @@
 ## Title: Road to Sixty
 ## Notes: Records your journey from 1 to 60 and replays it on the map
 ## Author: Jordan
+## IconTexture: Interface\AddOns\RoadToSixty\icon
 ## Version: @project-version@
 ## SavedVariables: RoadToSixtyDB
 ## SavedVariablesPerCharacter: RoadToSixtyCharDB
