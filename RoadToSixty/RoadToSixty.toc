@@ -16,6 +16,7 @@ Roster.lua
 Health.lua
 Map.lua
 Panel.lua
+GearCard.lua
 MinimapButton.lua
 #@debug@
 Probe.lua

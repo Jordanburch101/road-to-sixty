@@ -204,9 +204,18 @@ local function CreateHistoryRow(parent)
                 GameTooltip:AddLine(line, 1, 1, 1)
             end
             GameTooltip:Show()
+        elseif item.kind == "lvl" then
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:AddLine(item.title)
+            GameTooltip:AddLine(item.detail, 1, 1, 1)
+            GameTooltip:Show()
+            ns.GearCard:Show(item.level, GameTooltip)
         end
     end)
-    row:SetScript("OnLeave", GameTooltip_Hide)
+    row:SetScript("OnLeave", function()
+        GameTooltip_Hide()
+        ns.GearCard:Hide()
+    end)
     return row
 end
 

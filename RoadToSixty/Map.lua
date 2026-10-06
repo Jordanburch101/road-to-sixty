@@ -635,8 +635,14 @@ local function GetMarker(i)
         GameTooltip:AddLine(self.title)
         GameTooltip:AddLine(self.detail, 1, 1, 1)
         GameTooltip:Show()
+        if self.level then
+            ns.GearCard:Show(self.level, GameTooltip)
+        end
     end)
-    m:SetScript("OnLeave", GameTooltip_Hide)
+    m:SetScript("OnLeave", function()
+        GameTooltip_Hide()
+        ns.GearCard:Hide()
+    end)
     markers[i] = m
     return m
 end
@@ -658,6 +664,7 @@ local function BuildMarkers()
             m.t = t
             m.x, m.y = toContent(e[4], e[5])
             m.category = MARKER_CATEGORY[kind]
+            m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
             m:SetSize(size, size)
             if kind == "lvl" then

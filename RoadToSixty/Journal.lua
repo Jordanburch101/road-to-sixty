@@ -1,6 +1,8 @@
 local addonName, ns = ...
 
--- Records what happened along the path, plus a stats snapshot at each level.
+-- Records what happened along the path, plus a stats snapshot at each level
+-- (ns.char.levels[level], including the equipped gear: slot -> item ID, and
+-- gearLater = true when it was taken at a later login, not at the level up).
 --
 -- Each event: { time, kind, continentID, x, y, ... }. Kinds and extra fields:
 --   on   level                     session start
@@ -26,9 +28,31 @@ function Journal:Log(kind, ...)
     table.insert(ns.char.events, { time(), kind, c or -1, x or 0, y or 0, ... })
 end
 
+-- Equipment slots, in character sheet order, by the names the client uses.
+ns.GEAR_SLOTS = {
+    "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot",
+    "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot",
+    "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
+}
+
+-- What the player is wearing: inventory slot ID -> item ID. Slots this client
+-- does not have are skipped.
+function ns.CaptureGear()
+    local gear = {}
+    for _, name in ipairs(ns.GEAR_SLOTS) do
+        local ok, slot = pcall(GetInventorySlotInfo, name)
+        local itemID = ok and slot and GetInventoryItemID("player", slot)
+        if itemID then
+            gear[slot] = itemID
+        end
+    end
+    return gear
+end
+
 local function Snapshot(level, partial)
     local totals = ns.char.totals
     ns.char.levels[level] = {
+        gear = ns.CaptureGear(),
         t = time(),
         money = GetMoney(),
         kills = totals.kills,
@@ -107,9 +131,14 @@ end
 
 ns.On("PLAYER_LOGIN", function()
     local level = UnitLevel("player")
-    if not ns.char.levels[level] then
+    local snapshot = ns.char.levels[level]
+    if not snapshot then
         -- Level 1 is a clean start; anything else means tracking began mid-level.
         Snapshot(level, level > 1)
+    elseif not snapshot.gear then
+        -- Reached before gear was recorded: today's gear is the best guess.
+        snapshot.gear = ns.CaptureGear()
+        snapshot.gearLater = true
     end
     Journal:Log("on", level)
 end)
