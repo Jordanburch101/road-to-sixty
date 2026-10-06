@@ -34,12 +34,15 @@
 
 ## Commands
 
+Click the **minimap button** to open the map (drag it to move it), or use:
+
 | Command | What it does |
 |---|---|
 | `/rts map` | Open the journey map |
 | `/rts check` | Check that recording is working |
 | `/rts stats` | Show journey totals and recording size |
 | `/rts where` | Show your position as the recorder sees it |
+| `/rts minimap` | Show or hide the minimap button |
 | `/rts motes` | Turn the arcane sparkles on the path on or off |
 | `/rts greet` | Turn the login message on or off |
 | `/rts reset confirm` | Erase this character's journey |

@@ -3,6 +3,7 @@
 ## Notes: Records your journey from 1 to 60 and replays it on the map
 ## Author: Jordan
 ## IconTexture: Interface\AddOns\RoadToSixty\icon
+## AddonCompartmentFunc: RoadToSixty_OnAddonCompartmentClick
 ## Version: @project-version@
 ## SavedVariables: RoadToSixtyDB
 ## SavedVariablesPerCharacter: RoadToSixtyCharDB
@@ -15,6 +16,7 @@ Roster.lua
 Health.lua
 Map.lua
 Panel.lua
+MinimapButton.lua
 #@debug@
 Probe.lua
 Seed.lua

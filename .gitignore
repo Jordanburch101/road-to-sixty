@@ -4,3 +4,6 @@ dist/
 
 # Generated from branding/header.src.html by branding/build-header.ps1
 branding/header.html
+
+# Test images for /rts shots
+RoadToSixty/shots/

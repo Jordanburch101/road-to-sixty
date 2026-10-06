@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- /rts probe reports which APIs this client provides, so the recorder and the
 -- map UI are built on what the Forever client actually supports.
@@ -172,4 +172,88 @@ ns.Command("levelart", "list the player frame art under the level number", funct
     for _, line in ipairs(found) do
         ns.Print("  " .. line)
     end
+end)
+
+-- /rts shots: can an addon show screenshots? Switches screenshots to TGA (the
+-- only screenshot format a texture could load), takes one, then shows it from
+-- several paths into the Screenshots folder; a picture means that path works.
+-- The last cell tries shots\test.tga in this addon's folder, to learn whether
+-- an image added while the game runs loads without a restart.
+
+local SHOT_W, SHOT_H = 192, 108
+local SHOT_BASES = { "Screenshots\\", "..\\Screenshots\\", "Interface\\..\\Screenshots\\",
+    "Interface\\AddOns\\..\\..\\Screenshots\\" }
+local shotFrame, shotWaiting
+
+local function CreateShotFrame()
+    shotFrame = CreateFrame("Frame", "RoadToSixtyShotTest", UIParent, "BasicFrameTemplateWithInset")
+    shotFrame:SetSize(3 * (SHOT_W + 10) + 18, 3 * (SHOT_H + 34) + 34)
+    shotFrame:SetPoint("CENTER")
+    shotFrame:SetFrameStrata("HIGH")
+    shotFrame:SetMovable(true)
+    shotFrame:EnableMouse(true)
+    shotFrame:RegisterForDrag("LeftButton")
+    shotFrame:SetScript("OnDragStart", shotFrame.StartMoving)
+    shotFrame:SetScript("OnDragStop", shotFrame.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "RoadToSixtyShotTest")
+    local title = shotFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Screenshot test: a picture means that path loads")
+    shotFrame.cells = {}
+    for i = 1, 9 do
+        local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
+        local back = shotFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        back:SetSize(SHOT_W, SHOT_H)
+        back:SetPoint("TOPLEFT", 14 + col * (SHOT_W + 10), -32 - row * (SHOT_H + 34))
+        back:SetColorTexture(0.15, 0.15, 0.15)
+        local tex = shotFrame:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints(back)
+        local label = shotFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOP", back, "BOTTOM", 0, -3)
+        label:SetWidth(SHOT_W)
+        shotFrame.cells[i] = { tex = tex, label = label }
+    end
+end
+
+-- t: when the screenshot was taken. Its file name has the time to the second,
+-- so both t and the second before are tried.
+local function ShowShots(t)
+    if not shotFrame then CreateShotFrame() end
+    local paths = {}
+    for _, at in ipairs({ t, t - 1 }) do
+        local name = tostring(date("WoWScrnShot_%m%d%y_%H%M%S", at))
+        for _, base in ipairs(SHOT_BASES) do
+            paths[#paths + 1] = base .. name .. ".tga"
+        end
+    end
+    paths[#paths + 1] = "Interface\\AddOns\\" .. addonName .. "\\shots\\test.tga"
+    for i, cell in ipairs(shotFrame.cells) do
+        local path = paths[i]
+        cell.tex:SetTexture(nil)
+        local ok = cell.tex:SetTexture(path)
+        cell.label:SetText(path:gsub("WoWScrnShot_", ""))
+        ns.Print(("%s  SetTexture returned %s"):format(path, tostring(ok)))
+    end
+    shotFrame:Show()
+end
+
+ns.Command("shots", "test whether screenshots can be shown in game", function()
+    local format = GetCVar("screenshotFormat")
+    if format ~= "tga" then
+        SetCVar("screenshotFormat", "tga")
+        ns.Print(("Screenshot format was %s, now tga. Type /console screenshotFormat %s to change it back.")
+            :format(tostring(format), tostring(format)))
+    end
+    shotWaiting = true
+    if not pcall(Screenshot) then
+        ns.Print("Could not take a screenshot from the addon. Press Print Screen.")
+    end
+end)
+
+ns.On("SCREENSHOT_SUCCEEDED", function()
+    if not shotWaiting then return end
+    shotWaiting = false
+    local t = time()
+    -- Give the client a moment to finish writing the file.
+    C_Timer.After(1, function() ShowShots(t) end)
 end)
