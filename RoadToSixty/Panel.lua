@@ -523,10 +523,22 @@ local function CreateLevelRow(parent)
         cell:SetPoint("LEFT", x, 0)
         row.cells[i] = cell
     end
+    -- Hover shows the gear worn at that level.
+    row:EnableMouse(true)
+    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(1, 1, 1, 0.08)
+    row:SetScript("OnEnter", function(self)
+        ns.GearCard:Show(self.level, self)
+    end)
+    row:SetScript("OnLeave", function()
+        ns.GearCard:Hide()
+    end)
     return row
 end
 
 local function UpdateLevelRow(row, item)
+    row.level = item.level
     local cells = row.cells
     cells[1]:SetText(item.level .. (item.partial and "*" or ""))
     cells[1]:SetTextColor(ns.LevelColor(item.level))
