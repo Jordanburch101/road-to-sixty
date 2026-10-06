@@ -113,8 +113,9 @@ local function ShowSlotTooltip(button)
 end
 
 -- The dressing room scene for the player's race over region: a modern atlas
--- if the client has one, else the four classic pieces (256 + 64 wide,
--- 256 + 128 tall).
+-- if the client has one, else the classic top pieces (256 + 64 wide)
+-- stretched over the whole height. The classic bottom pieces end in a dark
+-- band that showed as a black bar under the model's feet.
 local function RaceBackground(frame, region)
     local _, race = UnitRace("player")
     race = race or "Human"
@@ -127,13 +128,12 @@ local function RaceBackground(frame, region)
         pieces[1] = tex
     else
         local w, h = region:GetWidth(), region:GetHeight()
-        local cols, rows = { 256 / 320, 64 / 320 }, { 256 / 384, 128 / 384 }
-        for i = 1, 4 do
-            local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+        local cols = { 256 / 320, 64 / 320 }
+        for i = 1, 2 do
             local tex = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
             tex:SetTexture(RACE_BACKGROUND .. race .. i)
-            tex:SetSize(w * cols[col + 1], h * rows[row + 1])
-            tex:SetPoint("TOPLEFT", region, "TOPLEFT", col * w * cols[1], -row * h * rows[1])
+            tex:SetSize(w * cols[i], h)
+            tex:SetPoint("TOPLEFT", region, "TOPLEFT", (i - 1) * w * cols[1], 0)
             pieces[i] = tex
         end
     end
