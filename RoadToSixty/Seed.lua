@@ -35,9 +35,10 @@ local SEED_ITEMS = {
     2244, 873, 1728, 2243, 647, 1263,
 }
 
--- Gear the seeded character puts on as it levels: { item ID, level }. Real
--- Classic items; each item's slot comes from the client (GetItemInfoInstant),
--- so a wrong ID is left out rather than worn in the wrong place.
+-- Gear the stress seed's character puts on as it levels: { item ID, level }.
+-- Real Classic items; each item's slot comes from the client
+-- (GetItemInfoInstant), so a wrong ID is left out rather than worn in the
+-- wrong place. The realistic seed has its own, REALISTIC_GEAR.
 local GEAR_POOL = {
     -- starting gear
     { 38, 1 }, { 39, 1 }, { 40, 1 }, { 25, 1 }, { 2362, 1 },
@@ -158,25 +159,31 @@ local function Log(kind, ...)
     table.insert(G.char.events, { G.t, kind, G.c, round(G.x), round(G.y), ... })
 end
 
--- GEAR_POOL with slots from the client, in level order: { level, slot, id,
--- twoHand }. Empty if the client cannot tell (offline tests).
-local function BuildGearPool()
+-- An item's inventory slot and whether it takes both hands, from the client;
+-- nil if the client does not know it (or offline tests).
+local function SlotOf(itemID)
+    ---@diagnostic disable-next-line: deprecated
     local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not info then return end
+    local equipLoc = select(4, info(itemID))
+    return EQUIP_SLOTS[equipLoc], equipLoc == "INVTYPE_2HWEAPON"
+end
+
+-- list ({ item ID, level }) with slots, in level order: { level, slot, id,
+-- twoHand }. Items the client does not know are left out.
+local function BuildGearPool(list)
     local pool = {}
-    if not info then return pool end
-    for _, entry in ipairs(GEAR_POOL) do
-        local equipLoc = select(4, info(entry[1]))
-        local slot = EQUIP_SLOTS[equipLoc]
+    for _, entry in ipairs(list) do
+        local slot, twoHand = SlotOf(entry[1])
         if slot then
-            pool[#pool + 1] = { level = entry[2], slot = slot, id = entry[1], twoHand = equipLoc == "INVTYPE_2HWEAPON" }
+            pool[#pool + 1] = { level = entry[2], slot = slot, id = entry[1], twoHand = twoHand }
         end
     end
     table.sort(pool, function(a, b) return a.level < b.level end)
     return pool
 end
 
--- Wears an item, logged like Journal.lua's "eq" events unless silent. A
--- two-handed weapon takes the off hand too.
+-- Wears an item, logged like Journal.lua's "eq" events unless silent.
 local function Equip(slot, itemID, silent)
     G.gear[slot] = itemID ~= 0 and itemID or nil
     if not silent then
@@ -184,15 +191,21 @@ local function Equip(slot, itemID, silent)
     end
 end
 
+-- Wears an item in its own slot; a two-handed weapon empties the off hand.
+local function EquipItem(itemID, silent)
+    local slot, twoHand = SlotOf(itemID)
+    if not slot then return end
+    Equip(slot, itemID, silent)
+    if twoHand and G.gear[OFF_HAND] then
+        Equip(OFF_HAND, 0, silent)
+    end
+end
+
 -- Puts on every pool item up to level not yet worn.
 local function GearUpTo(level, silent)
     local pool = G.gearPool
     while G.gearNext <= #pool and pool[G.gearNext].level <= level do
-        local item = pool[G.gearNext]
-        Equip(item.slot, item.id, silent)
-        if item.twoHand and G.gear[OFF_HAND] then
-            Equip(OFF_HAND, 0, silent)
-        end
+        EquipItem(pool[G.gearNext].id, silent)
         G.gearNext = G.gearNext + 1
     end
 end
@@ -420,11 +433,12 @@ local function Begin(zone, x, y, daysAgo, items, settings)
         c = zone.c, x = x, y = y,
         t = time() - daysAgo * 86400,
         items = items,
-        gear = {}, gearPool = BuildGearPool(), gearNext = 1,
+        gear = {}, gearNext = 1,
     }
     for k, v in pairs(settings) do
         G[k] = v
     end
+    G.gearPool = BuildGearPool(G.gearList or GEAR_POOL)
     GearUpTo(1, true)
     Log("on", 1)
     Snapshot(1)
@@ -503,17 +517,88 @@ local ROUTES = {
 }
 ROUTES.Gnome, ROUTES.Troll = ROUTES.Dwarf, ROUTES.Orc
 
--- Dungeons per faction: { level, instanceID, name }.
+-- Dungeons per faction, run once the character is at least level and, if
+-- zone is set, questing in that route zone. Alliance runs happen at the real
+-- entrance (map, x, y: uiMapID and map position), drop the real loot (worn
+-- if better) and give the quest reward on the way back:
+--   { level, zone, id = instanceID, name, map, x, y, loot = {...}, reward = {...} }
+-- All item IDs, levels and slots checked in game with /rts itemcheck.
 local DUNGEONS = {
     Alliance = {
-        { 19, 36, "The Deadmines" }, { 24, 34, "The Stockade" },
-        { 26, 48, "Blackfathom Deeps" }, { 29, 90, "Gnomeregan" },
+        -- In Moonbrook, Westfall, while questing in Redridge. Smite's Mighty
+        -- Hammer and Cape of the Brotherhood drop; the Defias Brotherhood
+        -- finale gives Chausses of Westfall.
+        { level = 19, zone = 1433, id = 36, name = "The Deadmines", map = 1436, x = 0.426, y = 0.720,
+            loot = { 7230, 5193 }, reward = { 6087 } },
+        -- In Stormwind City, from the Wetlands. Jimmied Handcuffs.
+        { level = 24, zone = 1437, id = 34, name = "The Stockade", map = 1453, x = 0.405, y = 0.558,
+            loot = { 3228 } },
+        -- On the Zoram Strand, Ashenvale. Strike of the Hydra, Algae Fists,
+        -- Tortoise Armor.
+        { level = 28, zone = 1440, id = 48, name = "Blackfathom Deeps", map = 1440, x = 0.143, y = 0.139,
+            loot = { 6909, 6906, 6907 } },
     },
     Horde = {
-        { 15, 389, "Ragefire Chasm" }, { 19, 43, "Wailing Caverns" }, { 23, 33, "Shadowfang Keep" },
-        { 26, 48, "Blackfathom Deeps" }, { 29, 47, "Razorfen Kraul" },
+        { level = 15, id = 389, name = "Ragefire Chasm" }, { level = 19, id = 43, name = "Wailing Caverns" },
+        { level = 23, id = 33, name = "Shadowfang Keep" }, { level = 26, id = 48, name = "Blackfathom Deeps" },
+        { level = 29, id = 47, name = "Razorfen Kraul" },
     },
 }
+
+-- The realistic seed's gear: a human Arms warrior in mail, { item ID, level
+-- it is put on }, besides the dungeon loot above. Starting kit, then world
+-- drop greens and quest rewards, all checked in game (/rts survey and
+-- /rts itemcheck). Weapons: Worn Shortsword and shield, Twin-bladed Axe,
+-- Miner's Revenge (Loch Modan), then the dungeon two-handers.
+local REALISTIC_GEAR = {
+    { 38, 1 }, { 39, 1 }, { 40, 1 }, { 25, 1 }, { 2362, 1 },   -- Recruit's kit, Worn Shortsword and Shield
+    { 18612, 5 },                   -- Bloody Chain Boots
+    { 15479, 6 }, { 15477, 6 },     -- Charger's Armor and Pants
+    { 15309, 10 },                  -- Feral Cloak
+    { 15491, 10 }, { 15495, 10 },   -- Bloodspattered Gloves and Wristbands
+    { 15268, 11 },                  -- Twin-bladed Axe
+    { 15489, 11 },                  -- Bloodspattered Sabatons
+    { 14725, 12 },                  -- War Paint Waistband
+    { 6084, 14 },                   -- Stormwind Guard Leggings (Westfall quest)
+    { 14167, 14 },                  -- Buccaneer's Cape
+    { 1893, 16 },                   -- Miner's Revenge (Loch Modan quest)
+    { 12985, 17 },                  -- Ring of Defense
+    { 15517, 20 },                  -- Spiked Chain Wristbands
+    { 14749, 21 }, { 15520, 21 },   -- Hulking Spaulders, Spiked Chain Gauntlets
+    { 15525, 23 },                  -- Sentry's Slippers
+    { 15518, 25 }, { 15539, 25 },   -- Spiked Chain Breastplate, Wicked Chain Waistband
+    { 15533, 26 },                  -- Sentry's Headdress
+    { 15544, 27 },                  -- Thick Scale Sabatons
+    { 15542, 28 },                  -- Wicked Chain Shoulder Pads
+    { 15540, 29 },                  -- Wicked Chain Helmet
+}
+
+-- Alliance flight masters, world positions from /rts survey: { continent, x, y }.
+local FLIGHT_MASTERS = {
+    { 0, -8833, 479 },      -- Stormwind
+    { 0, -10629, 1037 },    -- Sentinel Hill, Westfall
+    { 0, -9429, -2231 },    -- Lakeshire, Redridge
+    { 0, -4822, -1155 },    -- Ironforge
+    { 0, -3792, -783 },     -- Menethil Harbor, Wetlands
+    { 0, -5422, -2930 },    -- Thelsamar, Loch Modan
+    { 0, -10515, -1262 },   -- Darkshire, Duskwood
+    { 0, -711, -515 },      -- Southshore, Hillsbrad
+    { 0, -1241, -2515 },    -- Refuge Pointe, Arathi
+    { 1, 6341, 558 },       -- Auberdine, Darkshore
+    { 1, 8644, 841 },       -- Rut'theran Village, Teldrassil
+    { 1, 2827, -289 },      -- Astranaar, Ashenvale
+    { 1, 2681, 1462 },      -- Stonetalon Peak
+    { 1, -3825, -4517 },    -- Theramore, Dustwallow Marsh
+}
+
+-- Boats between the continents, dock to dock as in Map.lua's DOCKS:
+-- { from continent, x, y, to continent, x, y }.
+local BOATS = {
+    { 0, -8550, 1450, 1, 6650, 950 },   -- Stormwind Harbor to Auberdine
+    { 0, -3800, -700, 1, 6650, 950 },   -- Menethil Harbor to Auberdine
+    { 1, 6650, 950, 0, -3800, -700 },   -- Auberdine to Menethil Harbor
+}
+local BOAT_SECONDS = 300
 
 -- A zone's middle part in world yards, keeping quest spots away from its edges.
 local function ZoneBox(mapID)
@@ -591,16 +676,99 @@ local function TurnIn()
     end
 end
 
--- One visit to an instance: no path, an hour or two, a summary and a drop or two.
+-- Realistic travel --------------------------------------------------------------
+
+-- The flight master (or boat) in list nearest (x, y) on continent c.
+local function NearestIn(list, c, x, y)
+    local best, bestD
+    for _, entry in ipairs(list) do
+        if entry[1] == c then
+            local d = (entry[2] - x) ^ 2 + (entry[3] - y) ^ 2
+            if not bestD or d < bestD then
+                best, bestD = entry, d
+            end
+        end
+    end
+    return best
+end
+
+-- To (tx, ty) on this continent: a long trip walks to the nearest flight
+-- master, flies to the one nearest the target and walks the rest; short
+-- trips, and all trips before G.walkBelow, are on foot.
+local function GoTo(tx, ty)
+    local far = sqrt((tx - G.x) ^ 2 + (ty - G.y) ^ 2) > TAXI_DISTANCE
+    if far and G.level >= (G.walkBelow or 0) then
+        local from, to = NearestIn(FLIGHT_MASTERS, G.c, G.x, G.y), NearestIn(FLIGHT_MASTERS, G.c, tx, ty)
+        if from and to and from ~= to then
+            WalkTo(from[2], from[3], 18)
+            OpenSegment("t")
+            WalkTo(to[2], to[3], 60)
+            OpenSegment("w")
+        end
+    end
+    WalkTo(tx, ty, 18)
+end
+
+-- To (tx, ty) on continent c, taking the boat from the nearest dock first if
+-- c is the other continent.
+local function Journey(c, tx, ty)
+    if c ~= G.c then
+        local boat = NearestIn(BOATS, G.c, G.x, G.y)
+        if boat then
+            GoTo(boat[2], boat[3])
+            G.t = G.t + BOAT_SECONDS
+            G.c, G.x, G.y = boat[4], boat[5], boat[6]
+        else
+            G.c, G.x, G.y = c, tx, ty
+        end
+        OpenSegment("w", "b")
+    end
+    GoTo(tx, ty)
+end
+
+local function TravelToZone(zone, tx, ty)
+    Journey(zone.c, tx, ty)
+    Log("zone", zone.id)
+end
+
+-- Hearthstone back to the inn the character is bound to (G.home).
+local function Hearth()
+    if not G.home then return end
+    G.t = G.t + 10
+    G.c, G.x, G.y = G.home.c, G.home.x, G.home.y
+    OpenSegment("w", "h")
+end
+
+-- One visit to an instance: to its entrance if known, an hour or two inside
+-- (no path), its loot worn, a summary, then back to town by hearthstone,
+-- where its quest rewards are handed out.
 local function RunDungeon(dungeon)
-    local instanceID, name = dungeon[2], dungeon[3]
+    local instanceID, name = dungeon.id, dungeon.name
+    if dungeon.map then
+        local c, pos = C_Map.GetWorldPosFromMapPos(dungeon.map, CreateVector2D(dungeon.x, dungeon.y))
+        if pos then
+            Journey(c, pos.x, pos.y)
+            Log("zone", dungeon.map)
+        end
+    end
     G.char.totals.instances = G.char.totals.instances + 1
     Log("in", instanceID, name, "party")
     local duration = random(60, 120) * 60
     G.t = G.t + floor(duration / 2)
     local items = {}
-    for _ = 1, random(1, 2) do
-        items[#items + 1] = DropLoot(instanceID, random() < 0.6 and 3 or 2)
+    if dungeon.loot then
+        for _, itemID in ipairs(dungeon.loot) do
+            local item = G.itemsById and G.itemsById[itemID]
+            if item then
+                Log("loot", item.link, item.quality, instanceID)
+                items[#items + 1] = item.link
+            end
+            EquipItem(itemID)
+        end
+    else
+        for _ = 1, random(1, 2) do
+            items[#items + 1] = DropLoot(instanceID, random() < 0.6 and 3 or 2)
+        end
     end
     G.t = G.t + duration - floor(duration / 2)
     G.played = G.played + duration
@@ -611,6 +779,12 @@ local function RunDungeon(dungeon)
         deaths = random(0, 2), money = G.level * random(300, 700), levels = 0, items = items,
     })
     OpenSegment("w", "i")
+    if dungeon.map then
+        Hearth()
+        for _, itemID in ipairs(dungeon.reward or {}) do
+            EquipItem(itemID)
+        end
+    end
 end
 
 local function SeedRealistic(items)
@@ -646,19 +820,23 @@ local function SeedRealistic(items)
         sessionStart = 0,
         blueShare = REALISTIC_BLUE_SHARE,
         epicShare = 0,
+        gearList = REALISTIC_GEAR,
+        itemsById = items.byId,
     })
 
     local dungeons, nextDungeon = DUNGEONS[faction] or DUNGEONS.Alliance, 1
     for i, zone in ipairs(zones) do
         if i > 1 then
             town = { RandomSpot(zone) }
-            TravelTo(zone, town[1], town[2])
+            TravelToZone(zone, town[1], town[2])
         end
+        -- Bound to this zone's inn, for the hearthstone after dungeons.
+        G.home = { c = G.c, x = G.x, y = G.y }
         -- Quest from this zone's town until the level to move on.
         local leaveAt = ends[zone.leaveAt - 1] or REALISTIC_POINTS
         while G.points < leaveAt do
             local dungeon = dungeons[nextDungeon]
-            if dungeon and G.level >= dungeon[1] then
+            if dungeon and G.level >= dungeon.level and (not dungeon.zone or dungeon.zone == zone.id) then
                 RunDungeon(dungeon)
                 nextDungeon = nextDungeon + 1
             end
@@ -674,8 +852,10 @@ local function SeedRealistic(items)
     Finish(REALISTIC_LEVEL, started, "realistic 1-30")
 end
 
--- Asks the client for SEED_ITEMS and calls done with their links by quality
--- once all have loaded, or after ITEM_LOAD_SECONDS with whatever has.
+-- Asks the client for SEED_ITEMS and the dungeon loot, and calls done once
+-- all have loaded, or after ITEM_LOAD_SECONDS with whatever has. done gets
+-- SEED_ITEMS links by quality ({ [2] = {...}, [3] = ..., [4] = ... }) with
+-- byId = { [itemID] = { link, quality } } for the dungeon loot.
 local function LoadItems(done)
     ---@diagnostic disable-next-line: deprecated
     local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
@@ -684,20 +864,39 @@ local function LoadItems(done)
     -- every request is out.
     local waiting, finished, requesting = 0, false, true
 
+    local loot = {}
+    for _, list in pairs(DUNGEONS) do
+        for _, dungeon in ipairs(list) do
+            for _, id in ipairs(dungeon.loot or {}) do
+                loot[#loot + 1] = id
+            end
+        end
+    end
+    local all = { unpack(SEED_ITEMS) }
+    for _, id in ipairs(loot) do
+        all[#all + 1] = id
+    end
+
     local function Finish()
         if finished then return end
         finished = true
-        local byQuality = { [2] = {}, [3] = {}, [4] = {} }
+        local byQuality = { [2] = {}, [3] = {}, [4] = {}, byId = {} }
         for _, id in ipairs(SEED_ITEMS) do
             local _, link, quality = getInfo(id)
             if link and byQuality[quality] then
                 table.insert(byQuality[quality], link)
             end
         end
+        for _, id in ipairs(loot) do
+            local _, link, quality = getInfo(id)
+            if link then
+                byQuality.byId[id] = { link = link, quality = quality }
+            end
+        end
         done(byQuality)
     end
 
-    for _, id in ipairs(SEED_ITEMS) do
+    for _, id in ipairs(all) do
         if not exists or exists(id) then
             if Item and Item.CreateFromItemID then
                 waiting = waiting + 1

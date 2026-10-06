@@ -369,6 +369,45 @@ local function SurveyItems(survey)
     end)
 end
 
+-- /rts itemcheck: loads a fixed list of item IDs (expected dungeon drops and
+-- quest rewards) and saves what each really is into RoadToSixtyDB.itemcheck:
+-- id|name|quality|minLevel|equipLoc|subType, or id|missing.
+local ITEMCHECK_IDS = {
+    -- start
+    38, 39, 40, 45, 25, 2362, 2504, 6125, 6126, 6127,
+    -- Deadmines
+    5191, 7230, 5193, 5192, 5196, 5197, 5198, 5199, 5200, 5201, 5202, 872, 1937, 1156, 2169, 1951, 10399,
+    -- Stockade
+    2941, 2942, 3228, 1076, 2943, 3400,
+    -- Blackfathom Deeps
+    6901, 6902, 6903, 6904, 6905, 6906, 6907, 6908, 6909, 6910, 6911, 888, 1486, 3416, 3413, 2567,
+    3417, 1454, 1481, 3414, 2271, 6898, 7003, 7001,
+    -- quest rewards along the human route
+    6087, 6086, 2042, 2374, 2955, 6084, 6085, 1893, 2091, 4977, 6070, 6092, 6093,
+}
+
+ns.Command("itemcheck", "check what a list of item IDs really are (developer)", function()
+    ---@diagnostic disable-next-line: deprecated
+    local info = C_Item and C_Item.GetItemInfo or GetItemInfo
+    local exists = C_Item and C_Item.DoesItemExistByID
+    for _, id in ipairs(ITEMCHECK_IDS) do
+        if not exists or exists(id) then
+            Item:CreateFromItemID(id):ContinueOnItemLoad(function() end)
+        end
+    end
+    ns.Print("Checking " .. #ITEMCHECK_IDS .. " items...")
+    C_Timer.After(10, function()
+        local out = {}
+        for _, id in ipairs(ITEMCHECK_IDS) do
+            local name, _, quality, _, minLevel, _, subType, _, equipLoc = info(id)
+            out[#out + 1] = name and ("%d|%s|%d|%d|%s|%s"):format(id, name, quality or 0, minLevel or 0,
+                equipLoc or "", subType or "") or (id .. "|missing")
+        end
+        ns.db.itemcheck = out
+        ns.Print("Item check done. Type /reload to save it.")
+    end)
+end)
+
 ns.Command("survey", "collect item, dungeon and flight data for the seeds (developer)", function()
     local survey = { when = time(), build = select(2, GetBuildInfo()), items = {}, entrances = {}, taxi = {} }
     ns.db.survey = survey
