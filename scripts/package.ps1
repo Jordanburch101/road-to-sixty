@@ -4,7 +4,7 @@
 #   ./scripts/package.ps1 -Version 1.0.0   explicit version
 #
 # Steps:
-#   1. Copies ForeverJourney/ to build/ForeverJourney/.
+#   1. Copies RoadToSixty/ to build/RoadToSixty/.
 #   2. Strips developer-only parts, marked as in the BigWigs packager:
 #        toc:  lines between "#@debug@" and "#@end-debug@"
 #        Lua:  lines between "--@debug@" and "--@end-debug@"
@@ -13,8 +13,8 @@
 #   4. Checks the build: every listed file exists, no debug markers are left,
 #      and, with LuaJIT installed, every Lua file compiles and the build
 #      loads in toc order (tests/release_load.lua).
-#   5. Zips build/ForeverJourney/ to dist/ForeverJourney-<version>.zip, with the
-#      ForeverJourney folder at the top as WoW expects.
+#   5. Zips build/RoadToSixty/ to dist/RoadToSixty-<version>.zip, with the
+#      RoadToSixty folder at the top as WoW expects.
 # Exits 1 if any check fails.
 
 param(
@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-$addonName = "ForeverJourney"
+$addonName = "RoadToSixty"
 $source = Join-Path $root $addonName
 $buildRoot = Join-Path $root "build"
 $build = Join-Path $buildRoot $addonName

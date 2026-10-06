@@ -230,6 +230,6 @@ ns.Command("stats", "show journey totals and recording size", function()
         ns.Print(("Addon memory: %.1f MB."):format(getMemory(addonName) / 1024))
     end
     if ns.char.seeded then
-        ns.Print("|cffff8040This character has fake seeded data. /fm reset confirm clears it.|r")
+        ns.Print("|cffff8040This character has fake seeded data. /rts reset confirm clears it.|r")
     end
 end)

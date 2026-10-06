@@ -184,7 +184,7 @@ local state = {
     playing = false,
     speedIndex = 1,
 
-    -- Timings in ms for /fm perf
+    -- Timings in ms for /rts perf
     perf = { world = 0, decode = 0, setup = 0, build = 0, lod = 0, place = 0, terrain = 0, view = 0 },
     charCount = 0,      -- other characters' markers in use
     jumps = {},         -- built jump arcs: { index into drawn, parts, icon, x, y }
@@ -439,7 +439,7 @@ for _, a in ipairs({ 0.375, 0.625, 0.125, 0.875 }) do
         TILE_PROBES[#TILE_PROBES + 1] = { a, b }
     end
 end
-local SKIPPED_TINT = { 1, 0.25, 0.25 }  -- skipped tiles when shown with /fm tiles
+local SKIPPED_TINT = { 1, 0.25, 0.25 }  -- skipped tiles when shown with /rts tiles
 
 -- True if any probe point of the tile lies in a zone of the continent. The
 -- minimap files include unused and developer areas (flat green placeholder
@@ -506,7 +506,7 @@ local function AddTerrainTiles(continentID, continentMap, toMap, toContent)
         if TileInZone(continentMap, toMap, north, west) then
             kept[key] = { tonumber(col), tonumber(row), north, west }
         else
-            -- Kept in the list, but only drawn by /fm tiles, tinted.
+            -- Kept in the list, but only drawn by /rts tiles, tinted.
             local ax, ay = toContent(north, west)
             local bx, by = toContent(north - TILE_YARDS, west - TILE_YARDS)
             table.insert(state.tiles, {
@@ -2039,7 +2039,7 @@ end
 
 -- Returns the world art layer, which SetupWorld fills in.
 local function CreateWindow()
-    frame = CreateFrame("Frame", "ForeverModJourneyFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame = CreateFrame("Frame", "RoadToSixtyJourneyFrame", UIParent, "BasicFrameTemplateWithInset")
     frame:Hide()   -- before scripts are set, so OnHide does not run half-built
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
@@ -2055,7 +2055,7 @@ local function CreateWindow()
         drag = nil
         state.targetZoom = state.zoom
     end)
-    tinsert(UISpecialFrames, "ForeverModJourneyFrame")
+    tinsert(UISpecialFrames, "RoadToSixtyJourneyFrame")
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     title:SetPoint("TOP", 0, -5)

@@ -54,7 +54,7 @@ jobs:
           flags=""
           if [ "${{ steps.type.outputs.type }}" != "release" ]; then flags="--prerelease"; fi
           gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
-            --title "Forever Journey ${{ steps.package.outputs.version }}" \
+            --title "Road to Sixty ${{ steps.package.outputs.version }}" \
             --generate-notes $flags
 
       - name: CurseForge upload
@@ -68,7 +68,7 @@ jobs:
             exit 0
           fi
           metadata=$(jq -n \
-            --arg name "Forever Journey ${{ steps.package.outputs.version }}" \
+            --arg name "Road to Sixty ${{ steps.package.outputs.version }}" \
             --arg type "${{ steps.type.outputs.type }}" \
             --arg changelog "See https://github.com/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME" \
             --arg versions "$CF_GAME_VERSIONS" \

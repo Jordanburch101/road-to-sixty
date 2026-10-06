@@ -58,7 +58,7 @@ IsInInstance = function() return game.instance end
 time = function() return game.now end
 GetTime = function() return game.now end
 
-assert(loadfile("ForeverJourney/Recorder.lua"))("ForeverJourney", ns)
+assert(loadfile("RoadToSixty/Recorder.lua"))("RoadToSixty", ns)
 local Recorder = ns.Recorder
 
 -- Every sample the game reached, for comparing with what was decoded.
@@ -149,7 +149,7 @@ for _, path in ipairs(paths) do decodedPoints = decodedPoints + #path.x end
 check(segments == #paths and points == decodedPoints,
     ("stats count %d points, decoded %d"):format(points, decodedPoints))
 
--- 9. After a wipe (/fm reset, /fm seed) the open segment is dropped and
+-- 9. After a wipe (/rts reset, /rts seed) the open segment is dropped and
 -- recording carries on into the new segments table.
 ns.char.segments = {}
 Recorder:Reset()

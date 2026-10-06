@@ -37,7 +37,7 @@ local pending, pendingAt    -- jump reason from a cast or login, waiting for the
 local leftInstance          -- position was hidden by an instance since the last segment
 local lastMode, lastC       -- mode and continent of the last sample with a position
 
--- Health for /fm check: GetTime() of the last sample, and counts this session.
+-- Health for /rts check: GetTime() of the last sample, and counts this session.
 Recorder.lastSample = nil
 Recorder.samples = 0
 Recorder.stored = 0
@@ -202,7 +202,7 @@ function Recorder:GetPaths()
     return paths
 end
 
--- Counts for /fm stats. Bytes is the size of the packed path strings.
+-- Counts for /rts stats. Bytes is the size of the packed path strings.
 function Recorder:Stats()
     local segments, points, bytes = 0, 0, 0
     for _, seg in ipairs(ns.char.segments) do

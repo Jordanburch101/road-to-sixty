@@ -1,11 +1,11 @@
-# Forever Journey
+# Road to Sixty
 
 A World of Warcraft addon for WoW Forever that records your road from level 1
 to 60 and replays it on a zoomable world map: level-coloured paths, hearths,
 teleports, boats, deaths, dungeons, loot, and a History and Stats panel.
 
-The addon folder is `ForeverJourney/`. Its saved variables keep their original
-names, `ForeverModDB` and `ForeverModCharDB`, and the slash command is `/fm`.
+The addon folder is `RoadToSixty/`, its saved variables are `RoadToSixtyDB`
+and `RoadToSixtyCharDB`, and the slash command is `/rts` (or `/roadtosixty`).
 
 ## Development
 
@@ -16,10 +16,10 @@ is optional; when installed, `check.ps1` also reports its diagnostics.
 ./check.ps1                      # syntax check, diagnostics, offline tests
 ```
 
-To play with the source in game, link or copy `ForeverJourney/` into
+To play with the source in game, link or copy `RoadToSixty/` into
 `World of Warcraft/_classic_beta_/Interface/AddOns/`. The source includes the
-developer tools (`/fm seed`, `/fm swatch`, `/fm icons`, `/fm probe`,
-`/fm terrain`, `/fm levelart`, `/fm tiles`, `/fm perf`).
+developer tools (`/rts seed`, `/rts swatch`, `/rts icons`, `/rts probe`,
+`/rts terrain`, `/rts levelart`, `/rts tiles`, `/rts perf`).
 
 ### Developer-only code
 
@@ -27,7 +27,7 @@ Release builds leave out anything marked like this (the BigWigs packager
 convention):
 
 ```
-# in ForeverJourney.toc        -- in Lua
+# in RoadToSixty.toc        -- in Lua
 #@debug@                       --@debug@
 Seed.lua                       ns.Command("perf", ...)
 #@end-debug@                   --@end-debug@
@@ -42,7 +42,7 @@ Files the stripped toc no longer lists are dropped from the build.
 ./scripts/package.ps1 -Version 0.9.0-beta   # or explicit
 ```
 
-This writes `build/ForeverJourney/` and `dist/ForeverJourney-<version>.zip`, after
+This writes `build/RoadToSixty/` and `dist/RoadToSixty-<version>.zip`, after
 checking that every toc file exists, no debug markers remain, every file
 compiles, and the build loads in toc order (`tests/release_load.lua`).
 

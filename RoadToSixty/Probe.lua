@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- /fm probe reports which APIs this client provides, so the recorder and the
+-- /rts probe reports which APIs this client provides, so the recorder and the
 -- map UI are built on what the Forever client actually supports.
 
 local function Report(label, ok, detail)
@@ -67,7 +67,7 @@ ns.Command("probe", "check which APIs this client supports", function()
     Report("WorldMapFrame", WorldMapFrame ~= nil)
 end)
 
--- /fm terrain: can addons load minimap terrain tiles by path on this client?
+-- /rts terrain: can addons load minimap terrain tiles by path on this client?
 -- Tiles follow the ADT grid: 64x64 tiles of 533.33 yards, named mapCOL_ROW,
 -- where columns run east and rows run south from world origin at 32, 32.
 
@@ -90,7 +90,7 @@ ns.Command("terrain", "test showing minimap terrain tiles around you", function(
     local col, row = math.floor(colF), math.floor(rowF)
 
     if not terrainFrame then
-        terrainFrame = CreateFrame("Frame", "ForeverModTerrainTest", UIParent, "BasicFrameTemplateWithInset")
+        terrainFrame = CreateFrame("Frame", "RoadToSixtyTerrainTest", UIParent, "BasicFrameTemplateWithInset")
         terrainFrame:SetSize(3 * 128 + 24, 3 * 128 + 40)
         terrainFrame:SetPoint("CENTER")
         terrainFrame:SetFrameStrata("HIGH")
@@ -99,7 +99,7 @@ ns.Command("terrain", "test showing minimap terrain tiles around you", function(
         terrainFrame:RegisterForDrag("LeftButton")
         terrainFrame:SetScript("OnDragStart", terrainFrame.StartMoving)
         terrainFrame:SetScript("OnDragStop", terrainFrame.StopMovingOrSizing)
-        tinsert(UISpecialFrames, "ForeverModTerrainTest")
+        tinsert(UISpecialFrames, "RoadToSixtyTerrainTest")
         terrainFrame.tiles = {}
         for i = 0, 8 do
             local tile = terrainFrame:CreateTexture(nil, "ARTWORK")
@@ -135,7 +135,7 @@ ns.Command("terrain", "test showing minimap terrain tiles around you", function(
     ns.Print(("Tile map%d_%d in %s. %d of 9 tiles have a known file ID."):format(col, row, dir, known))
 end)
 
--- /fm levelart: lists the player frame textures under the level number, to
+-- /rts levelart: lists the player frame textures under the level number, to
 -- find the art behind the level badge. Some frames (health bars) have secret
 -- rects that addons may not compare; those are skipped.
 local function Contains(region, x, y)

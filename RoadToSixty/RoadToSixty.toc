@@ -1,10 +1,10 @@
 ## Interface: 16001
-## Title: Forever Journey
+## Title: Road to Sixty
 ## Notes: Records your journey from 1 to 60 and replays it on the map
 ## Author: Jordan
 ## Version: @project-version@
-## SavedVariables: ForeverModDB
-## SavedVariablesPerCharacter: ForeverModCharDB
+## SavedVariables: RoadToSixtyDB
+## SavedVariablesPerCharacter: RoadToSixtyCharDB
 
 Core.lua
 MinimapTiles.lua

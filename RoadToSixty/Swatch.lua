@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- /fm swatch: shows candidate Blizzard textures and line styles for the
+-- /rts swatch: shows candidate Blizzard textures and line styles for the
 -- journey map side by side, over terrain, parchment or a dark background,
 -- so the map can use art this client actually has. Atlases the client does
 -- not know are labelled missing; textures that fail to load show blank.
@@ -604,7 +604,7 @@ local function CreateWindow()
     rows = rows + math.ceil(#JUMP_SAMPLES * MAGIC_SPAN / COLUMNS)
     local w, h = LABEL_W + COLUMNS * CELL_W, rows * CELL_H
 
-    frame = CreateFrame("Frame", "ForeverModSwatchFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame = CreateFrame("Frame", "RoadToSixtySwatchFrame", UIParent, "BasicFrameTemplateWithInset")
     frame:SetSize(w + 24, h + 68)
     -- Shrink to fit the screen, as the window can be taller than it.
     frame:SetScale(math.min(1, UIParent:GetHeight() * 0.95 / (h + 68)))
@@ -616,7 +616,7 @@ local function CreateWindow()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    tinsert(UISpecialFrames, "ForeverModSwatchFrame")
+    tinsert(UISpecialFrames, "RoadToSixtySwatchFrame")
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     title:SetPoint("TOP", 0, -5)

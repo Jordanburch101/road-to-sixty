@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- /fm icons: browses every icon the client offers for macros (thousands of
+-- /rts icons: browses every icon the client offers for macros (thousands of
 -- spell and item icons), previews any atlas, texture path or file ID typed
 -- in, and copies the one clicked for use in code. Atlases cannot be listed
 -- by the client, hence the preview box.
@@ -18,11 +18,11 @@ local copyFrame
 function ns.ShowCopyBox(text)
     text = tostring(text)
     if not copyFrame then
-        copyFrame = CreateFrame("Frame", "ForeverModCopyFrame", UIParent, "BasicFrameTemplateWithInset")
+        copyFrame = CreateFrame("Frame", "RoadToSixtyCopyFrame", UIParent, "BasicFrameTemplateWithInset")
         copyFrame:SetSize(340, 84)
         copyFrame:SetPoint("CENTER", 0, 220)
         copyFrame:SetFrameStrata("DIALOG")
-        tinsert(UISpecialFrames, "ForeverModCopyFrame")
+        tinsert(UISpecialFrames, "RoadToSixtyCopyFrame")
 
         local hint = copyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         hint:SetPoint("TOP", 0, -30)
@@ -142,7 +142,7 @@ end
 local function CreateWindow()
     local width = 28 + COLUMNS * (SIZE + GAP)
     local height = 110 + ROWS * (SIZE + GAP)
-    frame = CreateFrame("Frame", "ForeverModIconFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame = CreateFrame("Frame", "RoadToSixtyIconFrame", UIParent, "BasicFrameTemplateWithInset")
     frame:SetSize(width, height)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
@@ -152,7 +152,7 @@ local function CreateWindow()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    tinsert(UISpecialFrames, "ForeverModIconFrame")
+    tinsert(UISpecialFrames, "RoadToSixtyIconFrame")
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     title:SetPoint("TOP", 0, -5)

@@ -5,7 +5,7 @@ local _, ns = ...
 -- per-character SavedVariables, which only load for that character, so the
 -- roster keeps a summary and a coarse copy of each path:
 --
---   ForeverModDB.roster["Name-Realm"] = {
+--   RoadToSixtyDB.roster["Name-Realm"] = {
 --     name, realm, class (class file, e.g. "MAGE"), level, zone (uiMapID),
 --     c, x, y (last outdoor position, world yards), seen (time), played,
 --     path = { { c = continentID, d = "x,y;x,y;..." }, ... },  -- world yards
@@ -58,7 +58,7 @@ function Roster:Track(c, x, y)
 end
 
 -- Makes the coarse path from the full journey, for journeys recorded before
--- the roster existed, or replaced by /fm reset or /fm seed.
+-- the roster existed, or replaced by /rts reset or /rts seed.
 function Roster:Rebuild()
     if not entry then return end
     wipe(entry.path)

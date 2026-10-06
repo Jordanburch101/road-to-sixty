@@ -41,7 +41,7 @@ local function ApplyDefaults(db, source)
     end
 end
 
--- Errors caught by SafeCall this session, for /fm check.
+-- Errors caught by SafeCall this session, for /rts check.
 ns.errors = { count = 0 }
 
 -- Calls fn, reporting any error instead of raising it, so one broken handler
@@ -54,7 +54,7 @@ function ns.SafeCall(fn, ...)
         errors.count = errors.count + 1
         errors.last = err
         if errors.count == 1 then
-            Print("|cffff4040An error happened while recording. Type /fm check for details.|r")
+            Print("|cffff4040An error happened while recording. Type /rts check for details.|r")
         end
         geterrorhandler()(err)
     end
@@ -85,13 +85,13 @@ end)
 ns.On("ADDON_LOADED", function(name)
     if name ~= addonName then return end
 
-    ForeverModDB = ForeverModDB or {}
-    ApplyDefaults(ForeverModDB, defaults)
-    ns.db = ForeverModDB
+    RoadToSixtyDB = RoadToSixtyDB or {}
+    ApplyDefaults(RoadToSixtyDB, defaults)
+    ns.db = RoadToSixtyDB
 
-    ForeverModCharDB = ForeverModCharDB or {}
-    ApplyDefaults(ForeverModCharDB, charDefaults)
-    ns.char = ForeverModCharDB
+    RoadToSixtyCharDB = RoadToSixtyCharDB or {}
+    ApplyDefaults(RoadToSixtyCharDB, charDefaults)
+    ns.char = RoadToSixtyCharDB
 
     -- SavedVariables are written on logout and /reload, so the data on disk
     -- is as of this load.
@@ -100,7 +100,7 @@ end)
 
 ns.On("PLAYER_LOGIN", function()
     if ns.db.greet then
-        Print("Recording your journey. Type /fm for commands.")
+        Print("Recording your journey. Type /rts for commands.")
     end
 end)
 
@@ -112,9 +112,9 @@ function ns.Command(name, help, fn)
     table.insert(commandOrder, { name = name, help = help })
 end
 
-SLASH_FOREVERMOD1 = "/fm"
-SLASH_FOREVERMOD2 = "/forevermod"
-SlashCmdList.FOREVERMOD = function(input)
+SLASH_ROADTOSIXTY1 = "/rts"
+SLASH_ROADTOSIXTY2 = "/roadtosixty"
+SlashCmdList.ROADTOSIXTY = function(input)
     local cmd, rest = strtrim(input or ""):match("^(%S*)%s*(.-)$")
     local fn = commands[cmd:lower()]
     if fn then
@@ -123,7 +123,7 @@ SlashCmdList.FOREVERMOD = function(input)
     end
     Print("Commands:")
     for _, entry in ipairs(commandOrder) do
-        Print(("  /fm %s - %s"):format(entry.name, entry.help))
+        Print(("  /rts %s - %s"):format(entry.name, entry.help))
     end
 end
 
@@ -137,9 +137,9 @@ ns.Command("version", "show client build and interface number", function()
     Print(("Client %s (build %s), interface %d."):format(version, build, interface))
 end)
 
-ns.Command("reset", "erase this character's journey (type /fm reset confirm)", function(arg)
+ns.Command("reset", "erase this character's journey (type /rts reset confirm)", function(arg)
     if arg ~= "confirm" then
-        Print("This erases all journey data for this character. Type /fm reset confirm to do it.")
+        Print("This erases all journey data for this character. Type /rts reset confirm to do it.")
         return
     end
     ns.ResetCharacter()

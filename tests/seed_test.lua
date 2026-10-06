@@ -43,7 +43,7 @@ GetItemInfo = function(id)
     if quality then return "Item " .. id, "|cff1eff00|Hitem:" .. id .. "|h[Item]|h|r", quality end
 end
 
-assert(loadfile("ForeverJourney/Seed.lua"))("ForeverJourney", ns)
+assert(loadfile("RoadToSixty/Seed.lua"))("RoadToSixty", ns)
 local started = os.clock()
 commands.seed("confirm")
 local seconds = os.clock() - started

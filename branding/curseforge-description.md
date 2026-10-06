@@ -1,6 +1,6 @@
-# Forever Journey
+# Road to Sixty
 
-**Forever Journey** quietly records where your character goes from level 1 to 60. Open the map whenever you like to see your whole adventure drawn across Azeroth, and replay it from the very first step.
+**Road to Sixty** quietly records where your character goes from level 1 to 60. Open the map whenever you like to see your whole adventure drawn across Azeroth, and replay it from the very first step.
 
 ## Features
 
@@ -36,13 +36,13 @@
 
 | Command | What it does |
 |---|---|
-| `/fm map` | Open the journey map |
-| `/fm check` | Check that recording is working |
-| `/fm stats` | Show journey totals and recording size |
-| `/fm where` | Show your position as the recorder sees it |
-| `/fm motes` | Turn the arcane sparkles on the path on or off |
-| `/fm greet` | Turn the login message on or off |
-| `/fm reset confirm` | Erase this character's journey |
+| `/rts map` | Open the journey map |
+| `/rts check` | Check that recording is working |
+| `/rts stats` | Show journey totals and recording size |
+| `/rts where` | Show your position as the recorder sees it |
+| `/rts motes` | Turn the arcane sparkles on the path on or off |
+| `/rts greet` | Turn the login message on or off |
+| `/rts reset confirm` | Erase this character's journey |
 
 ## Good to know
 - The game saves addon data when you **log out** or **/reload**. If the game crashes, the last part of that session may be lost.
@@ -52,6 +52,6 @@
 ## Beta
 
 This is an early beta, and your feedback shapes what comes next. Please share in the comments:
-- bugs, with the output of `/fm check` if recording seems off
+- bugs, with the output of `/rts check` if recording seems off
 - ideas for what else to track on your journey
 - screenshots of your journeys!

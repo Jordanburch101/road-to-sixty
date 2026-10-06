@@ -3,10 +3,10 @@ local _, ns = ...
 -- Replaces this character's journey with fake test data; /reload then saves
 -- it. The fake data follows the real formats in Recorder.lua and Journal.lua.
 --
---   /fm seed confirm                  a realistic 1-30: the levelling route for
+--   /rts seed confirm                  a realistic 1-30: the levelling route for
 --                                     the character's race, quest hubs, real
 --                                     dungeons at their level, a normal pace
---   /fm seed stress confirm [points]  a 1-60 through every zone at full size,
+--   /rts seed stress confirm [points]  a 1-60 through every zone at full size,
 --                                     to stress test the map, memory use and
 --                                     SavedVariables size
 
@@ -642,8 +642,8 @@ ns.Command("seed", "replace this character's journey with fake test data", funct
     local confirm, count = arg:gsub("^stress%s+", ""):match("^(%S*)%s*(%d*)$")
     if confirm ~= "confirm" then
         ns.Print("This ERASES this character's journey and fills it with fake test data.")
-        ns.Print("Type /fm seed confirm for a realistic 1-30 levelling journey.")
-        ns.Print(("Type /fm seed stress confirm [points] for a full-size 1-60 stress test. Default %d points."):format(
+        ns.Print("Type /rts seed confirm for a realistic 1-30 levelling journey.")
+        ns.Print(("Type /rts seed stress confirm [points] for a full-size 1-60 stress test. Default %d points."):format(
             DEFAULT_POINTS))
         return
     end

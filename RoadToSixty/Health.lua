@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- /fm check: shows whether recording is working, restarts the sampler if it
+-- /rts check: shows whether recording is working, restarts the sampler if it
 -- has stopped, and reminds how long the journey has gone unsaved.
 
 local MODE_NAMES = { w = "on foot", t = "flight path", g = "ghost" }
@@ -65,6 +65,6 @@ ns.Command("check", "check that recording is working", function()
     Line(("Unsaved for %d min. Logging out or /reload saves it."):format(Minutes(time() - ns.loadedAt)))
 
     if ns.char.seeded then
-        Line("|cffff8040This character has fake seeded data. /fm reset confirm clears it.|r")
+        Line("|cffff8040This character has fake seeded data. /rts reset confirm clears it.|r")
     end
 end)

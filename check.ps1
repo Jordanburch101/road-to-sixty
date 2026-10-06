@@ -3,7 +3,7 @@
 # Exits 1 if a syntax check or test fails. Runs on Windows PowerShell and on
 # pwsh (Linux, CI).
 
-$addon = Join-Path $PSScriptRoot "ForeverJourney"
+$addon = Join-Path $PSScriptRoot "RoadToSixty"
 $failed = $false
 $scratch = [System.IO.Path]::GetTempFileName()
 
@@ -17,7 +17,7 @@ foreach ($file in Get-ChildItem $addon -Filter *.lua) {
 Remove-Item $scratch -ErrorAction SilentlyContinue
 
 if (Get-Command lua-language-server -ErrorAction SilentlyContinue) {
-    $report = Join-Path ([System.IO.Path]::GetTempPath()) "forevermod-check.json"
+    $report = Join-Path ([System.IO.Path]::GetTempPath()) "roadtosixty-check.json"
     Remove-Item $report -ErrorAction SilentlyContinue
     lua-language-server --check $PSScriptRoot --checklevel=Warning --check_format=json --check_out_path=$report *> $null
     if (Test-Path $report) {
