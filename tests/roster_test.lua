@@ -35,7 +35,7 @@ C_Map = { GetBestMapForUnit = function() return 1436 end }
 time = function() return now end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 
-assert(loadfile("ForeverMod/Roster.lua"))("ForeverMod", ns)
+assert(loadfile("ForeverJourney/Roster.lua"))("ForeverJourney", ns)
 local Roster = ns.Roster
 
 -- An existing journey: two pieces, the second after a 5000 yard teleport.

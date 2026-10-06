@@ -4,8 +4,8 @@ A World of Warcraft addon for WoW Forever that records your road from level 1
 to 60 and replays it on a zoomable world map: level-coloured paths, hearths,
 teleports, boats, deaths, dungeons, loot, and a History and Stats panel.
 
-The addon folder is `ForeverMod/` (its saved variables are `ForeverModDB` and
-`ForeverModCharDB`); the name players see is "Forever Journey".
+The addon folder is `ForeverJourney/`. Its saved variables keep their original
+names, `ForeverModDB` and `ForeverModCharDB`, and the slash command is `/fm`.
 
 ## Development
 
@@ -16,7 +16,7 @@ is optional; when installed, `check.ps1` also reports its diagnostics.
 ./check.ps1                      # syntax check, diagnostics, offline tests
 ```
 
-To play with the source in game, link or copy `ForeverMod/` into
+To play with the source in game, link or copy `ForeverJourney/` into
 `World of Warcraft/_classic_beta_/Interface/AddOns/`. The source includes the
 developer tools (`/fm seed`, `/fm swatch`, `/fm icons`, `/fm probe`,
 `/fm terrain`, `/fm levelart`, `/fm tiles`, `/fm perf`).
@@ -27,7 +27,7 @@ Release builds leave out anything marked like this (the BigWigs packager
 convention):
 
 ```
-# in ForeverMod.toc            -- in Lua
+# in ForeverJourney.toc        -- in Lua
 #@debug@                       --@debug@
 Seed.lua                       ns.Command("perf", ...)
 #@end-debug@                   --@end-debug@
@@ -42,7 +42,7 @@ Files the stripped toc no longer lists are dropped from the build.
 ./scripts/package.ps1 -Version 0.9.0-beta   # or explicit
 ```
 
-This writes `build/ForeverMod/` and `dist/ForeverMod-<version>.zip`, after
+This writes `build/ForeverJourney/` and `dist/ForeverJourney-<version>.zip`, after
 checking that every toc file exists, no debug markers remain, every file
 compiles, and the build loads in toc order (`tests/release_load.lua`).
 

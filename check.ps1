@@ -3,7 +3,7 @@
 # Exits 1 if a syntax check or test fails. Runs on Windows PowerShell and on
 # pwsh (Linux, CI).
 
-$addon = Join-Path $PSScriptRoot "ForeverMod"
+$addon = Join-Path $PSScriptRoot "ForeverJourney"
 $failed = $false
 $scratch = [System.IO.Path]::GetTempFileName()
 

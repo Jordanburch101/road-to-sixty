@@ -28,8 +28,8 @@ jobs:
         run: ./scripts/package.ps1
 
       # The artifact is zipped by GitHub, so upload the folder: the download
-      # then holds ForeverMod/ ready to drop into Interface/AddOns.
+      # then holds ForeverJourney/ ready to drop into Interface/AddOns.
       - uses: actions/upload-artifact@v4
         with:
-          name: ForeverMod-${{ steps.package.outputs.version }}
+          name: ForeverJourney-${{ steps.package.outputs.version }}
           path: build/

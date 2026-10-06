@@ -2,7 +2,7 @@
 -- does: every file in toc order, with the addon name and a shared namespace.
 -- Any game API is a stand-in that accepts every call, so this only catches
 -- errors at load time, such as a release file using something only a
--- developer file defines. Usage: luajit tests/release_load.lua build/ForeverMod
+-- developer file defines. Usage: luajit tests/release_load.lua build/ForeverJourney
 
 local dir = assert(arg[1], "usage: luajit tests/release_load.lua <addon folder>")
 local addonName = dir:match("([^/\\]+)[/\\]*$")

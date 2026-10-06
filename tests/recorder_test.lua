@@ -58,7 +58,7 @@ IsInInstance = function() return game.instance end
 time = function() return game.now end
 GetTime = function() return game.now end
 
-assert(loadfile("ForeverMod/Recorder.lua"))("ForeverMod", ns)
+assert(loadfile("ForeverJourney/Recorder.lua"))("ForeverJourney", ns)
 local Recorder = ns.Recorder
 
 -- Every sample the game reached, for comparing with what was decoded.
