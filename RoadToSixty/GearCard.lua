@@ -15,8 +15,7 @@ ns.GearCard = GearCard
 local ICON = 26
 local GAP = 3
 local MODEL_W = 150
-local PAD = 8
-local TITLE_H = 22
+local TITLE_H = 22             -- room for the title when there is no banner
 local TURN_SPEED = 0.5          -- radians per second
 local QUALITY_BORDER_MIN = 2    -- green and better get a coloured border
 local FLASH_SECONDS = 0.9
@@ -60,22 +59,123 @@ end
 local Card = {}
 Card.__index = Card
 
-function Card:CreateCell(name)
+-- Card looks, switched with /rts gearstyle (developer) and saved in
+-- ns.db.gearStyle. header: the dialog title banner; slotFrame: inventory
+-- button frames around the slots; raceBackground: the dressing room scene
+-- for the player's race behind the model.
+local STYLES = {
+    {
+        name = "Character sheet",
+        backdrop = {
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 24,
+            insets = { left = 6, right = 6, top = 6, bottom = 6 },
+        },
+        bgColor = { 1, 1, 1, 1 }, borderColor = { 1, 1, 1 },
+        pad = 14, header = true, slotFrame = true, raceBackground = true,
+    },
+    {
+        name = "Tooltip",
+        backdrop = {
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        },
+        bgColor = { 0.05, 0.05, 0.05, 0.95 }, borderColor = { 0.6, 0.6, 0.6 },
+        pad = 8, slotFrame = true, raceBackground = true,
+    },
+}
+local SLOT_FRAME = "Interface\\Buttons\\UI-Quickslot2"
+local SLOT_FRAME_SCALE = 64 / 36    -- the frame art is 64 px around a 36 px icon
+local HEADER = "Interface\\DialogFrame\\UI-DialogBox-Header"
+local RACE_BACKGROUND = "Interface\\DressUpFrame\\DressUpBackground-"
+local RACE_BACKGROUND_SHADE = 0.75
+
+local function Style()
+    return STYLES[ns.db.gearStyle or 1] or STYLES[1]
+end
+
+-- Item tooltip for a slot, or the slot's name when it is empty.
+local function ShowSlotTooltip(button)
+    local cell = button.cell
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+    if cell.itemID then
+        if GameTooltip.SetItemByID then
+            GameTooltip:SetItemByID(cell.itemID)
+        else
+            GameTooltip:SetHyperlink("item:" .. cell.itemID)
+        end
+    else
+        GameTooltip:SetText(_G[cell.name:upper()] or cell.name)
+    end
+    GameTooltip:Show()
+end
+
+-- The dressing room scene for the player's race over region: a modern atlas
+-- if the client has one, else the four classic pieces (256 + 64 wide,
+-- 256 + 128 tall).
+local function RaceBackground(frame, region)
+    local _, race = UnitRace("player")
+    race = race or "Human"
+    local atlas = "dressingroom-background-" .. race:lower()
+    local pieces = {}
+    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
+        local tex = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+        tex:SetAllPoints(region)
+        tex:SetAtlas(atlas)
+        pieces[1] = tex
+    else
+        local w, h = region:GetWidth(), region:GetHeight()
+        local cols, rows = { 256 / 320, 64 / 320 }, { 256 / 384, 128 / 384 }
+        for i = 1, 4 do
+            local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+            local tex = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+            tex:SetTexture(RACE_BACKGROUND .. race .. i)
+            tex:SetSize(w * cols[col + 1], h * rows[row + 1])
+            tex:SetPoint("TOPLEFT", region, "TOPLEFT", col * w * cols[1], -row * h * rows[1])
+            pieces[i] = tex
+        end
+    end
+    for _, tex in ipairs(pieces) do
+        tex:SetVertexColor(RACE_BACKGROUND_SHADE, RACE_BACKGROUND_SHADE, RACE_BACKGROUND_SHADE)
+    end
+end
+
+-- interactive: slots show item tooltips on hover (not for the hover card,
+-- whose owner would lose the mouse to it).
+function Card:CreateCell(name, interactive)
     local id, empty = SlotInfo(name)
     if not id then return end
-    local frame = self.frame
+    local frame, style = self.frame, self.style
     local cell = { slot = id, empty = empty, name = name }
-    cell.icon = frame:CreateTexture(nil, "ARTWORK")
-    cell.icon:SetSize(ICON, ICON)
-    cell.border = frame:CreateTexture(nil, "OVERLAY")
+    local button = CreateFrame("Frame", nil, frame)
+    button:SetSize(ICON, ICON)
+    button.cell = cell
+    if interactive then
+        button:EnableMouse(true)
+        button:SetScript("OnEnter", ShowSlotTooltip)
+        button:SetScript("OnLeave", GameTooltip_Hide)
+    end
+    cell.button = button
+    cell.icon = button:CreateTexture(nil, "ARTWORK")
+    cell.icon:SetAllPoints()
+    if style.slotFrame then
+        local slotFrame = button:CreateTexture(nil, "OVERLAY")
+        slotFrame:SetTexture(SLOT_FRAME)
+        slotFrame:SetSize(ICON * SLOT_FRAME_SCALE, ICON * SLOT_FRAME_SCALE)
+        slotFrame:SetPoint("CENTER")
+    else
+        local back = button:CreateTexture(nil, "BORDER")
+        back:SetPoint("TOPLEFT", -1, 1)
+        back:SetPoint("BOTTOMRIGHT", 1, -1)
+        back:SetColorTexture(0, 0, 0, 0.8)
+    end
+    cell.border = button:CreateTexture(nil, "OVERLAY", nil, 1)
     cell.border:SetAllPoints(cell.icon)
-    local back = frame:CreateTexture(nil, "BORDER")
-    back:SetPoint("TOPLEFT", cell.icon, -1, 1)
-    back:SetPoint("BOTTOMRIGHT", cell.icon, 1, -1)
-    back:SetColorTexture(0, 0, 0, 0.8)
 
     -- A gold flash when the slot's item changes during a replay.
-    cell.flash = frame:CreateTexture(nil, "OVERLAY", nil, 2)
+    cell.flash = button:CreateTexture(nil, "OVERLAY", nil, 2)
     cell.flash:SetPoint("TOPLEFT", cell.icon, -3, 3)
     cell.flash:SetPoint("BOTTOMRIGHT", cell.icon, 3, -3)
     cell.flash:SetColorTexture(1, 0.8, 0.25, 0.7)
@@ -93,54 +193,70 @@ function Card:CreateCell(name)
     return cell
 end
 
--- parent and strata: where the card lives.
-local function NewCard(parent, strata)
-    local self = setmetatable({ cells = {} }, Card)
-    local height = TITLE_H + #LEFT * (ICON + GAP) + ICON + GAP + PAD * 2
-    local width = PAD * 2 + ICON * 2 + GAP * 2 + MODEL_W
+-- parent and strata: where the card lives; interactive: item tooltips on
+-- the slots.
+local function NewCard(parent, strata, interactive)
+    local style = Style()
+    local self = setmetatable({ cells = {}, style = style }, Card)
+    local pad = style.pad
+    local titleH = style.header and 6 or TITLE_H
+    local height = titleH + #LEFT * (ICON + GAP) + ICON + GAP + pad * 2
+    local width = pad * 2 + ICON * 2 + GAP * 2 + MODEL_W
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     self.frame = frame
     frame:SetSize(width, height)
     frame:SetFrameStrata(strata)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-    frame:SetBackdropBorderColor(0.6, 0.6, 0.6)
+    frame:SetBackdrop(style.backdrop)
+    frame:SetBackdropColor(unpack(style.bgColor))
+    frame:SetBackdropBorderColor(unpack(style.borderColor))
     frame:Hide()
 
     self.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.title:SetPoint("TOP", 0, -PAD)
+    if style.header then
+        -- The dialog banner sits on the top edge, the title inside it.
+        local header = frame:CreateTexture(nil, "ARTWORK")
+        header:SetTexture(HEADER)
+        header:SetSize(220, 56)
+        header:SetPoint("TOP", 0, 14)
+        self.title:SetPoint("TOP", header, "TOP", 0, -14)
+    else
+        self.title:SetPoint("TOP", 0, -pad)
+    end
 
-    local top = -(PAD + TITLE_H)
+    local top = -(pad + titleH)
     for i, name in ipairs(LEFT) do
-        local cell = self:CreateCell(name)
-        if cell then cell.icon:SetPoint("TOPLEFT", PAD, top - (i - 1) * (ICON + GAP)) end
+        local cell = self:CreateCell(name, interactive)
+        if cell then cell.button:SetPoint("TOPLEFT", pad, top - (i - 1) * (ICON + GAP)) end
     end
     for i, name in ipairs(RIGHT) do
-        local cell = self:CreateCell(name)
-        if cell then cell.icon:SetPoint("TOPRIGHT", -PAD, top - (i - 1) * (ICON + GAP)) end
+        local cell = self:CreateCell(name, interactive)
+        if cell then cell.button:SetPoint("TOPRIGHT", -pad, top - (i - 1) * (ICON + GAP)) end
     end
     local bottomY = top - #LEFT * (ICON + GAP)
     local bottomW = #BOTTOM * ICON + (#BOTTOM - 1) * GAP
     for i, name in ipairs(BOTTOM) do
-        local cell = self:CreateCell(name)
+        local cell = self:CreateCell(name, interactive)
         if cell then
-            cell.icon:SetPoint("TOPLEFT", frame, "TOP", -bottomW / 2 + (i - 1) * (ICON + GAP), bottomY)
+            cell.button:SetPoint("TOPLEFT", frame, "TOP", -bottomW / 2 + (i - 1) * (ICON + GAP), bottomY)
         end
     end
 
     -- The model fills the space between the columns, above the weapons.
     local stage = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    stage:SetPoint("TOPLEFT", PAD + ICON + GAP, top)
-    stage:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -(PAD + ICON + GAP), bottomY - GAP)
+    stage:SetPoint("TOPLEFT", pad + ICON + GAP, top)
+    stage:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -(pad + ICON + GAP), bottomY - GAP)
     stage:SetColorTexture(1, 1, 1, 1)
     if stage.SetGradient and CreateColor then
         stage:SetGradient("VERTICAL", CreateColor(0.02, 0.02, 0.03, 1), CreateColor(0.16, 0.14, 0.12, 1))
     else
         stage:SetColorTexture(0.08, 0.07, 0.06, 1)
+    end
+    if style.raceBackground then
+        -- Sizes are known once anchored; the stage's are fixed by the layout.
+        local stageFrame = CreateFrame("Frame", nil, frame)
+        stageFrame:SetPoint("TOPLEFT", stage)
+        stageFrame:SetSize(MODEL_W, -(bottomY - GAP) + top)
+        RaceBackground(frame, stageFrame)
     end
 
     local model = CreateFrame("DressUpModel", nil, frame)
@@ -191,6 +307,7 @@ function Card:Render(gear, title, note, flash)
     self.note:SetText(note or "")
     for _, cell in ipairs(self.cells) do
         local itemID = gear[cell.slot]
+        cell.itemID = itemID
         if itemID then
             cell.icon:SetTexture(ItemIcon(itemID))
             cell.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -234,7 +351,7 @@ function GearCard:Show(level, owner)
         self:Hide()
         return
     end
-    hoverCard = hoverCard or NewCard(UIParent, "TOOLTIP")
+    hoverCard = hoverCard or NewCard(UIParent, "TOOLTIP", false)
     Anchor(hoverCard.frame, owner)
     hoverCard.model.facing = 0
     hoverCard:Render(gear, ("Gear at level %d"):format(level), snapshot.gearLater and "Recorded at a later login")
@@ -249,6 +366,7 @@ end
 local dockCard, dockParent
 local timeline          -- { t, level, gear } in time order, see Rebuild
 local shownIndex
+local lastFollowed      -- time last passed to Follow
 
 local function Copy(gear)
     local copy = {}
@@ -317,9 +435,10 @@ end
 -- gear at t differs from what it shows.
 function GearCard:Follow(t)
     if not dockParent then return end
+    lastFollowed = t
     if not timeline then self:Rebuild() end
     if not dockCard then
-        dockCard = NewCard(dockParent, "HIGH")
+        dockCard = NewCard(dockParent, "HIGH", true)
         dockCard.frame:SetFrameLevel(dockParent:GetFrameLevel() + 20)
         dockCard.frame:SetPoint("BOTTOMLEFT", dockParent, "BOTTOMLEFT", 12, 12)
     end
@@ -340,3 +459,16 @@ function GearCard:Undock()
     shownIndex = nil
     if dockCard then dockCard.frame:Hide() end
 end
+
+--@debug@
+-- Cycles the card looks; cards are made again in the new style.
+ns.Command("gearstyle", "switch the gear card's look (developer)", function()
+    ns.db.gearStyle = (ns.db.gearStyle or 1) % #STYLES + 1
+    local docked = dockCard and dockCard.frame:IsShown()
+    if hoverCard then hoverCard.frame:Hide() end
+    if dockCard then dockCard.frame:Hide() end
+    hoverCard, dockCard, shownIndex = nil, nil, nil
+    if docked then GearCard:Follow(lastFollowed or math.huge) end
+    ns.Print("Gear card style: " .. Style().name)
+end)
+--@end-debug@
