@@ -257,3 +257,121 @@ ns.On("SCREENSHOT_SUCCEEDED", function()
     -- Give the client a moment to finish writing the file.
     C_Timer.After(1, function() ShowShots(t) end)
 end)
+
+-- /rts survey: collects game facts for building realistic seed data, into
+-- RoadToSixtyDB.survey (saved on /reload) as "|"-separated strings:
+--   items       id|name|quality|minLevel|equipLoc|subType for warrior gear
+--               (mail, shields, weapons, cloaks, rings, necks, trinkets) up to
+--               SURVEY_MAX_LEVEL
+--   entrances   name|mapID|mapX|mapY|continent|worldX|worldY, dungeon
+--               entrances, if the client offers them
+--   taxi        the same for flight masters on both continents
+
+local SURVEY_MAX_ID = 25000
+local SURVEY_MAX_LEVEL = 32
+local SURVEY_BATCH = 100            -- item loads asked for per tick
+local SURVEY_TIMEOUT = 90           -- seconds to wait for item data
+local SURVEY_CONTINENTS = { 1414, 1415 }
+local SURVEY_ZONES = { 1414, 1415, 1436, 1453, 1440, 1426, 1421, 1413, 1454, 1437, 1431, 1433, 1432 }
+
+-- Warrior-usable gear worth listing: weapons except wands and fishing poles,
+-- mail and shields, and slots any class wears.
+local function SurveyWanted(classID, subClassID, equipLoc)
+    if not equipLoc or equipLoc == "" then return false end
+    if classID == 2 then return subClassID ~= 19 and subClassID ~= 20 end
+    if classID == 4 then
+        return subClassID == 3 or subClassID == 6 or equipLoc == "INVTYPE_CLOAK"
+            or equipLoc == "INVTYPE_NECK" or equipLoc == "INVTYPE_FINGER" or equipLoc == "INVTYPE_TRINKET"
+    end
+    return false
+end
+
+-- "name|mapID|mapX|mapY|continent|worldX|worldY" for a map position.
+local function SurveyPlace(name, mapID, position)
+    local x, y = position.x or position[1], position.y or position[2]
+    local c, world = C_Map.GetWorldPosFromMapPos(mapID, CreateVector2D(x, y))
+    return ("%s|%d|%.4f|%.4f|%s|%s|%s"):format(name, mapID, x, y, tostring(c),
+        world and ("%.0f"):format(world.x) or "", world and ("%.0f"):format(world.y) or "")
+end
+
+local function SurveyPlaces(survey)
+    local ej = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
+    local seen = {}
+    for _, mapID in ipairs(SURVEY_ZONES) do
+        local ok, list = pcall(ej or error, mapID)
+        for _, e in ipairs(ok and list or {}) do
+            if e.position and not seen[e.name] then
+                seen[e.name] = true
+                table.insert(survey.entrances, SurveyPlace(e.name, mapID, e.position))
+            end
+        end
+    end
+    local taxi = C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap
+    for _, mapID in ipairs(SURVEY_CONTINENTS) do
+        local ok, list = pcall(taxi or error, mapID)
+        for _, node in ipairs(ok and list or {}) do
+            if node.position then
+                table.insert(survey.taxi, SurveyPlace(node.name, mapID, node.position))
+            end
+        end
+    end
+    ns.Print(("Survey: %d dungeon entrances (%s), %d flight masters (%s)."):format(
+        #survey.entrances, ej and "API found" or "no API", #survey.taxi, taxi and "API found" or "no API"))
+end
+
+local function SurveyItems(survey)
+    ---@diagnostic disable-next-line: deprecated
+    local instant = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+    ---@diagnostic disable-next-line: deprecated
+    local info = C_Item and C_Item.GetItemInfo or GetItemInfo
+    local exists = C_Item and C_Item.DoesItemExistByID
+    local candidates = {}
+    for id = 1, SURVEY_MAX_ID do
+        local _, _, _, equipLoc, _, classID, subClassID = instant(id)
+        if equipLoc and SurveyWanted(classID, subClassID, equipLoc) and (not exists or exists(id)) then
+            candidates[#candidates + 1] = id
+        end
+    end
+    ns.Print(("Survey: loading %d items, this takes a minute..."):format(#candidates))
+
+    local loaded, nextIndex, finished = 0, 1, false
+    local started = GetTime()
+    local function Record(id)
+        local name, _, quality, _, minLevel, _, subType, _, equipLoc = info(id)
+        if name and minLevel and minLevel <= SURVEY_MAX_LEVEL then
+            table.insert(survey.items, ("%d|%s|%d|%d|%s|%s"):format(id, name, quality or 0, minLevel, equipLoc or "", subType or ""))
+        end
+    end
+    local ticker
+    local function Finish()
+        if finished then return end
+        finished = true
+        ticker:Cancel()
+        survey.items = {}
+        for _, id in ipairs(candidates) do
+            Record(id)
+        end
+        table.sort(survey.items)
+        ns.Print(("Survey done: %d items up to level %d (%d of %d loaded). Type /reload to save it."):format(
+            #survey.items, SURVEY_MAX_LEVEL, loaded, #candidates))
+    end
+    ticker = C_Timer.NewTicker(0.1, function()
+        for _ = 1, SURVEY_BATCH do
+            local id = candidates[nextIndex]
+            if not id then break end
+            nextIndex = nextIndex + 1
+            Item:CreateFromItemID(id):ContinueOnItemLoad(function()
+                loaded = loaded + 1
+                if loaded == #candidates then Finish() end
+            end)
+        end
+        if GetTime() - started > SURVEY_TIMEOUT then Finish() end
+    end)
+end
+
+ns.Command("survey", "collect item, dungeon and flight data for the seeds (developer)", function()
+    local survey = { when = time(), build = select(2, GetBuildInfo()), items = {}, entrances = {}, taxi = {} }
+    ns.db.survey = survey
+    SurveyPlaces(survey)
+    SurveyItems(survey)
+end)
