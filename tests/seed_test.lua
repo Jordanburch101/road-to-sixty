@@ -115,7 +115,7 @@ for i, expected in ipairs(ENTRANCES) do
     local e = runs[i]
     local c, pos = C_Map.GetWorldPosFromMapPos(expected[2], CreateVector2D(expected[3], expected[4]))
     check(e and e[7] == expected[1], expected[1] .. " is run " .. i)
-    check(e and e[3] == c and math.abs(e[4] - pos.x) < 30 and math.abs(e[5] - pos.y) < 30,
+    check(e and pos and e[3] == c and math.abs(e[4] - pos.x) < 30 and math.abs(e[5] - pos.y) < 30,
         expected[1] .. " entered at its entrance")
 end
 check((reasons.h or 0) >= 3, "a hearthstone home after each dungeon, got " .. tostring(reasons.h))
