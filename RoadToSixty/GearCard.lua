@@ -331,14 +331,30 @@ end
 
 local hoverCard
 
--- Places the card beside owner (the tooltip), on whichever side has room.
+-- Places the card beside owner. For a tooltip, it goes on the side the
+-- tooltip opened towards (away from what the tooltip belongs to), so the card
+-- never covers the row or marker being hovered; for anything else, towards
+-- the middle of the screen. Either way it flips if there is no room.
 local function Anchor(frame, owner)
     frame:ClearAllPoints()
-    local right = owner:GetRight() or 0
-    if right + frame:GetWidth() + 8 < UIParent:GetRight() then
-        frame:SetPoint("TOPLEFT", owner, "TOPRIGHT", 4, 0)
+    local toLeft
+    local tooltipOwner = owner.GetOwner and owner:GetOwner()
+    local ox = owner:GetCenter()
+    if tooltipOwner and tooltipOwner.GetCenter and tooltipOwner:GetCenter() and ox then
+        toLeft = ox < tooltipOwner:GetCenter()
     else
+        toLeft = (ox or 0) > UIParent:GetWidth() / 2
+    end
+    local width = frame:GetWidth() + 8
+    if toLeft and (owner:GetLeft() or 0) - width < 0 then
+        toLeft = false
+    elseif not toLeft and (owner:GetRight() or 0) + width > UIParent:GetRight() then
+        toLeft = true
+    end
+    if toLeft then
         frame:SetPoint("TOPRIGHT", owner, "TOPLEFT", -4, 0)
+    else
+        frame:SetPoint("TOPLEFT", owner, "TOPRIGHT", 4, 0)
     end
 end
 
