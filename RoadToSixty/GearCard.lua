@@ -269,7 +269,8 @@ local function NewCard(parent, strata, interactive)
     model:SetScript("OnShow", function(m) m.ready = nil end)
     self.model = model
 
-    self.note = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    self.note = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    self.note:SetShadowOffset(1, -1)
     self.note:SetPoint("BOTTOM", stage, "BOTTOM", 0, 4)
     self.note:SetWidth(MODEL_W - 8)
     return self
@@ -358,19 +359,26 @@ local function Anchor(frame, owner)
     end
 end
 
--- Shows the gear for level beside owner (usually GameTooltip, after Show).
--- Levels without recorded gear show nothing.
-function GearCard:Show(level, owner)
+-- Shows the gear for level beside owner, in place of a tooltip: title
+-- (default "Gear at level N") on the banner, detail (such as zone and date)
+-- under the model. Returns false, showing nothing, for levels without
+-- recorded gear, so the caller can show a plain tooltip instead.
+function GearCard:Show(level, owner, title, detail)
     local snapshot = ns.char.levels[level]
     local gear = snapshot and snapshot.gear
     if not gear or not next(gear) then
         self:Hide()
-        return
+        return false
     end
     hoverCard = hoverCard or NewCard(UIParent, "TOOLTIP", false)
     Anchor(hoverCard.frame, owner)
     hoverCard.model.facing = 0
-    hoverCard:Render(gear, ("Gear at level %d"):format(level), snapshot.gearLater and "Recorded at a later login")
+    local note = detail
+    if snapshot.gearLater then
+        note = (note and note .. "\n" or "") .. "Gear recorded at a later login"
+    end
+    hoverCard:Render(gear, title or ("Gear at level %d"):format(level), note)
+    return true
 end
 
 function GearCard:Hide()

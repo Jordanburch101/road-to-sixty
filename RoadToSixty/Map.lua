@@ -631,13 +631,12 @@ local function GetMarker(i)
     m.text:SetDrawLayer("OVERLAY", 7)
     m.text:SetPoint("CENTER", 0.5, 0)
     m:SetScript("OnEnter", function(self)
+        -- Level ups with recorded gear show the gear card instead of a tooltip.
+        if self.level and ns.GearCard:Show(self.level, self, self.title, self.detail) then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(self.title)
         GameTooltip:AddLine(self.detail, 1, 1, 1)
         GameTooltip:Show()
-        if self.level then
-            ns.GearCard:Show(self.level, GameTooltip)
-        end
     end)
     m:SetScript("OnLeave", function()
         GameTooltip_Hide()
