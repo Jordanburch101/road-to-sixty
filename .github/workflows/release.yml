@@ -6,9 +6,9 @@
 # settings (Settings > Secrets and variables > Actions):
 #   secret   CF_API_TOKEN      from https://legacy.curseforge.com/account/api-tokens
 #   variable CF_PROJECT_ID     the project ID shown on the CurseForge project page
-#   variable CF_GAME_VERSIONS  comma-separated game version IDs, e.g. "12345"
-#                              (list: https://wow.curseforge.com/api/game/versions
-#                              with header X-Api-Token)
+#   variable CF_GAME_VERSIONS  comma-separated game versions, by name ("1.60.1")
+#                              or ID; scripts/curseforge.sh looks up the IDs
+# Run the "CurseForge check" workflow to test these without uploading.
 name: Release
 
 on:
@@ -62,20 +62,13 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
           CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_PROJECT_ID" ] || [ -z "$CF_GAME_VERSIONS" ]; then
             echo "CurseForge upload not configured, skipping."
             exit 0
           fi
-          metadata=$(jq -n \
-            --arg name "Road to Sixty ${{ steps.package.outputs.version }}" \
-            --arg type "${{ steps.type.outputs.type }}" \
-            --arg changelog "See https://github.com/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME" \
-            --arg versions "$CF_GAME_VERSIONS" \
-            '{displayName: $name, releaseType: $type, changelog: $changelog, changelogType: "markdown",
-              gameVersions: ($versions | split(",") | map(tonumber))}')
-          curl --fail-with-body -sS \
-            -H "X-Api-Token: $CF_API_TOKEN" \
-            -F "metadata=$metadata" \
-            -F "file=@${{ steps.package.outputs.zip }}" \
-            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file"
+          changelog=$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)
+          bash scripts/curseforge.sh upload "${{ steps.package.outputs.zip }}" \
+            "Road to Sixty ${{ steps.package.outputs.version }}" "${{ steps.type.outputs.type }}" \
+            "${changelog:-Release $GITHUB_REF_NAME}"
