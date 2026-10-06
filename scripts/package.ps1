@@ -53,6 +53,9 @@ Write-Host "Packaging $addonName $Version"
 if (Test-Path $buildRoot) { Remove-Item $buildRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $build -Force | Out-Null
 Copy-Item -Path (Join-Path $source "*") -Destination $build -Recurse
+# Local test images for /rts shots never ship.
+$shots = Join-Path $build "shots"
+if (Test-Path $shots) { Remove-Item $shots -Recurse -Force }
 
 # Removes the lines from a start marker to an end marker, both included.
 # Fails on a marker without its partner, so a typo cannot ship dev code.
