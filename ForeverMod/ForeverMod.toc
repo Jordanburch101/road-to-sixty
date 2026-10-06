@@ -1,0 +1,22 @@
+## Interface: 16001
+## Title: Forever Journey
+## Notes: Records your journey from 1 to 60 and replays it on the map
+## Author: Jordan
+## Version: @project-version@
+## SavedVariables: ForeverModDB
+## SavedVariablesPerCharacter: ForeverModCharDB
+
+Core.lua
+MinimapTiles.lua
+Recorder.lua
+Journal.lua
+Roster.lua
+Health.lua
+Map.lua
+Panel.lua
+#@debug@
+Probe.lua
+Seed.lua
+Swatch.lua
+IconBrowser.lua
+#@end-debug@

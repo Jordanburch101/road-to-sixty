@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forever Journey – icon candidates</title>
+<style>
+  :root { --gold: #f8b700; }
+  body {
+    margin: 0; padding: 32px 40px 60px;
+    background: #14100c radial-gradient(ellipse at top, #2b2116 0%, #14100c 70%) fixed;
+    color: #e8dcc0; font-family: Georgia, "Times New Roman", serif;
+  }
+  h1 { color: var(--gold); font-weight: normal; letter-spacing: 1px; margin: 0 0 4px; }
+  p.lead { color: #b8a888; margin: 0 0 28px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 28px; }
+  .card {
+    background: rgba(0,0,0,0.35); border: 1px solid #4a3a22; border-radius: 10px;
+    padding: 18px 20px; box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  }
+  .card h2 { margin: 0 0 2px; font-size: 20px; color: var(--gold); font-weight: normal; }
+  .card .num { color: #8a7a5a; margin-right: 6px; }
+  .card p { margin: 0 0 14px; color: #b8a888; font-size: 14px; }
+  .sizes { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes figcaption { font-size: 11px; color: #7a6a4a; margin-top: 4px; font-family: system-ui, sans-serif; }
+  .light { background: #e9e4d8; border-radius: 6px; padding: 8px; }
+  svg.icon { display: block; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+  .banner-row { margin-top: 40px; }
+  .banner-row h2 { color: var(--gold); font-weight: normal; }
+</style>
+</head>
+<body>
+<h1>Forever Journey — icon candidates</h1>
+<p class="lead">Each design at CurseForge logo size (256), list size (64), small (32), and on a light page. Tell me a number, or mix parts.</p>
+
+<!-- Shared art: gradients, effects, the gold frame, and one symbol per design. -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff2b0"/>
+      <stop offset="0.35" stop-color="#f2c14e"/>
+      <stop offset="0.7" stop-color="#a8701c"/>
+      <stop offset="1" stop-color="#5c3a0c"/>
+    </linearGradient>
+    <linearGradient id="goldFlat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe9a0"/>
+      <stop offset="1" stop-color="#c88a20"/>
+    </linearGradient>
+    <radialGradient id="parchment" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0" stop-color="#f1deb0"/>
+      <stop offset="0.6" stop-color="#d9b77a"/>
+      <stop offset="1" stop-color="#8f6a35"/>
+    </radialGradient>
+    <radialGradient id="stone" cx="0.5" cy="0.4" r="0.8">
+      <stop offset="0" stop-color="#3a3f4a"/>
+      <stop offset="1" stop-color="#0d0f14"/>
+    </radialGradient>
+    <radialGradient id="arcane" cx="0.5" cy="0.45" r="0.8">
+      <stop offset="0" stop-color="#3b2366"/>
+      <stop offset="0.7" stop-color="#170c2c"/>
+      <stop offset="1" stop-color="#07040f"/>
+    </radialGradient>
+    <radialGradient id="night" cx="0.5" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#21405e"/>
+      <stop offset="1" stop-color="#070d18"/>
+    </radialGradient>
+    <!-- Path colours by level band, as on the journey map. -->
+    <linearGradient id="levels" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.22" stop-color="#1eff00"/>
+      <stop offset="0.45" stop-color="#4099ff"/>
+      <stop offset="0.68" stop-color="#a335ee"/>
+      <stop offset="0.9" stop-color="#ff8000"/>
+    </linearGradient>
+    <linearGradient id="levelsH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.25" stop-color="#1eff00"/>
+      <stop offset="0.5" stop-color="#4099ff"/>
+      <stop offset="0.75" stop-color="#a335ee"/>
+      <stop offset="1" stop-color="#ff8000"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#fff6c8" stop-opacity="1"/>
+      <stop offset="0.3" stop-color="#ffd24a" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ff9a00" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="purpleGlow">
+      <stop offset="0" stop-color="#f3e0ff" stop-opacity="1"/>
+      <stop offset="0.35" stop-color="#b46bff" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#7a2cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.7">
+      <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.7"/>
+    </filter>
+
+    <!-- Sparkle star, centred on 0,0, radius 1. -->
+    <path id="spark" d="M0 -1 L0.18 -0.18 L1 0 L0.18 0.18 L0 1 L-0.18 0.18 L-1 0 L-0.18 -0.18 Z"/>
+
+    <!-- Bevelled gold frame drawn over each design (viewBox 0 0 400 400). -->
+    <symbol id="frame" viewBox="0 0 400 400">
+      <rect x="6" y="6" width="388" height="388" rx="44" fill="none" stroke="#2a1a06" stroke-width="12"/>
+      <rect x="12" y="12" width="376" height="376" rx="40" fill="none" stroke="url(#gold)" stroke-width="16"/>
+      <rect x="21" y="21" width="358" height="358" rx="32" fill="none" stroke="#3a2408" stroke-width="3"/>
+      <rect x="13" y="13" width="374" height="374" rx="40" fill="none" stroke="#fff6cc" stroke-opacity="0.45" stroke-width="2"/>
+    </symbol>
+    <clipPath id="inner"><rect x="20" y="20" width="360" height="360" rx="32"/></clipPath>
+
+    <!-- 1. Hero's Path: dotted level-coloured route across parchment to a glowing star. -->
+    <symbol id="d1" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#parchment)"/>
+        <g stroke="#8a6630" stroke-opacity="0.35" fill="none" stroke-width="3">
+          <path d="M20 120 C 90 100, 120 150, 190 130 S 320 90, 380 110"/>
+          <path d="M20 290 C 110 270, 160 320, 250 300 S 340 260, 380 280"/>
+          <path d="M140 20 C 120 120, 170 200, 150 380" stroke-dasharray="6 8"/>
+        </g>
+        <path d="M70 335 C 150 320, 90 245, 165 225 S 285 250, 265 170 S 300 95, 325 78"
+              fill="none" stroke="#3a2408" stroke-opacity="0.55" stroke-width="22" stroke-linecap="round" stroke-dasharray="0 30"/>
+        <path d="M70 335 C 150 320, 90 245, 165 225 S 285 250, 265 170 S 300 95, 325 78"
+              fill="none" stroke="url(#levels)" stroke-width="15" stroke-linecap="round" stroke-dasharray="0 30"/>
+        <circle cx="325" cy="78" r="60" fill="url(#glow)"/>
+        <use href="#spark" transform="translate(325 78) scale(36)" fill="#fffbe6"/>
+        <circle cx="70" cy="335" r="13" fill="#fff" stroke="#3a2408" stroke-width="4"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 2. Forever (infinity) path: the route loops as an infinity sign. -->
+    <symbol id="d2" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#night)"/>
+        <g fill="#fff" opacity="0.6">
+          <circle cx="60" cy="70" r="2"/><circle cx="330" cy="60" r="1.5"/><circle cx="300" cy="330" r="2"/>
+          <circle cx="90" cy="320" r="1.5"/><circle cx="200" cy="50" r="1.5"/><circle cx="350" cy="190" r="1.2"/>
+        </g>
+        <path id="inf" d="M200 200 C 245 130, 335 125, 335 200 C 335 275, 245 270, 200 200 C 155 130, 65 125, 65 200 C 65 275, 155 270, 200 200 Z"
+              fill="none" stroke="url(#levelsH)" stroke-width="30" stroke-opacity="0.35" filter="url(#soft)"/>
+        <path d="M200 200 C 245 130, 335 125, 335 200 C 335 275, 245 270, 200 200 C 155 130, 65 125, 65 200 C 65 275, 155 270, 200 200 Z"
+              fill="none" stroke="#000" stroke-opacity="0.6" stroke-width="20" stroke-linecap="round"/>
+        <path d="M200 200 C 245 130, 335 125, 335 200 C 335 275, 245 270, 200 200 C 155 130, 65 125, 65 200 C 65 275, 155 270, 200 200 Z"
+              fill="none" stroke="url(#levelsH)" stroke-width="13" stroke-linecap="round"/>
+        <circle cx="335" cy="200" r="38" fill="url(#glow)"/>
+        <use href="#spark" transform="translate(335 200) scale(24)" fill="#fffbe6"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 3. Compass rose over a faint route. -->
+    <symbol id="d3" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#stone)"/>
+        <path d="M40 330 C 120 300, 110 230, 190 220 S 300 200, 360 70" fill="none"
+              stroke="#4099ff" stroke-opacity="0.55" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 22"/>
+        <circle cx="200" cy="200" r="118" fill="none" stroke="url(#goldFlat)" stroke-width="6"/>
+        <circle cx="200" cy="200" r="104" fill="none" stroke="#c88a20" stroke-opacity="0.5" stroke-width="2"/>
+        <g fill="url(#goldFlat)" stroke="#3a2408" stroke-width="3" filter="url(#shadow)">
+          <path d="M200 70 L222 200 L200 330 L178 200 Z"/>
+          <path d="M70 200 L200 178 L330 200 L200 222 Z"/>
+        </g>
+        <path d="M200 70 L222 200 L200 200 Z" fill="#fff6cc" opacity="0.6"/>
+        <path d="M70 200 L200 178 L200 200 Z" fill="#fff6cc" opacity="0.35"/>
+        <g fill="#c88a20" opacity="0.8">
+          <path d="M200 200 L290 110 L212 212 Z"/><path d="M200 200 L110 290 L188 188 Z"/>
+          <path d="M200 200 L290 290 L212 188 Z"/><path d="M200 200 L110 110 L188 212 Z"/>
+        </g>
+        <circle cx="200" cy="200" r="14" fill="#2a1a06" stroke="url(#goldFlat)" stroke-width="4"/>
+        <circle cx="360" cy="70" r="30" fill="url(#glow)"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 4. 1 to 60: two level badges linked by an arcane arc. -->
+    <symbol id="d4" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#arcane)"/>
+        <path d="M110 285 Q 200 60, 290 145" fill="none" stroke="#b46bff" stroke-width="26" stroke-opacity="0.35" filter="url(#soft)"/>
+        <path d="M110 285 Q 200 60, 290 145" fill="none" stroke="url(#levels)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 20"/>
+        <g fill="#f3e0ff">
+          <use href="#spark" transform="translate(170 140) scale(9)"/>
+          <use href="#spark" transform="translate(235 118) scale(7)"/>
+          <use href="#spark" transform="translate(140 200) scale(6)"/>
+        </g>
+        <g filter="url(#shadow)">
+          <circle cx="110" cy="285" r="54" fill="#120e0c" stroke="url(#gold)" stroke-width="10"/>
+          <text x="110" y="304" text-anchor="middle" font-family="Georgia, serif" font-size="56" fill="#fff">1</text>
+          <circle cx="290" cy="145" r="66" fill="#120e0c" stroke="url(#gold)" stroke-width="12"/>
+          <text x="290" y="168" text-anchor="middle" font-family="Georgia, serif" font-size="62" fill="#fff">60</text>
+        </g>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 5. Map pin over a folded map, with the route leading in. -->
+    <symbol id="d5" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="#1a1410"/>
+        <g transform="translate(200 230) rotate(-6) translate(-200 -230)">
+          <path d="M45 120 L150 95 L250 125 L355 100 L355 330 L250 355 L150 325 L45 350 Z" fill="url(#parchment)" stroke="#5c3a0c" stroke-width="4"/>
+          <path d="M150 95 L150 325 M250 125 L250 355" stroke="#8a6630" stroke-opacity="0.5" stroke-width="3"/>
+          <path d="M150 95 L250 125 L250 355 L150 325 Z" fill="#000" opacity="0.08"/>
+          <path d="M80 315 C 130 290, 120 230, 175 225 S 215 250, 205 205" fill="none"
+                stroke="#a83a1a" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 18"/>
+        </g>
+        <g filter="url(#shadow)">
+          <path d="M205 210 C 160 150, 145 120, 145 95 A 60 60 0 1 1 265 95 C 265 120, 250 150, 205 210 Z"
+                fill="url(#goldFlat)" stroke="#3a2408" stroke-width="5"/>
+          <circle cx="205" cy="95" r="26" fill="#120e0c" stroke="#3a2408" stroke-width="3"/>
+          <use href="#spark" transform="translate(205 95) scale(18)" fill="#ffe9a0"/>
+        </g>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 6. Arcane trail: glowing route with motes on deep purple. -->
+    <symbol id="d6" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#arcane)"/>
+        <path d="M50 340 C 150 330, 80 220, 180 210 S 330 230, 300 140 S 300 70, 345 55"
+              fill="none" stroke="#b46bff" stroke-width="34" stroke-opacity="0.45" filter="url(#soft)"/>
+        <path d="M50 340 C 150 330, 80 220, 180 210 S 330 230, 300 140 S 300 70, 345 55"
+              fill="none" stroke="#e9d2ff" stroke-width="7" stroke-linecap="round"/>
+        <g fill="#f3e0ff">
+          <use href="#spark" transform="translate(110 300) scale(12)"/>
+          <use href="#spark" transform="translate(150 225) scale(8)"/>
+          <use href="#spark" transform="translate(245 205) scale(14)"/>
+          <use href="#spark" transform="translate(305 160) scale(7)"/>
+          <use href="#spark" transform="translate(320 95) scale(10)"/>
+        </g>
+        <circle cx="345" cy="55" r="50" fill="url(#purpleGlow)"/>
+        <use href="#spark" transform="translate(345 55) scale(26)" fill="#ffffff"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 7. Crest: shield with the route and the initials. -->
+    <symbol id="d7" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#stone)"/>
+        <g filter="url(#shadow)">
+          <path d="M200 52 L322 92 L322 205 C 322 285, 265 330, 200 355 C 135 330, 78 285, 78 205 L78 92 Z"
+                fill="#5a1414" stroke="url(#gold)" stroke-width="12" stroke-linejoin="round"/>
+          <path d="M200 76 L302 108 L302 205 C 302 272, 255 310, 200 332 C 145 310, 98 272, 98 205 L98 108 Z"
+                fill="none" stroke="#c88a20" stroke-opacity="0.5" stroke-width="2"/>
+        </g>
+        <path d="M120 290 C 170 280, 130 220, 185 210 S 270 215, 270 160 S 260 120, 285 110"
+              fill="none" stroke="url(#levels)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 19"/>
+        <use href="#spark" transform="translate(285 110) scale(18)" fill="#fffbe6"/>
+        <text x="200" y="208" text-anchor="middle" font-family="Georgia, serif" font-size="78" font-weight="bold"
+              fill="url(#goldFlat)" stroke="#2a1a06" stroke-width="3" opacity="0.95">FJ</text>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+
+    <!-- 8. Footsteps to a banner flag. -->
+    <symbol id="d8" viewBox="0 0 400 400">
+      <g clip-path="url(#inner)">
+        <rect width="400" height="400" fill="url(#parchment)"/>
+        <g fill="#4a2c0c" opacity="0.85">
+          <ellipse cx="80" cy="340" rx="11" ry="18" transform="rotate(-30 80 340)"/>
+          <ellipse cx="112" cy="300" rx="11" ry="18" transform="rotate(-20 112 300)"/>
+          <ellipse cx="128" cy="255" rx="11" ry="18" transform="rotate(-5 128 255)"/>
+          <ellipse cx="160" cy="222" rx="11" ry="18" transform="rotate(15 160 222)"/>
+          <ellipse cx="200" cy="210" rx="11" ry="18" transform="rotate(35 200 210)"/>
+          <ellipse cx="232" cy="185" rx="11" ry="18" transform="rotate(20 232 185)"/>
+          <ellipse cx="246" cy="145" rx="11" ry="18" transform="rotate(5 246 145)"/>
+        </g>
+        <g filter="url(#shadow)">
+          <rect x="268" y="55" width="8" height="150" fill="#3a2408"/>
+          <path d="M276 60 L345 60 L330 88 L345 116 L276 116 Z" fill="#a33" stroke="#3a2408" stroke-width="3"/>
+          <use href="#spark" transform="translate(305 88) scale(14)" fill="#ffd24a"/>
+          <circle cx="272" cy="52" r="7" fill="url(#goldFlat)"/>
+        </g>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frame"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="grid" id="grid"></div>
+
+<div class="banner-row">
+  <h2>Name lockup (for the CurseForge page header)</h2>
+  <svg viewBox="0 0 900 200" width="900" height="200" class="icon">
+    <rect width="900" height="200" rx="16" fill="#120e0c" stroke="#4a3a22" stroke-width="2"/>
+    <use href="#d1" x="20" y="20" width="160" height="160"/>
+    <text x="210" y="105" font-family="Georgia, serif" font-size="66" fill="url(#gold)" stroke="#2a1a06" stroke-width="2">Forever Journey</text>
+    <text x="214" y="148" font-family="Georgia, serif" font-size="22" fill="#b8a888">Your road from 1 to 60, replayed on the map</text>
+    <path d="M214 165 L860 165" stroke="url(#levelsH)" stroke-width="4" stroke-dasharray="0 14" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<script>
+  const designs = [
+    ["Hero's Path", "Dotted route in the map's level colours, from a start dot to a glowing star, on parchment."],
+    ["Forever Loop", "The route drawn as an infinity sign — 'Forever' — in level colours on a night sky."],
+    ["Compass", "Gold compass rose on dark stone, a blue dotted route behind it."],
+    ["1 → 60", "Two level badges, like the map's, joined by an arcane dotted arc."],
+    ["Map Pin", "Gold pin on a folded parchment map, red route leading to it."],
+    ["Arcane Trail", "Glowing purple path with motes, like the map's arcane effect."],
+    ["Crest", "Red shield with FJ initials and the level-coloured route."],
+    ["Footsteps", "Footprints across parchment to a banner flag."],
+  ];
+  const ns = "http://www.w3.org/2000/svg";
+  function icon(id, size) {
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 400 400");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("class", "icon");
+    const use = document.createElementNS(ns, "use");
+    use.setAttribute("href", "#" + id);
+    svg.appendChild(use);
+    return svg;
+  }
+  const grid = document.getElementById("grid");
+  designs.forEach(([name, text], i) => {
+    const id = "d" + (i + 1);
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h2><span class="num">${i + 1}.</span>${name}</h2><p>${text}</p>`;
+    const sizes = document.createElement("div");
+    sizes.className = "sizes";
+    for (const [size, label, light] of [[256, "256"], [64, "64"], [32, "32"], [64, "on light", true]]) {
+      const fig = document.createElement("figure");
+      const holder = light ? Object.assign(document.createElement("div"), { className: "light" }) : fig;
+      holder.appendChild(icon(id, size));
+      if (light) fig.appendChild(holder);
+      const cap = document.createElement("figcaption");
+      cap.textContent = label;
+      fig.appendChild(cap);
+      sizes.appendChild(fig);
+    }
+    card.appendChild(sizes);
+    grid.appendChild(card);
+  });
+</script>
+</body>
+</html>

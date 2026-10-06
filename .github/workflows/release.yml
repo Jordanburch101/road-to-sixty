@@ -1,0 +1,81 @@
+# On a version tag (v0.9.0-beta, v1.0.0, ...): checks, tests, release build,
+# then a GitHub release with the zip. Tags with "alpha" or "beta" are marked
+# as pre-releases.
+#
+# Optional CurseForge upload, skipped until all three are set in the repo
+# settings (Settings > Secrets and variables > Actions):
+#   secret   CF_API_TOKEN      from https://legacy.curseforge.com/account/api-tokens
+#   variable CF_PROJECT_ID     the project ID shown on the CurseForge project page
+#   variable CF_GAME_VERSIONS  comma-separated game version IDs, e.g. "12345"
+#                              (list: https://wow.curseforge.com/api/game/versions
+#                              with header X-Api-Token)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+
+      - name: Checks and tests
+        shell: pwsh
+        run: ./check.ps1
+
+      - name: Release build
+        id: package
+        shell: pwsh
+        run: ./scripts/package.ps1
+
+      - name: Release type
+        id: type
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *alpha*) echo "type=alpha" >> "$GITHUB_OUTPUT" ;;
+            *beta*)  echo "type=beta" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "type=release" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          if [ "${{ steps.type.outputs.type }}" != "release" ]; then flags="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
+            --title "Forever Journey ${{ steps.package.outputs.version }}" \
+            --generate-notes $flags
+
+      - name: CurseForge upload
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
+        run: |
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_PROJECT_ID" ] || [ -z "$CF_GAME_VERSIONS" ]; then
+            echo "CurseForge upload not configured, skipping."
+            exit 0
+          fi
+          metadata=$(jq -n \
+            --arg name "Forever Journey ${{ steps.package.outputs.version }}" \
+            --arg type "${{ steps.type.outputs.type }}" \
+            --arg changelog "See https://github.com/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME" \
+            --arg versions "$CF_GAME_VERSIONS" \
+            '{displayName: $name, releaseType: $type, changelog: $changelog, changelogType: "markdown",
+              gameVersions: ($versions | split(",") | map(tonumber))}')
+          curl --fail-with-body -sS \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F "metadata=$metadata" \
+            -F "file=@${{ steps.package.outputs.zip }}" \
+            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file"

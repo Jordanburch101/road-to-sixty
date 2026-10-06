@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forever Journey – map pin, Classic refinements</title>
+<style>
+  body {
+    margin: 0; padding: 32px 40px 60px;
+    background: #14100c radial-gradient(ellipse at top, #2b2116 0%, #14100c 70%) fixed;
+    color: #e8dcc0; font-family: Georgia, "Times New Roman", serif;
+  }
+  h1 { color: #f8b700; font-weight: normal; margin: 0 0 4px; }
+  p.lead { color: #b8a888; margin: 0 0 28px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 28px; }
+  .card { background: rgba(0,0,0,0.35); border: 1px solid #4a3a22; border-radius: 10px; padding: 18px 20px; }
+  .card h2 { margin: 0 0 2px; font-size: 20px; color: #f8b700; font-weight: normal; }
+  .card .num { color: #8a7a5a; margin-right: 6px; }
+  .card p { margin: 0 0 14px; color: #b8a888; font-size: 14px; }
+  .sizes { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes figcaption { font-size: 11px; color: #7a6a4a; margin-top: 4px; font-family: system-ui, sans-serif; }
+  .light { background: #e9e4d8; border-radius: 6px; padding: 8px; }
+  svg.icon { display: block; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+</style>
+</head>
+<body>
+<h1>Forever Journey — map pin, Classic refinements</h1>
+<p class="lead">"Current" is design 5 as before. A–D push it towards Classic: painted texture, burnt parchment, ink-drawn land, a forged gold pin with a ruby.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- Metals and gems -->
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff2b0"/><stop offset="0.35" stop-color="#f2c14e"/>
+      <stop offset="0.7" stop-color="#a8701c"/><stop offset="1" stop-color="#5c3a0c"/>
+    </linearGradient>
+    <linearGradient id="goldFlat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe9a0"/><stop offset="1" stop-color="#c88a20"/>
+    </linearGradient>
+    <linearGradient id="pinMetal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4a2c08"/><stop offset="0.22" stop-color="#b47a1e"/>
+      <stop offset="0.42" stop-color="#ffe7a0"/><stop offset="0.55" stop-color="#e8b040"/>
+      <stop offset="0.85" stop-color="#8a5a12"/><stop offset="1" stop-color="#3a2206"/>
+    </linearGradient>
+    <radialGradient id="ruby" cx="0.38" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffb0a0"/><stop offset="0.3" stop-color="#e03020"/>
+      <stop offset="0.75" stop-color="#8a0c08"/><stop offset="1" stop-color="#3a0202"/>
+    </radialGradient>
+    <radialGradient id="parchment" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0" stop-color="#f3e2b6"/><stop offset="0.6" stop-color="#ddbb7c"/><stop offset="1" stop-color="#a07838"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.6"/>
+    </radialGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#fff6c8"/><stop offset="0.35" stop-color="#ffd24a" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#ff9a00" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="scrollRod" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6b4416"/><stop offset="0.35" stop-color="#e9c98a"/>
+      <stop offset="0.6" stop-color="#c49a58"/><stop offset="1" stop-color="#4a2c08"/>
+    </linearGradient>
+
+    <!-- Textures -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.28  0 0 0 0 0.16  0 0 0 0 0.04  1.3 0 0 0 -0.62"/>
+    </filter>
+    <filter id="stains" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="3" seed="9"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.28  0 0 0 0 0.08  1.6 0 0 0 -0.75"/>
+    </filter>
+    <filter id="woodGrain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006 0.16" numOctaves="3" seed="2"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.5 0 0 0 -0.45"/>
+    </filter>
+    <filter id="stoneTex" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="4" seed="7"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.4 0 0 0 -0.5"/>
+    </filter>
+    <!-- Torn, uneven edges -->
+    <filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="inkWobble" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="burn" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feGaussianBlur in="d" stdDeviation="3"/>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="3" dy="6" stdDeviation="5" flood-color="#000" flood-opacity="0.75"/>
+    </filter>
+    <filter id="blur6"><feGaussianBlur stdDeviation="6"/></filter>
+
+    <path id="spark" d="M0 -1 L0.18 -0.18 L1 0 L0.18 0.18 L0 1 L-0.18 0.18 L-1 0 L-0.18 -0.18 Z"/>
+
+    <!-- Forged pin, head centre at 0,0, tip at 0,115. -->
+    <g id="pin">
+      <ellipse cx="10" cy="118" rx="22" ry="7" fill="#000" opacity="0.5" filter="url(#blur6)"/>
+      <g filter="url(#shadow)">
+        <path d="M0 115 C -45 55, -60 25, -60 0 A 60 60 0 1 1 60 0 C 60 25, 45 55, 0 115 Z"
+              fill="url(#pinMetal)" stroke="#2a1604" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M0 103 C -38 52, -50 25, -50 0 A 50 50 0 0 1 50 0" fill="none" stroke="#fff3c4" stroke-opacity="0.45" stroke-width="3"/>
+        <circle r="30" fill="#2a1604"/>
+        <circle r="30" fill="none" stroke="url(#gold)" stroke-width="5"/>
+        <circle r="23" fill="url(#ruby)"/>
+        <path d="M-12 -12 Q -4 -20, 8 -16" fill="none" stroke="#fff" stroke-opacity="0.8" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="10" cy="9" r="3" fill="#fff" opacity="0.35"/>
+      </g>
+    </g>
+
+    <!-- Ink drawing on the map: coast, hills, trees, route, X. Drawn in map space. -->
+    <g id="ink" filter="url(#inkWobble)">
+      <path d="M45 175 C 80 160, 95 190, 130 170 S 170 150, 165 120" fill="none" stroke="#3b5c7a" stroke-width="4" opacity="0.75"/>
+      <path d="M45 190 C 85 178, 100 205, 135 186" fill="none" stroke="#3b5c7a" stroke-width="2" opacity="0.45"/>
+      <g fill="none" stroke="#5a3a14" stroke-width="3.5" stroke-linejoin="round" opacity="0.85">
+        <path d="M270 175 l14 -22 l14 22"/><path d="M292 180 l16 -27 l16 27"/><path d="M300 150 l12 -18 l12 18"/>
+        <path d="M78 255 l12 -18 l12 18"/>
+      </g>
+      <g fill="#4e6a2a" opacity="0.75">
+        <circle cx="300" cy="250" r="8"/><circle cx="316" cy="262" r="7"/><circle cx="292" cy="268" r="7"/>
+        <circle cx="120" cy="300" r="7"/><circle cx="135" cy="292" r="6"/>
+      </g>
+      <path d="M80 318 C 125 300, 115 245, 165 238 S 222 262, 210 222" fill="none"
+            stroke="#9a1c10" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 15"/>
+      <g stroke="#9a1c10" stroke-width="6" stroke-linecap="round">
+        <path d="M197 212 l22 22 M219 212 l-22 22"/>
+      </g>
+    </g>
+
+    <!-- Folded parchment map with burnt edges. -->
+    <g id="map">
+      <g transform="translate(200 230) rotate(-6) translate(-200 -230)">
+        <path d="M40 118 L150 92 L250 122 L360 96 L360 334 L250 360 L150 328 L40 354 Z" fill="#2a1404" filter="url(#burn)"/>
+        <g filter="url(#rough)">
+          <path d="M45 120 L150 95 L250 125 L355 100 L355 330 L250 355 L150 325 L45 350 Z" fill="url(#parchment)"/>
+        </g>
+        <path d="M45 120 L150 95 L250 125 L355 100 L355 330 L250 355 L150 325 L45 350 Z" fill="#000" opacity="0.001"/>
+        <rect x="40" y="90" width="320" height="270" filter="url(#stains)" opacity="0.8" clip-path="url(#mapClip)"/>
+        <rect x="40" y="90" width="320" height="270" filter="url(#grain)" opacity="0.7" clip-path="url(#mapClip)"/>
+        <path d="M150 95 L250 125 L250 355 L150 325 Z" fill="#3a2006" opacity="0.12"/>
+        <path d="M250 125 L355 100 L355 330 L250 355 Z" fill="#fff6dc" opacity="0.08"/>
+        <path d="M150 95 L150 325 M250 125 L250 355" stroke="#6a4818" stroke-opacity="0.55" stroke-width="2.5"/>
+        <use href="#ink"/>
+      </g>
+    </g>
+    <clipPath id="mapClip"><path d="M45 120 L150 95 L250 125 L355 100 L355 330 L250 355 L150 325 L45 350 Z"/></clipPath>
+
+    <!-- Frames -->
+    <symbol id="frameRound" viewBox="0 0 400 400">
+      <rect x="6" y="6" width="388" height="388" rx="44" fill="none" stroke="#2a1a06" stroke-width="12"/>
+      <rect x="12" y="12" width="376" height="376" rx="40" fill="none" stroke="url(#gold)" stroke-width="16"/>
+      <rect x="21" y="21" width="358" height="358" rx="32" fill="none" stroke="#3a2408" stroke-width="3"/>
+    </symbol>
+    <!-- Classic icon border: square, dark, with a thin bevel. -->
+    <symbol id="frameClassic" viewBox="0 0 400 400">
+      <rect x="5" y="5" width="390" height="390" rx="10" fill="none" stroke="#000" stroke-width="10"/>
+      <rect x="13" y="13" width="374" height="374" rx="5" fill="none" stroke="#8a6a3a" stroke-width="3" opacity="0.9"/>
+      <path d="M14 386 L14 14 L386 14" fill="none" stroke="#fff2c8" stroke-opacity="0.35" stroke-width="3"/>
+    </symbol>
+    <!-- Ornate gold frame with corner studs and side diamonds. -->
+    <symbol id="frameOrnate" viewBox="0 0 400 400">
+      <rect x="8" y="8" width="384" height="384" rx="14" fill="none" stroke="#1a0e02" stroke-width="14"/>
+      <rect x="13" y="13" width="374" height="374" rx="11" fill="none" stroke="url(#gold)" stroke-width="12"/>
+      <rect x="22" y="22" width="356" height="356" rx="6" fill="none" stroke="#2a1604" stroke-width="3"/>
+      <g fill="url(#gold)" stroke="#2a1604" stroke-width="3">
+        <circle cx="26" cy="26" r="17"/><circle cx="374" cy="26" r="17"/>
+        <circle cx="26" cy="374" r="17"/><circle cx="374" cy="374" r="17"/>
+        <path d="M200 2 L214 16 L200 30 L186 16 Z"/><path d="M200 370 L214 384 L200 398 L186 384 Z"/>
+        <path d="M2 200 L16 186 L30 200 L16 214 Z"/><path d="M370 200 L384 186 L398 200 L384 214 Z"/>
+      </g>
+      <g fill="url(#ruby)">
+        <circle cx="26" cy="26" r="7"/><circle cx="374" cy="26" r="7"/>
+        <circle cx="26" cy="374" r="7"/><circle cx="374" cy="374" r="7"/>
+      </g>
+    </symbol>
+    <clipPath id="innerRound"><rect x="20" y="20" width="360" height="360" rx="32"/></clipPath>
+    <clipPath id="innerSquare"><rect x="12" y="12" width="376" height="376" rx="5"/></clipPath>
+    <clipPath id="innerOrnate"><rect x="20" y="20" width="360" height="360" rx="6"/></clipPath>
+
+    <!-- Current design 5, for comparison. -->
+    <symbol id="current" viewBox="0 0 400 400">
+      <g clip-path="url(#innerRound)">
+        <rect width="400" height="400" fill="#1a1410"/>
+        <g transform="translate(200 230) rotate(-6) translate(-200 -230)">
+          <path d="M45 120 L150 95 L250 125 L355 100 L355 330 L250 355 L150 325 L45 350 Z" fill="url(#parchment)" stroke="#5c3a0c" stroke-width="4"/>
+          <path d="M150 95 L150 325 M250 125 L250 355" stroke="#8a6630" stroke-opacity="0.5" stroke-width="3"/>
+          <path d="M80 315 C 130 290, 120 230, 175 225 S 215 250, 205 205" fill="none" stroke="#a83a1a" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 18"/>
+        </g>
+        <path d="M205 210 C 160 150, 145 120, 145 95 A 60 60 0 1 1 265 95 C 265 120, 250 150, 205 210 Z" fill="url(#goldFlat)" stroke="#3a2408" stroke-width="5"/>
+        <circle cx="205" cy="95" r="26" fill="#120e0c"/>
+        <use href="#spark" transform="translate(205 95) scale(18)" fill="#ffe9a0"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frameRound"/>
+    </symbol>
+
+    <!-- A. Classic icon: map fills the square like Interface\Icons art, dark bevel border. -->
+    <symbol id="a" viewBox="0 0 400 400">
+      <g clip-path="url(#innerSquare)">
+        <rect width="400" height="400" fill="#2a1a0c"/>
+        <rect width="400" height="400" filter="url(#woodGrain)" opacity="0.8"/>
+        <g transform="translate(200 215) scale(1.12) translate(-200 -225)"><use href="#map"/></g>
+        <use href="#pin" transform="translate(205 92) scale(0.95)"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frameClassic"/>
+    </symbol>
+
+    <!-- B. Ornate: same art inside a gold frame with ruby studs. -->
+    <symbol id="b" viewBox="0 0 400 400">
+      <g clip-path="url(#innerOrnate)">
+        <rect width="400" height="400" fill="#1e140a"/>
+        <rect width="400" height="400" filter="url(#stoneTex)" opacity="0.7"/>
+        <use href="#map"/>
+        <use href="#pin" transform="translate(205 95) scale(0.9)"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frameOrnate"/>
+    </symbol>
+
+    <!-- C. Treasure map on a wooden table, warm candle glow, rounded gold frame. -->
+    <symbol id="c" viewBox="0 0 400 400">
+      <g clip-path="url(#innerRound)">
+        <rect width="400" height="400" fill="#3a2410"/>
+        <rect width="400" height="400" filter="url(#woodGrain)" opacity="0.9"/>
+        <circle cx="300" cy="80" r="220" fill="url(#glow)" opacity="0.35"/>
+        <use href="#map"/>
+        <use href="#pin" transform="translate(205 95) scale(0.9)"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frameRound"/>
+    </symbol>
+
+    <!-- D. Scroll: the map as an unrolled scroll between two wooden rods. -->
+    <symbol id="d" viewBox="0 0 400 400">
+      <g clip-path="url(#innerSquare)">
+        <rect width="400" height="400" fill="#1a1210"/>
+        <rect width="400" height="400" filter="url(#stoneTex)" opacity="0.6"/>
+        <g filter="url(#shadow)">
+          <rect x="70" y="72" width="260" height="270" fill="url(#parchment)"/>
+          <rect x="70" y="72" width="260" height="270" filter="url(#stains)" opacity="0.8"/>
+          <rect x="70" y="72" width="260" height="270" filter="url(#grain)" opacity="0.7"/>
+          <g transform="translate(200 210) scale(0.78) translate(-200 -235)"><use href="#ink"/></g>
+          <rect x="44" y="60" width="30" height="294" rx="13" fill="url(#scrollRod)" stroke="#2a1604" stroke-width="3"/>
+          <rect x="326" y="60" width="30" height="294" rx="13" fill="url(#scrollRod)" stroke="#2a1604" stroke-width="3"/>
+          <g fill="url(#gold)" stroke="#2a1604" stroke-width="2">
+            <rect x="40" y="48" width="38" height="16" rx="6"/><rect x="40" y="350" width="38" height="16" rx="6"/>
+            <rect x="322" y="48" width="38" height="16" rx="6"/><rect x="322" y="350" width="38" height="16" rx="6"/>
+          </g>
+        </g>
+        <use href="#pin" transform="translate(200 110) scale(0.75)"/>
+        <rect width="400" height="400" fill="url(#vignette)"/>
+      </g>
+      <use href="#frameClassic"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="grid" id="grid"></div>
+
+<script>
+  const designs = [
+    ["current", "Current", "Design 5 as it was."],
+    ["a", "A. Classic icon", "Map fills the icon like Classic item/spell art; dark square bevel border; wood behind."],
+    ["b", "B. Ornate frame", "Gold frame with ruby corner studs and diamonds, dark stone behind."],
+    ["c", "C. Treasure table", "Burnt map on a wooden table with warm candle light; rounded gold frame."],
+    ["d", "D. Scroll", "The map as an unrolled scroll between wooden rods with gold caps."],
+  ];
+  const ns = "http://www.w3.org/2000/svg";
+  function icon(id, size) {
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 400 400");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("class", "icon");
+    const use = document.createElementNS(ns, "use");
+    use.setAttribute("href", "#" + id);
+    svg.appendChild(use);
+    return svg;
+  }
+  const grid = document.getElementById("grid");
+  for (const [id, name, text] of designs) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h2>${name}</h2><p>${text}</p>`;
+    const sizes = document.createElement("div");
+    sizes.className = "sizes";
+    for (const [size, label, light] of [[256, "256"], [64, "64"], [32, "32"], [64, "on light", true]]) {
+      const fig = document.createElement("figure");
+      const box = light ? Object.assign(document.createElement("div"), { className: "light" }) : fig;
+      box.appendChild(icon(id, size));
+      if (light) fig.appendChild(box);
+      const cap = document.createElement("figcaption");
+      cap.textContent = label;
+      fig.appendChild(cap);
+      sizes.appendChild(fig);
+    }
+    card.appendChild(sizes);
+    grid.appendChild(card);
+  }
+</script>
+</body>
+</html>

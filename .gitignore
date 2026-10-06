@@ -1,0 +1,6 @@
+# Release builds (scripts/package.ps1)
+build/
+dist/
+
+# Generated from branding/header.src.html by branding/build-header.ps1
+branding/header.html

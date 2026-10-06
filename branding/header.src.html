@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forever Journey – CurseForge header</title>
+<style>
+  body { margin: 0; background: #0c0906; }
+  svg.banner { display: block; }
+</style>
+</head>
+<body>
+<!-- Shared art from icon-5.html is inserted here by build-header.ps1. -->
+<!--DEFS-->
+<svg class="banner" viewBox="0 0 1200 400" width="1200" height="400">
+  <defs>
+    <linearGradient id="levelsH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.2" stop-color="#1eff00"/>
+      <stop offset="0.4" stop-color="#4099ff"/><stop offset="0.6" stop-color="#a335ee"/>
+      <stop offset="0.8" stop-color="#ff8000"/><stop offset="1" stop-color="#e6cc80"/>
+    </linearGradient>
+    <linearGradient id="titleGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff4c0"/><stop offset="0.45" stop-color="#ffd25a"/>
+      <stop offset="0.55" stop-color="#e0a020"/><stop offset="1" stop-color="#8a5a12"/>
+    </linearGradient>
+    <linearGradient id="statusBar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="0.45" stop-color="#fff" stop-opacity="0.08"/>
+      <stop offset="0.55" stop-color="#000" stop-opacity="0.1"/><stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+    </linearGradient>
+    <radialGradient id="bannerVignette" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0.5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.75"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="0.3" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#ffb84a" stop-opacity="0.22"/><stop offset="1" stop-color="#ffb84a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="titleShadow" x="-10%" y="-30%" width="120%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.9"/>
+    </filter>
+    <clipPath id="bannerClip"><rect x="6" y="6" width="1188" height="388" rx="10"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#bannerClip)">
+    <!-- Wooden table, warm light from the left. -->
+    <rect width="1200" height="400" fill="#2a1a0c"/>
+    <rect width="1200" height="400" filter="url(#woodGrain)" opacity="0.85"/>
+    <rect width="1200" height="400" fill="url(#warm)"/>
+
+    <rect width="1200" height="400" fill="url(#bannerVignette)"/>
+
+    <!-- Logo, title and bar, centred as one block (845 px wide from x 40). -->
+    <g transform="translate(157 0)">
+
+    <!-- Icon -->
+    <g filter="url(#titleShadow)">
+      <svg x="40" y="60" width="270" height="270" viewBox="0 0 400 400"><use href="#a"/></svg>
+    </g>
+
+    <!-- Name and tagline -->
+    <g filter="url(#titleShadow)">
+      <text x="340" y="150" font-family="'Trajan Pro', 'Cinzel', 'Palatino Linotype', Georgia, serif"
+            font-size="70" font-weight="bold" letter-spacing="2"
+            fill="url(#titleGold)" stroke="#2a1604" stroke-width="2.5" paint-order="stroke">Forever Journey</text>
+    </g>
+    <g transform="translate(345 178)">
+      <rect x="0" y="-1.5" width="500" height="3" fill="url(#goldFlat)"/>
+      <path d="M250 -9 L259 0 L250 9 L241 0 Z" fill="url(#gold)" stroke="#2a1604" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="4" fill="url(#gold)"/><circle cx="500" cy="0" r="4" fill="url(#gold)"/>
+    </g>
+    <text x="345" y="218" font-family="'Palatino Linotype', Georgia, serif" font-size="25" fill="#ecdcb4"
+          filter="url(#titleShadow)">Your road from 1 to 60, replayed on the map</text>
+
+    <!-- Timeline bar, as in the addon: tooltip frame, status bar fill in level
+         bands, gold labels. 500 px wide, 10 levels per 83 px, played to 45. -->
+    <g transform="translate(345 254)">
+      <rect x="-5" y="-5" width="510" height="24" rx="5" fill="#000" opacity="0.85"/>
+      <rect x="-5" y="-5" width="510" height="24" rx="5" fill="none" stroke="#9a9a9a" stroke-width="2"/>
+      <rect x="0" y="0" width="75" height="14" fill="#e8e8e8"/>
+      <rect x="75" y="0" width="83" height="14" fill="#1eff00"/>
+      <rect x="158" y="0" width="84" height="14" fill="#4099ff"/>
+      <rect x="242" y="0" width="83" height="14" fill="#a335ee"/>
+      <rect x="325" y="0" width="50" height="14" fill="#ff8000"/>
+      <rect x="375" y="0" width="125" height="14" fill="#ff8000" opacity="0.3"/>
+      <rect x="0" y="0" width="500" height="14" fill="url(#statusBar)"/>
+      <path d="M75 -3 v20 M158 -3 v20 M242 -3 v20 M325 -3 v20 M408 -3 v20" stroke="#000" stroke-opacity="0.9" stroke-width="1.5"/>
+      <g font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#ffd100" text-anchor="middle">
+        <text x="75" y="36">10</text><text x="158" y="36">20</text><text x="242" y="36">30</text>
+        <text x="325" y="36">40</text><text x="408" y="36">50</text><text x="492" y="36">60</text>
+      </g>
+      <circle cx="375" cy="7" r="10" fill="#d9d9d9" stroke="#3a3a3a" stroke-width="3"/>
+      <circle cx="372" cy="4" r="3" fill="#fff" opacity="0.8"/>
+    </g>
+    </g>
+  </g>
+
+  <!-- Frame around the banner -->
+  <rect x="3" y="3" width="1194" height="394" rx="12" fill="none" stroke="#000" stroke-width="6"/>
+  <rect x="7" y="7" width="1186" height="386" rx="9" fill="none" stroke="url(#gold)" stroke-width="4"/>
+</svg>
+</body>
+</html>

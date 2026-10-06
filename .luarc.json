@@ -1,0 +1,29 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "runtime.version": "Lua 5.1",
+    "workspace.library": [
+        "${env:LOCALAPPDATA}/wow-api/Annotations/Core",
+        "${env:LOCALAPPDATA}/wow-api/Annotations/FrameXML"
+    ],
+    "workspace.checkThirdParty": false,
+    "diagnostics.globals": [
+        "ForeverModDB",
+        "ForeverModCharDB",
+        "SLASH_FOREVERMOD1",
+        "SLASH_FOREVERMOD2",
+        "SlashCmdList",
+        "ReloadUI",
+        "UISpecialFrames",
+        "GameTooltip_Hide",
+        "WorldMapFrame",
+        "COMBATLOG_XPGAIN_FIRSTPERSON",
+        "RAID_CLASS_COLORS",
+        "CLASS_ICON_TCOORDS",
+        "LOCALIZED_CLASS_NAMES_MALE",
+        "GetMouseFocus",
+        "LOOT_ITEM_SELF",
+        "LOOT_ITEM_SELF_MULTIPLE",
+        "PlayerFrame",
+        "PlayerLevelText"
+    ]
+}
