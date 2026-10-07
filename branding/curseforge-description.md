@@ -5,13 +5,18 @@
 ## Features
 
 ### Your path on the world map
-- One map for the whole world: zoom smoothly from Azeroth into each continent and down to terrain detail.
+- One map for the whole world, in a window styled like the game's own: zoom smoothly from Azeroth into each continent and down to terrain detail.
 - The path changes colour as you level, using the item quality colours: **white**, **green**, **blue**, **purple**, **orange**.
 - Flight paths and corpse runs have their own styles, and arcane sparkles drift along the road.
 
 ### Replay
 - Press **Play** to watch your journey unfold, at **1x to 32x** speed.
 - The timeline bar shows your level bands. Click or drag it to jump to any moment, and hover it to see your level, zone and date at that point.
+
+### Your gear, level by level
+- Road to Sixty remembers what you wore at every level up.
+- Hover a level up on the map, in History or in Stats to see your character in that gear, character sheet style.
+- Turn on **Gear** during a replay to watch your gear change as you go, with a gold flash on each upgrade. Hover a slot for the item's tooltip.
 
 ### Every jump explained
 - **Hearthstones**, **mage teleports**, **boats**, **deaths** and **dungeons** are drawn as coloured arcs, with an icon when you zoom in.
@@ -32,13 +37,16 @@
 ### Light on performance
 - Recording is lightweight. The map only draws detail where you are looking, so zooming stays smooth even with a full 1–60 journey.
 
-## Commands
+## Options and commands
 
-Click the **minimap button** to open the map (drag it to move it), or use:
+Click the **minimap button** to open the map (drag it to move it). Right-click it, or click the cog on the map window, for the **options**: the minimap button, terrain, sparkles, the gear card during replays, and checking or erasing your journey. They are also under **Options > AddOns > Road to Sixty**.
+
+Or use:
 
 | Command | What it does |
 |---|---|
 | `/rts map` | Open the journey map |
+| `/rts options` | Open the options panel |
 | `/rts check` | Check that recording is working |
 | `/rts stats` | Show journey totals and recording size |
 | `/rts where` | Show your position as the recorder sees it |
