@@ -95,11 +95,15 @@ local HOVER_WIDTH = 5
 local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
 
 -- Other characters from the roster: class icons at their last position and,
--- if turned on per character, their coarse path in class colour.
+-- if turned on per character, their path in class colour.
 local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
-local OTHER_MAX_LINES = 1500    -- most lines per other character's path in range of the view
-local OTHER_LINE_WIDTH = 1.5
-local OTHER_ALPHA = 0.55
+local OTHER = {
+    MAX_LINES = 1500,       -- most lines per other character's path in range of the view
+    LINE_WIDTH = 1.5,
+    -- Alpha by movement mode, and for jumps (arcs, or a plain line when the
+    -- reason is unknown, as between walking and a flight).
+    ALPHA = { w = 0.55, t = 0.3, g = 0.2, j = 0.3 },
+}
 
 local HEAD_TEXTURE = "Interface\\WorldMap\\WorldMapArrow"
 local JUMP_ZOOM = 6             -- zoom the map goes to at least when jumping to an event
@@ -370,13 +374,13 @@ end
 
 local function LevelAt(t)
     local level
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[1] > t then break end
         if e[2] == "on" or e[2] == "lvl" then
             level = e[6]
         end
     end
-    return level or UnitLevel("player")
+    return level or ns.Roster:ViewLevel()
 end
 
 local function ZoneName(mapID)
@@ -386,7 +390,7 @@ end
 
 local function ZoneAt(t)
     local zone
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[1] > t then break end
         if e[2] == "zone" then
             zone = e[6]
@@ -587,7 +591,7 @@ local function BuildPoints(paths)
 
     -- Level changes in time order, walked alongside the points.
     local changes = {}
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[2] == "on" or e[2] == "lvl" then
             changes[#changes + 1] = e
         end
@@ -670,7 +674,7 @@ end
 local function BuildMarkers()
     local count, level, zone = 0, nil, nil
     local visit     -- the quest marker turn-ins are joining: { m, c, x, y, last, names }
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         local t, kind, toContent = e[1], e[2], state.toContent[e[3]]
         if kind == "on" or kind == "lvl" then
             level = e[6]
@@ -742,12 +746,12 @@ local function BuildMarkers()
                 m.minZoom = MARKER_ZOOM.death
                 m.title = "Died"
                 m.detail = ("Level %d, %s\n%s"):format(
-                    level or UnitLevel("player"), ZoneName(zone), FormatTime(t))
+                    level or ns.Roster:ViewLevel(), ZoneName(zone), FormatTime(t))
             else
                 m.minZoom = MARKER_ZOOM.dungeon
                 m.title = e[7] or "Instance"
                 m.detail = ("%s, level %d\n%s"):format(
-                    INSTANCE_TYPES[e[8]] or "Instance", level or UnitLevel("player"), FormatTime(t))
+                    INSTANCE_TYPES[e[8]] or "Instance", level or ns.Roster:ViewLevel(), FormatTime(t))
             end
         end
     end
@@ -1132,26 +1136,36 @@ local function SetLineThickness()
     state.lineZoom = z
 end
 
--- Tracks for the characters whose path is turned on, from the roster's coarse
--- paths in content units, breaking where each piece starts.
+-- Tracks for the characters whose path is turned on, from the roster's paths
+-- in content units, breaking where each piece starts. Like the player's own
+-- track they carry pm (mode per point) and pj (jump reason at a piece's
+-- first point), and colors holds a colour per mode and for jumps.
 local function BuildOtherTracks()
     local tracks = {}
+    local shown = ns.Roster:ViewEntry()
     for _, e in ipairs(ns.Roster:Entries()) do
-        if ns.db.showPaths[e.key] and not ns.Roster:IsMe(e) then
-            local px, py, brk, n = {}, {}, {}, 0
-            for _, path in ipairs(ns.Roster:Paths(e)) do
+        if ns.db.showPaths[e.key] and e ~= shown then
+            local px, py, pm, pj, brk, n = {}, {}, {}, {}, {}, 0
+            -- This character's own journey is live, its roster copy as of logout.
+            local paths = ns.Roster:IsMe(e) and ns.Recorder:GetPaths() or ns.Roster:Paths(e)
+            for _, path in ipairs(paths) do
                 local toContent = state.toContent[path.c]
-                if toContent then
+                if toContent and #path.x > 0 then
                     for i = 1, #path.x do
                         n = n + 1
                         px[n], py[n] = toContent(path.x[i], path.y[i])
-                        brk[n] = i == 1
+                        pm[n], brk[n] = path.m, i == 1
                     end
+                    pj[n - #path.x + 1] = path.j
                 end
             end
             local r, g, b = ns.ClassColor(e.class)
+            local colors = {}
+            for mode, a in pairs(OTHER.ALPHA) do
+                colors[mode] = { r, g, b, a }
+            end
             tracks[#tracks + 1] = {
-                n = n, px = px, py = py, brk = brk, lods = {}, color = { r, g, b, OTHER_ALPHA },
+                n = n, px = px, py = py, pm = pm, pj = pj, brk = brk, lods = {}, colors = colors,
                 entry = e,
             }
         end
@@ -1160,32 +1174,44 @@ local function BuildOtherTracks()
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
--- own path and the same way, but each within OTHER_MAX_LINES: every line
--- costs time on each zoom frame.
+-- own path and the same way, but each within OTHER.MAX_LINES: every line
+-- costs time on each zoom frame. Jumps with a known reason are arcs, made of
+-- several lines that share the jump's spec fields.
 local function BuildOtherLines(x1, y1, x2, y2, z)
-    local count, thickness = 0, OTHER_LINE_WIDTH / z
+    local count, thickness = 0, OTHER.LINE_WIDTH / z
     local otherDrawn = {}
+    local function Add(track, spec, mode)
+        count = count + 1
+        otherDrawn[count] = spec
+        local line = otherLines[count]
+        if not line then
+            line = othersLayer:CreateLine(nil, "ARTWORK")
+            otherLines[count] = line
+        end
+        line:SetStartPoint("TOPLEFT", othersLayer, spec[1], -spec[2])
+        line:SetEndPoint("TOPLEFT", othersLayer, spec[3], -spec[4])
+        local color = track.colors[mode] or track.colors.w
+        if line.color ~= color then
+            line:SetColorTexture(unpack(color))
+            line.color = color
+        end
+        line:SetThickness(thickness)
+        line:Show()
+    end
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
-            local lod, list = PickLod(track, x1, y1, x2, y2, z, OTHER_MAX_LINES)
-            local color = track.color
-            for _, spec in ipairs(LinesIn(track, lod, list, x1, y1, x2, y2)) do
+            local lod, list = PickLod(track, x1, y1, x2, y2, z, OTHER.MAX_LINES)
+            for _, spec in ipairs(LinesIn(track, lod, list, x1, y1, x2, y2, true)) do
                 spec.track = track
-                count = count + 1
-                otherDrawn[count] = spec
-                local line = otherLines[count]
-                if not line then
-                    line = othersLayer:CreateLine(nil, "ARTWORK")
-                    otherLines[count] = line
+                if spec[5] == "j" and track.pj[spec[6]] then
+                    local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4])
+                    for p = 2, #curve do
+                        local a, b = curve[p - 1], curve[p]
+                        Add(track, { a[1], a[2], b[1], b[2], "j", spec[6], track = track, curve = curve }, "j")
+                    end
+                else
+                    Add(track, spec, spec[5])
                 end
-                line:SetStartPoint("TOPLEFT", othersLayer, spec[1], -spec[2])
-                line:SetEndPoint("TOPLEFT", othersLayer, spec[3], -spec[4])
-                if line.color ~= color then
-                    line:SetColorTexture(unpack(color))
-                    line.color = color
-                end
-                line:SetThickness(thickness)
-                line:Show()
             end
         end
     end
@@ -1415,13 +1441,19 @@ end
 -- Markers for the other characters at their last outdoor position.
 local function BuildCharacters()
     local count = 0
+    local shown = ns.Roster:ViewEntry()
     for _, e in ipairs(ns.Roster:Entries()) do
-        local toContent = e.c and state.toContent[e.c]
-        if toContent and not ns.Roster:IsMe(e) then
+        -- This character, when another's journey is shown, is where it is now.
+        local c, x, y = e.c, e.x, e.y
+        if ns.Roster:IsMe(e) then
+            c, x, y = ns.Recorder:Position()
+        end
+        local toContent = c and state.toContent[c]
+        if toContent and e ~= shown then
             count = count + 1
             local m = GetCharMarker(count)
             m.entry = e
-            m.x, m.y = toContent(e.x, e.y)
+            m.x, m.y = toContent(x, y)
             ns.SetClassIcon(m.icon, e.class)
             m.label:SetText(e.name)
             m.label:SetTextColor(ns.ClassColor(e.class))
@@ -1443,7 +1475,7 @@ local function PlaceCharacters()
 end
 
 local function SetOtherThickness()
-    local thickness = OTHER_LINE_WIDTH / state.zoom
+    local thickness = OTHER.LINE_WIDTH / state.zoom
     for i = 1, state.otherLineCount do
         otherLines[i]:SetThickness(thickness)
     end
@@ -1718,7 +1750,7 @@ local function BuildScrub()
 
     local count = 0
     if state.n > 0 then
-        for _, e in ipairs(ns.char.events) do
+        for _, e in ipairs(ns.view.events) do
             if e[2] == "lvl" then
                 count = count + 1
                 local tick = scrub.ticks[count] or NewScrubTick()
@@ -1895,7 +1927,13 @@ local function ShowLineTooltip(spec)
     if spec.track then
         local e = spec.track.entry
         GameTooltip:AddLine(e.name .. "'s journey", ns.ClassColor(e.class))
-        GameTooltip:AddLine(("Level %d %s"):format(e.level or 0, ns.ClassName(e.class)), 1, 1, 1)
+        local reason = spec[5] == "j" and spec.track.pj[spec[6]]
+        if reason then
+            GameTooltip:AddLine((JUMP_STYLES[reason] or JUMP_UNKNOWN)[1], 1, 1, 1)
+        elseif spec[5] ~= "j" and spec[5] ~= "w" then
+            GameTooltip:AddLine(MODE_NAMES[spec[5]], 1, 1, 1)
+        end
+        GameTooltip:AddLine(("Level %d %s"):format(e.level or 0, ns.ClassName(e.class)), 0.7, 0.7, 0.7)
     else
         local i, pt = spec[6], state.pt
         if spec[5] == "j" then
@@ -2162,6 +2200,8 @@ local function CreateWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
+        -- Opening the map again shows this character's journey.
+        ns.Roster:SetView(nil)
         SetPlaying(false)
         ns.QuestPop:Clear()
         ns.KillPop:Clear()
@@ -2179,7 +2219,6 @@ local function CreateWindow()
     -- Baganator does on this client.
     frame.Bg:SetPoint("TOPLEFT", 6, -21)
     if frame.TopTileStreaks then frame.TopTileStreaks:SetPoint("TOPLEFT", 6, -21) end
-    frame:SetTitle(UnitName("player") .. "'s Journey")
 
     -- Cog left of the close button, a small red button like the game's:
     -- opens or closes the options.
@@ -2374,9 +2413,11 @@ function Map:Open()
         end
     end
     Layout()
+    frame:SetTitle(ns.Roster:ViewEntry().name .. "'s Journey")
+    Map:UpdateViewBanner()
 
     local started = debugprofilestop()
-    local paths = ns.Recorder:GetPaths()
+    local paths = ns.Roster:ViewPaths()
     state.perf.decode = debugprofilestop() - started
 
     started = debugprofilestop()
@@ -2419,6 +2460,72 @@ function Map:ShowCharacter(e)
     SetZoomNow(math.max(state.zoom, JUMP_ZOOM))
     CenterOn(toContent(x, y))
     ApplyView()
+end
+
+-- Shows a roster character's whole journey on the map and side panel, as if
+-- playing it; this character's again for nil or its own entry. A character
+-- with no journey copy yet (not logged in since it was added) is only
+-- centred on. Returns whether the view switched to e.
+function Map:ShowJourney(e)
+    if not (frame and frame:IsShown()) then return false end
+    local was = ns.viewEntry
+    local switched = ns.Roster:SetView(e)
+    if switched or was then
+        self:Open()
+    elseif e then
+        self:ShowCharacter(e)
+    end
+    if e and not switched and not ns.Roster:IsMe(e) then
+        ns.Print(("%s's journey is not saved here yet; log in on %s once to share it."):format(e.name, e.name))
+    end
+    return switched
+end
+
+-- A label in the map's corner while another character's journey is shown,
+-- naming it, with a button to go back to this character's.
+function Map:UpdateViewBanner()
+    local e = ns.viewEntry
+    local banner = self.viewBanner
+    if not e then
+        if banner then banner:Hide() end
+        return
+    end
+    if not banner then
+        banner = CreateFrame("Frame", nil, overlay, "BackdropTemplate")
+        banner:SetPoint("TOPLEFT", 10, -10)
+        banner:SetHeight(30)
+        banner:SetFrameLevel(overlay:GetFrameLevel() + 20)
+        banner:EnableMouse(true)
+        banner:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        banner:SetBackdropColor(0, 0, 0, 0.75)
+        banner.icon = banner:CreateTexture(nil, "ARTWORK")
+        banner.icon:SetSize(20, 20)
+        banner.icon:SetPoint("LEFT", 6, 0)
+        banner.text = banner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        banner.text:SetPoint("LEFT", banner.icon, "RIGHT", 6, 0)
+        banner.close = CreateFrame("Button", nil, banner, "UIPanelCloseButton")
+        banner.close:SetSize(24, 24)
+        banner.close:SetPoint("LEFT", banner.text, "RIGHT", 2, 0)
+        banner.close:SetScript("OnClick", function()
+            Map:ShowJourney(nil)
+        end)
+        banner.close:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Back to " .. UnitName("player") .. "'s journey")
+            GameTooltip:Show()
+        end)
+        banner.close:SetScript("OnLeave", GameTooltip_Hide)
+        self.viewBanner = banner
+    end
+    ns.SetClassIcon(banner.icon, e.class)
+    banner.text:SetText(("Viewing %s's journey"):format(e.name))
+    banner.text:SetTextColor(ns.ClassColor(e.class))
+    banner:SetWidth(6 + 20 + 6 + banner.text:GetStringWidth() + 2 + 24 + 4)
+    banner:Show()
 end
 
 -- Redraws other characters' markers and paths after the roster or the

@@ -298,10 +298,12 @@ ns.On("PLAYER_LOGOUT", function()
     wipe(killBuffer)
 end)
 
--- Every recorded kill, oldest first: { t, xp, name }.
+-- Every recorded kill of the journey shown (ns.view), oldest first:
+-- { t, xp, name }. This session's are still buffered for this character.
 function Journal:Kills()
-    local kills, list, t = ns.char.kills, {}, 0
-    for _, chunk in ipairs({ kills.d, table.concat(killBuffer) }) do
+    local kills, list, t = ns.view.kills, {}, 0
+    local buffered = ns.view == ns.char and table.concat(killBuffer) or ""
+    for _, chunk in ipairs({ kills.d, buffered }) do
         for dt, xp, n in chunk:gmatch("(-?%d+),(%d+),(%d+);") do
             t = t + tonumber(dt)
             list[#list + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }

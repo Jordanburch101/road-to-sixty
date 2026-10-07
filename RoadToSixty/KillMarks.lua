@@ -72,7 +72,7 @@ end
 -- Times between entering and leaving an instance: { from, to } pairs.
 local function InstanceTimes()
     local spans, entered = {}, nil
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[2] == "in" then
             entered = entered or e[1]
         elseif e[2] == "out" and entered then

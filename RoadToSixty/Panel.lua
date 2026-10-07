@@ -345,7 +345,7 @@ end
 -- Returns a function giving the zone (uiMapID) the player was in at a time.
 local function ZoneTimeline()
     local times, zones = {}, {}
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[2] == "zone" then
             times[#times + 1], zones[#zones + 1] = e[1], e[6]
         end
@@ -384,7 +384,7 @@ local function BuildHistory()
 
     -- Travel from the recorded path first, so zone discoveries can join flights.
     local previous
-    for _, path in ipairs(ns.Recorder:GetPaths()) do
+    for _, path in ipairs(ns.Roster:ViewPaths()) do
         local startT, endT = path.t[1], path.t[#path.t]
         local jump = TRAVEL_JUMPS[path.j]
         if jump then
@@ -416,7 +416,7 @@ local function BuildHistory()
         end
     end
 
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         local kind, t, c, x, y = e[2], e[1], e[3], e[4], e[5]
         if kind == "on" or kind == "lvl" then
             level = e[6]
@@ -696,7 +696,7 @@ end
 -- One row per level with a snapshot. Each level's numbers are the change
 -- between reaching it and reaching the next; the current level runs to now.
 local function BuildLevels()
-    local levels, totals = ns.char.levels, ns.char.totals
+    local levels, totals = ns.view.levels, ns.view.totals
     local keys = {}
     for level in pairs(levels) do
         keys[#keys + 1] = level
@@ -704,12 +704,12 @@ local function BuildLevels()
     table.sort(keys)
 
     local now = {
-        played = ns.char.played, kills = totals.kills, deaths = totals.deaths, quests = totals.quests,
+        played = ns.view.played, kills = totals.kills, deaths = totals.deaths, quests = totals.quests,
     }
     local items = {}
     for _, level in ipairs(keys) do
         local s = levels[level]
-        local after = levels[level + 1] or (level == UnitLevel("player") and now)
+        local after = levels[level + 1] or (level == ns.Roster:ViewLevel() and now)
         local item = { level = level, partial = s.partial }
         if after then
             item.time = s.played and after.played and after.played - s.played
@@ -725,7 +725,7 @@ end
 -- Professions sorted by name: { name, rank, max }.
 local function Professions()
     local list = {}
-    for name, s in pairs(ns.char.skills or {}) do
+    for name, s in pairs(ns.view.skills or {}) do
         list[#list + 1] = { name, s[1] or 0, s[2] or 0 }
     end
     table.sort(list, function(a, b) return a[1] < b[1] end)
@@ -743,7 +743,7 @@ local function ProfessionsSummary()
 end
 
 local function RefreshStats()
-    local char, t = ns.char, ns.char.totals
+    local char, t = ns.view, ns.view.totals
     local zones = {}
     local zoneCount = 0
     for _, e in ipairs(char.events) do
@@ -754,7 +754,7 @@ local function RefreshStats()
     end
 
     local values = {
-        UnitLevel("player"),
+        ns.Roster:ViewLevel(),
         FormatDuration(char.played),
         Commas(t.distance) .. " yd",
         Commas(t.flown) .. " yd",
@@ -858,9 +858,28 @@ local function CreateCharacterRow(parent)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.08)
 
+    -- Marks the character whose journey the map shows.
+    row.selected = row:CreateTexture(nil, "BACKGROUND")
+    row.selected:SetAllPoints()
+    row.selected:SetColorTexture(1, 0.82, 0, 0.12)
+
     row:SetScript("OnClick", function(self)
-        ns.Map:ShowCharacter(self.entry)
+        ns.Map:ShowJourney(self.entry)
     end)
+    row:SetScript("OnEnter", function(self)
+        local e = self.entry
+        if ns.Roster:ViewEntry() == e then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        if ns.Roster:IsMe(e) then
+            GameTooltip:AddLine("Click to show your own journey again")
+        elseif e.journey then
+            GameTooltip:AddLine("Click to show " .. (e.name or "?") .. "'s journey")
+        else
+            GameTooltip:AddLine("Log in on " .. (e.name or "?") .. " once to share its journey")
+        end
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", GameTooltip_Hide)
     return row
 end
 
@@ -882,8 +901,10 @@ local function UpdateCharacterRow(row, e)
     end
     row.detail:SetText(table.concat(parts, " - "))
 
-    -- This character's path is the main one on the map already.
-    row.pathToggle:SetShown(not me)
+    -- The shown character's path is the main one on the map already.
+    local shown = ns.Roster:ViewEntry() == e
+    row.selected:SetShown(shown)
+    row.pathToggle:SetShown(not shown)
     row.pathToggle:SetChecked(ns.db.showPaths[e.key] == true)
 end
 

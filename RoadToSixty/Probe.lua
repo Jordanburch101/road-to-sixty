@@ -384,6 +384,361 @@ ns.On("SCREENSHOT_SUCCEEDED", function()
     C_Timer.After(1, function() ShowShots(t) end)
 end)
 
+-- /rts modelprobe: ways to show another character's body on a gear card,
+-- which can only be a model of the player turned into another race and sex,
+-- or a model from a display ID saved while that character played. Each
+-- candidate wears the gear on now; the chat lists which APIs exist.
+
+local modelProbe
+
+local MODEL_PROBE_SLOTS = {
+    "HeadSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot", "WristSlot",
+    "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
+}
+
+local function ProbeDress(model)
+    pcall(model.Undress, model)
+    for _, name in ipairs(MODEL_PROBE_SLOTS) do
+        local ok, slot = pcall(GetInventorySlotInfo, name)
+        local id = ok and slot and GetInventoryItemID("player", slot)
+        if id then pcall(model.TryOn, model, "item:" .. id) end
+    end
+end
+
+-- Every function name a table or a widget's metatable has, sorted.
+local function FunctionNames(t)
+    local names = {}
+    local index = getmetatable(t) and getmetatable(t).__index
+    for _, source in ipairs({ t, type(index) == "table" and index or {} }) do
+        for k, v in pairs(source) do
+            if type(v) == "function" and type(k) == "string" then names[#names + 1] = k end
+        end
+    end
+    table.sort(names)
+    return table.concat(names, " ")
+end
+
+-- /rts modelprobe api: lists every method of the model widgets and model
+-- scene actors, and every function of the model related namespaces, into
+-- RoadToSixtyDB.modelApi, saved on /reload, for reading outside the game.
+local function DumpModelApi()
+    local api = {}
+    for _, kind in ipairs({ "PlayerModel", "DressUpModel", "CinematicModel", "TabardModel", "ModelScene" }) do
+        local ok, widget = pcall(CreateFrame, kind)
+        api[kind] = ok and FunctionNames(widget) or ("not available: " .. tostring(widget))
+        if ok and kind == "ModelScene" then
+            local made, actor = pcall(widget.CreateActor, widget)
+            api.ModelSceneActor = made and actor and FunctionNames(actor) or ("not available: " .. tostring(actor))
+        end
+    end
+    for name, t in pairs(_G) do
+        if type(name) == "string" and type(t) == "table" and name:match("^C_")
+            and (name:match("Model") or name:match("Barber") or name:match("PlayerInfo")
+                or name:match("Transmog") or name:match("Character") or name:match("Customiz")) then
+            api[name] = FunctionNames(t)
+        end
+    end
+    ns.db.modelApi = api
+    local count = 0
+    for _ in pairs(api) do count = count + 1 end
+    ns.Print(("Model API: %d tables listed. Type /reload to save them."):format(count))
+end
+
+-- Round 2: a display ID model with the wardrobe's neutral skin, and model
+-- scene actors. Each candidate is a cell { frame, label } in a new window.
+local modelProbe2
+
+local function ProbeScene(parent)
+    local scene = CreateFrame("ModelScene", nil, parent)
+    scene:SetCameraPosition(4, 0, 0.9)
+    scene:SetCameraOrientationByYawPitchRoll(math.pi, 0, 0)
+    scene:SetCameraFieldOfView(0.6)
+    scene:SetLightVisible(true)
+    scene:SetLightType(1)
+    scene:SetLightDirection(-1, 0.3, -0.5)
+    scene:SetLightAmbientColor(0.7, 0.7, 0.7)
+    scene:SetLightDiffuseColor(0.8, 0.8, 0.8)
+    local actor = scene:CreateActor()
+    actor:SetPosition(0, 0, 0)
+    actor:SetYaw(0)
+    return scene, actor
+end
+
+local function ProbeActorDress(actor)
+    pcall(actor.Undress, actor)
+    for _, name in ipairs(MODEL_PROBE_SLOTS) do
+        local ok, slot = pcall(GetInventorySlotInfo, name)
+        local id = ok and slot and GetInventoryItemID("player", slot)
+        if id then pcall(actor.TryOn, actor, "item:" .. id) end
+    end
+end
+
+-- Readable copy of a value for the saved variables.
+local function Plain(v, depth)
+    depth = depth or 0
+    if type(v) ~= "table" then return v end
+    if depth > 4 then return "..." end
+    local copy = {}
+    for k, x in pairs(v) do
+        if type(x) ~= "function" and type(x) ~= "userdata" then copy[k] = Plain(x, depth + 1) end
+    end
+    return copy
+end
+
+local function ModelProbe2()
+    local displayID = C_PlayerInfo.GetDisplayID()
+    local data = {}
+    for _, call in ipairs({
+        { "GetPlayerCharacterData", C_PlayerInfo.GetPlayerCharacterData },
+        { "BarberGetCurrentCharacterData", C_BarberShop.GetCurrentCharacterData },
+        { "BarberGetAvailableCustomizations", C_BarberShop.GetAvailableCustomizations },
+        { "BarberGetViewingChrModel", C_BarberShop.GetViewingChrModel },
+    }) do
+        local ok, value = pcall(call[2])
+        data[call[1]] = ok and Plain(value) or ("error: " .. tostring(value))
+        Report(call[1], ok and value ~= nil, ok and type(value) or tostring(value))
+    end
+    ns.db.modelData = data
+
+    if not modelProbe2 then
+        local f = CreateFrame("Frame", "RoadToSixtyModelProbe2", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(5 * 170 + 30, 330)
+        f:SetPoint("CENTER", 0, -40)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f.TitleText:SetText("Road to Sixty: model probe 2")
+        modelProbe2 = f
+    end
+    local f = modelProbe2
+    f:Show()
+    local function Cell(i, frame, text)
+        frame:SetParent(f)
+        frame:SetSize(160, 260)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", 15 + (i - 1) * 170, -32)
+        local bg = frame:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.12, 0.12, 0.15)
+        local label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOP", frame, "BOTTOM", 0, -4)
+        label:SetWidth(160)
+        label:SetText(text)
+    end
+
+    -- C2: display ID with the wardrobe's neutral skin.
+    local c2 = CreateFrame("DressUpModel")
+    Cell(1, c2, "C2: SetDisplayInfo + TransmogSkin")
+    c2:SetUseTransmogSkin(true)
+    c2:SetDisplayInfo(displayID)
+    C_Timer.After(0.5, function() ProbeDress(c2) end)
+
+    -- C3: as C2, with transmog choices on and the skin set after loading.
+    local c3 = CreateFrame("DressUpModel")
+    Cell(2, c3, "C3: as C2, skin after load")
+    c3:SetDisplayInfo(displayID)
+    C_Timer.After(0.5, function()
+        pcall(c3.SetUseTransmogChoices, c3, true)
+        pcall(c3.SetUseTransmogSkin, c3, true)
+        ProbeDress(c3)
+    end)
+
+    -- E: scene actor from the live unit, to prove the scene's camera works.
+    local sceneE, actorE = ProbeScene(f)
+    Cell(3, sceneE, "E: scene, SetModelByUnit (control)")
+    local okE, errE = pcall(actorE.SetModelByUnit, actorE, "player", false, true)
+    Report("E SetModelByUnit", okE, tostring(errE))
+
+    -- F: the character select loader, character 1.
+    local sceneF, actorF = ProbeScene(f)
+    Cell(4, sceneF, "F: SetPlayerModelFromGlues(1)")
+    local okF, errF = pcall(actorF.SetPlayerModelFromGlues, actorF, 1, false, true)
+    Report("F SetPlayerModelFromGlues", okF, tostring(errF))
+
+    -- G: scene actor from the display ID, dressed.
+    local sceneG, actorG = ProbeScene(f)
+    Cell(5, sceneG, "G: scene, CreatureDisplayID + skin")
+    pcall(actorG.SetUseTransmogSkin, actorG, true)
+    local okG, errG = pcall(actorG.SetModelByCreatureDisplayID, actorG, displayID)
+    Report("G SetModelByCreatureDisplayID", okG, tostring(errG))
+    C_Timer.After(0.5, function() ProbeActorDress(actorG) end)
+    ns.Print("Model probe 2: type /reload afterwards to save the character data.")
+end
+
+-- Round 3: round 2's scene actors came out black, the live one too, so the
+-- scene's light or fog was wrong. Each cell tries one setup.
+local modelProbe3
+
+local LIGHT_SETUPS = {
+    { "1: fog cleared, no light set", fog = true },
+    { "2: fog cleared, light type 0", fog = true, type = 0 },
+    { "3: fog cleared, type 1 from front", fog = true, type = 1, dir = { -1, 0, -0.5 } },
+    { "4: fog cleared, type 1 from behind", fog = true, type = 1, dir = { 1, 0, -0.5 } },
+    { "5: setup 1, neutral skin off", fog = true, skin = false },
+    { "6: setup 1, live unit (control)", fog = true, unit = true },
+}
+
+local function ModelProbe3()
+    local enum = Enum and Enum.ModelLightType
+    local types = {}
+    for k, v in pairs(enum or {}) do types[#types + 1] = k .. "=" .. tostring(v) end
+    ns.Print("Enum.ModelLightType: " .. (enum and table.concat(types, ", ") or "missing"))
+
+    local displayID = C_PlayerInfo.GetDisplayID()
+    if not modelProbe3 then
+        local f = CreateFrame("Frame", "RoadToSixtyModelProbe3", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(#LIGHT_SETUPS * 150 + 30, 320)
+        f:SetPoint("CENTER", 0, -40)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f.TitleText:SetText("Road to Sixty: model probe 3")
+        modelProbe3 = f
+    end
+    local f = modelProbe3
+    f:Show()
+    for i, setup in ipairs(LIGHT_SETUPS) do
+        local scene = CreateFrame("ModelScene", nil, f)
+        scene:SetSize(140, 250)
+        scene:SetPoint("TOPLEFT", 15 + (i - 1) * 150, -32)
+        local bg = scene:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.12, 0.12, 0.15)
+        local label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOP", scene, "BOTTOM", 0, -4)
+        label:SetWidth(140)
+        label:SetText(setup[1])
+
+        scene:SetCameraPosition(4, 0, 0.9)
+        scene:SetCameraOrientationByYawPitchRoll(math.pi, 0, 0)
+        scene:SetCameraFieldOfView(0.6)
+        if setup.fog then pcall(scene.ClearFog, scene) end
+        if setup.type then
+            scene:SetLightVisible(true)
+            scene:SetLightType(setup.type)
+            if setup.dir then scene:SetLightDirection(unpack(setup.dir)) end
+            scene:SetLightPosition(4, 0, 2)
+            scene:SetLightAmbientColor(1, 1, 1)
+            scene:SetLightDiffuseColor(1, 1, 1)
+        end
+        local actor = scene:CreateActor()
+        actor:SetPosition(0, 0, 0)
+        if setup.unit then
+            actor:SetModelByUnit("player", false, true)
+        else
+            if setup.skin ~= false then pcall(actor.SetUseTransmogSkin, actor, true) end
+            actor:SetModelByCreatureDisplayID(displayID)
+            C_Timer.After(0.5, function() ProbeActorDress(actor) end)
+        end
+    end
+end
+
+ns.Command("modelprobe", "test showing another race on the gear card model (developer)", function(arg)
+    if arg == "api" then
+        DumpModelApi()
+        return
+    elseif arg == "2" then
+        ModelProbe2()
+        return
+    elseif arg == "3" then
+        ModelProbe3()
+        return
+    end
+    local _, race, raceID = UnitRace("player")
+    local sex = UnitSex("player")
+    -- A race and sex unlike the player's, so a working candidate stands out.
+    local otherRace = raceID == 4 and 3 or 4
+    local otherSex = sex == 3 and 0 or 1
+    ns.Print(("Model probe: you are %s (raceID %s), UnitSex %s; candidates aim for raceID %d, sex %d.")
+        :format(tostring(race), tostring(raceID), tostring(sex), otherRace, otherSex))
+
+    local probe = CreateFrame("DressUpModel")
+    for _, name in ipairs({ "SetCustomRace", "SetDisplayInfo", "SetUnit", "TryOn", "Undress",
+        "SetModelByUnit", "SetCreature", "SetCustomCamera" }) do
+        Report("DressUpModel:" .. name, probe[name] ~= nil)
+    end
+    local displayAPIs = {
+        { "C_PlayerInfo.GetDisplayID", C_PlayerInfo and C_PlayerInfo.GetDisplayID },
+        { "C_PlayerInfo.GetNativeDisplayID", C_PlayerInfo and C_PlayerInfo.GetNativeDisplayID },
+    }
+    local displayID
+    for _, api in ipairs(displayAPIs) do
+        local ok, value = false, nil
+        if api[2] then ok, value = pcall(api[2]) end
+        Report(api[1], api[2] ~= nil and ok and value ~= nil, tostring(value))
+        displayID = displayID or (ok and value) or nil
+    end
+    Report("C_ModelInfo", C_ModelInfo ~= nil)
+    Report("C_BarberShop", C_BarberShop ~= nil)
+
+    if not modelProbe then
+        modelProbe = CreateFrame("Frame", "RoadToSixtyModelProbe", UIParent, "BasicFrameTemplateWithInset")
+        modelProbe:SetSize(4 * 170 + 30, 330)
+        modelProbe:SetPoint("CENTER")
+        modelProbe:SetMovable(true)
+        modelProbe:EnableMouse(true)
+        modelProbe:RegisterForDrag("LeftButton")
+        modelProbe:SetScript("OnDragStart", modelProbe.StartMoving)
+        modelProbe:SetScript("OnDragStop", modelProbe.StopMovingOrSizing)
+        modelProbe.TitleText:SetText("Road to Sixty: model probe")
+        modelProbe.cells = {}
+        for i = 1, 4 do
+            local cell = CreateFrame("DressUpModel", nil, modelProbe)
+            cell:SetSize(160, 260)
+            cell:SetPoint("TOPLEFT", 15 + (i - 1) * 170, -32)
+            local bg = cell:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            bg:SetColorTexture(0.12, 0.12, 0.15)
+            cell.label = modelProbe:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -4)
+            cell.label:SetWidth(160)
+            modelProbe.cells[i] = cell
+        end
+    end
+    modelProbe:Show()
+    local cells = modelProbe.cells
+
+    -- A: the card's current way, race set straight after the unit.
+    local a = cells[1]
+    a.label:SetText("A: SetUnit + SetCustomRace now")
+    a:SetUnit("player")
+    local okA, errA = pcall(a.SetCustomRace, a, otherRace, otherSex)
+    Report("A SetCustomRace now", okA, errA and tostring(errA))
+    ProbeDress(a)
+
+    -- B: race set once the model has loaded.
+    local b = cells[2]
+    b.label:SetText("B: SetCustomRace after 0.5 s")
+    b:SetUnit("player")
+    C_Timer.After(0.5, function()
+        local ok, err = pcall(b.SetCustomRace, b, otherRace, otherSex)
+        Report("B SetCustomRace after load", ok, err and tostring(err))
+        ProbeDress(b)
+    end)
+
+    -- C: the player's own display ID, as it would be saved for each character.
+    local c = cells[3]
+    c.label:SetText("C: SetDisplayInfo(your display ID)")
+    if displayID then
+        local ok, err = pcall(c.SetDisplayInfo, c, displayID)
+        Report("C SetDisplayInfo", ok, err and tostring(err))
+        C_Timer.After(0.5, function() ProbeDress(c) end)
+    else
+        c:ClearModel()
+        c.label:SetText("C: no display ID API")
+    end
+
+    -- D: for comparison, the player as the card shows it now.
+    local d = cells[4]
+    d.label:SetText("D: SetUnit only (control)")
+    d:SetUnit("player")
+    C_Timer.After(0.1, function() ProbeDress(d) end)
+end)
+
 -- /rts survey: collects game facts for building realistic seed data, into
 -- RoadToSixtyDB.survey (saved on /reload) as "|"-separated strings:
 --   items       id|name|quality|minLevel|equipLoc|subType for warrior gear

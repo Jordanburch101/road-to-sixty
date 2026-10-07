@@ -3,7 +3,7 @@ local _, ns = ...
 -- Gear cards: a character model wearing recorded gear, turning slowly, with
 -- the item icons laid out as on the character sheet.
 --   GearCard:Show(level, owner)   beside a tooltip: the gear on reaching a
---                                 level (ns.char.levels[level].gear)
+--                                 level (ns.view.levels[level].gear)
 --   GearCard:Dock(parent)         a card in the corner of the journey map that
 --   GearCard:Follow(t)            follows the replay: the gear worn at time t,
 --                                 from level snapshots plus "eq" events, with
@@ -140,6 +140,7 @@ local function RaceBackground(frame, region)
     for _, tex in ipairs(pieces) do
         tex:SetVertexColor(RACE_BACKGROUND_SHADE, RACE_BACKGROUND_SHADE, RACE_BACKGROUND_SHADE)
     end
+    return pieces
 end
 
 -- interactive: slots show item tooltips on hover (not for the hover card,
@@ -256,7 +257,7 @@ local function NewCard(parent, strata, interactive)
         local stageFrame = CreateFrame("Frame", nil, frame)
         stageFrame:SetPoint("TOPLEFT", stage)
         stageFrame:SetSize(MODEL_W, -(bottomY - GAP) + top)
-        RaceBackground(frame, stageFrame)
+        self.raceBackground = RaceBackground(frame, stageFrame)
     end
 
     local model = CreateFrame("DressUpModel", nil, frame)
@@ -269,6 +270,22 @@ local function NewCard(parent, strata, interactive)
     model:SetScript("OnShow", function(m) m.ready = nil end)
     self.model = model
 
+    -- In the model's place for another character's journey: the client can
+    -- only draw the logged-in character (see CLAUDE.md), so that character's
+    -- class icon and name instead.
+    local portrait = CreateFrame("Frame", nil, frame)
+    portrait:SetAllPoints(stage)
+    portrait:Hide()
+    portrait.icon = portrait:CreateTexture(nil, "ARTWORK")
+    portrait.icon:SetSize(56, 56)
+    portrait.icon:SetPoint("CENTER", 0, 18)
+    portrait.name = portrait:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    portrait.name:SetPoint("TOP", portrait.icon, "BOTTOM", 0, -8)
+    portrait.name:SetWidth(MODEL_W - 8)
+    portrait.class = portrait:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    portrait.class:SetPoint("TOP", portrait.name, "BOTTOM", 0, -3)
+    self.portrait = portrait
+
     self.note = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     self.note:SetShadowOffset(1, -1)
     self.note:SetPoint("BOTTOM", stage, "BOTTOM", 0, 4)
@@ -276,9 +293,29 @@ local function NewCard(parent, strata, interactive)
     return self
 end
 
+-- Shows the model, or for another character's journey the portrait in its
+-- place. Returns whether the model is shown.
+function Card:ShowModel()
+    local e = ns.viewEntry
+    self.model:SetShown(not e)
+    self.portrait:SetShown(e ~= nil)
+    for _, tex in ipairs(self.raceBackground or {}) do
+        tex:SetShown(not e)
+    end
+    if e then
+        local portrait = self.portrait
+        ns.SetClassIcon(portrait.icon, e.class)
+        portrait.name:SetText(e.name or "?")
+        portrait.name:SetTextColor(ns.ClassColor(e.class))
+        portrait.class:SetText(ns.ClassName(e.class))
+    end
+    return not e
+end
+
 -- Puts gear on the model. The first dress after showing sets the unit and is
 -- repeated a moment later, as the model may still be loading.
 function Card:Dress(gear)
+    if not self:ShowModel() then return end
     local model = self.model
     local first = not model.ready
     if first then
@@ -364,7 +401,7 @@ end
 -- under the model. Returns false, showing nothing, for levels without
 -- recorded gear, so the caller can show a plain tooltip instead.
 function GearCard:Show(level, owner, title, detail)
-    local snapshot = ns.char.levels[level]
+    local snapshot = ns.view.levels[level]
     local gear = snapshot and snapshot.gear
     if not gear or not next(gear) then
         self:Hide()
@@ -404,12 +441,12 @@ end
 -- (and the level), each "eq" event changes one slot.
 function GearCard:Rebuild()
     local changes = {}
-    for level, snapshot in pairs(ns.char.levels) do
+    for level, snapshot in pairs(ns.view.levels) do
         if snapshot.gear and snapshot.t then
             changes[#changes + 1] = { t = snapshot.t, level = level, gear = snapshot.gear, order = 0 }
         end
     end
-    for i, e in ipairs(ns.char.events) do
+    for i, e in ipairs(ns.view.events) do
         if e[2] == "eq" then
             changes[#changes + 1] = { t = e[1], slot = e[6], id = e[7], order = i }
         end

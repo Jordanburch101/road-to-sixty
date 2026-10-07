@@ -103,6 +103,8 @@ ns.On("ADDON_LOADED", function(name)
     RoadToSixtyCharDB = RoadToSixtyCharDB or {}
     ApplyDefaults(RoadToSixtyCharDB, charDefaults)
     ns.char = RoadToSixtyCharDB
+    -- The journey the map shows; another character's with Roster:SetView.
+    ns.view = ns.char
 
     -- SavedVariables are written on logout and /reload, so the data on disk
     -- is as of this load.

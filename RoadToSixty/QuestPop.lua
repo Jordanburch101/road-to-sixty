@@ -195,7 +195,7 @@ end
 function QuestPop:Rebuild()
     self:Clear()
     wipe(turnins)
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[2] == "qd" then
             turnins[#turnins + 1] = { t = e[1], c = e[3], x = e[4], y = e[5], id = e[6], xp = e[7], title = e[9] }
         end

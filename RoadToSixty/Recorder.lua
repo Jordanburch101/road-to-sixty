@@ -87,14 +87,6 @@ local function CloseSegment()
     current = nil
 end
 
--- Passes a stored point on to the account-wide roster's coarse path.
--- Ghost runs are left out of it.
-local function TrackRoster(mode, c, x, y)
-    if mode ~= "g" and ns.Roster then
-        ns.Roster:Track(c, x, y)
-    end
-end
-
 -- Why a new segment starts here (see seg.j), or nil if unknown. previousMode
 -- and previousC are from the last sample that had a position.
 local function JumpReason(mode, c, previousMode, previousC)
@@ -116,7 +108,6 @@ local function OpenSegment(mode, c, x, y, t, reason)
     local seg = { m = mode, c = c, t = t, x = x, y = y, d = "", j = reason }
     table.insert(ns.char.segments, seg)
     current = { seg = seg, buf = {}, mode = mode, c = c, x = x, y = y, t = t }
-    TrackRoster(mode, c, x, y)
 end
 
 local function Sample()
@@ -159,7 +150,6 @@ local function Sample()
     table.insert(current.buf, (t - current.t) .. "," .. (x - current.x) .. "," .. (y - current.y))
     current.x, current.y, current.t = x, y, t
     Recorder.stored = Recorder.stored + 1
-    TrackRoster(mode, c, x, y)
 
     local totals = ns.char.totals
     if mode == "t" then
@@ -182,22 +172,31 @@ local function Decode(seg, d)
     return { m = seg.m, c = seg.c, j = seg.j, t = ts, x = xs, y = ys }
 end
 
--- Decoded copy of every segment, including the one still being recorded:
+-- Decodes a closed segment of this format, such as the roster's copies.
+function Recorder:Decode(seg)
+    return Decode(seg, seg.d)
+end
+
+-- Decoded copy of segment i, which may be the one still being recorded:
 -- { m = mode, c = continentID, j = jump reason, t = {...}, x = {...}, y = {...} }
+function Recorder:GetPath(i)
+    local seg = ns.char.segments[i]
+    if current and seg == current.seg then
+        return Decode(seg, table.concat(current.buf, ";"))
+    end
+    local path = decoded[seg]
+    if not path then
+        path = Decode(seg, seg.d)
+        decoded[seg] = path
+    end
+    return path
+end
+
+-- Decoded copy of every segment, as GetPath.
 function Recorder:GetPaths()
     local paths = {}
-    for _, seg in ipairs(ns.char.segments) do
-        local path
-        if current and seg == current.seg then
-            path = Decode(seg, table.concat(current.buf, ";"))
-        else
-            path = decoded[seg]
-            if not path then
-                path = Decode(seg, seg.d)
-                decoded[seg] = path
-            end
-        end
-        paths[#paths + 1] = path
+    for i = 1, #ns.char.segments do
+        paths[i] = self:GetPath(i)
     end
     return paths
 end

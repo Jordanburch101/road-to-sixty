@@ -21,7 +21,7 @@ for data, its exact format; read that before changing a module.
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
-| Roster.lua | account-wide character list with coarse paths |
+| Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Health.lua | `/rts check` |
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
@@ -109,6 +109,14 @@ Verified in game; trust these over web guides, and re-check after patches.
   `GetProfessionInfo` (secondary skills included) and `C_TradeSkillUI`
   (window open). Classic `GetSkillLineInfo` and `GetTradeSkillInfo` do not exist.
 - Continents: Eastern Kingdoms is continent 0 / uiMap 1415, Kalimdor is 1 / 1414.
+- Models of other characters: `DressUpModel:SetCustomRace` does not exist.
+  `SetDisplayInfo` with a saved `C_PlayerInfo.GetDisplayID()` gives the right
+  race shape but an untextured white body (weapons still show; armour shows
+  as white shapes only, also on a `ModelScene` actor with
+  `SetModelByCreatureDisplayID`), so only the logged-in character can be
+  shown properly. `SetPlayerModelFromGlues` draws nothing in game.
+- `ModelScene` actors draw black until the scene's fog is cleared
+  (`scene:ClearFog()`); light type 1 keeps them black.
 
 ## Testing in game
 

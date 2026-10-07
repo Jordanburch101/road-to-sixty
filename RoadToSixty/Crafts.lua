@@ -170,7 +170,7 @@ local TIERS = { [75] = "Apprentice", [150] = "Journeyman", [225] = "Expert", [30
 local liveIcons
 function Crafts:Icon(profession)
     if not profession then return self.PROFESSION_ICON end
-    local s = ns.char.skills and ns.char.skills[profession]
+    local s = ns.view.skills and ns.view.skills[profession]
     if s and s[3] then return s[3] end
     if not liveIcons then
         liveIcons = {}
@@ -187,7 +187,7 @@ end
 
 -- The profession whose recipe list (from its window) has this recipe.
 function Crafts:ProfessionOf(recipe)
-    for profession, names in pairs(ns.char.recipes) do
+    for profession, names in pairs(ns.view.recipes) do
         if names[recipe] then return profession end
     end
 end
@@ -195,10 +195,10 @@ end
 -- Recipes learned (rec events) and recipes known now, over all professions.
 function Crafts:RecipeCounts()
     local learned, known = 0, 0
-    for _, e in ipairs(ns.char.events) do
+    for _, e in ipairs(ns.view.events) do
         if e[2] == "rec" then learned = learned + 1 end
     end
-    for _, names in pairs(ns.char.recipes) do
+    for _, names in pairs(ns.view.recipes) do
         for _ in pairs(names) do known = known + 1 end
     end
     return learned, known
