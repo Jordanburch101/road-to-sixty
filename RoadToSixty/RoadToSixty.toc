@@ -14,6 +14,7 @@ ZoneOverlays.lua
 ZoneArt.lua
 Recorder.lua
 Journal.lua
+Crafts.lua
 Roster.lua
 Health.lua
 Map.lua
@@ -21,6 +22,7 @@ Panel.lua
 GearCard.lua
 QuestPop.lua
 KillPop.lua
+KillMarks.lua
 MinimapButton.lua
 Options.lua
 #@debug@

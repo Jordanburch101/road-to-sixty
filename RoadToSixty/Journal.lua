@@ -18,6 +18,7 @@ local addonName, ns = ...
 --   loot itemLink, quality, instanceID   looted an item of green quality or
 --                                  better; instanceID if inside one
 --   eq   slot, itemID              equipment changed; itemID 0 when emptied
+--   prof, rec                      professions and recipes, see Crafts.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}
@@ -78,6 +79,7 @@ local function Snapshot(level, partial)
         instances = totals.instances,
         distance = math.floor(totals.distance),
         flown = math.floor(totals.flown),
+        skills = ns.char.skills and CopyTable(ns.char.skills),   -- profession -> { rank, max }
         partial = partial or nil,
     }
 end

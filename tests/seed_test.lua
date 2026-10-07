@@ -135,6 +135,27 @@ check(g30 and g30[9] == 3228, "Jimmied Handcuffs from the Stockade")
 check(g30 and g30[5] == 6907, "Tortoise Armor from Blackfathom Deeps")
 check((counts.eq or 0) >= 8, "gear changes logged, got " .. tostring(counts.eq))
 
+-- Professions and recipes, in Crafts.lua's formats: professions learned and
+-- trained, recipes with a profession, ranks in the level snapshots.
+local tiers, learned, recipesOK = 0, {}, true
+for _, e in ipairs(char.events) do
+    if e[2] == "prof" then
+        if e[7] <= 1 then learned[e[6]] = true else tiers = tiers + 1 end
+    elseif e[2] == "rec" then
+        recipesOK = recipesOK and type(e[6]) == "string" and type(e[8]) == "string"
+    end
+end
+check(learned["First Aid"] and learned.Skinning and learned.Leatherworking and learned.Cooking,
+    "four professions learned")
+check(tiers >= 4, "professions trained to new tiers, got " .. tiers)
+check((counts.rec or 0) >= 12, "recipes learned, got " .. tostring(counts.rec))
+check(recipesOK, "every recipe has a name and profession")
+check(char.recipes.Leatherworking and char.recipes.Leatherworking["Light Leather Quiver"],
+    "known recipes listed by profession")
+local s30 = char.levels[30].skills
+check(s30 and s30.Leatherworking and s30.Leatherworking[2] == 225 and s30.Leatherworking[1] > 125,
+    "level 30 snapshot has Leatherworking in the Expert tier")
+
 -- Quest turn-ins carry a name, for the map's quest pops.
 local unnamed = 0
 for _, e in ipairs(char.events) do

@@ -23,7 +23,9 @@ local currentTime = math.huge   -- replay time History follows; math.huge at the
 local currentIndex              -- index in historyList.data of the entry at currentTime
 local summaryValues = {}
 
-local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited" }
+local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
+    "Professions", "Recipes" }
+local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
 
 local function ZoneName(mapID)
     local info = mapID and C_Map.GetMapInfo(mapID)
@@ -230,6 +232,8 @@ local TITLE_COLORS = {
     boat = { 0.55, 0.85, 1 },
     flight = { 0.55, 0.85, 1 },
     qd = { 1, 0.9, 0.55 },
+    prof = { 0.6, 0.9, 1 },
+    rec = { 0.8, 0.9, 1 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -261,27 +265,35 @@ local function UpdateHistoryRow(row, item)
     row.time:SetText(date("%H:%M", item.t))
 end
 
--- Filter toggles above the list, one icon each: { key, label, kind, level,
--- file, quality } for ns.SetEventIcon, with a quality border when quality is
--- set. ns.db.historyFilter[key] is false when hidden.
-local LOOT_FILTER_ICON = "Interface\\Icons\\INV_Misc_Bag_08"
+-- Filter groups above the list, one icon each: { label, icon, members },
+-- icon as { kind, level } for ns.SetEventIcon or { atlas = name }, members as
+-- { key, label }. Left-click turns a whole group on or off, right-click picks
+-- its members. ns.db.historyFilter[key] is false when hidden; the map's
+-- markers follow the same keys.
 local HISTORY_FILTERS = {
-    { "levels", "Levels", "lvl", 10 },
-    { "deaths", "Deaths", "die" },
-    { "dungeons", "Dungeons", "run" },
-    { "flights", "Flight paths", "flight" },
-    { "hearths", "Hearthstones", "hearth" },
-    { "teleports", "Teleports", "teleport" },
-    { "boats", "Boats and zeppelins", "boat" },
-    { "zones", "New zones", "zone" },
-    { "quests", "Quests turned in", "qd" },
-    { "greens", "Green items", "loot", nil, LOOT_FILTER_ICON, 2 },
-    { "blues", "Blue items and better", "loot", nil, LOOT_FILTER_ICON, 3 },
+    { "Levels", { "lvl", 10 }, { { "levels", "Levels" } } },
+    { "Deaths", { "die" }, { { "deaths", "Deaths" } } },
+    { "Dungeons", { "run" }, { { "dungeons", "Dungeons" } } },
+    { "Travel", { "flight" }, {
+        { "flights", "Flight paths" }, { "hearths", "Hearthstones" },
+        { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" },
+    } },
+    { "New zones", { "zone" }, { { "zones", "New zones" } } },
+    { "Quests", { "qd" }, { { "quests", "Quests turned in" } } },
+    { "Loot", { atlas = "Banker" }, {
+        { "greens", "Green items" }, { "blues", "Blue items and better" },
+    } },
+    { "Crafting", { atlas = "Profession" }, {
+        { "professions", "Professions" }, { "recipes", "Recipes" },
+    } },
 }
-local FILTER_SIZE, FILTER_GAP = 22, 2
+-- Buttons are spread evenly across the pane; every icon is drawn the same
+-- size, whatever its size on the map, so the row looks even.
+local FILTER_SIZE, FILTER_ICON, FILTER_MARGIN = 28, 24, 4
 local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
+    prof = "professions", rec = "recipes",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -459,6 +471,11 @@ local function BuildHistory()
             local getIcon = C_Item and C_Item.GetItemIconByID or GetItemIcon
             Add({ kind = kind, quality = e[7], link = e[6], title = e[6], iconFile = getIcon and getIcon(e[6]) },
                 t, c, x, y, e[8] and (instanceNames[e[8]] or "Instance") or where)
+        elseif kind == "prof" or kind == "rec" then
+            local title, detail, icon = ns.Crafts:Describe(e)
+            if title then
+                Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y, detail .. " - " .. where)
+            end
         end
     end
 
@@ -477,53 +494,167 @@ local function BuildHistory()
     return items
 end
 
--- A row of icon toggles, one per category; hidden categories are greyed out.
--- Returns the row's height.
+local function Shown(key)
+    return ns.db.historyFilter[key] ~= false
+end
+
+local function FiltersChanged()
+    FilterHistory()
+    ns.Map:RefreshFilters()
+end
+
+-- The right-click menu: a check box per member of one group.
+local filterMenu
+
+local function ShowFilterMenu(button, group, onChange)
+    if not filterMenu then
+        filterMenu = CreateFrame("Frame", nil, button:GetParent(), "BackdropTemplate")
+        filterMenu:SetFrameStrata("DIALOG")
+        filterMenu:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        filterMenu:SetBackdropColor(0, 0, 0, 0.92)
+        filterMenu:EnableMouse(true)
+        filterMenu.title = filterMenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        filterMenu.title:SetPoint("TOPLEFT", 10, -8)
+        filterMenu.boxes = {}
+        -- Closes once the mouse has been away from it and its button for a moment.
+        filterMenu:SetScript("OnUpdate", function(self, elapsed)
+            if self:IsMouseOver() or (self.owner and self.owner:IsMouseOver()) then
+                self.away = 0
+            else
+                self.away = (self.away or 0) + elapsed
+                if self.away > 0.6 then self:Hide() end
+            end
+        end)
+    end
+    local menu = filterMenu
+    menu.owner, menu.away = button, 0
+    menu.title:SetText(group[1])
+    for _, box in ipairs(menu.boxes) do
+        box:Hide()
+    end
+    local width = menu.title:GetStringWidth()
+    for i, member in ipairs(group[3]) do
+        local box = menu.boxes[i]
+        if not box then
+            box = CreateFrame("CheckButton", nil, menu, "UICheckButtonTemplate")
+            box:SetSize(20, 20)
+            box:SetPoint("TOPLEFT", 6, -6 - i * 20)
+            box.label = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            box.label:SetPoint("LEFT", box, "RIGHT", 2, 0)
+            menu.boxes[i] = box
+        end
+        local key = member[1]
+        box.label:SetText(member[2])
+        box:SetChecked(Shown(key))
+        box:SetScript("OnClick", function(self)
+            ns.db.historyFilter[key] = self:GetChecked() and true or false
+            onChange()
+        end)
+        box:Show()
+        width = math.max(width, 24 + box.label:GetStringWidth())
+    end
+    menu:SetSize(width + 20, 14 + (#group[3] + 1) * 20)
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", button, "BOTTOMLEFT", -4, -2)
+    menu:Show()
+end
+
+-- A row of group icons. A group is greyed out when all its members are
+-- hidden and dimmed when only some are. Returns the row's height.
 local function CreateHistoryFilters(pane)
-    for i, filter in ipairs(HISTORY_FILTERS) do
-        local key, label = filter[1], filter[2]
+    local buttons = {}
+    -- Spread across the pane's width, first and last FILTER_MARGIN from its sides.
+    local function Layout()
+        local step = (pane:GetWidth() - 2 * FILTER_MARGIN - FILTER_SIZE) / (#buttons - 1)
+        for i, button in ipairs(buttons) do
+            button:SetPoint("TOPLEFT", math.floor(FILTER_MARGIN + (i - 1) * step + 0.5), 0)
+        end
+    end
+    pane:HookScript("OnSizeChanged", Layout)
+
+    for _, group in ipairs(HISTORY_FILTERS) do
+        local label, look, members = group[1], group[2], group[3]
         local button = CreateFrame("Button", nil, pane)
         button:SetSize(FILTER_SIZE, FILTER_SIZE)
-        button:SetPoint("TOPLEFT", 2 + (i - 1) * (FILTER_SIZE + FILTER_GAP), 0)
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        buttons[#buttons + 1] = button
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetPoint("CENTER")
-        local number = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        icon:SetSize(FILTER_ICON, FILTER_ICON)
+        local number = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         number:SetPoint("CENTER", icon, 0.5, 0)
-        local size = ns.SetEventIcon(icon, number, filter[3], filter[4], filter[5])
-        icon:SetSize(size, size)
-        local border = button:CreateTexture(nil, "OVERLAY")
-        border:SetAllPoints(icon)
-        ns.SetQualityOverlay(border, filter[6])
+        if look.atlas then
+            icon:SetAtlas(look.atlas)
+            number:SetText("")
+        else
+            ns.SetEventIcon(icon, number, look[1], look[2])
+        end
         local highlight = button:CreateTexture(nil, "HIGHLIGHT")
         highlight:SetAllPoints()
         highlight:SetColorTexture(1, 1, 1, 0.12)
 
-        local function Refresh()
-            local on = ns.db.historyFilter[key] ~= false
-            for _, part in ipairs({ icon, border }) do
-                part:SetDesaturated(not on)
-                part:SetAlpha(on and 1 or 0.35)
+        local function CountShown()
+            local shown = 0
+            for _, member in ipairs(members) do
+                if Shown(member[1]) then shown = shown + 1 end
             end
-            number:SetAlpha(on and 1 or 0.35)
+            return shown
+        end
+        local function Refresh()
+            local shown = CountShown()
+            local alpha = shown == #members and 1 or shown > 0 and 0.7 or 0.35
+            icon:SetDesaturated(shown == 0)
+            icon:SetAlpha(alpha)
+            number:SetAlpha(alpha)
         end
         local function ShowTooltip()
             GameTooltip:SetOwner(button, "ANCHOR_BOTTOM")
             GameTooltip:AddLine(label)
-            GameTooltip:AddLine(ns.db.historyFilter[key] ~= false and "Shown - click to hide" or "Hidden - click to show",
-                0.8, 0.8, 0.8)
+            if #members > 1 then
+                for _, member in ipairs(members) do
+                    local on = Shown(member[1])
+                    GameTooltip:AddDoubleLine(member[2], on and "Shown" or "Hidden",
+                        1, 1, 1, on and 0.4 or 0.6, on and 1 or 0.6, on and 0.4 or 0.6)
+                end
+                GameTooltip:AddLine(CountShown() > 0 and "Click to hide all, right-click to choose"
+                    or "Click to show all, right-click to choose", 0.8, 0.8, 0.8)
+            else
+                GameTooltip:AddLine(Shown(members[1][1]) and "Shown - click to hide" or "Hidden - click to show",
+                    0.8, 0.8, 0.8)
+            end
             GameTooltip:Show()
         end
-        button:SetScript("OnClick", function()
-            ns.db.historyFilter[key] = ns.db.historyFilter[key] == false
+        local function Changed()
             Refresh()
+            FiltersChanged()
+        end
+        button:SetScript("OnClick", function(_, mouse)
+            if mouse == "RightButton" and #members > 1 then
+                GameTooltip_Hide()
+                ShowFilterMenu(button, group, Changed)
+                return
+            end
+            local show = CountShown() == 0
+            for _, member in ipairs(members) do
+                ns.db.historyFilter[member[1]] = show
+            end
+            if filterMenu then filterMenu:Hide() end
+            Changed()
             ShowTooltip()
-            FilterHistory()
-            ns.Map:RefreshFilters()
         end)
-        button:SetScript("OnEnter", ShowTooltip)
+        button:SetScript("OnEnter", function()
+            if not (filterMenu and filterMenu:IsShown() and filterMenu.owner == button) then
+                ShowTooltip()
+            end
+        end)
         button:SetScript("OnLeave", GameTooltip_Hide)
         Refresh()
     end
+    Layout()
     return FILTER_SIZE
 end
 
@@ -591,6 +722,26 @@ local function BuildLevels()
     return items
 end
 
+-- Professions sorted by name: { name, rank, max }.
+local function Professions()
+    local list = {}
+    for name, s in pairs(ns.char.skills or {}) do
+        list[#list + 1] = { name, s[1] or 0, s[2] or 0 }
+    end
+    table.sort(list, function(a, b) return a[1] < b[1] end)
+    return list
+end
+
+local function ProfessionsSummary()
+    local list = Professions()
+    if #list == 0 then return "-" end
+    local best = list[1]
+    for _, p in ipairs(list) do
+        if p[2] > best[2] then best = p end
+    end
+    return ("%d, best %s %d"):format(#list, best[1], best[2])
+end
+
 local function RefreshStats()
     local char, t = ns.char, ns.char.totals
     local zones = {}
@@ -612,6 +763,8 @@ local function RefreshStats()
         Commas(t.deaths),
         Commas(t.instances),
         zoneCount,
+        ProfessionsSummary(),
+        ("%d learned, %d known"):format(ns.Crafts:RecipeCounts()),
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -631,6 +784,25 @@ local function CreateStatsPane(pane)
         value:SetPoint("TOPRIGHT", -4, y)
         summaryValues[i] = value
     end
+
+    -- Hovering the professions row lists them all.
+    local hover = CreateFrame("Frame", nil, pane)
+    hover:SetPoint("TOPLEFT", 0, -(PROFESSIONS_ROW - 1) * SUMMARY_ROW + 2)
+    hover:SetPoint("RIGHT")
+    hover:SetHeight(SUMMARY_ROW)
+    hover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Professions")
+        local list = Professions()
+        for _, p in ipairs(list) do
+            GameTooltip:AddDoubleLine(p[1], ("%d / %d"):format(p[2], p[3]), 1, 1, 1, 1, 1, 1)
+        end
+        if #list == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    hover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do

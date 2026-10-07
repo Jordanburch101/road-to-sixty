@@ -77,6 +77,49 @@ local GEAR_POOL = {
     { 647, 60 },
 }
 
+-- Professions and recipes, as Crafts.lua logs them, for both seeds: a warrior
+-- with Skinning and Leatherworking plus the secondary skills. Per level:
+-- learn = { { profession, rank, max } } learned or trained to a new tier, and
+-- recipes = { { name, spell ID, profession, from a trainer } }. Spell IDs are Classic's;
+-- the saved profession is what History shows.
+local CRAFT_PLAN = {
+    [3] = { learn = { { "First Aid", 1, 75 } }, recipes = { { "Linen Bandage", 3275, "First Aid", true } } },
+    [5] = {
+        learn = { { "Skinning", 1, 75 }, { "Leatherworking", 1, 75 } },
+        recipes = {
+            { "Light Leather", 2881, "Leatherworking", true },
+            { "Handstitched Leather Boots", 2149, "Leatherworking", true },
+            { "Light Armor Kit", 2152, "Leatherworking", true },
+        },
+    },
+    [6] = { learn = { { "Cooking", 1, 75 } }, recipes = { { "Spiced Wolf Meat", 2539, "Cooking", true } } },
+    [8] = { recipes = { { "Handstitched Leather Belt", 3753, "Leatherworking", true } } },
+    [10] = {
+        learn = { { "Leatherworking", 50, 150 }, { "Skinning", 50, 150 } },
+        recipes = {
+            { "Handstitched Leather Cloak", 9058, "Leatherworking", true },
+            { "Light Leather Quiver", 9060, "Leatherworking", true },
+        },
+    },
+    [12] = { learn = { { "First Aid", 50, 150 } }, recipes = { { "Heavy Linen Bandage", 3276, "First Aid", true } } },
+    [14] = { recipes = { { "Roasted Boar Meat", 2540, "Cooking" }, { "Coyote Steak", 2541, "Cooking" } } },
+    [16] = { recipes = { { "Wool Bandage", 3277, "First Aid", true } } },
+    [18] = { recipes = { { "Embossed Leather Gloves", 3756, "Leatherworking", true } } },
+    [20] = {
+        learn = { { "Leatherworking", 125, 225 }, { "Skinning", 125, 225 } },
+        recipes = {
+            { "Fine Leather Belt", 3763, "Leatherworking", true },
+            { "Embossed Leather Vest", 2160, "Leatherworking", true },
+        },
+    },
+    [22] = { learn = { { "First Aid", 125, 225 } }, recipes = { { "Heavy Wool Bandage", 3278, "First Aid", true } } },
+    [24] = { recipes = { { "Crab Cake", 2544, "Cooking" } } },
+    [26] = { recipes = { { "Embossed Leather Boots", 2161, "Leatherworking", true } } },
+    [35] = { learn = { { "Leatherworking", 200, 300 }, { "Skinning", 200, 300 } } },
+    [40] = { learn = { { "First Aid", 225, 300 } } },
+}
+local CRAFT_RATE = { ["First Aid"] = 6, Skinning = 7, Leatherworking = 6, Cooking = 4 }  -- skill ups per level
+
 -- Equip location -> inventory slot. Rings and trinkets are not in the pool.
 local EQUIP_SLOTS = {
     INVTYPE_HEAD = 1, INVTYPE_NECK = 2, INVTYPE_SHOULDER = 3, INVTYPE_BODY = 4,
@@ -263,10 +306,41 @@ local function CopyGear()
     return copy
 end
 
+-- On reaching a level: skill ups for the professions known, then what
+-- CRAFT_PLAN learns at this level, logged like Crafts.lua does.
+local function LearnCrafts(level)
+    local skills = G.char.skills
+    for name, s in pairs(skills) do
+        s[1] = math.min(s[2], s[1] + (CRAFT_RATE[name] or 5))
+    end
+    local plan = CRAFT_PLAN[level]
+    if not plan then return end
+    for _, p in ipairs(plan.learn or {}) do
+        local name, rank, max = p[1], p[2], p[3]
+        skills[name] = { math.max(rank, skills[name] and skills[name][1] or 0), max }
+        Log("prof", name, rank, max)
+    end
+    for _, r in ipairs(plan.recipes or {}) do
+        local known = G.char.recipes[r[3]] or {}
+        known[r[1]] = true
+        G.char.recipes[r[3]] = known
+        Log("rec", r[1], r[2], r[3], r[4] and "t" or nil)
+    end
+end
+
+local function CopySkills()
+    local copy = {}
+    for name, s in pairs(G.char.skills) do
+        copy[name] = { s[1], s[2] }
+    end
+    return copy
+end
+
 local function Snapshot(level)
     local totals = G.char.totals
     G.char.levels[level] = {
         gear = CopyGear(),
+        skills = CopySkills(),
         t = G.t,
         money = level * level * 250,
         kills = totals.kills,
@@ -303,6 +377,7 @@ local function CheckLevel()
         G.level = G.level + 1
         Log("lvl", G.level)
         GearUpTo(G.level)
+        LearnCrafts(G.level)
         Snapshot(G.level)
     end
 end
@@ -483,6 +558,7 @@ local function Begin(zone, x, y, daysAgo, items, settings)
         killBuf = {}, mobIndex = {},
     }
     G.char.kills = { d = "", last = 0, names = {} }
+    G.char.skills, G.char.recipes = {}, {}
     for k, v in pairs(settings) do
         G[k] = v
     end
@@ -502,6 +578,7 @@ local function Finish(maxLevel, started, label)
         G.level = G.level + 1
         Log("lvl", G.level)
         GearUpTo(G.level)
+        LearnCrafts(G.level)
         Snapshot(G.level)
     end
     CloseSegment()

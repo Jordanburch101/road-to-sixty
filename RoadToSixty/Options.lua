@@ -65,6 +65,12 @@ local SECTIONS = {
             set = function(on) ns.db.killPops = on end,
         },
         {
+            label = "Show where you killed",
+            tip = "A faint mark on the map for every kill. One kill barely shows, but the places you ground for a while stand out.",
+            get = function() return ns.db.killMarks end,
+            set = function(on) ns.db.killMarks = on end,
+        },
+        {
             label = "Show gear during the replay",
             tip = "A card in the map's corner showing what you wore, changing as the replay plays. Same as the map's Gear button.",
             get = function() return ns.db.showGear end,

@@ -119,6 +119,8 @@ local MARKER_ZOOM = {
     level = 5,
     death = 6,
     quest = 5,
+    profession = 2.5,
+    recipe = 5,
 }
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
@@ -139,6 +141,8 @@ local EVENT_ICONS = {
     boat = { atlas = "poi-islands-table", size = 20 },
     loot = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 },
     qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
+    prof = { file = "Interface\\Icons\\INV_Misc_Book_11", size = 18 },
+    rec = { file = "Interface\\Icons\\INV_Scroll_03", size = 16 },
 }
 
 local INSTANCE_TYPES = {
@@ -249,7 +253,9 @@ end
 -- The History filter applies to the map too. Category of each jump reason
 -- (seg.j); reasons without one are always shown.
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
-local MARKER_CATEGORY = { lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests" }
+local MARKER_CATEGORY = {
+    lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
+}
 
 -- False if the player has turned this History filter category off.
 function ns.FilterShown(category)
@@ -701,6 +707,21 @@ local function BuildMarkers()
             else
                 m.title = ("%d quests turned in"):format(#names)
                 m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), ZoneName(zone), FormatTime(visit.first))
+            end
+        elseif toContent and (kind == "prof" or kind == "rec") then
+            local title, detail, icon = ns.Crafts:Describe(e)
+            if title then
+                count = count + 1
+                local m = GetMarker(count)
+                m.t, m.popping, m.level = t, nil, nil
+                m.x, m.y = toContent(e[4], e[5])
+                m.c = e[3]
+                m.category = MARKER_CATEGORY[kind]
+                m.minZoom = kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
+                local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
+                m:SetSize(size, size)
+                m.title = title
+                m.detail = ("%s\n%s\n%s"):format(detail, ZoneName(zone), FormatTime(t))
             end
         elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then
             count = count + 1
@@ -1543,6 +1564,7 @@ local function ApplyView()
     continentLayer:SetAlpha(Fade(z, CONTINENT_FADE))
     zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
+    ns.KillMarks:SetZoom(z)
     if not ns.db.terrain and z >= zoneView.FADE[1] then
         zoneView:Update(ViewArea(0))
     end
@@ -1762,6 +1784,7 @@ local function ApplyCursor()
     -- At the end, show every marker, even ones after the last movement.
     state.markerNow = (seq >= state.n) and math.huge or (state.pt[seq] or 0)
     UpdateMarkers()
+    ns.KillMarks:SetTime(state.markerNow)
     ns.Panel:SetTime(state.markerNow)
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
@@ -2196,8 +2219,9 @@ local function CreateWindow()
     continentLayer = CreateLayer(2)
     zoneView = ns.CreateZoneView(CreateLayer(3))
     terrainLayer = CreateLayer(4)
-    othersLayer = CreateLayer(5)
-    pathLayer = CreateLayer(6)
+    ns.KillMarks:Attach(CreateLayer(5))
+    othersLayer = CreateLayer(6)
+    pathLayer = CreateLayer(7)
 
     hoverLine = pathLayer:CreateLine(nil, "OVERLAY")
     hoverLine:SetColorTexture(1, 1, 1, 0.45)
@@ -2361,6 +2385,7 @@ function Map:Open()
     ns.GearCard:Rebuild()
     ns.QuestPop:Rebuild()
     ns.KillPop:Rebuild()
+    ns.KillMarks:Rebuild()
     StartWarmUp()
     state.perf.setup = debugprofilestop() - started
 
@@ -2468,6 +2493,26 @@ function Map:ReplayPosition()
     local seq = math.floor(state.cur)
     if seq < 1 or seq > state.n then return end
     return state.px[seq], state.py[seq]
+end
+
+-- Where the path was at time t, in content units: its last point at or
+-- before t, if that is recent enough to stand for t; nil otherwise. The path
+-- only gets points while moving, so a long fight in one spot still counts.
+Map.POSITION_GAP = 900      -- seconds
+function Map:PositionAt(t)
+    local seq = SeqAt(t)
+    if seq < 1 or t - state.pt[seq] > self.POSITION_GAP then return end
+    return state.px[seq], state.py[seq]
+end
+
+-- Content units per world yard, from the first continent on the map (they
+-- are drawn at about the same scale); nil before the world is set up.
+function Map:ContentPerYard()
+    for _, toContent in pairs(state.toContent) do
+        local x1, y1 = toContent(0, 0)
+        local x2, y2 = toContent(1000, 0)
+        return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2) / 1000
+    end
 end
 
 -- Canvas position of a content point in the current view.

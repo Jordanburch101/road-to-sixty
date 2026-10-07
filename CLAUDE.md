@@ -20,11 +20,12 @@ for data, its exact format; read that before changing a module.
 | Core.lua | saved variable defaults, `ns.On` (event bus), `ns.Command` (slash commands), `ns.SafeCall`, `ns.Print` |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
+| Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
 | Roster.lua | account-wide character list with coarse paths |
 | Health.lua | `/rts check` |
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
-| Panel.lua, GearCard.lua, QuestPop.lua, KillPop.lua | map side panel and replay effects |
+| Panel.lua, GearCard.lua, QuestPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua | developer tools, left out of releases |
 
@@ -102,6 +103,9 @@ Verified in game; trust these over web guides, and re-check after patches.
 - Zone highlight textures hold their shape in colour only, so they cannot be
   used as masks; ZoneMasks/ are alpha masks made from them. A texture can
   take several mask textures and they multiply. Cities have no highlight.
+- Professions and recipes use the modern APIs: `GetProfessions` /
+  `GetProfessionInfo` (secondary skills included) and `C_TradeSkillUI`
+  (window open). Classic `GetSkillLineInfo` and `GetTradeSkillInfo` do not exist.
 - Continents: Eastern Kingdoms is continent 0 / uiMap 1415, Kalimdor is 1 / 1414.
 
 ## Testing in game

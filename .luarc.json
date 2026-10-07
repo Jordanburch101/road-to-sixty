@@ -36,6 +36,8 @@
         "LOOT_ITEM_SELF",
         "LOOT_ITEM_SELF_MULTIPLE",
         "PlayerFrame",
-        "PlayerLevelText"
+        "PlayerLevelText",
+        "ERR_LEARN_RECIPE_S",
+        "GetSpellInfo"
     ]
 }
