@@ -49,6 +49,25 @@ CurseForge. Tags containing `beta` or `alpha` become pre-releases. The
 version comes from the tag. The CurseForge description and screenshots are
 not synced; they are edited on CurseForge by hand.
 
+## Work tracking: GitHub issues
+
+Features, bugs and their context live in GitHub issues on this repo (`gh`).
+Treat them as the shared memory of what is planned, decided and done.
+
+- Before starting a feature or fix, look for its issue (`gh issue list`,
+  `gh issue view <n>`) and read it with its comments. If there is none and
+  the work is more than a quick fix, open one.
+- While working, comment on the issue when something worth keeping happens:
+  a decision and why, an API verified or found blocked on Forever, a design
+  change, what Jordan picked from a screenshot, what is left.
+- Keep the issue body's plan current if the design changes; the body is the
+  summary, the comments are the history.
+- Reference the issue in commits (`Guilds: record joining (#5)`), and close
+  it with a short summary comment of what shipped (and in which version)
+  once the work is released or merged, not before. Open follow-up issues for
+  anything deferred.
+- Issues are public: no secrets, personal paths or email addresses.
+
 ## Conventions
 
 - Developer-only code sits between `#@debug@` / `#@end-debug@` in the toc and
