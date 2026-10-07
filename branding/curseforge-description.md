@@ -56,7 +56,6 @@ Or use:
 | `/rts reset confirm` | Erase this character's journey |
 
 ## Good to know
-- The game saves addon data when you **log out** or **/reload**. If the game crashes, the last part of that session may be lost.
 - Recording starts when you install the addon. Earlier travels cannot be recovered, so install it early!
 - Journeys are stored per character. The Characters tab shows all of them on your account.
 
