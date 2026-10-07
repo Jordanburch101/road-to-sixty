@@ -2,6 +2,10 @@
 
 **Road to Sixty** quietly records where your character goes from level 1 to 60. Open the map whenever you like to see your whole adventure drawn across Azeroth, and replay it from the very first step.
 
+▶️ **[Watch the full preview on YouTube](https://www.youtube.com/watch?v=M2YvRo5EgJY)**
+
+*The screenshots and video use generated test data, so the paths zigzag more than a real character's would. Your own journey will be much more accurate, following the roads, quest hubs and flight paths you actually took.*
+
 ## Features
 
 ### Your path on the world map
@@ -17,6 +21,10 @@
 - Road to Sixty remembers what you wore at every level up.
 - Hover a level up on the map, in History or in Stats to see your character in that gear, character sheet style.
 - Turn on **Gear** during a replay to watch your gear change as you go, with a gold flash on each upgrade. Hover a slot for the item's tooltip.
+
+### Quests turned in
+- During a replay, a golden quest mark pops up wherever you handed in a quest, with its name and experience. Hand in five at once and they ripple through one after another.
+- Turn on the **Quests** filter in History to list every turn-in and mark your quest hubs on the map.
 
 ### Every jump explained
 - **Hearthstones**, **mage teleports**, **boats**, **deaths** and **dungeons** are drawn as coloured arcs, with an icon when you zoom in.

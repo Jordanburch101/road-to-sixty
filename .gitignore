@@ -10,3 +10,6 @@ branding/mock/
 
 # Test images for /rts shots
 RoadToSixty/shots/
+
+# Video branding output (branding/make-video.ps1)
+branding/video/
