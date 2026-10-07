@@ -9,7 +9,7 @@
 ## Features
 
 ### Your path on the world map
-- One map for the whole world, in a window styled like the game's own: zoom smoothly from Azeroth into each continent and down to terrain detail.
+- One map for the whole world, in a window styled like the game's own: zoom smoothly from Azeroth into each continent and down to terrain detail, or with terrain off, into the game's own zone maps, fully revealed.
 - The path changes colour as you level, using the item quality colours: **white**, **green**, **blue**, **purple**, **orange**.
 - Flight paths and corpse runs have their own styles, and arcane sparkles drift along the road.
 

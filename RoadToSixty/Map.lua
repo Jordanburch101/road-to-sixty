@@ -151,6 +151,7 @@ ns.InstanceTypes = INSTANCE_TYPES
 
 local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton, gearButton
 local continentLayer, terrainLayer, othersLayer, pathLayer
+local zoneView  -- zone art, see ZoneArt.lua
 local charMarkers, otherLines = {}, {}
 local infoText, hintText, perfText, head
 local lines, markers, motes = {}, {}, {}
@@ -440,6 +441,7 @@ local function AddArt(parent, uiMap, x1, y1, x2, y2)
         tex:SetSize(w * sx, h * sy)
     end
 end
+ns.AddMapArt = AddArt
 
 -- Points inside a tile, as fractions of it, tested for being in a zone:
 -- a 4x4 grid reaching close to the edges, centre ones first.
@@ -565,6 +567,7 @@ local function SetupWorld(worldLayer)
             end
             state.toContent[continentID] = toContent
             AddArt(continentLayer, child.mapID, x1, y1, x1 + sx, y1 + sy)
+            zoneView:AddContinent(child.mapID, x1, y1, sx, sy)
             AddTerrainTiles(continentID, child.mapID, toMap, toContent)
         end
     end
@@ -1239,20 +1242,6 @@ local function NeedsPathBuild()
     return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM
 end
 
--- Older clients have SetGradientAlpha; newer ones take colour objects.
--- tint is an optional { r, g, b }.
-local function SetAlphaGradient(tex, orientation, minAlpha, maxAlpha, tint)
-    local r, g, b = 1, 1, 1
-    if tint then
-        r, g, b = tint[1], tint[2], tint[3]
-    end
-    if tex.SetGradientAlpha then
-        tex:SetGradientAlpha(orientation, r, g, b, minAlpha, r, g, b, maxAlpha)
-    else
-        tex:SetGradient(orientation, CreateColor(r, g, b, minAlpha), CreateColor(r, g, b, maxAlpha))
-    end
-end
-
 local function ReleaseTile(index)
     for _, tex in ipairs(activeTiles[index]) do
         tex:Hide()
@@ -1274,7 +1263,7 @@ local function ShowTile(index)
             tex.fileID = tile[1]
         end
         tex:SetTexCoord(piece[1], piece[2], piece[3], piece[4])
-        SetAlphaGradient(tex, piece[5], piece[6], piece[7], tile.skipped and SKIPPED_TINT)
+        ns.SetAlphaGradient(tex, piece[5], piece[6], piece[7], tile.skipped and SKIPPED_TINT)
         tex:ClearAllPoints()
         tex:SetPoint("TOPLEFT", terrainLayer, "TOPLEFT", x1 + piece[1] * w, -(y1 + piece[3] * h))
         tex:SetPoint("BOTTOMRIGHT", terrainLayer, "TOPLEFT", x1 + piece[2] * w, -(y1 + piece[4] * h))
@@ -1552,7 +1541,11 @@ local function ApplyView()
     content:SetScale(z)
     content:SetPoint("TOPLEFT", canvas, "TOPLEFT", -state.ox, state.oy)
     continentLayer:SetAlpha(Fade(z, CONTINENT_FADE))
+    zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
+    if not ns.db.terrain and z >= zoneView.FADE[1] then
+        zoneView:Update(ViewArea(0))
+    end
 
     if NeedsPathBuild() then
         BuildPath()
@@ -1971,6 +1964,9 @@ local function OnUpdate(_, elapsed)
     if ns.db.motes then
         UpdateMotes(elapsed)
     end
+    if zoneView.fading then
+        zoneView:Step(elapsed)
+    end
     if state.warm then
         StepWarmUp()
     end
@@ -2198,9 +2194,10 @@ local function CreateWindow()
     content:SetFrameLevel(canvas:GetFrameLevel() + 1)
     local worldLayer = CreateLayer(1)
     continentLayer = CreateLayer(2)
-    terrainLayer = CreateLayer(3)
-    othersLayer = CreateLayer(4)
-    pathLayer = CreateLayer(5)
+    zoneView = ns.CreateZoneView(CreateLayer(3))
+    terrainLayer = CreateLayer(4)
+    othersLayer = CreateLayer(5)
+    pathLayer = CreateLayer(6)
 
     hoverLine = pathLayer:CreateLine(nil, "OVERLAY")
     hoverLine:SetColorTexture(1, 1, 1, 0.45)
@@ -2249,7 +2246,7 @@ local function CreateWindow()
             shadow:SetWidth(MAP_SHADOW[1])
         end
         shadow:SetColorTexture(1, 1, 1, 1)
-        SetAlphaGradient(shadow, s[3], s[4], s[5], { 0, 0, 0 })
+        ns.SetAlphaGradient(shadow, s[3], s[4], s[5], { 0, 0, 0 })
     end
 
     hintText = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

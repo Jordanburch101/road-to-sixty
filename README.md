@@ -19,7 +19,11 @@ is optional; when installed, `check.ps1` also reports its diagnostics.
 To play with the source in game, link or copy `RoadToSixty/` into
 `World of Warcraft/_classic_beta_/Interface/AddOns/`. The source includes the
 developer tools (`/rts seed`, `/rts swatch`, `/rts icons`, `/rts probe`,
-`/rts terrain`, `/rts levelart`, `/rts tiles`, `/rts perf`).
+`/rts terrain`, `/rts zoneprobe`, `/rts levelart`, `/rts tiles`, `/rts perf`).
+
+Zone map data (`ZoneOverlays.lua`, `ZoneMasks/`) is generated from the
+client's tables on wago.tools; after a patch that changes map art, rerun
+`python scripts/zone-overlays.py <build>` (needs Pillow).
 
 ### Developer-only code
 

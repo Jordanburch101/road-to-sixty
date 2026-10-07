@@ -135,6 +135,132 @@ ns.Command("terrain", "test showing minimap terrain tiles around you", function(
     ns.Print(("Tile map%d_%d in %s. %d of 9 tiles have a known file ID."):format(col, row, dir, known))
 end)
 
+-- /rts zoneprobe [mapID]: checks the zone art the journey map fades into.
+-- Shows a zone (yours, or the map ID given) four ways:
+--   1 the zone's shipped mask, in red, where the game places its outline
+--   2 base art + every overlay from ZoneOverlays.lua (should be fully revealed)
+--   3 the continent art cropped to the zone
+--   4 panel 2 masked to the outline, over panel 3, as the journey map shows it
+
+local ZONE_PANEL_W, ZONE_PANEL_H = 480, 320
+local zoneFrame, zonePanels
+
+local function CreateZoneFrame()
+    zoneFrame = CreateFrame("Frame", "RoadToSixtyZoneProbe", UIParent, "BasicFrameTemplateWithInset")
+    zoneFrame:SetSize(2 * (ZONE_PANEL_W + 10) + 18, 2 * (ZONE_PANEL_H + 26) + 40)
+    zoneFrame:SetScale(math.min(1, UIParent:GetHeight() * 0.95 / (2 * (ZONE_PANEL_H + 26) + 40)))
+    zoneFrame:SetPoint("CENTER")
+    zoneFrame:SetFrameStrata("HIGH")
+    zoneFrame:SetClampedToScreen(true)
+    zoneFrame:SetMovable(true)
+    zoneFrame:EnableMouse(true)
+    zoneFrame:RegisterForDrag("LeftButton")
+    zoneFrame:SetScript("OnDragStart", zoneFrame.StartMoving)
+    zoneFrame:SetScript("OnDragStop", zoneFrame.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "RoadToSixtyZoneProbe")
+    zoneFrame.title = zoneFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    zoneFrame.title:SetPoint("TOP", 0, -5)
+end
+
+-- A clipped panel at grid position i (1-4) with a dark back and a label.
+local function ZonePanel(parent, i, text)
+    local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+    local panel = CreateFrame("Frame", nil, parent)
+    panel:SetSize(ZONE_PANEL_W, ZONE_PANEL_H)
+    panel:SetPoint("TOPLEFT", 14 + col * (ZONE_PANEL_W + 10), -30 - row * (ZONE_PANEL_H + 26))
+    panel:SetClipsChildren(true)
+    local back = panel:CreateTexture(nil, "BACKGROUND", nil, -8)
+    back:SetAllPoints()
+    back:SetColorTexture(0.15, 0.15, 0.15)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOP", panel, "BOTTOM", 0, -4)
+    label:SetText(text)
+    return panel
+end
+
+local function ParentOfType(mapID, mapType)
+    while mapID and mapID > 0 do
+        local info = C_Map.GetMapInfo(mapID)
+        if not info then return end
+        if info.mapType == mapType then return mapID end
+        mapID = info.parentMapID
+    end
+end
+
+ns.Command("zoneprobe", "test fading the journey map into zone map art (/rts zoneprobe [mapID])", function(arg)
+    local zone = tonumber(arg) or ParentOfType(C_Map.GetBestMapForUnit("player"), Enum.UIMapType.Zone)
+    local info = zone and C_Map.GetMapInfo(zone)
+    if not (zone and info) then
+        ns.Print("No zone found. Stand in a zone or give a map ID, e.g. /rts zoneprobe 1436 (Westfall).")
+        return
+    end
+    local continent = ParentOfType(info.parentMapID, Enum.UIMapType.Continent)
+    local layer = (C_Map.GetMapArtLayers(zone) or {})[1]
+    local textures = C_Map.GetMapArtLayerTextures(zone, 1)
+    ns.Print(("Zone %s (%d), continent %s."):format(info.name, zone, tostring(continent)))
+    ns.Print(layer and ("Zone art %dx%d in %d tiles of %dx%d."):format(layer.layerWidth, layer.layerHeight,
+        textures and #textures or 0, layer.tileWidth, layer.tileHeight) or "No zone art layer.")
+
+    if not zoneFrame then CreateZoneFrame() end
+    if zonePanels then zonePanels:Hide() end
+    zonePanels = CreateFrame("Frame", nil, zoneFrame)
+    zonePanels:SetAllPoints()
+    zoneFrame.title:SetText(("Zone art test: %s (%d)"):format(info.name, zone))
+    local W, H = ZONE_PANEL_W, ZONE_PANEL_H
+
+    local explored, all = ns.ZoneOverlays(zone, true), ns.ZoneOverlayData[zone]
+    ns.Print(("%d explored overlays, %s in the shipped data."):format(#explored,
+        all and tostring(#all) or "none"))
+
+    local minX, maxX, minY, maxY
+    if continent then
+        minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(zone, continent)
+    end
+    local outlinePanel = ZonePanel(zonePanels, 1, "1  Zone outline over continent art")
+    ns.AddZoneArt(ZonePanel(zonePanels, 2, "2  All overlays (shipped data)"), zone, 0, 0, W, H, all or explored, 0)
+    local cropped = ZonePanel(zonePanels, 3, "3  Continent art cropped to zone")
+    local masked = ZonePanel(zonePanels, 4, "4  Panel 2 masked to the outline, over panel 3")
+    if not (continent and minX and maxX > minX and maxY > minY) then
+        ns.Print("No zone rectangle on the continent (C_Map.GetMapRectOnMap).")
+        zoneFrame:Show()
+        return
+    end
+
+    -- Whole continent sized so the zone's rectangle fills the panel.
+    local cw, ch = W / (maxX - minX), H / (maxY - minY)
+    for _, panel in ipairs({ outlinePanel, cropped, masked }) do
+        ns.AddMapArt(panel, continent, -minX * cw, -minY * ch, (1 - minX) * cw, (1 - minY) * ch)
+    end
+    local clayer = (C_Map.GetMapArtLayers(continent) or {})[1]
+    if clayer then
+        local pw, ph = (maxX - minX) * clayer.layerWidth, (maxY - minY) * clayer.layerHeight
+        ns.Print(("Zone covers %.0fx%.0f continent pixels (aspect %.3f; zone art aspect %.3f). Zone art is %.1fx sharper."):format(
+            pw, ph, pw / ph, layer and layer.layerWidth / layer.layerHeight or 0,
+            layer and layer.layerWidth / pw or 0))
+    end
+
+    local fileID, u1, v1, u2, v2 = ns.ZoneOutline(continent, zone, minX, maxX, minY, maxY)
+    local top = CreateFrame("Frame", nil, masked)
+    top:SetAllPoints()
+    top:SetFrameLevel(masked:GetFrameLevel() + 1)
+    if fileID then
+        ns.Print(("Outline file %d covers continent %.3f, %.3f to %.3f, %.3f."):format(fileID, u1, v1, u2, v2))
+        local ox1, oy1, ox2, oy2 = (u1 - minX) * cw, (v1 - minY) * ch, (u2 - minX) * cw, (v2 - minY) * ch
+        local shape = outlinePanel:CreateTexture(nil, "ARTWORK")
+        shape:SetTexture("Interface\\AddOns\\" .. addonName .. "\\ZoneMasks\\" .. zone)
+        shape:SetPoint("TOPLEFT", ox1, -oy1)
+        shape:SetPoint("BOTTOMRIGHT", outlinePanel, "TOPLEFT", ox2, -oy2)
+        shape:SetVertexColor(1, 0.2, 0.2, 0.6)
+        local mask = ns.OutlineMask(top, zone, ox1, oy1, ox2, oy2)
+        ns.AddZoneArt(top, zone, 0, 0, W, H, all or explored, 0, { mask, ns.EdgeMask(top, 0, 0, W, H) })
+    else
+        ns.Print("No zone outline (C_Map.GetMapHighlightInfoAtPosition); the map uses faded edges instead.")
+        ns.AddZoneArt(top, zone, 0, 0, W, H, all or explored)
+    end
+
+    zoneFrame:Show()
+end)
+
 -- /rts levelart: lists the player frame textures under the level number, to
 -- find the art behind the level badge. Some frames (health bars) have secret
 -- rects that addons may not compare; those are skipped.
