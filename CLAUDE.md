@@ -44,7 +44,9 @@ python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and Zone
 Run `check.ps1` from the repo root. It currently reports two old type
 warnings (Probe.lua:52, Recorder.lua:281); anything new is ours to fix.
 
-Release: commit and push `main`, then push an annotated tag `vX.Y.Z`. The
+Release: add a `## X.Y.Z` section to CHANGELOG.md (non-technical, `### New`
+and `### Fixed`, written for players), commit and push `main`, then push an
+annotated tag `vX.Y.Z`. The workflow fails if the section is missing. The
 Release workflow checks, builds, makes the GitHub release and uploads to
 CurseForge. Tags containing `beta` or `alpha` become pre-releases. The
 version comes from the tag. The CurseForge description and screenshots are
