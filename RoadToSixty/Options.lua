@@ -59,6 +59,12 @@ local SECTIONS = {
             set = function(on) ns.db.questPops = on end,
         },
         {
+            label = "Show kills during the replay",
+            tip = "Each kill pops up at the arrow with its experience and the creature's name, counting up when you kill several in a row.",
+            get = function() return ns.db.killPops end,
+            set = function(on) ns.db.killPops = on end,
+        },
+        {
             label = "Show gear during the replay",
             tip = "A card in the map's corner showing what you wore, changing as the replay plays. Same as the map's Gear button.",
             get = function() return ns.db.showGear end,

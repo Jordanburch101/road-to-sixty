@@ -263,12 +263,64 @@ ns.lootTracked = ns.On("CHAT_MSG_LOOT", function(msg)
     end
 end)
 
+-- Kills one by one, packed like the path to keep the file small:
+-- ns.char.kills = { d = "dt,xp,n;...", last = time of the last kill,
+-- names = { mob name, ... } }, where dt is seconds since the previous kill
+-- and n indexes names. About 8 bytes a kill. No position: the replay puts a
+-- kill where the path was at that time. This session's kills wait in
+-- killBuffer and are packed in at logout (and /reload).
+local killBuffer, nameIndex = {}, nil
+
+local function AddKill(name, xp)
+    local kills = ns.char.kills
+    if not nameIndex then
+        nameIndex = {}
+        for i, n in ipairs(kills.names) do
+            nameIndex[n] = i
+        end
+    end
+    local n = nameIndex[name]
+    if not n then
+        n = #kills.names + 1
+        kills.names[n] = name
+        nameIndex[name] = n
+    end
+    local t = time()
+    killBuffer[#killBuffer + 1] = ("%d,%d,%d;"):format(t - kills.last, xp, n)
+    kills.last = t
+end
+
+ns.On("PLAYER_LOGOUT", function()
+    local kills = ns.char.kills
+    kills.d = kills.d .. table.concat(killBuffer)
+    wipe(killBuffer)
+end)
+
+-- Every recorded kill, oldest first: { t, xp, name }.
+function Journal:Kills()
+    local kills, list, t = ns.char.kills, {}, 0
+    for _, chunk in ipairs({ kills.d, table.concat(killBuffer) }) do
+        for dt, xp, n in chunk:gmatch("(-?%d+),(%d+),(%d+);") do
+            t = t + tonumber(dt)
+            list[#list + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
+        end
+    end
+    return list
+end
+
+-- Forgets this session's kills, after the character's data was erased.
+function Journal:Reset()
+    wipe(killBuffer)
+    nameIndex = nil
+end
+
 ns.killsTracked = ns.On("CHAT_MSG_COMBAT_XP_GAIN", function(msg)
-    local _, xp = msg:match(killPattern)
+    local name, xp = msg:match(killPattern)
     if xp then
         local totals = ns.char.totals
         totals.kills = totals.kills + 1
         totals.killXP = totals.killXP + tonumber(xp)
+        AddKill(name, tonumber(xp))
     end
 end)
 

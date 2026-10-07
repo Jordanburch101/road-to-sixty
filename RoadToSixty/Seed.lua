@@ -54,6 +54,7 @@ local function QuestName(id)
     return QUEST_NAMES[id % #QUEST_NAMES + 1]
 end
 
+
 -- Gear the stress seed's character puts on as it levels: { item ID, level }.
 -- Real Classic items; each item's slot comes from the client
 -- (GetItemInfoInstant), so a wrong ID is left out rather than worn in the
@@ -91,6 +92,31 @@ local random, floor, sqrt, cos, sin, atan2, pi =
     math.random, math.floor, math.sqrt, math.cos, math.sin, math.atan2, math.pi
 
 local G  -- generator state for one run
+
+-- Mobs for fake kills by level band (1-9, 10-19, ...), Classic Alliance zones.
+local MOB_NAMES = {
+    { "Rockjaw Trogg", "Frostmane Troll Whelp", "Young Wendigo", "Burly Rockjaw Trogg", "Kobold Vermin" },
+    { "Defias Thug", "Harvest Watcher", "Murloc Coastrunner", "Redridge Mongrel", "Riverpaw Gnoll" },
+    { "Skeletal Warrior", "Mottled Worg", "Mosshide Gnoll", "Blackwood Furbolg", "Foulweald Ursa" },
+    { "Syndicate Thief", "Dragonmaw Raider", "Mountain Lion", "Daggerspine Siren", "Thistlefur Shaman" },
+    { "Dustbelcher Ogre", "Hakkari Priest", "Scarlet Crusader", "Gorishi Worker", "Felpaw Ravager" },
+    { "Blackrock Warlock", "Scourge Champion", "Felmusk Satyr", "Cursed Paladin", "Winterfall Ursa" },
+}
+
+-- A kill at the generator's time, packed as Journal.lua stores them.
+local function Kill(xp)
+    local kills = G.char.kills
+    local band = MOB_NAMES[math.min(#MOB_NAMES, floor(G.level / 10) + 1)]
+    local name = band[random(#band)]
+    local n = G.mobIndex[name]
+    if not n then
+        n = #kills.names + 1
+        kills.names[n] = name
+        G.mobIndex[name] = n
+    end
+    G.killBuf[#G.killBuf + 1] = ("%d,%d,%d;"):format(G.t - kills.last, xp, n)
+    kills.last = G.t
+end
 
 local function round(v)
     return floor(v + 0.5)
@@ -367,6 +393,7 @@ local function Wander(zone, count)
         if random() < KILL_CHANCE then
             totals.kills = totals.kills + 1
             totals.killXP = totals.killXP + G.level * 10 + 40
+            Kill(G.level * 10 + 40)
         end
         if random() < QUEST_CHANCE then
             local xp = G.level * 60 + 100
@@ -453,7 +480,9 @@ local function Begin(zone, x, y, daysAgo, items, settings)
         t = time() - daysAgo * 86400,
         items = items,
         gear = {}, gearNext = 1,
+        killBuf = {}, mobIndex = {},
     }
+    G.char.kills = { d = "", last = 0, names = {} }
     for k, v in pairs(settings) do
         G[k] = v
     end
@@ -478,6 +507,7 @@ local function Finish(maxLevel, started, label)
     CloseSegment()
     Log("off")
 
+    ns.char.kills.d = table.concat(G.killBuf)
     ns.char.played = G.played
     ns.char.seeded = true
     local points = G.points
@@ -667,6 +697,7 @@ local function Grind(sx, sy, count)
         if random() < GRIND_KILL_CHANCE then
             totals.kills = totals.kills + 1
             totals.killXP = totals.killXP + G.level * 12 + 45
+            Kill(G.level * 12 + 45)
         end
         if random() < GRIND_DEATH_CHANCE then
             Die()
@@ -789,9 +820,15 @@ local function RunDungeon(dungeon)
             items[#items + 1] = DropLoot(instanceID, random() < 0.6 and 3 or 2)
         end
     end
-    G.t = G.t + duration - floor(duration / 2)
+    -- Kills spread over the second half of the run.
+    local kills, rest = random(40, 90), duration - floor(duration / 2)
+    local runEnd = G.t + rest
+    for i = 1, kills do
+        G.t = runEnd - rest + floor(rest * i / kills)
+        Kill(G.level * 12 + 45)
+    end
+    G.t = runEnd
     G.played = G.played + duration
-    local kills = random(40, 90)
     G.char.totals.kills = G.char.totals.kills + kills
     Log("out", instanceID, {
         name = name, duration = duration, kills = kills, xp = kills * (G.level * 12 + 45),

@@ -142,6 +142,20 @@ for _, e in ipairs(char.events) do
 end
 check(unnamed == 0, "every turn-in has a quest name, missing " .. unnamed)
 
+-- Kills are packed one by one ("dt,xp,n;"), matching the total, with names
+-- and times that move forward.
+local kills, killT, killNamed, killOrdered = 0, 0, true, true
+for dt, _, n in char.kills.d:gmatch("(-?%d+),(%d+),(%d+);") do
+    kills = kills + 1
+    killT = killT + tonumber(dt)
+    killNamed = killNamed and char.kills.names[tonumber(n)] ~= nil
+    killOrdered = killOrdered and (kills == 1 or tonumber(dt) >= 0)
+end
+check(kills == char.totals.kills, ("one packed kill per kill, %d of %d"):format(kills, char.totals.kills))
+check(killNamed, "every kill has a mob name")
+check(killOrdered and killT == char.kills.last, "kill times add up to the last kill")
+print(("kills packed: %d in %d bytes (%.1f B/kill)"):format(kills, #char.kills.d, #char.kills.d / math.max(1, kills)))
+
 -- Time only moves forward.
 local last = 0
 for _, e in ipairs(char.events) do

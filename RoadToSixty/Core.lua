@@ -11,6 +11,7 @@ local defaults = {
     minimap = { angle = 215, hide = false },  -- minimap button, angle in degrees
     showGear = false,   -- gear card on the journey map, following the replay
     questPops = true,   -- quest turn-ins popping up on the map during the replay
+    killPops = true,    -- kills popping up at the arrow during the replay
 }
 
 -- Per-character journey data. Bump version when the layout changes.
@@ -19,6 +20,7 @@ local charDefaults = {
     segments = {},
     events = {},
     levels = {},
+    kills = { d = "", last = 0, names = {} },  -- packed, see Journal.lua
     totals = {
         kills = 0,
         killXP = 0,
@@ -158,6 +160,7 @@ function ns.ResetCharacter()
     wipe(ns.char)
     ApplyDefaults(ns.char, charDefaults)
     ns.Recorder:Reset()
+    ns.Journal:Reset()
     ns.Roster:Rebuild()
 end
 

@@ -682,11 +682,13 @@ local function BuildMarkers()
                 local m = GetMarker(count)
                 m.t, m.level, m.category, m.minZoom = t, nil, "quests", MARKER_ZOOM.quest
                 m.x, m.y = toContent(e[4], e[5])
+                m.c, m.popping = e[3], nil
                 local size = ns.SetEventIcon(m.icon, m.text, kind)
                 m:SetSize(size, size)
                 visit = { m = m, c = e[3], x = e[4], y = e[5], names = {}, first = t }
             end
             visit.last = t
+            visit.m.lastT = t
             local names, m = visit.names, visit.m
             names[#names + 1] = name
             local xp = (e[7] and e[7] > 0) and ("+" .. ns.Commas(e[7]) .. " xp") or nil
@@ -700,7 +702,7 @@ local function BuildMarkers()
         elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then
             count = count + 1
             local m = GetMarker(count)
-            m.t = t
+            m.t, m.popping = t, nil
             m.x, m.y = toContent(e[4], e[5])
             m.category = MARKER_CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
@@ -1361,7 +1363,8 @@ local function UpdateMarkers()
     local now, z = state.markerNow, state.zoom
     for i = 1, state.markerCount do
         local m = markers[i]
-        local show = m.t <= now and z >= m.minZoom and ns.FilterShown(m.category)
+        -- A quest marker with a pop playing on it waits for the pop to end.
+        local show = m.t <= now and z >= m.minZoom and ns.FilterShown(m.category) and not m.popping
         if show then
             m:ClearAllPoints()
             m:SetPoint("CENTER", overlay, "TOPLEFT", ToCanvas(m.x, m.y))
@@ -1987,9 +1990,12 @@ local function OnUpdate(_, elapsed)
         ApplyCursor()
         FollowHead()
         -- At the end, markerNow is math.huge: everything up to now has passed.
-        ns.QuestPop:Passed(before, state.markerNow == math.huge and time() or state.markerNow)
+        local now = state.markerNow == math.huge and time() or state.markerNow
+        ns.QuestPop:Passed(before, now)
+        ns.KillPop:Passed(before, now)
     end
     ns.QuestPop:Update(elapsed)
+    ns.KillPop:Update(elapsed)
 end
 
 -- Window ---------------------------------------------------------------------------
@@ -2139,6 +2145,7 @@ local function CreateWindow()
     frame:SetScript("OnHide", function()
         SetPlaying(false)
         ns.QuestPop:Clear()
+        ns.KillPop:Clear()
         drag = nil
         state.targetZoom = state.zoom
     end)
@@ -2256,6 +2263,7 @@ local function CreateWindow()
     headFrame:SetAllPoints()
     headFrame:SetFrameLevel(overlay:GetFrameLevel() + 5)
     ns.QuestPop:Attach(overlay)
+    ns.KillPop:Attach(overlay)
     head = headFrame:CreateTexture(nil, "OVERLAY")
     head:SetSize(24, 24)
     head:SetTexture(HEAD_TEXTURE)
@@ -2355,6 +2363,7 @@ function Map:Open()
     BuildMarkers()
     ns.GearCard:Rebuild()
     ns.QuestPop:Rebuild()
+    ns.KillPop:Rebuild()
     StartWarmUp()
     state.perf.setup = debugprofilestop() - started
 
@@ -2437,6 +2446,38 @@ function Map:WorldToCanvas(c, x, y)
     return ToCanvas(toContent(x, y))
 end
 
+-- The quest marker for a turn-in at time t on continent c, when the Quests
+-- filter and the zoom show quest markers right now; nil otherwise. A quest
+-- pop plays on it rather than beside it.
+function Map:QuestMarker(t, c)
+    if not ns.FilterShown("quests") or state.zoom < MARKER_ZOOM.quest then return end
+    for i = 1, state.markerCount do
+        local m = markers[i]
+        if m.category == "quests" and m.c == c and t >= m.t and t <= m.lastT then
+            return m
+        end
+    end
+end
+
+-- Shows or hides the markers again, after a quest pop ended on one.
+function Map:RefreshMarkers()
+    if frame and frame:IsShown() then
+        UpdateMarkers()
+    end
+end
+
+-- Where the replay's arrow is, in content units; nil before the first point.
+function Map:ReplayPosition()
+    local seq = math.floor(state.cur)
+    if seq < 1 or seq > state.n then return end
+    return state.px[seq], state.py[seq]
+end
+
+-- Canvas position of a content point in the current view.
+function Map:ContentToCanvas(x, y)
+    return ToCanvas(x, y)
+end
+
 -- Brings the map in line with settings changed elsewhere, such as in the
 -- options panel.
 function Map:ApplySettings()
@@ -2448,6 +2489,9 @@ function Map:ApplySettings()
     end
     if not ns.db.questPops then
         ns.QuestPop:Clear()
+    end
+    if not ns.db.killPops then
+        ns.KillPop:Clear()
     end
     if frame:IsShown() then
         ApplyView()

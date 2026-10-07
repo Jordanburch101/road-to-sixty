@@ -18,6 +18,7 @@ Map.lua
 Panel.lua
 GearCard.lua
 QuestPop.lua
+KillPop.lua
 MinimapButton.lua
 Options.lua
 #@debug@

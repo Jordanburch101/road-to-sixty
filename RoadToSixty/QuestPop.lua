@@ -93,8 +93,27 @@ local function Launch(turnin)
     end
     pop.title:SetText(turnin.title or "Quest complete")
     pop.xp:SetText(turnin.xp and turnin.xp > 0 and ("+" .. ns.Commas(turnin.xp) .. " xp") or "")
+    -- With quest markers on the map, play on this turn-in's marker, hiding it
+    -- meanwhile, so the "?" never shows twice.
+    pop.marker = ns.Map:QuestMarker(turnin.t, turnin.c)
+    if pop.marker then
+        pop.marker.popping = (pop.marker.popping or 0) + 1
+        ns.Map:RefreshMarkers()
+    end
     pop:Show()
     active[#active + 1] = pop
+end
+
+-- Takes a pop off the map and gives its marker back.
+local function Release(pop)
+    pop:Hide()
+    local m = pop.marker
+    if m then
+        m.popping = m.popping and m.popping > 1 and m.popping - 1 or nil
+        pop.marker = nil
+        ns.Map:RefreshMarkers()
+    end
+    pool[#pool + 1] = pop
 end
 
 -- Starts the fade, now or soon: fast when making way for the next one.
@@ -111,50 +130,62 @@ local function Gap()
     return math.max(0.14, 0.6 - 0.09 * #waiting)
 end
 
+-- On a marker, the pop sits on it and its "?" ends at the marker's size and
+-- stays solid while the rest fades, then the marker takes over. Without one,
+-- it sits a little above the spot and floats off as it fades.
 local function Draw(pop)
-    local a = pop.age
-    local x, y = ns.Map:WorldToCanvas(pop.turnin.c, pop.turnin.x, pop.turnin.y)
+    local a, m = pop.age, pop.marker
+    local x, y
+    if m then
+        x, y = ns.Map:ContentToCanvas(m.x, m.y)
+    else
+        x, y = ns.Map:WorldToCanvas(pop.turnin.c, pop.turnin.x, pop.turnin.y)
+    end
     if not x then
         pop:Hide()
         return
     end
 
-    local scale, alpha, rise = 1, 1, 0
+    local scale, alpha, rise, iconAlpha = 1, 1, 0, 1
     if a < IN then
         local p = a / IN
-        scale, alpha = 0.3 + 0.7 * EaseOutBack(p), p
+        scale, alpha, iconAlpha = 0.3 + 0.7 * EaseOutBack(p), p, p
     end
     if pop.outAt and a > pop.outAt then
         local p = math.min(1, (a - pop.outAt) / pop.outTime)
         alpha = 1 - p
-        scale = 1 - 0.15 * p
-        rise = 14 * p
+        if not m then
+            scale, rise, iconAlpha = 1 - 0.15 * p, 14 * p, 1 - p
+        end
     end
     pop:ClearAllPoints()
-    pop:SetPoint("CENTER", parent, "TOPLEFT", x, y + 18 + rise)
-    pop:SetAlpha(alpha)
+    pop:SetPoint("CENTER", parent, "TOPLEFT", x, y + (m and 0 or 18) + rise)
 
-    pop.icon:SetSize(24 * scale, 24 * scale)
+    local iconSize = (m and m:GetWidth() or 24) * scale
+    pop.icon:SetSize(iconSize, iconSize)
+    pop.icon:SetAlpha(iconAlpha)
+    pop.title:SetAlpha(alpha)
+    pop.xp:SetAlpha(alpha)
     -- Soft glow that swells in, then breathes.
     local breathe = 0.85 + 0.15 * math.sin(a * 5)
     local glow = 56 * scale * (a < IN and 1.3 or breathe)
     pop.glow:SetSize(glow, glow)
-    pop.glow:SetAlpha(0.9)
+    pop.glow:SetAlpha(0.9 * alpha)
     -- Slowly turning rays.
     pop.rays:SetSize(64 * scale, 64 * scale)
     pop.rays:SetRotation(pop.spin + a * 0.8)
-    pop.rays:SetAlpha(0.55 * breathe)
+    pop.rays:SetAlpha(0.55 * breathe * alpha)
     -- A bright flash that rings outwards at the start.
     local b = math.min(1, a / 0.45)
     pop.burst:SetSize(30 + 90 * b, 30 + 90 * b)
-    pop.burst:SetAlpha(1 - b)
+    pop.burst:SetAlpha((1 - b) * alpha)
     -- Sparks flying out and fading.
     local s = math.min(1, a / 0.7)
     for _, spark in ipairs(pop.sparks) do
         local r = spark.reach * (1 - (1 - s) * (1 - s))
         spark:ClearAllPoints()
         spark:SetPoint("CENTER", math.cos(spark.angle) * r, math.sin(spark.angle) * r)
-        spark:SetAlpha(1 - s)
+        spark:SetAlpha((1 - s) * alpha)
         spark:SetRotation(spark.angle + a * 3)
     end
     pop:Show()
@@ -208,9 +239,8 @@ function QuestPop:Update(elapsed)
         local pop = active[i]
         pop.age = pop.age + elapsed
         if pop.outAt and pop.age >= pop.outAt + pop.outTime then
-            pop:Hide()
             table.remove(active, i)
-            pool[#pool + 1] = pop
+            Release(pop)
         else
             Draw(pop)
         end
@@ -221,8 +251,7 @@ end
 function QuestPop:Clear()
     wipe(waiting)
     for i = #active, 1, -1 do
-        active[i]:Hide()
-        pool[#pool + 1] = active[i]
+        Release(active[i])
         active[i] = nil
     end
 end

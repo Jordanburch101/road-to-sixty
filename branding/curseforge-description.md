@@ -24,7 +24,11 @@
 
 ### Quests turned in
 - During a replay, a golden quest mark pops up wherever you handed in a quest, with its name and experience. Hand in five at once and they ripple through one after another.
-- Turn on the **Quests** filter in History to list every turn-in and mark your quest hubs on the map.
+- Turn on the **Quests** filter in History to list every turn-in and mark your quest hubs on the map. The pop then plays right on the marker.
+
+### Kills
+- Every kill is recorded with its experience and the creature's name, packed tightly so your saved data stays small.
+- During a replay, crossed swords pop up at your arrow with "+45 xp" and the creature's name. Kill several in a row and a counter adds up (×5).
 
 ### Every jump explained
 - **Hearthstones**, **mage teleports**, **boats**, **deaths** and **dungeons** are drawn as coloured arcs, with an icon when you zoom in.
