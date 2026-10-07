@@ -118,7 +118,11 @@ local MARKER_ZOOM = {
     level5 = 2.5,               -- levels 5, 15, ...
     level = 5,
     death = 6,
+    quest = 5,
 }
+-- Turn-ins this close in place and time are one visit to a quest giver,
+-- shown as one marker listing them all.
+local QUEST_VISIT = { yards = 30, seconds = 180 }
 
 -- Event icons, shared with the side panel. { atlas, size }
 -- { atlas = name } or { file = texture path }, and size. Spell and item icons
@@ -134,6 +138,7 @@ local EVENT_ICONS = {
     teleport = { atlas = "MagePortalAlliance", size = 20 },
     boat = { atlas = "poi-islands-table", size = 20 },
     loot = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 },
+    qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
 }
 
 local INSTANCE_TYPES = {
@@ -243,7 +248,7 @@ end
 -- The History filter applies to the map too. Category of each jump reason
 -- (seg.j); reasons without one are always shown.
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
-local MARKER_CATEGORY = { lvl = "levels", die = "deaths", ["in"] = "dungeons" }
+local MARKER_CATEGORY = { lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests" }
 
 -- False if the player has turned this History filter category off.
 function ns.FilterShown(category)
@@ -323,8 +328,9 @@ function ns.SetEventIcon(icon, text, kind, level, file)
     if file or style.file then
         icon:SetTexture(file or style.file)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    else
-        icon:SetAtlas(style.atlas)
+    elseif not icon:SetAtlas(style.atlas) and style.fallback then
+        icon:SetTexture(style.fallback)
+        icon:SetTexCoord(0, 1, 0, 1)
     end
     icon:SetVertexColor(1, 1, 1)
     text:SetText("")
@@ -654,6 +660,7 @@ end
 -- rather than looked up per marker.
 local function BuildMarkers()
     local count, level, zone = 0, nil, nil
+    local visit     -- the quest marker turn-ins are joining: { m, c, x, y, last, names }
     for _, e in ipairs(ns.char.events) do
         local t, kind, toContent = e[1], e[2], state.toContent[e[3]]
         if kind == "on" or kind == "lvl" then
@@ -661,7 +668,36 @@ local function BuildMarkers()
         elseif kind == "zone" then
             zone = e[6]
         end
-        if toContent and (kind == "die" or kind == "lvl" or kind == "in") then
+        if toContent and kind == "qd" then
+            -- The name is saved from 1.1 on; older turn-ins ask the client.
+            local name = e[9]
+            if not name then
+                local ok, title = pcall(C_QuestLog.GetTitleForQuestID, e[6])
+                name = ok and title ~= "" and title or ("Quest " .. tostring(e[6]))
+            end
+            local near = visit and visit.c == e[3] and t - visit.last <= QUEST_VISIT.seconds
+                and (e[4] - visit.x) ^ 2 + (e[5] - visit.y) ^ 2 <= QUEST_VISIT.yards ^ 2
+            if not near then
+                count = count + 1
+                local m = GetMarker(count)
+                m.t, m.level, m.category, m.minZoom = t, nil, "quests", MARKER_ZOOM.quest
+                m.x, m.y = toContent(e[4], e[5])
+                local size = ns.SetEventIcon(m.icon, m.text, kind)
+                m:SetSize(size, size)
+                visit = { m = m, c = e[3], x = e[4], y = e[5], names = {}, first = t }
+            end
+            visit.last = t
+            local names, m = visit.names, visit.m
+            names[#names + 1] = name
+            local xp = (e[7] and e[7] > 0) and ("+" .. ns.Commas(e[7]) .. " xp") or nil
+            if #names == 1 then
+                m.title = name
+                m.detail = ("%s%s\n%s"):format(xp and (xp .. "\n") or "", ZoneName(zone), FormatTime(t))
+            else
+                m.title = ("%d quests turned in"):format(#names)
+                m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), ZoneName(zone), FormatTime(visit.first))
+            end
+        elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then
             count = count + 1
             local m = GetMarker(count)
             m.t = t
@@ -1734,6 +1770,7 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
+
     PlaceHead()
     if seq >= 1 and seq <= state.n then
         local t = state.pt[seq]
@@ -1940,14 +1977,19 @@ local function OnUpdate(_, elapsed)
         UpdateHover()
     end
 
-    if not state.playing then return end
-    state.cur = state.cur + elapsed * SPEEDS[state.speedIndex] * REPLAY_POINTS
-    if state.cur >= state.n then
-        state.cur = state.n
-        SetPlaying(false)
+    if state.playing then
+        local before = state.markerNow
+        state.cur = state.cur + elapsed * SPEEDS[state.speedIndex] * REPLAY_POINTS
+        if state.cur >= state.n then
+            state.cur = state.n
+            SetPlaying(false)
+        end
+        ApplyCursor()
+        FollowHead()
+        -- At the end, markerNow is math.huge: everything up to now has passed.
+        ns.QuestPop:Passed(before, state.markerNow == math.huge and time() or state.markerNow)
     end
-    ApplyCursor()
-    FollowHead()
+    ns.QuestPop:Update(elapsed)
 end
 
 -- Window ---------------------------------------------------------------------------
@@ -2096,6 +2138,7 @@ local function CreateWindow()
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
         SetPlaying(false)
+        ns.QuestPop:Clear()
         drag = nil
         state.targetZoom = state.zoom
     end)
@@ -2212,6 +2255,7 @@ local function CreateWindow()
     local headFrame = CreateFrame("Frame", nil, overlay)
     headFrame:SetAllPoints()
     headFrame:SetFrameLevel(overlay:GetFrameLevel() + 5)
+    ns.QuestPop:Attach(overlay)
     head = headFrame:CreateTexture(nil, "OVERLAY")
     head:SetSize(24, 24)
     head:SetTexture(HEAD_TEXTURE)
@@ -2309,7 +2353,9 @@ function Map:Open()
     started = debugprofilestop()
     BuildPoints(paths)
     BuildMarkers()
-    ns.GearCard:Rebuild()    StartWarmUp()
+    ns.GearCard:Rebuild()
+    ns.QuestPop:Rebuild()
+    StartWarmUp()
     state.perf.setup = debugprofilestop() - started
 
     SetPlaying(false)
@@ -2383,6 +2429,14 @@ function Map:JumpTo(t, continentID, x, y)
     ns.Panel:SetTime(t)
 end
 
+-- Canvas position of world point x, y on continent c in the current view,
+-- for things other files draw on the map; nil if the continent is not on it.
+function Map:WorldToCanvas(c, x, y)
+    local toContent = state.toContent[c]
+    if not toContent then return end
+    return ToCanvas(toContent(x, y))
+end
+
 -- Brings the map in line with settings changed elsewhere, such as in the
 -- options panel.
 function Map:ApplySettings()
@@ -2391,6 +2445,9 @@ function Map:ApplySettings()
     UpdateGearButton()
     if not ns.db.motes then
         HideMotes()
+    end
+    if not ns.db.questPops then
+        ns.QuestPop:Clear()
     end
     if frame:IsShown() then
         ApplyView()

@@ -10,7 +10,8 @@ local addonName, ns = ...
 --   lvl  level                     level reached
 --   die                            death
 --   qa   questID                   quest accepted
---   qd   questID, xp, money        quest turned in
+--   qd   questID, xp, money, title quest turned in; title from 1.1 on, when
+--                                  the client knows it
 --   zone uiMapID                   entered a new zone
 --   in   instanceID, name, type    entered a dungeon, raid or battleground
 --   out  instanceID, summary       left it; summary of the run, see EndRun
@@ -190,9 +191,22 @@ ns.On("PLAYER_DEAD", function()
     Journal:Log("die")
 end)
 
+-- Quest names seen this session, in case the client has forgotten one by
+-- the time it is turned in.
+local questTitles = {}
+
+local function QuestTitle(questID)
+    local ok, title = pcall(C_QuestLog.GetTitleForQuestID, questID)
+    if ok and title and title ~= "" then
+        questTitles[questID] = title
+    end
+    return questTitles[questID]
+end
+
 ns.On("QUEST_ACCEPTED", function(...)
     -- Classic passes (questLogIndex, questID); modern clients pass (questID).
     local questID = select(select("#", ...), ...)
+    QuestTitle(questID)
     Journal:Log("qa", questID)
 end)
 
@@ -200,7 +214,7 @@ ns.On("QUEST_TURNED_IN", function(questID, xp, money)
     local totals = ns.char.totals
     totals.quests = totals.quests + 1
     totals.questXP = totals.questXP + (xp or 0)
-    Journal:Log("qd", questID, xp, money)
+    Journal:Log("qd", questID, xp, money, QuestTitle(questID))
 end)
 
 -- Turns a client chat format string such as "%s dies, you gain %d experience."

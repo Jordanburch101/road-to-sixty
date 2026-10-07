@@ -53,6 +53,12 @@ local SECTIONS = {
             set = function(on) ns.db.motes = on end,
         },
         {
+            label = "Show quest turn-ins during the replay",
+            tip = "A golden quest mark pops up where you handed in each quest, with its name and experience, as the replay passes it.",
+            get = function() return ns.db.questPops end,
+            set = function(on) ns.db.questPops = on end,
+        },
+        {
             label = "Show gear during the replay",
             tip = "A card in the map's corner showing what you wore, changing as the replay plays. Same as the map's Gear button.",
             get = function() return ns.db.showGear end,

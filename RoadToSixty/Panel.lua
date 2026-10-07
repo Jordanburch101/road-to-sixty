@@ -46,6 +46,7 @@ local function Commas(n)
     until count == 0
     return s
 end
+ns.Commas = Commas
 
 -- Scrolling list ---------------------------------------------------------------
 
@@ -228,6 +229,7 @@ local TITLE_COLORS = {
     teleport = { 0.55, 0.85, 1 },
     boat = { 0.55, 0.85, 1 },
     flight = { 0.55, 0.85, 1 },
+    qd = { 1, 0.9, 0.55 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -272,13 +274,14 @@ local HISTORY_FILTERS = {
     { "teleports", "Teleports", "teleport" },
     { "boats", "Boats and zeppelins", "boat" },
     { "zones", "New zones", "zone" },
+    { "quests", "Quests turned in", "qd" },
     { "greens", "Green items", "loot", nil, LOOT_FILTER_ICON, 2 },
     { "blues", "Blue items and better", "loot", nil, LOOT_FILTER_ICON, 3 },
 }
-local FILTER_SIZE, FILTER_GAP = 22, 4
+local FILTER_SIZE, FILTER_GAP = 22, 2
 local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
-    hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights",
+    hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -439,6 +442,18 @@ local function BuildHistory()
             else
                 Add({ kind = kind, title = "Discovered " .. ZoneName(e[6]) }, t, c, x, y, "First visit")
             end
+        elseif kind == "qd" then
+            -- The name is saved from 1.1 on; older turn-ins ask the client.
+            local title = e[9]
+            if not title then
+                local ok, name = pcall(C_QuestLog.GetTitleForQuestID, e[6])
+                title = ok and name ~= "" and name or ("Quest " .. tostring(e[6]))
+            end
+            local reward = e[7] and e[7] > 0 and ("+%s xp"):format(Commas(e[7])) or "Turned in"
+            if e[8] and e[8] > 0 then
+                reward = reward .. ", " .. FormatMoney(e[8])
+            end
+            Add({ kind = kind, title = title }, t, c, x, y, where .. " - " .. reward)
         elseif kind == "loot" then
             ---@diagnostic disable-next-line: deprecated
             local getIcon = C_Item and C_Item.GetItemIconByID or GetItemIcon

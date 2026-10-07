@@ -5,9 +5,12 @@ local defaults = {
     terrain = true,
     motes = true,
     showPaths = {},     -- roster key -> true to draw that character's path on the map
-    historyFilter = {}, -- history category -> false when hidden
+    historyFilter = {   -- history category -> false when hidden
+        quests = false, -- hundreds of turn-ins would crowd the list; opt in
+    },
     minimap = { angle = 215, hide = false },  -- minimap button, angle in degrees
     showGear = false,   -- gear card on the journey map, following the replay
+    questPops = true,   -- quest turn-ins popping up on the map during the replay
 }
 
 -- Per-character journey data. Bump version when the layout changes.

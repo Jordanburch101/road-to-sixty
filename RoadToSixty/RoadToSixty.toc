@@ -17,6 +17,7 @@ Health.lua
 Map.lua
 Panel.lua
 GearCard.lua
+QuestPop.lua
 MinimapButton.lua
 Options.lua
 #@debug@

@@ -35,6 +35,25 @@ local SEED_ITEMS = {
     2244, 873, 1728, 2243, 647, 1263,
 }
 
+-- Names for the fake quests (their IDs are made up), so turn-ins on the map
+-- read like real ones. Classic Alliance quests from the realistic route.
+local QUEST_NAMES = {
+    "A New Threat", "Dwarven Outfitters", "Coldridge Valley Mail Delivery", "The Troll Cave",
+    "Ammo for Rumbleshot", "Stocking Jetsteam", "The Grizzled Den", "Bitter Rivals",
+    "Rat Catching", "In Defense of the King's Lands", "Mercenaries", "Stormpike's Delivery",
+    "The Westfall Stew", "Patrolling Westfall", "The Defias Brotherhood", "Red Leather Bandanas",
+    "Underground Assault", "Murloc Poachers", "Selling Fish", "Wanted: Lieutenant Fangore",
+    "Blackrock Menace", "Shadow Magic", "Look to the Stars", "The Night Watch",
+    "Worgen in the Woods", "Raven Hill", "The Legend of Stalvan", "Report to Gryan Stoutmantle",
+    "Daily Delivery", "Claws from the Deep", "Fenwick Thatros", "The Absent Minded Prospector",
+    "Buzzbox 827", "The Tower of Althalaxx", "Mist", "Bathran's Hair", "Raene's Cleansing",
+    "Ruuzel", "Elune's Tear", "The Ancient Statuette",
+}
+
+local function QuestName(id)
+    return QUEST_NAMES[id % #QUEST_NAMES + 1]
+end
+
 -- Gear the stress seed's character puts on as it levels: { item ID, level }.
 -- Real Classic items; each item's slot comes from the client
 -- (GetItemInfoInstant), so a wrong ID is left out rather than worn in the
@@ -353,7 +372,7 @@ local function Wander(zone, count)
             local xp = G.level * 60 + 100
             totals.quests = totals.quests + 1
             totals.questXP = totals.questXP + xp
-            Log("qd", G.quest, xp, G.level * 50)
+            Log("qd", G.quest, xp, G.level * 50, QuestName(G.quest))
             G.quest = G.quest + 1
             Log("qa", G.quest)
         end
@@ -666,7 +685,7 @@ local function TurnIn()
         local xp = G.level * 70 + 120
         totals.quests = totals.quests + 1
         totals.questXP = totals.questXP + xp
-        Log("qd", G.quest, xp, G.level * 60)
+        Log("qd", G.quest, xp, G.level * 60, QuestName(G.quest))
         G.quest = G.quest + 1
         Log("qa", G.quest)
     end

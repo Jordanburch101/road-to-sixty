@@ -135,6 +135,13 @@ check(g30 and g30[9] == 3228, "Jimmied Handcuffs from the Stockade")
 check(g30 and g30[5] == 6907, "Tortoise Armor from Blackfathom Deeps")
 check((counts.eq or 0) >= 8, "gear changes logged, got " .. tostring(counts.eq))
 
+-- Quest turn-ins carry a name, for the map's quest pops.
+local unnamed = 0
+for _, e in ipairs(char.events) do
+    if e[2] == "qd" and type(e[9]) ~= "string" then unnamed = unnamed + 1 end
+end
+check(unnamed == 0, "every turn-in has a quest name, missing " .. unnamed)
+
 -- Time only moves forward.
 local last = 0
 for _, e in ipairs(char.events) do
