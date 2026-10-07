@@ -59,9 +59,9 @@ Or use:
 - Recording starts when you install the addon. Earlier travels cannot be recovered, so install it early!
 - Journeys are stored per character. The Characters tab shows all of them on your account.
 
-## Beta
+## Feedback
 
-This is an early beta, and your feedback shapes what comes next. Please share in the comments:
+Your feedback shapes what comes next. Please share in the comments:
 - bugs, with the output of `/rts check` if recording seems off
 - ideas for what else to track on your journey
 - screenshots of your journeys!
