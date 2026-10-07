@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- Journey map: one zoomable view of the whole world with the recorded path on
 -- top. The world map art shows when zoomed out, continent maps fade in as you
@@ -103,9 +103,13 @@ local OTHER_ALPHA = 0.55
 
 local HEAD_TEXTURE = "Interface\\WorldMap\\WorldMapArrow"
 local JUMP_ZOOM = 6             -- zoom the map goes to at least when jumping to an event
-local PANEL_GAP = 8             -- between the map and the side panel
-local MAP_BORDER = 4            -- the map's frame reaches this far outside it
+local MAP_BORDER = 4            -- the map's and panel's frames reach this far outside them
 local MAP_SHADOW = { 18, 0.55 } -- inner edge shadow: width, darkest alpha
+-- Window layout. LEFT to BOTTOM are how far the window's own border reaches in
+-- from each side (the title bar for TOP); PAD is the space between that border
+-- and the boxes inside, and between the boxes.
+local FRAME = { LEFT = 6, RIGHT = 6, TOP = 21, BOTTOM = 6, PAD = 10 }
+local PANEL_GAP = 2 * MAP_BORDER + FRAME.PAD   -- map to side panel, so their frames are PAD apart
 
 -- Zoom at which each kind of marker appears, so the world view stays readable.
 local MARKER_ZOOM = {
@@ -140,7 +144,7 @@ local INSTANCE_TYPES = {
 }
 ns.InstanceTypes = INSTANCE_TYPES
 
-local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton
+local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton, gearButton
 local continentLayer, terrainLayer, othersLayer, pathLayer
 local charMarkers, otherLines = {}, {}
 local infoText, hintText, perfText, head
@@ -1256,7 +1260,7 @@ local function UpdateTerrain()
     local wanted, count = {}, 0
     local x1, y1, x2, y2 = ViewArea(TERRAIN_MARGIN)
     if want then
-        local showSkipped = ns.db.showSkipped
+        local showSkipped = ns.dev and ns.db.showSkipped
         for index, tile in ipairs(state.tiles) do
             if (showSkipped or not tile.skipped)
                 and tile[4] >= x1 and tile[2] <= x2 and tile[5] >= y1 and tile[3] <= y2 then
@@ -1492,7 +1496,7 @@ local function TerrainCount()
 end
 
 local function UpdatePerf()
-    if not ns.db.perf then
+    if not (ns.dev and ns.db.perf) then
         perfText:SetText("")
         return
     end
@@ -1549,9 +1553,13 @@ local SCRUB = {
     BACKGROUND = "Interface\\Tooltips\\UI-Tooltip-Background",
     KNOB = 16,
     ROW = 30,                   -- bar height, with the level labels under it
-    GAP = 8,                    -- space above and below the bar, clear of the map's border
+    OUTSET = 4,                 -- its frame reaches this far outside the strip
+    BELOW = 6,                  -- space under the labels, which have some of their own
     LABEL_EVERY = 10,           -- levels
 }
+-- From the map's bottom to the bar's top: the bar's frame sits PAD under the
+-- map's frame, and the knob pokes out above the strip.
+SCRUB.TOP = MAP_BORDER + FRAME.PAD + SCRUB.OUTSET - (SCRUB.KNOB - SCRUB.TRACK) / 2
 local BUTTON_HEIGHT = 22
 
 -- Last point at or before time t, 0 if none.
@@ -1602,6 +1610,9 @@ local function UpdateScrub(seq)
         bright:SetShown(w >= 0.5)
         bright:SetWidth(math.max(0.5, w))
     end
+    -- Kept within the bar's frame at the ends, in line with the map's edge.
+    local reach = SCRUB.KNOB / 2 - SCRUB.OUTSET
+    x = math.max(reach, math.min(scrub.track:GetWidth() - reach, x))
     scrub.knob:SetPoint("CENTER", scrub.track, "LEFT", x, 0)
 end
 
@@ -1723,7 +1734,6 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
-
     PlaceHead()
     if seq >= 1 and seq <= state.n then
         local t = state.pt[seq]
@@ -1946,10 +1956,21 @@ local function UpdateTerrainButton()
     terrainButton:SetText(ns.db.terrain and "Terrain: On" or "Terrain: Off")
 end
 
+local function UpdateGearButton()
+    gearButton:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
+    if not ns.db.showGear then
+        ns.GearCard:Undock()
+    elseif frame:IsShown() then
+        ns.GearCard:Follow(state.markerNow)
+    end
+end
+
 local function Layout()
-    -- Title bar, map, timeline, buttons.
-    local fw = state.W + 24 + PANEL_GAP + ns.Panel.WIDTH
-    local fh = 32 + state.H + 2 * SCRUB.GAP + SCRUB.ROW + BUTTON_HEIGHT + 12
+    -- Across: map and panel. Down: title bar, map, timeline, buttons.
+    local fw = FRAME.LEFT + FRAME.PAD + MAP_BORDER + state.W + PANEL_GAP + ns.Panel.WIDTH
+        + MAP_BORDER + FRAME.PAD + FRAME.RIGHT
+    local fh = FRAME.TOP + FRAME.PAD + MAP_BORDER + state.H + SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW
+        + BUTTON_HEIGHT + FRAME.PAD + FRAME.BOTTOM
     frame:SetSize(fw, fh)
     canvas:SetSize(state.W, state.H)
     content:SetSize(state.W, state.H)
@@ -1977,8 +1998,10 @@ end
 -- the replay; hover for the level, zone and date at that point.
 local function CreateScrub()
     scrub = CreateFrame("Frame", nil, frame)
-    scrub:SetPoint("TOPLEFT", canvas, "BOTTOMLEFT", 0, -SCRUB.GAP)
-    scrub:SetPoint("TOPRIGHT", canvas, "BOTTOMRIGHT", 0, -SCRUB.GAP)
+    -- Wider than the map by half a knob each side, so the strip is exactly
+    -- as wide as the map and the two frames line up.
+    scrub:SetPoint("TOPLEFT", canvas, "BOTTOMLEFT", -SCRUB.KNOB / 2, -SCRUB.TOP)
+    scrub:SetPoint("TOPRIGHT", canvas, "BOTTOMRIGHT", SCRUB.KNOB / 2, -SCRUB.TOP)
     scrub:SetHeight(SCRUB.ROW)
     scrub:EnableMouse(true)
     scrub.pieces, scrub.ticks, scrub.runs, scrub.tickCount = {}, {}, {}, 0
@@ -1999,8 +2022,8 @@ local function CreateScrub()
     back:SetTexture(SCRUB.BACKGROUND)
     back:SetVertexColor(0, 0, 0, 0.9)
     local border = CreateFrame("Frame", nil, scrub, "BackdropTemplate")
-    border:SetPoint("TOPLEFT", track, -4, 4)
-    border:SetPoint("BOTTOMRIGHT", track, 4, -4)
+    border:SetPoint("TOPLEFT", track, -SCRUB.OUTSET, SCRUB.OUTSET)
+    border:SetPoint("BOTTOMRIGHT", track, SCRUB.OUTSET, -SCRUB.OUTSET)
     border:SetFrameLevel(track:GetFrameLevel() + 1)
     border:SetBackdrop({ edgeFile = SCRUB.EDGE, edgeSize = 10 })
     border:SetBackdropBorderColor(0.6, 0.6, 0.6)
@@ -2046,9 +2069,21 @@ local function CreateScrub()
     end)
 end
 
+-- Draws the map's frame MAP_BORDER outside target, level frame levels above
+-- it. Returns the frame.
+local function Outline(target, level)
+    local edges = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    edges:SetPoint("TOPLEFT", target, -MAP_BORDER, MAP_BORDER)
+    edges:SetPoint("BOTTOMRIGHT", target, MAP_BORDER, -MAP_BORDER)
+    edges:SetFrameLevel(target:GetFrameLevel() + level)
+    edges:SetBackdrop({ edgeFile = SCRUB.EDGE, edgeSize = 12 })
+    edges:SetBackdropBorderColor(0.6, 0.6, 0.6)
+    return edges
+end
+
 -- Returns the world art layer, which SetupWorld fills in.
 local function CreateWindow()
-    frame = CreateFrame("Frame", "RoadToSixtyJourneyFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame = CreateFrame("Frame", "RoadToSixtyJourneyFrame", UIParent, "ButtonFrameTemplate")
     frame:Hide()   -- before scripts are set, so OnHide does not run half-built
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
@@ -2066,12 +2101,40 @@ local function CreateWindow()
     end)
     tinsert(UISpecialFrames, "RoadToSixtyJourneyFrame")
 
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    title:SetPoint("TOP", 0, -5)
-    title:SetText(UnitName("player") .. "'s Journey")
+    -- The game's own window: metal border, dark background, gold title. No
+    -- portrait, no button bar, and the inset is not needed under the map.
+    ButtonFrameTemplate_HidePortrait(frame)
+    ButtonFrameTemplate_HideButtonBar(frame)
+    if frame.Inset then frame.Inset:Hide() end
+    -- Start the background below the title bar so the bar stays dark, as
+    -- Baganator does on this client.
+    frame.Bg:SetPoint("TOPLEFT", 6, -21)
+    if frame.TopTileStreaks then frame.TopTileStreaks:SetPoint("TOPLEFT", 6, -21) end
+    frame:SetTitle(UnitName("player") .. "'s Journey")
+
+    -- Cog left of the close button, a small red button like the game's:
+    -- opens or closes the options.
+    local options = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    options:SetSize(32, 22)
+    options:SetFrameLevel(frame.CloseButton:GetFrameLevel())
+    options:SetPoint("RIGHT", frame.CloseButton, "LEFT", 0, 0)
+    options:SetPoint("TOP", 0, 1)   -- Forever's title bar sits 2 px higher than retail's
+    local cog = options:CreateTexture(nil, "ARTWORK")
+    cog:SetSize(17, 17)
+    cog:SetPoint("CENTER")
+    cog:SetTexture("Interface\\AddOns\\" .. addonName .. "\\cog")
+    options:SetScript("OnMouseDown", function() cog:SetPoint("CENTER", 1, -1) end)
+    options:SetScript("OnMouseUp", function() cog:SetPoint("CENTER") end)
+    options:SetScript("OnClick", function() ns.Options:Toggle() end)
+    options:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Options")
+        GameTooltip:Show()
+    end)
+    options:SetScript("OnLeave", GameTooltip_Hide)
 
     canvas = CreateFrame("Frame", nil, frame)
-    canvas:SetPoint("TOPLEFT", 12, -32)
+    canvas:SetPoint("TOPLEFT", FRAME.LEFT + FRAME.PAD + MAP_BORDER, -(FRAME.TOP + FRAME.PAD + MAP_BORDER))
     canvas:SetClipsChildren(true)
     canvas:EnableMouse(true)
     canvas:EnableMouseWheel(true)
@@ -2119,12 +2182,7 @@ local function CreateWindow()
 
     -- Frame around the map like the timeline's, with a soft shadow along the
     -- inside of each edge. Above every map layer and marker; takes no mouse.
-    local edges = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    edges:SetPoint("TOPLEFT", canvas, -MAP_BORDER, MAP_BORDER)
-    edges:SetPoint("BOTTOMRIGHT", canvas, MAP_BORDER, -MAP_BORDER)
-    edges:SetFrameLevel(canvas:GetFrameLevel() + 40)
-    edges:SetBackdrop({ edgeFile = SCRUB.EDGE, edgeSize = 12 })
-    edges:SetBackdropBorderColor(0.6, 0.6, 0.6)
+    local edges = Outline(canvas, 40)
     local shadows = {
         { "TOPLEFT", "TOPRIGHT", "VERTICAL", 0, MAP_SHADOW[2] },
         { "BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", MAP_SHADOW[2], 0 },
@@ -2149,20 +2207,6 @@ local function CreateWindow()
 
     perfText = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     perfText:SetPoint("BOTTOMLEFT", 6, 6)
-
-    -- Legend for the level colours, each band's range in its own colour.
-    local legend, first = {}, 1
-    for _, entry in ipairs(LEVEL_COLORS) do
-        local last = entry[1] == math.huge and 60 or entry[1] - 1
-        legend[#legend + 1] = ("|cff%02x%02x%02x%d-%d|r"):format(
-            math.floor(entry[2] * 255 + 0.5), math.floor(entry[3] * 255 + 0.5),
-            math.floor(entry[4] * 255 + 0.5), first, last)
-        first = entry[1]
-    end
-    local legendText = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    legendText:SetPoint("TOPRIGHT", -8, -8)
-    legendText:SetShadowOffset(1, -1)
-    legendText:SetText("Level  " .. table.concat(legend, "  "))
 
     -- Own frame, so the arrow draws above the marker frames.
     local headFrame = CreateFrame("Frame", nil, overlay)
@@ -2194,7 +2238,7 @@ local function CreateWindow()
         end
         SetPlaying(state.n > 0)
     end)
-    playButton:SetPoint("BOTTOMLEFT", 12, 12)
+    playButton:SetPoint("BOTTOMLEFT", FRAME.LEFT + FRAME.PAD, FRAME.BOTTOM + FRAME.PAD)
 
     speedButton = CreateButton(44, "1x", function(self)
         state.speedIndex = state.speedIndex % #SPEEDS + 1
@@ -2215,14 +2259,9 @@ local function CreateWindow()
 
     -- Gear card in the map's corner, following the replay.
     ns.GearCard:Dock(overlay)
-    local gearButton = CreateButton(80, "", function(self)
+    gearButton = CreateButton(80, "", function()
         ns.db.showGear = not ns.db.showGear
-        self:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
-        if ns.db.showGear then
-            ns.GearCard:Follow(state.markerNow)
-        else
-            ns.GearCard:Undock()
-        end
+        UpdateGearButton()
     end)
     gearButton:SetPoint("LEFT", terrainButton, "RIGHT", 4, 0)
     gearButton:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
@@ -2234,12 +2273,17 @@ local function CreateWindow()
     infoText:SetJustifyH("LEFT")
 
     local help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    help:SetPoint("RIGHT", canvas, "BOTTOMRIGHT", -2, -(2 * SCRUB.GAP + SCRUB.ROW + BUTTON_HEIGHT / 2))
+    help:SetPoint("RIGHT", canvas, "BOTTOMRIGHT", MAP_BORDER,
+        -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT / 2))
     help:SetText("Wheel: zoom   Drag: move   Right-click: zoom out")
 
     local panel = ns.Panel:Create(frame)
     panel:SetPoint("TOPLEFT", canvas, "TOPRIGHT", PANEL_GAP, 0)
-    panel:SetPoint("BOTTOMLEFT", canvas, "BOTTOMRIGHT", PANEL_GAP, 0)
+    -- Down past the map to the window's bottom: its frame ends level with
+    -- the buttons' bottom.
+    panel:SetPoint("BOTTOMLEFT", canvas, "BOTTOMRIGHT", PANEL_GAP,
+        -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT - MAP_BORDER))
+    Outline(panel, 10)
 
     return worldLayer
 end
@@ -2265,8 +2309,7 @@ function Map:Open()
     started = debugprofilestop()
     BuildPoints(paths)
     BuildMarkers()
-    ns.GearCard:Rebuild()
-    StartWarmUp()
+    ns.GearCard:Rebuild()    StartWarmUp()
     state.perf.setup = debugprofilestop() - started
 
     SetPlaying(false)
@@ -2340,6 +2383,20 @@ function Map:JumpTo(t, continentID, x, y)
     ns.Panel:SetTime(t)
 end
 
+-- Brings the map in line with settings changed elsewhere, such as in the
+-- options panel.
+function Map:ApplySettings()
+    if not frame then return end
+    UpdateTerrainButton()
+    UpdateGearButton()
+    if not ns.db.motes then
+        HideMotes()
+    end
+    if frame:IsShown() then
+        ApplyView()
+    end
+end
+
 function Map:Toggle()
     if frame and frame:IsShown() then
         frame:Hide()
@@ -2372,5 +2429,6 @@ ns.Command("motes", "toggle sparkles drifting along the journey map path", funct
     if not ns.db.motes then
         HideMotes()
     end
+    ns.Options:Refresh()
     ns.Print("Path sparkles " .. (ns.db.motes and "on" or "off") .. ".")
 end)

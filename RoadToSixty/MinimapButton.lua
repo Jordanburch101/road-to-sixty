@@ -1,12 +1,24 @@
 local addonName, ns = ...
 
 -- Minimap button: the addon icon on the minimap's edge in the usual round
--- tracking border. Left-click opens the journey map; drag moves it around the
--- minimap. /rts minimap shows or hides it. Also the click handler for the
--- addon compartment menu, on clients that have one (see the toc).
+-- tracking border. Left-click opens the journey map, right-click the options;
+-- drag moves it around the minimap. /rts minimap shows or hides it. Also the
+-- click handler for the addon compartment menu, on clients that have one (see
+-- the toc).
+
+local MinimapButton = {}
+ns.MinimapButton = MinimapButton
 
 local ICON = "Interface\\AddOns\\" .. addonName .. "\\icon"
 local button
+
+local function OnClick(mouseButton)
+    if mouseButton == "RightButton" then
+        ns.Options:Open()
+    else
+        ns.Map:Toggle()
+    end
+end
 
 local function Place()
     local angle = math.rad(ns.db.minimap.angle)
@@ -28,6 +40,7 @@ local function ShowTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
     GameTooltip:AddLine("Road to Sixty")
     GameTooltip:AddLine("Left-click: open the journey map", 1, 1, 1)
+    GameTooltip:AddLine("Right-click: options", 1, 1, 1)
     GameTooltip:AddLine("Drag: move this button", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
@@ -37,7 +50,7 @@ local function Create()
     button:SetSize(31, 31)
     button:SetFrameStrata("MEDIUM")
     button:SetFrameLevel(8)
-    button:RegisterForClicks("LeftButtonUp")
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     button:RegisterForDrag("LeftButton")
     button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
@@ -59,8 +72,8 @@ local function Create()
     border:SetSize(53, 53)
     border:SetPoint("TOPLEFT")
 
-    button:SetScript("OnClick", function()
-        ns.Map:Toggle()
+    button:SetScript("OnClick", function(_, mouseButton)
+        OnClick(mouseButton)
     end)
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", GameTooltip_Hide)
@@ -79,7 +92,8 @@ local function Create()
     Place()
 end
 
-local function Refresh()
+-- Shows or hides the button to match ns.db.minimap.hide.
+function MinimapButton:Refresh()
     if ns.db.minimap.hide then
         if button then button:Hide() end
         return
@@ -88,15 +102,18 @@ local function Refresh()
     button:Show()
 end
 
-ns.On("PLAYER_LOGIN", Refresh)
+ns.On("PLAYER_LOGIN", function()
+    MinimapButton:Refresh()
+end)
 
 ns.Command("minimap", "show or hide the minimap button", function()
     ns.db.minimap.hide = not ns.db.minimap.hide
-    Refresh()
+    MinimapButton:Refresh()
+    ns.Options:Refresh()
     ns.Print("Minimap button " .. (ns.db.minimap.hide and "hidden." or "shown."))
 end)
 
 -- Named in the toc (AddonCompartmentFunc) for the addon compartment menu.
-function RoadToSixty_OnAddonCompartmentClick()
-    ns.Map:Toggle()
+function RoadToSixty_OnAddonCompartmentClick(_, mouseButton)
+    OnClick(mouseButton)
 end

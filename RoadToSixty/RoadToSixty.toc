@@ -18,6 +18,7 @@ Map.lua
 Panel.lua
 GearCard.lua
 MinimapButton.lua
+Options.lua
 #@debug@
 Probe.lua
 Seed.lua

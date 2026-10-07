@@ -5,5 +5,8 @@ dist/
 # Generated from branding/header.src.html by branding/build-header.ps1
 branding/header.html
 
+# Throwaway HTML mock-ups drawn on game screenshots
+branding/mock/
+
 # Test images for /rts shots
 RoadToSixty/shots/

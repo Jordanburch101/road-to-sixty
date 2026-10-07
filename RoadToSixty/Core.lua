@@ -131,6 +131,7 @@ end
 
 ns.Command("greet", "toggle login message", function()
     ns.db.greet = not ns.db.greet
+    ns.Options:Refresh()
     Print("Login message " .. (ns.db.greet and "enabled" or "disabled") .. ".")
 end)
 
@@ -158,6 +159,10 @@ function ns.ResetCharacter()
 end
 
 --@debug@
+-- Only in developer builds: lets saved developer settings (perf, showSkipped)
+-- take effect. A release build ignores them even if they were saved.
+ns.dev = true
+
 ns.Command("perf", "toggle timing info on the journey map", function()
     ns.db.perf = not ns.db.perf
     Print("Map timing info " .. (ns.db.perf and "shown" or "hidden") .. ".")
