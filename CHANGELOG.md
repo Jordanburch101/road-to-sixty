@@ -12,9 +12,11 @@ broken and now works. Leave out internal changes. Sections are
 - Guilds: your journey records when you join or leave a guild and when
   your rank changes. They show in History and on the map with your
   guild's own banner, in its colours and with its emblem, and the replay
-  celebrates joining a guild: the banner drops in to a burst of confetti.
-  Stats lists each guild you have been in and for how long, and the
-  Characters tab shows each character's guild.
+  celebrates joining a guild: the banner drops in to a burst of confetti,
+  then stays on the map where it landed. A guild without a tabard gets a
+  grey banner, filled in with its colours once it has one while you are
+  still a member. Stats lists each guild you have been in and for how
+  long, and the Characters tab shows each character's guild.
 - Zephras Isle shows its terrain when you zoom in with terrain on, like
   the rest of the world.
 - The replay no longer travels along the line between where you logged
