@@ -20,6 +20,7 @@ local addonName, ns = ...
 --   eq   slot, itemID              equipment changed; itemID 0 when emptied
 --   prof, rec                      professions and recipes, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
+--   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}
@@ -107,7 +108,8 @@ local function StartRun(name)
 end
 
 -- Logs leaving the instance with a summary: { name, duration (seconds),
--- kills, xp, deaths, money (copper), levels, items = { itemLink, ... } }.
+-- kills, xp, deaths, money (copper), levels, items = { itemLink, ... },
+-- party = guids of the others in the group, if any (see Groups.lua) }.
 local function EndRun(instanceID)
     local run, t = ns.char.run, ns.char.totals
     local summary
@@ -121,7 +123,9 @@ local function EndRun(instanceID)
             money = GetMoney() - run.money,
             levels = UnitLevel("player") - run.level,
             items = run.items,
+            party = ns.Groups:Current(),
         }
+        ns.Groups:CountRun(summary.party)
     end
     Journal:Log("out", instanceID, summary)
     ns.char.run = nil

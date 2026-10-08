@@ -16,6 +16,7 @@ Recorder.lua
 Journal.lua
 Crafts.lua
 Guilds.lua
+Groups.lua
 Roster.lua
 Health.lua
 Routes.lua
@@ -35,4 +36,5 @@ Seed.lua
 Swatch.lua
 IconBrowser.lua
 GuildProbe.lua
+PartyProbe.lua
 #@end-debug@

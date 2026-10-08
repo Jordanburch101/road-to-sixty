@@ -25,6 +25,7 @@ local charDefaults = {
     levels = {},
     kills = { d = "", last = 0, names = {} },  -- packed, see Journal.lua
     recipes = {},       -- profession -> { [recipe name] = true }, see Crafts.lua
+    people = {},        -- guid -> players grouped with, see Groups.lua
     -- skills (profession -> { rank, max }) is left out: nil until first read
     -- guild (see Guilds.lua) too: nil until first read, false when in none
     totals = {
