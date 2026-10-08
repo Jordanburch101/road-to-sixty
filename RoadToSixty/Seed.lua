@@ -975,6 +975,15 @@ local function SeedRealistic(items)
         end
         -- Bound to this zone's inn, for the hearthstone after dungeons.
         G.home = { c = G.c, x = G.x, y = G.y }
+        -- Joins a guild in the second town and is promoted in the third,
+        -- logged like Guilds.lua does. No tabard: it shows the tabard item.
+        if i == 2 then
+            Log("gj", "Seeded Adventurers", "Initiate")
+            G.char.guild = { "Seeded Adventurers", "Initiate", 4 }
+        elseif i == 3 and G.char.guild then
+            Log("gr", "Seeded Adventurers", "Member", true)
+            G.char.guild[2], G.char.guild[3] = "Member", 3
+        end
         -- Quest from this zone's town until the level to move on.
         local leaveAt = ends[zone.leaveAt - 1] or REALISTIC_POINTS
         while G.points < leaveAt do

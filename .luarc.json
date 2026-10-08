@@ -38,6 +38,9 @@
         "PlayerFrame",
         "PlayerLevelText",
         "ERR_LEARN_RECIPE_S",
+        "ERR_GUILD_REMOVE_SELF",
+        "ERR_GUILD_DISBANDED",
+        "SetLargeGuildTabardTextures",
         "GetSpellInfo"
     ]
 }

@@ -19,6 +19,7 @@ local addonName, ns = ...
 --                                  better; instanceID if inside one
 --   eq   slot, itemID              equipment changed; itemID 0 when emptied
 --   prof, rec                      professions and recipes, see Crafts.lua
+--   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}

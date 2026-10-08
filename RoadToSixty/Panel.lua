@@ -24,8 +24,9 @@ local currentIndex              -- index in historyList.data of the entry at cur
 local summaryValues = {}
 
 local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes" }
+    "Professions", "Recipes", "Guild" }
 local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
+local GUILD_ROW = 12        -- hovering it lists each guild and when
 
 local function ZoneName(mapID)
     local info = mapID and C_Map.GetMapInfo(mapID)
@@ -234,6 +235,9 @@ local TITLE_COLORS = {
     qd = { 1, 0.9, 0.55 },
     prof = { 0.6, 0.9, 1 },
     rec = { 0.8, 0.9, 1 },
+    gj = { 0.25, 1, 0.25 },
+    gl = { 0.25, 1, 0.25 },
+    gr = { 0.25, 1, 0.25 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -244,6 +248,7 @@ local function UpdateHistoryRow(row, item)
     row.currentBar:SetShown(current)
     row:SetAlpha(item.t > currentTime and 0.35 or 1)
     local header = item.header ~= nil
+    if row.badge then row.badge:Hide() end
     row.header:SetShown(header)
     row.rule:SetShown(header)
     row.highlight:SetShown(not header)
@@ -258,6 +263,16 @@ local function UpdateHistoryRow(row, item)
 
     local size = ns.SetEventIcon(row.icon, row.number, item.kind, item.level, item.iconFile)
     row.icon:SetSize(size, size)
+    -- Guild entries show the guild's banner instead.
+    if item.guild then
+        if not row.badge then
+            row.badge = ns.Guilds:CreateBadge(row, HISTORY_ROW - 4)
+            row.badge:SetPoint("CENTER", row.icon)
+        end
+        ns.Guilds:SetBadge(row.badge, item.tabard)
+        row.badge:Show()
+        row.icon:Hide()
+    end
     ns.SetQualityOverlay(row.quality, item.kind == "loot" and item.quality or nil)
     row.title:SetText(item.title)
     row.title:SetTextColor(unpack(TITLE_COLORS[item.kind] or { 1, 1, 1 }))
@@ -286,6 +301,7 @@ local HISTORY_FILTERS = {
     { "Crafting", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
     } },
+    { "Guild", { "gj" }, { { "guilds", "Guild" } } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
@@ -293,7 +309,7 @@ local FILTER_SIZE, FILTER_ICON, FILTER_MARGIN = 28, 24, 4
 local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
-    prof = "professions", rec = "recipes",
+    prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -475,6 +491,12 @@ local function BuildHistory()
             local title, detail, icon = ns.Crafts:Describe(e)
             if title then
                 Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y, detail .. " - " .. where)
+            end
+        elseif kind == "gj" or kind == "gl" or kind == "gr" then
+            local title, detail, icon, tabard = ns.Guilds:Describe(e)
+            if title then
+                Add({ kind = kind, title = title, iconFile = icon, guild = true, tabard = tabard }, t, c, x, y,
+                    detail .. " - " .. where)
             end
         end
     end
@@ -765,6 +787,7 @@ local function RefreshStats()
         zoneCount,
         ProfessionsSummary(),
         ("%d learned, %d known"):format(ns.Crafts:RecipeCounts()),
+        char.guild and ("<%s>"):format(char.guild[1]) or "-",
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -803,6 +826,28 @@ local function CreateStatsPane(pane)
         GameTooltip:Show()
     end)
     hover:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- And the guild row each guild, with when the character joined and left.
+    local guildHover = CreateFrame("Frame", nil, pane)
+    guildHover:SetPoint("TOPLEFT", 0, -(GUILD_ROW - 1) * SUMMARY_ROW + 2)
+    guildHover:SetPoint("RIGHT")
+    guildHover:SetHeight(SUMMARY_ROW)
+    guildHover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Guilds")
+        local list = ns.Guilds:History()
+        for _, g in ipairs(list) do
+            local from = g[4] and "before tracking" or date("%d %b %Y", g[2])
+            local to = g[3] and date("%d %b %Y", g[3]) or "now"
+            GameTooltip:AddDoubleLine("<" .. g[1] .. ">", ("%s - %s, %s"):format(from, to,
+                FormatDuration((g[3] or time()) - g[2])), 1, 1, 1, 1, 1, 1)
+        end
+        if #list == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    guildHover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do
@@ -892,6 +937,10 @@ local function UpdateCharacterRow(row, e)
     row.title:SetTextColor(r, g, b)
 
     local parts = {}
+    local guild = (me and ns.char or e.journey or {}).guild
+    if guild then
+        parts[#parts + 1] = "<" .. guild[1] .. ">"
+    end
     if e.zone then
         parts[#parts + 1] = ZoneName(e.zone)
     end

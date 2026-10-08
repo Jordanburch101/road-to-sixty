@@ -144,6 +144,7 @@ local MARKER_ZOOM = {
     quest = 5,
     profession = 2.5,
     recipe = 5,
+    guild = 2.5,
 }
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
@@ -166,6 +167,9 @@ local EVENT_ICONS = {
     qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
     prof = { file = "Interface\\Icons\\INV_Misc_Book_11", size = 18 },
     rec = { file = "Interface\\Icons\\INV_Scroll_03", size = 16 },
+    gj = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 20 },
+    gl = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
+    gr = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
 }
 
 local INSTANCE_TYPES = {
@@ -281,6 +285,7 @@ end
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
 local MARKER_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
+    gj = "guilds", gl = "guilds", gr = "guilds",
 }
 
 -- False if the player has turned this History filter category off.
@@ -658,6 +663,11 @@ end
 
 local function GetMarker(i)
     local m = markers[i]
+    -- A marker reused for another kind of event loses a guild banner it had.
+    if m and m.badge then
+        m.badge:Hide()
+        m.icon:Show()
+    end
     if m then return m end
     m = CreateFrame("Frame", nil, overlay)
     m:SetSize(14, 14)
@@ -726,16 +736,26 @@ local function BuildMarkers()
                 m.title = ("%d quests turned in"):format(#names)
                 m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), ZoneName(zone), FormatTime(visit.first))
             end
-        elseif toContent and (kind == "prof" or kind == "rec") then
-            local title, detail, icon = ns.Crafts:Describe(e)
+        elseif toContent and (kind == "prof" or kind == "rec" or kind == "gj" or kind == "gl" or kind == "gr") then
+            local crafts = kind == "prof" or kind == "rec"
+            local title, detail, icon, tabard = (crafts and ns.Crafts or ns.Guilds):Describe(e)
             if title then
                 count = count + 1
                 local m = GetMarker(count)
+                -- Guild events show the guild's banner instead of the icon.
+                if not crafts then
+                    m.badge = m.badge or ns.Guilds:CreateBadge(m, 26)
+                    m.badge:SetPoint("CENTER")
+                    ns.Guilds:SetBadge(m.badge, tabard)
+                    m.badge:Show()
+                    m.icon:Hide()
+                end
                 m.t, m.popping, m.level = t, nil, nil
                 m.x, m.y = toContent(e[4], e[5])
                 m.c = e[3]
                 m.category = MARKER_CATEGORY[kind]
-                m.minZoom = kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
+                m.minZoom = not crafts and MARKER_ZOOM.guild
+                    or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
                 m.title = title
@@ -2370,9 +2390,11 @@ local function OnUpdate(_, elapsed)
         -- At the end, markerNow is math.huge: everything up to now has passed.
         local now = state.markerNow == math.huge and time() or state.markerNow
         ns.QuestPop:Passed(before, now)
+        ns.GuildPop:Passed(before, now)
         ns.KillPop:Passed(before, now)
     end
     ns.QuestPop:Update(elapsed)
+    ns.GuildPop:Update(elapsed)
     ns.KillPop:Update(elapsed)
 end
 
@@ -2525,6 +2547,7 @@ local function CreateWindow()
         ns.Roster:SetView(nil)
         SetPlaying(false)
         ns.QuestPop:Clear()
+        ns.GuildPop:Clear()
         ns.KillPop:Clear()
         drag = nil
         state.targetZoom = state.zoom
@@ -2644,6 +2667,7 @@ local function CreateWindow()
     headFrame:SetAllPoints()
     headFrame:SetFrameLevel(overlay:GetFrameLevel() + 5)
     ns.QuestPop:Attach(overlay)
+    ns.GuildPop:Attach(overlay)
     ns.KillPop:Attach(overlay)
     head = headFrame:CreateTexture(nil, "OVERLAY")
     head:SetSize(24, 24)
@@ -2746,6 +2770,7 @@ function Map:Open()
     BuildMarkers()
     ns.GearCard:Rebuild()
     ns.QuestPop:Rebuild()
+    ns.GuildPop:Rebuild()
     ns.KillPop:Rebuild()
     ns.KillMarks:Rebuild()
     StartWarmUp()

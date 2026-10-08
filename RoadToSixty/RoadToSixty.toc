@@ -15,6 +15,7 @@ ZoneArt.lua
 Recorder.lua
 Journal.lua
 Crafts.lua
+Guilds.lua
 Roster.lua
 Health.lua
 Routes.lua
@@ -23,6 +24,7 @@ Map.lua
 Panel.lua
 GearCard.lua
 QuestPop.lua
+GuildPop.lua
 KillPop.lua
 KillMarks.lua
 MinimapButton.lua
@@ -32,4 +34,5 @@ Probe.lua
 Seed.lua
 Swatch.lua
 IconBrowser.lua
+GuildProbe.lua
 #@end-debug@
