@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- /rts swatch: shows candidate Blizzard textures and line styles for the
 -- journey map side by side, over terrain, parchment or a dark background,
@@ -84,6 +84,29 @@ local MAGIC_SAMPLES = {
 }
 local MOTES = 6
 local MAGIC_SPAN = 2
+
+-- Sea lane candidates (Routes.lua's ns.SeaLane), four cells wide: a solid
+-- ribbon width pixels wide, arcane blue for teleports like a mage portal and
+-- nature green for hearthstones, with effects flowing inside it: textures
+-- from scripts/lane-textures.py, { name, speed in repeats a second }. core
+-- adds a bright thread down the middle; pulse makes the ribbon breathe.
+local TRAVEL = "Interface\\AddOns\\" .. addonName .. "\\Travel\\"
+local LANE_SPAN = 4
+local PORTAL = { 0.35, 0.65, 1 }
+local NATURE = { 0.4, 1, 0.45 }
+local LANE_SAMPLES = {
+    { "Portal: wisps", color = PORTAL, width = 10, effects = { { "wisps", 0.25 } } },
+    { "Portal: sparkles", color = PORTAL, width = 10, effects = { { "sparkles", 0.35 } } },
+    { "Portal: wisps + sparkles, wide", color = PORTAL, width = 14,
+        effects = { { "wisps", 0.2 }, { "sparkles", 0.45 } } },
+    { "Portal: wisps, core, pulsing", color = PORTAL, width = 12, core = true, pulse = true,
+        effects = { { "wisps", 0.3 } } },
+    { "Nature: vines", color = NATURE, width = 10, effects = { { "vines", 0.15 } } },
+    { "Nature: wisps", color = NATURE, width = 10, effects = { { "wisps", 0.2 } } },
+    { "Nature: vines + sparkles, wide", color = NATURE, width = 14,
+        effects = { { "vines", 0.12 }, { "sparkles", 0.3 } } },
+    { "Nature: vines, pulsing", color = NATURE, width = 12, pulse = true, effects = { { "vines", 0.15 } } },
+}
 
 -- Jump line candidates (hearthstone, teleport, boat), two cells wide like
 -- the magic samples. style: "solid", "dash" or "dots"; arc bends the line;
@@ -419,6 +442,50 @@ local function AddJumpCell(index, sample)
     end
 end
 
+-- A lane ribbon: dark outline, deep fill, the effects scrolling inside it
+-- (added, so they light the fill), and an optional bright core.
+local function AddLaneCell(index, sample)
+    local cell = CreateCell(index, sample[1], LANE_SPAN)
+    local x1, y1, x2, y2 = 14, -ICON + 4, CELL_W * LANE_SPAN - 14, -14
+    local length = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+    local r, g, b = unpack(sample.color)
+    local w = sample.width
+
+    local ribbon = CreateFrame("Frame", nil, cell)
+    ribbon:SetAllPoints()
+    -- Each on its own sublayer: in one, the drawing order is not kept.
+    local outline = NewLine(ribbon, x1, y1, x2, y2, w + 4)
+    outline:SetDrawLayer("ARTWORK", -2)
+    outline:SetColorTexture(0, 0, 0, 0.7)
+    local fill = NewLine(ribbon, x1, y1, x2, y2, w)
+    fill:SetDrawLayer("ARTWORK", -1)
+    fill:SetColorTexture(r * 0.3, g * 0.3, b * 0.3, 0.95)
+    for i, effect in ipairs(sample.effects) do
+        local line = NewLine(ribbon, x1, y1, x2, y2, w - 1)
+        line:SetDrawLayer("ARTWORK", i)
+        line:SetTexture(TRAVEL .. effect[1], "REPEAT", "REPEAT")
+        line:SetVertexColor(r, g, b, 1)
+        line:SetBlendMode("ADD")
+        -- The textures are 8 (wisps, vines) or 4 (sparkles) times as long as
+        -- they are high; keep that shape across the ribbon's width.
+        local aspect = effect[1] == "sparkles" and 4 or 8
+        local repeats = length / (w * aspect)
+        local offset = 0
+        table.insert(animated, function(elapsed)
+            offset = (offset - elapsed * effect[2]) % 1
+            line:SetTexCoord(offset, offset + repeats, 0, 1)
+        end)
+    end
+    if sample.core then
+        local core = NewLine(ribbon, x1, y1, x2, y2, 1.5)
+        core:SetDrawLayer("ARTWORK", 7)
+        core:SetColorTexture(math.min(1, r + 0.4), math.min(1, g + 0.4), math.min(1, b + 0.4), 0.8)
+    end
+    if sample.pulse then
+        Pulse(ribbon, 0.7, 1, 1.4)
+    end
+end
+
 local function AddTimelineCell(index, sample)
     local cell = CreateCell(index, sample[1], TIMELINE_SPAN)
     local w = CELL_W * TIMELINE_SPAN - 40
@@ -602,6 +669,7 @@ local function CreateWindow()
     rows = rows + math.ceil(#LINE_SAMPLES / COLUMNS)
     rows = rows + math.ceil(#MAGIC_SAMPLES * MAGIC_SPAN / COLUMNS)
     rows = rows + math.ceil(#JUMP_SAMPLES * MAGIC_SPAN / COLUMNS)
+    rows = rows + math.ceil(#LANE_SAMPLES * LANE_SPAN / COLUMNS)
     local w, h = LABEL_W + COLUMNS * CELL_W, rows * CELL_H
 
     frame = CreateFrame("Frame", "RoadToSixtySwatchFrame", UIParent, "BasicFrameTemplateWithInset")
@@ -657,6 +725,11 @@ local function CreateWindow()
     AddSectionLabel(row, "Jumps")
     for i, sample in ipairs(JUMP_SAMPLES) do
         AddJumpCell(row * COLUMNS + (i - 1) * MAGIC_SPAN + 1, sample)
+    end
+    row = row + math.ceil(#JUMP_SAMPLES * MAGIC_SPAN / COLUMNS)
+    AddSectionLabel(row, "Lanes")
+    for i, sample in ipairs(LANE_SAMPLES) do
+        AddLaneCell(row * COLUMNS + (i - 1) * LANE_SPAN + 1, sample)
     end
     frame:SetScript("OnUpdate", function(_, elapsed)
         for _, update in ipairs(animated) do

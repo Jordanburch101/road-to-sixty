@@ -1,10 +1,11 @@
-"""Draws the red X that marks where a boat or zeppelin landed on the journey
-map, as on an adventure film's travel map:
+"""Draws the marks at the ends of a boat or zeppelin trip on the journey map,
+as on an adventure film's travel map:
 
-  RoadToSixty/Travel/cross.tga
+  RoadToSixty/Travel/ring.tga   red target rings, where the trip left
+  RoadToSixty/Travel/cross.tga  red X, where it landed
 
-The colour is baked in rather than tinted in game, so the lit edge keeps its
-lighter red. Drawn SCALE times larger and shrunk, for smooth edges. Needs
+The colour is baked in rather than tinted in game, so lit edges and pale
+rings keep their colour. Drawn SCALE times larger and shrunk, for smooth edges. Needs
 Pillow (pip install pillow).
 
 Usage: python scripts/travel-marks.py
@@ -20,6 +21,7 @@ SCALE = 4
 
 RED = (0.86, 0.06, 0.05)
 DARK = (0.32, 0.0, 0.0)
+PALE = (1.0, 0.86, 0.8)
 
 
 def render(shade):
@@ -42,6 +44,21 @@ def render(shade):
 
 def mix(a, b, t):
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
+
+
+def ring(x, y):
+    """Target: red rings with pale gaps round a red centre, a dark outline
+    on the outside and between the bands, lit from the top left."""
+    d = math.hypot(x, y)
+    if d > 0.96:
+        return None
+    if d > 0.9:
+        return DARK + (1,)
+    band = RED if d < 0.3 else (RED, PALE, RED, PALE)[min(3, int((0.9 - d) / 0.15))]
+    lift = 0.85 + 0.25 * (-(x + y) / 2)
+    colour = tuple(c * lift for c in band)
+    edge = min(abs(d - r) for r in (0.75, 0.6, 0.45, 0.3))
+    return mix(colour, DARK, max(0, 1 - edge / 0.025) * 0.5) + (1,)
 
 
 def cross(x, y):
@@ -72,8 +89,9 @@ def cross(x, y):
 
 def main():
     OUT.mkdir(exist_ok=True)
-    render(cross).save(OUT / "cross.tga")
-    print(f"Wrote {OUT / 'cross.tga'}")
+    for name, shade in (("ring", ring), ("cross", cross)):
+        render(shade).save(OUT / f"{name}.tga")
+        print(f"Wrote {OUT / name}.tga")
 
 
 if __name__ == "__main__":

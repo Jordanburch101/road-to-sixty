@@ -17,6 +17,7 @@ Journal.lua
 Crafts.lua
 Roster.lua
 Health.lua
+Routes.lua
 Islands.lua
 Map.lua
 Panel.lua

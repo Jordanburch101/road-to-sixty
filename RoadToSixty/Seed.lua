@@ -717,12 +717,12 @@ local FLIGHT_MASTERS = {
     { 1, -3825, -4517 },    -- Theramore, Dustwallow Marsh
 }
 
--- Boats between the continents, dock to dock as in Map.lua's DOCKS:
+-- Boats between the continents, dock to dock as in Routes.lua's DOCKS:
 -- { from continent, x, y, to continent, x, y }.
 local BOATS = {
-    { 0, -8550, 1450, 1, 6650, 950 },   -- Stormwind Harbor to Auberdine
-    { 0, -3800, -700, 1, 6650, 950 },   -- Menethil Harbor to Auberdine
-    { 1, 6650, 950, 0, -3800, -700 },   -- Auberdine to Menethil Harbor
+    { 0, -8550, 1450, 1, 6547, 944 },   -- Stormwind Harbor to Auberdine
+    { 0, -3906, -584, 1, 6547, 944 },   -- Menethil Harbor to Auberdine
+    { 1, 6547, 944, 0, -3906, -584 },   -- Auberdine to Menethil Harbor
 }
 local BOAT_SECONDS = 300
 
@@ -962,6 +962,16 @@ local function SeedRealistic(items)
         if i > 1 then
             town = { RandomSpot(zone) }
             TravelToZone(zone, town[1], town[2])
+            -- New to this continent: a hearthstone back across the sea to the
+            -- last inn and a mage's portal back, so the map's sea lanes get
+            -- trips both ways.
+            if G.home and G.home.c ~= G.c then
+                G.t = G.t + 1800
+                Hearth()
+                G.t = G.t + 600
+                G.c, G.x, G.y = zone.c, town[1], town[2]
+                OpenSegment("w", "p")
+            end
         end
         -- Bound to this zone's inn, for the hearthstone after dungeons.
         G.home = { c = G.c, x = G.x, y = G.y }

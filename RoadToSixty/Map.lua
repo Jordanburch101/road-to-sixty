@@ -65,18 +65,32 @@ local MODE_ALPHA = { w = 0.95, t = 0.5 }     -- on foot or mounted, flight path
 local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
 
 -- Jumps between segments are drawn as arcs, styled by why the path jumped
--- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash" or
--- "solid", icon = atlas at the top of the arc, dot / spacing = dot size and
--- spacing in screen pixels, finish = texture at the arc's end and its size }.
+-- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash",
+-- "solid" or "ribbon", icon = atlas at the top of the arc, dot / spacing =
+-- dot size and spacing in screen pixels, start / finish = texture at the
+-- arc's start or end and its size }. A ribbon is a band width pixels wide
+-- in a deep shade of the colour, with effects flowing inside it: { texture
+-- in Travel\ (scripts/lane-textures.py), its length over its height, speed
+-- in repeats a second }. replay = seconds the replay's arrow takes along the
+-- jump at normal speed (1 if unset); without, a jump would pass in a frame.
+-- With pace (map units a second; the world map is about 1000 wide) the time
+-- follows the jump's length instead, replay being the least: a crossing by
+-- sea takes a while, so the camera following it can load the terrain.
 local JUMP_STYLES = {
-    h = { "Hearthstone", 0.3, 1, 0.45, 1, style = "dots", icon = "Innkeeper" },
-    p = { "Teleport", 0.8, 0.45, 1, 1, style = "solid", icon = "MagePortalAlliance" },
-    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots" },
+    -- Nature magic: vines twining with sparkles.
+    h = { "Hearthstone", 0.4, 1, 0.45, 1, style = "ribbon", width = 5, icon = "Innkeeper", replay = 1.2, pace = 80,
+        effects = { { "vines", 8, 0.12 }, { "sparkles", 4, 0.3 } } },
+    -- Arcane, like a mage's portal: wisps of light with sparkles.
+    p = { "Teleport", 0.35, 0.65, 1, 1, style = "ribbon", width = 5, icon = "MagePortalAlliance", replay = 1.2, pace = 80,
+        effects = { { "wisps", 8, 0.2 }, { "sparkles", 4, 0.45 } } },
+    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots", replay = 0.6 },
     i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
-    -- Like a travel map in an adventure film: red dots and an X where it lands.
-    b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11,
+    -- Like a travel map in an adventure film: red dots from a target ring to
+    -- an X where it lands.
+    b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11, replay = 2.5, pace = 60,
+        start = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\ring", 18 },
         finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
-    l = { "Logged in", 1, 1, 1, 0.7, style = "dots" },
+    l = { "Logged in", 1, 1, 1, 0.7, style = "dots", replay = 0.3 },
 }
 local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
 -- Sizes in screen pixels.
@@ -210,6 +224,9 @@ local state = {
     charCount = 0,      -- other characters' markers in use
     jumps = {},         -- built jump arcs: { index into drawn, parts, icon, x, y }
     boats = {},         -- point index -> "Dock to dock" for boat jumps near known docks
+    seaTrips = {},      -- point index -> how a jump across the sea is drawn, see BuildPoints
+    ribbons = {},       -- ribbon effect lines to scroll, see BuildJumps
+    ribbonClock = 0,    -- seconds the ribbon effects have flowed
     otherTracks = {},   -- tracks of other characters whose path is turned on
     otherDrawn = {},    -- their built lines, like drawn, each with .track
     hover = nil,        -- line spec under the mouse, with a tooltip showing
@@ -267,45 +284,6 @@ local MARKER_CATEGORY = {
 -- False if the player has turned this History filter category off.
 function ns.FilterShown(category)
     return not category or ns.db.historyFilter[category] ~= false
-end
-
--- Boat and zeppelin docks, in world yards: { name, continentID, x, y }. A
--- boat jump is named after the docks nearest its two ends. Stormwind Harbor
--- and Auberdine come from a recorded trip; the others are estimates, hence
--- the generous range.
-local DOCKS = {
-    { "Stormwind Harbor", 0, -8550, 1450 },
-    { "Menethil Harbor", 0, -3800, -700 },
-    { "Booty Bay", 0, -14350, 450 },
-    { "Undercity zeppelin", 0, 2070, 290 },
-    { "Grom'gol zeppelin", 0, -12410, 210 },
-    { "Auberdine", 1, 6650, 950 },
-    { "Rut'theran Village", 1, 8450, 1000 },
-    { "Theramore", 1, -3900, -4600 },
-    { "Ratchet", 1, -950, -3750 },
-    { "Orgrimmar zeppelin", 1, 1330, -4650 },
-}
-local DOCK_RANGE = 2500
-
--- The dock nearest a world position, or nil if none is within DOCK_RANGE.
-function ns.DockName(c, x, y)
-    local best, bestD = nil, DOCK_RANGE * DOCK_RANGE
-    for _, dock in ipairs(DOCKS) do
-        if dock[2] == c then
-            local d = (dock[3] - x) ^ 2 + (dock[4] - y) ^ 2
-            if d < bestD then
-                best, bestD = dock[1], d
-            end
-        end
-    end
-    return best
-end
-
--- "Stormwind Harbor to Auberdine" for a boat trip between two world
--- positions, or nil unless both ends are near a dock.
-function ns.BoatRoute(c1, x1, y1, c2, x2, y2)
-    local from, to = ns.DockName(c1, x1, y1), ns.DockName(c2, x2, y2)
-    return from and to and (from .. " to " .. to)
 end
 
 -- "5m ago", "3h ago", "2d ago".
@@ -609,7 +587,13 @@ local function BuildPoints(paths)
     local band = LevelBand(changes[1] and changes[1][6] or 1)
 
     local n = 0
-    local boats, previous = {}, nil
+    -- Jumps across the sea follow a line drawn in Routes.lua (seaTrips:
+    -- point index -> ns.BoatTrip for boat trips between known docks,
+    -- ns.SeaLane for hearthstones and teleports). Boat trips on one
+    -- route the same way share a list of their point indexes in time order
+    -- (trips); only the first is drawn, the rest are marked dupe, and its
+    -- tooltip counts them.
+    local boats, seaTrips, routeTrips, previous = {}, {}, {}, nil
     for _, path in ipairs(paths) do
         local toContent = state.toContent[path.c]
         if toContent then
@@ -628,13 +612,32 @@ local function BuildPoints(paths)
                         local last = #previous.x
                         boats[n] = ns.BoatRoute(previous.c, previous.x[last], previous.y[last],
                             path.c, path.x[1], path.y[1])
+                        local from = ns.Dock(previous.c, previous.x[last], previous.y[last])
+                        local to = ns.Dock(path.c, path.x[1], path.y[1])
+                        local fromContent = from and state.toContent[previous.c]
+                        if fromContent and to then
+                            seaTrips[n] = ns.BoatTrip(from, to,
+                                { fromContent(previous.x[last], previous.y[last]) }, { px[n], py[n] },
+                                { fromContent(from[3], from[4]) }, { toContent(to[3], to[4]) },
+                                state.W, state.H)
+                            local trips = routeTrips[boats[n]] or {}
+                            routeTrips[boats[n]] = trips
+                            trips[#trips + 1] = n
+                            seaTrips[n].trips, seaTrips[n].dupe = trips, #trips > 1
+                        end
+                    elseif previous and state.toContent[previous.c] then
+                        -- Hearthstones and teleports across the sea take their lane.
+                        local last = #previous.x
+                        seaTrips[n] = ns.SeaLane(path.j, previous.c,
+                            { state.toContent[previous.c](previous.x[last], previous.y[last]) },
+                            path.c, { px[n], py[n] }, state.W, state.H)
                     end
                 end
             end
         end
         previous = path
     end
-    state.boats = boats
+    state.boats, state.seaTrips = boats, seaTrips
 
     local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
     for i = 1, n do
@@ -938,9 +941,11 @@ end
 -- Lines of a track's detail level inside the area, in point order:
 -- { x1, y1, x2, y2, mode, pointIndex }. mode is nil for tracks without pm.
 -- With jumps set, the gap before each segment (hearthstone, teleport, boat,
--- graveyard) is a line too, with mode "j".
+-- graveyard) is a line too, with mode "j". A jump drawn on a sea course or
+-- lane counts as inside wherever its curve is (track.seaTrips).
 local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps)
     local idx, px, py, pm, brk = lod.idx, track.px, track.py, track.pm, track.brk
+    local seaTrips = jumps and track.seaTrips or {}
     local drawn, count = {}, 0
     for _, ch in ipairs(list) do
         for j = math.max(2, ch[1]), ch[2] do
@@ -948,9 +953,15 @@ local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps)
             if jumps or not brk[i] then
                 local p = idx[j - 1]
                 local ax, ay, bx, by = px[p], py[p], px[i], py[i]
-                if (ax ~= bx or ay ~= by)
-                    and not (math.max(ax, bx) < x1 or math.min(ax, bx) > x2
-                        or math.max(ay, by) < y1 or math.min(ay, by) > y2) then
+                local box = brk[i] and seaTrips[i] and seaTrips[i].box
+                local outside
+                if box then
+                    outside = box[3] < x1 or box[1] > x2 or box[4] < y1 or box[2] > y2
+                else
+                    outside = math.max(ax, bx) < x1 or math.min(ax, bx) > x2
+                        or math.max(ay, by) < y1 or math.min(ay, by) > y2
+                end
+                if (ax ~= bx or ay ~= by) and not outside then
                     count = count + 1
                     drawn[count] = { ax, ay, bx, by, brk[i] and "j" or pm and pm[i], i }
                 end
@@ -1025,9 +1036,11 @@ local function ShowJumps(shown)
     ShowJumpIcons()
 end
 
--- A line piece of a jump: an outline line under a coloured one. width is in
--- screen pixels and kept on the line for zoom changes.
-local function JumpLine(jump, ax, ay, bx, by, width, r, g, b, a)
+-- A line piece of a jump, in a flat colour on OVERLAY sublayer layer (one
+-- per stacked line: in one sublayer the drawing order is not kept). width is
+-- in screen pixels and kept on the line for zoom changes. Lines are reused,
+-- so a ribbon's texture and blend are undone here.
+local function JumpLine(jump, ax, ay, bx, by, width, r, g, b, a, layer)
     jumpLineCount = jumpLineCount + 1
     local line = jumpLines[jumpLineCount]
     if not line then
@@ -1037,14 +1050,18 @@ local function JumpLine(jump, ax, ay, bx, by, width, r, g, b, a)
     line:SetStartPoint("TOPLEFT", pathLayer, ax, -ay)
     line:SetEndPoint("TOPLEFT", pathLayer, bx, -by)
     line:SetColorTexture(r, g, b, a)
+    line:SetBlendMode("BLEND")
+    line:SetTexCoord(0, 1, 0, 1)
+    line:SetDrawLayer("OVERLAY", layer or 0)
     line.width = width
     line:SetThickness(width / state.zoom)
     table.insert(jump.parts, line)
+    return line
 end
 
 local function JumpStroke(jump, style, ax, ay, bx, by)
     JumpLine(jump, ax, ay, bx, by, JUMP_OUTLINE, unpack(JUMP_OUTLINE_COLOR))
-    JumpLine(jump, ax, ay, bx, by, JUMP_LINE, style[2], style[3], style[4], style[5])
+    JumpLine(jump, ax, ay, bx, by, JUMP_LINE, style[2], style[3], style[4], style[5], 1)
 end
 
 -- A dot of a jump. size is in screen pixels. file, if given, replaces the
@@ -1095,6 +1112,39 @@ local function BuildJumps(drawn, shown, z, area)
     end
     jumpLineCount, jumpDotCount, jumpIconCount = 0, 0, 0
     local jumps = {}
+    -- Ribbon effect lines for OnUpdate to scroll, and the sea lanes whose
+    -- trunk is drawn already.
+    local ribbons, lanesDrawn = {}, {}
+    state.ribbons = ribbons
+
+    -- Dots already placed, per jump style, in a grid of cells: where trips
+    -- run along the same line (two routes sharing a course, a trip out and
+    -- back near the coast), a dot that would sit beside one of the same
+    -- style is left out, so the lines merge into one row of dots. Only for
+    -- an earlier dot of at least the same row, which shows at every zoom
+    -- this one would.
+    local placed = {}
+    local function Taken(style, x, y, row, near)
+        local grid = placed[style]
+        if not grid then
+            grid = {}
+            placed[style] = grid
+        end
+        local cx, cy = math.floor(x / near), math.floor(y / near)
+        for gx = cx - 1, cx + 1 do
+            for gy = cy - 1, cy + 1 do
+                for _, d in ipairs(grid[gx .. ":" .. gy] or {}) do
+                    if d[3] >= row and (d[1] - x) ^ 2 + (d[2] - y) ^ 2 < near * near then
+                        return true
+                    end
+                end
+            end
+        end
+        local key = cx .. ":" .. cy
+        grid[key] = grid[key] or {}
+        table.insert(grid[key], { x, y, row })
+        return false
+    end
 
     -- Stretches of the curve inside the area, as { from, to } distances
     -- along it, and their total length.
@@ -1129,14 +1179,55 @@ local function BuildJumps(drawn, shown, z, area)
     for i, spec in ipairs(drawn) do
         if spec[5] == "j" and not spec.hidden then
             local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
-            local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4])
+            local ends = state.seaTrips[spec[6]]
+            local curve = ends and (ends.curve or JumpCurve(ends[1], ends[2], ends[3], ends[4]))
+                or JumpCurve(spec[1], spec[2], spec[3], spec[4])
             local total = curve[#curve][3]
+            -- Dots are counted from anchor, so trips on one route share them:
+            -- a boat course's middle waypoint, or the middle of the arc.
+            local anchor = ends and (ends.anchor or total / 2) or 0
+            -- Marks at the curve's ends: a boat route drawn the other way
+            -- round from how it was sailed has its X at the start.
+            local head, tail = style.start, style.finish
+            if ends and ends.flip then
+                head, tail = tail, head
+            end
             local jump = { index = i, parts = {}, spec = spec }
             spec.curve = curve
 
             if style.style == "solid" then
                 for p = 2, #curve do
                     JumpStroke(jump, style, curve[p - 1][1], curve[p - 1][2], curve[p][1], curve[p][2])
+                end
+            elseif style.style == "ribbon" then
+                -- A lane's trunk is drawn by its first trip only: the same band
+                -- again on top would add its glowing effects up.
+                local trunk = ends and ends.trunk
+                local skip = trunk and lanesDrawn[ends.lane]
+                if trunk then
+                    lanesDrawn[ends.lane] = true
+                end
+                local r, g, b, w = style[2], style[3], style[4], style.width
+                for p = 2, #curve do
+                    local pa, pb = curve[p - 1], curve[p]
+                    local middle = (pa[3] + pb[3]) / 2
+                    if not (skip and middle > trunk[1] and middle < trunk[2]) then
+                        JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w + 1, 0, 0, 0, 0.7, 0)
+                        JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w, r * 0.3, g * 0.3, b * 0.3, 0.95, 1)
+                        for e, effect in ipairs(style.effects) do
+                            local line = JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w - 1, 1, 1, 1, 1, 1 + e)
+                            line:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Travel\\" .. effect[1],
+                                "REPEAT", "REPEAT")
+                            line:SetVertexColor(r, g, b, 1)
+                            line:SetBlendMode("ADD")
+                            -- One texture repeat along the band keeps the texture's
+                            -- shape at this zoom; OnUpdate scrolls it.
+                            ribbons[#ribbons + 1] = {
+                                line = line, jump = jump, from = pa[3], to = pb[3],
+                                span = w * effect[2] / z, speed = effect[3],
+                            }
+                        end
+                    end
                 end
             elseif style.style == "dash" then
                 local spans, length = Spans(curve)
@@ -1165,34 +1256,46 @@ local function BuildJumps(drawn, shown, z, area)
                 while length / fine > JUMP_MAX_PIECES * 2 do
                     fine = fine * 2
                 end
-                -- Dots stop short of a finish mark rather than run under it.
-                local last = style.finish and total - (style.finish[2] / 2 + px / 3) / z or total
+                -- Dots keep clear of start and finish marks rather than run under them.
+                local first = head and (head[2] / 2 + px / 3) / z or 0
+                local last = total - (tail and (tail[2] / 2 + px / 3) / z or 0)
                 for _, span in ipairs(spans) do
-                    for k = math.ceil(span[1] / fine), math.floor(math.min(span[2], last) / fine) do
+                    for k = math.ceil((math.max(span[1], first) - anchor) / fine),
+                        math.floor((math.min(span[2], last) - anchor) / fine) do
                         -- Spacing of the sparsest row this dot is in.
-                        local row, n = k == 0 and total or fine, k
+                        local row, n = k == 0 and total or fine, math.abs(k)
                         while n > 0 and n % 2 == 0 and row < total do
                             n, row = n / 2, row * 2
                         end
                         local target = row * z >= px and 1 or 0
-                        local x, y = PointAlong(curve, k * fine)
-                        for layer, dot in ipairs({
-                            JumpDot(jump, x, y, size + 2, unpack(JUMP_OUTLINE_COLOR)),
-                            JumpDot(jump, x, y, size, style[2], style[3], style[4], style[5]),
-                        }) do
-                            -- The coloured dot on a sublayer above its outline: in one
-                            -- sublayer the order is not kept, and the outline can cover it.
-                            dot:SetDrawLayer("OVERLAY", layer - 1)
-                            local key = x .. ":" .. y .. ":" .. layer
-                            local alpha = fadingAlpha[key] or target
-                            dot.fade, dot.fadePx, dot.target, dot.alpha, dot.key = row, px, target, alpha, key
-                            dot:SetAlpha(alpha)
+                        local x, y = PointAlong(curve, anchor + k * fine)
+                        if not Taken(style, x, y, row, 0.6 * px / z) then
+                            for layer, dot in ipairs({
+                                JumpDot(jump, x, y, size + 2, unpack(JUMP_OUTLINE_COLOR)),
+                                JumpDot(jump, x, y, size, style[2], style[3], style[4], style[5]),
+                            }) do
+                                -- The coloured dot on a sublayer above its outline: in one
+                                -- sublayer the order is not kept, and the outline can cover it.
+                                dot:SetDrawLayer("OVERLAY", layer - 1)
+                                local key = x .. ":" .. y .. ":" .. layer
+                                local alpha = fadingAlpha[key] or target
+                                dot.fade, dot.fadePx, dot.target, dot.alpha, dot.key = row, px, target, alpha, key
+                                dot:SetAlpha(alpha)
+                            end
                         end
                     end
                 end
             end
-            if style.finish then
-                JumpDot(jump, spec[3], spec[4], style.finish[2], 1, 1, 1, 1, style.finish[1])
+            -- A trip out and back can put an X on a ring, so the X (where the
+            -- player landed) draws above.
+            if head then
+                JumpDot(jump, curve[1][1], curve[1][2], head[2], 1, 1, 1, 1, head[1])
+                    :SetDrawLayer("OVERLAY", head == style.finish and 3 or 2)
+            end
+            if tail then
+                local p = curve[#curve]
+                JumpDot(jump, p[1], p[2], tail[2], 1, 1, 1, 1, tail[1])
+                    :SetDrawLayer("OVERLAY", tail == style.finish and 3 or 2)
             end
 
             if style.icon then
@@ -1205,7 +1308,8 @@ local function BuildJumps(drawn, shown, z, area)
                 end
                 icon:SetAtlas(style.icon)
                 jump.icon = icon
-                jump.x, jump.y = PointAlong(curve, total / 2)
+                -- On a lane, at its middle, where every trip on it puts its icon.
+                jump.x, jump.y = PointAlong(curve, ends and ends.anchor or total / 2)
             end
             jumps[#jumps + 1] = jump
         end
@@ -1361,9 +1465,12 @@ local function BuildPath()
         line:SetStartPoint("TOPLEFT", pathLayer, spec[1], -spec[2])
         line:SetEndPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
         local mode, band = spec[5], pb[spec[6]]
-        -- Lines the filter hides get no tooltip, motes or arc either.
+        -- Lines the filter hides get no tooltip, motes or arc either, nor do
+        -- repeats of a boat trip, which the route's first trip stands for.
+        local boat = mode == "j" and state.seaTrips[spec[6]]
         spec.hidden = mode == "t" and not ns.FilterShown("flights")
             or mode == "j" and not ns.FilterShown(JUMP_CATEGORY[state.pj[spec[6]]])
+            or boat and boat.dupe or false
         -- A jump's own line stays invisible; BuildJumps draws its arc.
         local colorKey = (mode == "j" or spec.hidden) and "none"
             or (mode == "g" or mode == "t") and mode or mode .. band
@@ -1493,16 +1600,44 @@ local function HeadRotation(seq)
     return 0
 end
 
+-- Puts the arrow at the replay position, kept in state.headX, headY. Between
+-- the two points of a jump it travels along the jump's curve as drawn (a sea
+-- course or lane, else the arc), facing along it.
 local function PlaceHead()
     local seq = math.floor(state.cur)
-    if seq >= 1 and seq <= state.n then
-        head:ClearAllPoints()
-        head:SetPoint("CENTER", overlay, "TOPLEFT", ToCanvas(state.px[seq], state.py[seq]))
-        head:SetRotation(HeadRotation(seq))
-        head:Show()
-    else
+    if seq < 1 or seq > state.n then
         head:Hide()
+        return
     end
+    local px, py = state.px, state.py
+    local x, y, rotation = px[seq], py[seq], HeadRotation(seq)
+    local i = seq + 1
+    -- A segment break without moving (a reload in place) has no curve.
+    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq]) then
+        local trip = state.seaTrips[i]
+        local curve = trip and (trip.curve or JumpCurve(trip[1], trip[2], trip[3], trip[4]))
+            or JumpCurve(px[seq], py[seq], px[i], py[i])
+        -- A boat route can be drawn the other way round from how it was sailed.
+        local f = state.cur - seq
+        if trip and trip.flip then
+            f = 1 - f
+        end
+        local total = curve[#curve][3]
+        -- Its length, for the replay's pace along it (OnUpdate).
+        if not state.headJump or state.headJump.i ~= i then
+            state.headJump = { i = i, total = total }
+        end
+        local d, step = f * total, total * 0.01
+        x, y = PointAlong(curve, d)
+        local ax, ay = PointAlong(curve, math.max(0, d - step))
+        local bx, by = PointAlong(curve, math.min(total, d + step))
+        rotation = math.atan2(-(by - ay), bx - ax) - math.pi / 2 + (trip and trip.flip and math.pi or 0)
+    end
+    state.headX, state.headY = x, y
+    head:ClearAllPoints()
+    head:SetPoint("CENTER", overlay, "TOPLEFT", ToCanvas(x, y))
+    head:SetRotation(rotation)
+    head:Show()
 end
 
 -- Shows markers the replay has reached and the zoom allows, placed on the view.
@@ -1914,7 +2049,8 @@ end
 -- Shows the path, markers and star up to the replay position.
 local function ApplyCursor()
     local seq = math.floor(state.cur)
-    local count = CountUpTo(seq)
+    -- On its way along a jump, the jump shows, so the arrow follows its line.
+    local count = CountUpTo(seq >= 1 and state.brk[seq + 1] and seq + 1 or seq)
     for i = state.shown + 1, count do
         lines[i]:Show()
     end
@@ -2054,6 +2190,21 @@ local function ShowLineTooltip(spec)
             local style = JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN
             GameTooltip:AddLine(style[1], style[2], style[3], style[4])
             GameTooltip:AddLine(state.boats[i] or ("%s to %s"):format(ZoneAt(pt[i - 1]), ZoneAt(pt[i])), 1, 1, 1)
+            -- A route taken more than once, as far as the replay has reached.
+            local boat = state.seaTrips[i]
+            local count, last = 0, i
+            for _, n in ipairs(boat and boat.trips or {}) do
+                if n <= state.cur then
+                    count, last = count + 1, n
+                end
+            end
+            if count > 1 then
+                GameTooltip:AddLine(("%d trips"):format(count), 1, 1, 1)
+                GameTooltip:AddLine(("First: level %d - %s"):format(LevelAt(pt[i]), FormatTime(pt[i])), 0.7, 0.7, 0.7)
+                GameTooltip:AddLine(("Last: level %d - %s"):format(LevelAt(pt[last]), FormatTime(pt[last])), 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+                return
+            end
         else
             local r, g, b = LineColor(spec[5], state.pb[i])
             GameTooltip:AddLine(MODE_NAMES[spec[5]] or "Path", r, g, b)
@@ -2104,11 +2255,12 @@ end
 -- While zoomed in, keep the star on screen during a replay.
 local function FollowHead()
     local seq = math.floor(state.cur)
-    if state.zoom <= 1 or seq < 1 then return end
-    local fx = (state.px[seq] - state.ox) * state.zoom / state.W
-    local fy = (state.py[seq] - state.oy) * state.zoom / state.H
+    if state.zoom <= 1 or seq < 1 or not state.headX then return end
+    local x, y = state.headX, state.headY
+    local fx = (x - state.ox) * state.zoom / state.W
+    local fy = (y - state.oy) * state.zoom / state.H
     if fx < 0.1 or fx > 0.9 or fy < 0.1 or fy > 0.9 then
-        CenterOn(state.px[seq], state.py[seq])
+        CenterOn(x, y)
         ApplyView()
     end
 end
@@ -2129,6 +2281,18 @@ local function OnUpdate(_, elapsed)
             end
         end
         state.dotsFading = fading
+    end
+    -- Ribbon effects flow along the jumps the replay has reached, each piece
+    -- carrying on the texture where the one before it left off.
+    if state.ribbons[1] then
+        state.ribbonClock = state.ribbonClock + elapsed
+        local clock = state.ribbonClock
+        for _, rb in ipairs(state.ribbons) do
+            if rb.jump.visible then
+                local u = (rb.from / rb.span - clock * rb.speed) % 1
+                rb.line:SetTexCoord(u, u + (rb.to - rb.from) / rb.span, 0, 1)
+            end
+        end
     end
     if state.zoom ~= state.targetZoom then
         local z = state.zoom * (state.targetZoom / state.zoom) ^ math.min(1, elapsed * ZOOM_SPEED)
@@ -2167,7 +2331,31 @@ local function OnUpdate(_, elapsed)
 
     if state.playing then
         local before = state.markerNow
-        state.cur = state.cur + elapsed * SPEEDS[state.speedIndex] * REPLAY_POINTS
+        -- Along a jump, at its style's pace rather than a point at a time;
+        -- a break without moving passes as any other point.
+        local seq = math.floor(state.cur)
+        local rate = REPLAY_POINTS
+        if seq >= 1 and seq < state.n and state.brk[seq + 1]
+            and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
+            local style = JUMP_STYLES[state.pj[seq + 1]] or JUMP_UNKNOWN
+            local seconds = style.replay or 1
+            -- The length is known once the arrow is on the jump (PlaceHead).
+            local jump = state.headJump
+            if style.pace and jump and jump.i == seq + 1 then
+                seconds = math.max(seconds, jump.total / style.pace)
+            end
+            rate = 1 / seconds
+        end
+        local cur = state.cur + elapsed * SPEEDS[state.speedIndex] * rate
+        -- Fast replays cover many points a frame: stop where the next jump
+        -- starts, so none is skipped.
+        for k = seq + 2, math.min(math.floor(cur), state.n) do
+            if state.brk[k] and (state.px[k] ~= state.px[k - 1] or state.py[k] ~= state.py[k - 1]) then
+                cur = k - 1
+                break
+            end
+        end
+        state.cur = cur
         if state.cur >= state.n then
             state.cur = state.n
             SetPlaying(false)

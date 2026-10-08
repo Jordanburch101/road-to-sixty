@@ -89,8 +89,8 @@ end
 print(("realistic seed: %d points, %d segments, %.2f s"):format(points, #char.segments, seconds))
 print(("levels %d, deaths %d, quests %d, kills %d, dungeons %d, loot %d"):format(
     counts.lvl or 0, char.totals.deaths, char.totals.quests, char.totals.kills, counts["in"] or 0, counts.loot or 0))
-print(("jumps: hearth %d, boat %d, death %d, instance %d, login %d"):format(
-    reasons.h or 0, reasons.b or 0, reasons.d or 0, reasons.i or 0, reasons.l or 0))
+print(("jumps: hearth %d, teleport %d, boat %d, death %d, instance %d, login %d"):format(
+    reasons.h or 0, reasons.p or 0, reasons.b or 0, reasons.d or 0, reasons.i or 0, reasons.l or 0))
 
 check(char.seeded, "seed finished")
 check(counts.lvl == 29, "levels 2-30 reached, got " .. tostring(counts.lvl))
@@ -98,6 +98,16 @@ check(char.levels[30] ~= nil, "level 30 snapshot")
 check(points > 25000 and points < 40000, "about 28000 points, got " .. points)
 check(char.totals.deaths >= 10 and char.totals.deaths <= 60, "about a death a level, got " .. char.totals.deaths)
 check((reasons.b or 0) >= 2, "boats between continents on the Human route")
+-- Hearthstones and teleports across the sea, for the map's sea lanes.
+local across = {}
+for i = 2, #char.segments do
+    local seg = char.segments[i]
+    if seg.j and seg.c ~= char.segments[i - 1].c then
+        across[seg.j] = (across[seg.j] or 0) + 1
+    end
+end
+check((across.h or 0) >= 2 and (across.p or 0) >= 2, ("hearthstones and teleports across the sea, got %d and %d")
+    :format(across.h or 0, across.p or 0))
 check((counts.loot or 0) > 5, "some loot")
 
 -- Dungeons: the three Alliance ones in order, each entered at its real
