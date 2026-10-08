@@ -6,6 +6,14 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.4.1
+
+### New
+- Zephras Isle shows its terrain when you zoom in with terrain on, like
+  the rest of the world.
+- The replay no longer travels along the line between where you logged
+  out and where you logged in next; it goes straight on from there.
+
 ## 1.4.0
 
 ### New
