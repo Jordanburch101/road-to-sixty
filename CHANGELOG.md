@@ -6,6 +6,29 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.4.0
+
+### New
+- Characters: click one of your characters on the Characters tab to see
+  their whole journey on the map, with their history, stats, gear and
+  replay. A label in the map's corner shows whose journey it is; click its
+  X to go back to your own. Each character needs to log in once with this
+  version to share their journey.
+- Other characters' paths now keep their real shape and show their
+  flights and travel, instead of rough straight lines.
+- Boat and zeppelin trips are drawn as a dotted red line with an X where
+  you landed.
+- Capital cities: zooming in close with terrain off shows each city's own
+  street plan, set into the land around it. Can be turned off in the
+  options.
+
+### Fixed
+- Land that no zone map covers, such as the mountains around Stormwind,
+  no longer turns into large blocks when zoomed in. It now looks like the
+  parchment of the zone maps around it.
+- The map around Stormwind no longer shows hard edges and burnt map
+  borders.
+
 ## 1.3.0
 
 ### New
