@@ -66,13 +66,16 @@ local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
 
 -- Jumps between segments are drawn as arcs, styled by why the path jumped
 -- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash" or
--- "solid", icon = atlas at the top of the arc }.
+-- "solid", icon = atlas at the top of the arc, dot / spacing = dot size and
+-- spacing in screen pixels, finish = texture at the arc's end and its size }.
 local JUMP_STYLES = {
     h = { "Hearthstone", 0.3, 1, 0.45, 1, style = "dots", icon = "Innkeeper" },
     p = { "Teleport", 0.8, 0.45, 1, 1, style = "solid", icon = "MagePortalAlliance" },
     d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots" },
     i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
-    b = { "Boat or zeppelin", 0.3, 0.85, 0.85, 1, style = "dash", icon = "poi-islands-table" },
+    -- Like a travel map in an adventure film: red dots and an X where it lands.
+    b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11,
+        finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
     l = { "Logged in", 1, 1, 1, 0.7, style = "dots" },
 }
 local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
@@ -1041,29 +1044,85 @@ local function JumpStroke(jump, style, ax, ay, bx, by)
     JumpLine(jump, ax, ay, bx, by, JUMP_LINE, style[2], style[3], style[4], style[5])
 end
 
--- A dot of a jump, with an outline dot under it. size is in screen pixels.
-local function JumpDot(jump, x, y, size, r, g, b, a)
+-- A dot of a jump. size is in screen pixels. file, if given, replaces the
+-- round dot and is drawn above the dots, uncoloured (finish marks). Round
+-- dots go on sublayer 0; the caller lifts coloured ones above their outline.
+local function JumpDot(jump, x, y, size, r, g, b, a, file)
     jumpDotCount = jumpDotCount + 1
     local dot = jumpDots[jumpDotCount]
     if not dot then
         dot = pathLayer:CreateTexture(nil, "OVERLAY")
-        dot:SetAtlas("WhiteCircle-RaidBlips")
         jumpDots[jumpDotCount] = dot
+    end
+    if file then
+        dot:SetTexture(file)
+        dot:SetDrawLayer("OVERLAY", 2)
+    else
+        dot:SetAtlas("WhiteCircle-RaidBlips")
+        dot:SetDrawLayer("OVERLAY", 0)
     end
     dot:SetVertexColor(r, g, b, a)
     dot:ClearAllPoints()
     dot:SetPoint("CENTER", pathLayer, "TOPLEFT", x, -y)
     dot.size = size
     dot:SetSize(size / state.zoom, size / state.zoom)
+    dot.fade, dot.target, dot.alpha, dot.key = nil, nil, nil, nil
+    dot:SetAlpha(1)
     table.insert(jump.parts, dot)
+    return dot
 end
 
 -- Draws an arc for each jump in drawn, in the style of its reason, with the
 -- reason's icon at the top. Sizes and spacing are in screen pixels at zoom
 -- z; zoom changes resize them (SetLineThickness) until the next build.
-local function BuildJumps(drawn, shown, z)
+-- Dashes and dots are only placed inside area { x1, y1, x2, y2 }, so a long
+-- boat trip seen close up keeps its spacing instead of hitting
+-- JUMP_MAX_PIECES across the whole sea.
+local function BuildJumps(drawn, shown, z, area)
+    -- Dots still fading carry their alpha over, by place, so a rebuild in
+    -- the middle of a zoom does not cut the fade short.
+    local fadingAlpha = {}
+    if state.dotsFading then
+        for i = 1, jumpDotCount do
+            local dot = jumpDots[i]
+            if dot.key then
+                fadingAlpha[dot.key] = dot.alpha
+            end
+        end
+    end
     jumpLineCount, jumpDotCount, jumpIconCount = 0, 0, 0
     local jumps = {}
+
+    -- Stretches of the curve inside the area, as { from, to } distances
+    -- along it, and their total length.
+    local function Spans(curve)
+        local spans, length = {}, 0
+        for p = 2, #curve do
+            local a, b = curve[p - 1], curve[p]
+            if not (math.max(a[1], b[1]) < area[1] or math.min(a[1], b[1]) > area[3]
+                or math.max(a[2], b[2]) < area[2] or math.min(a[2], b[2]) > area[4]) then
+                local open = spans[#spans]
+                if open and open[2] == a[3] then
+                    open[2] = b[3]
+                else
+                    spans[#spans + 1] = { a[3], b[3] }
+                end
+                length = length + b[3] - a[3]
+            end
+        end
+        return spans, length
+    end
+
+    -- Spacing near wanted (content units), rounded to a power of two and
+    -- doubled until it reaches the floor. Rebuilds as the zoom changes then
+    -- keep most dots and dashes where they were, rather than shuffling all.
+    local function Snap(wanted, floor)
+        local spacing = 2 ^ math.floor(math.log(wanted) / math.log(2) + 0.5)
+        while spacing < floor do
+            spacing = spacing * 2
+        end
+        return spacing
+    end
     for i, spec in ipairs(drawn) do
         if spec[5] == "j" and not spec.hidden then
             local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
@@ -1077,21 +1136,60 @@ local function BuildJumps(drawn, shown, z)
                     JumpStroke(jump, style, curve[p - 1][1], curve[p - 1][2], curve[p][1], curve[p][2])
                 end
             elseif style.style == "dash" then
-                local dash, gap = JUMP_DASH / z, JUMP_GAP / z
-                local stretch = math.max(1, total / (dash + gap) / JUMP_MAX_PIECES)
-                dash, gap = dash * stretch, gap * stretch
-                for d = 0, total, dash + gap do
-                    local ax, ay = PointAlong(curve, d)
-                    local bx, by = PointAlong(curve, math.min(d + dash, total))
-                    JumpStroke(jump, style, ax, ay, bx, by)
+                local spans, length = Spans(curve)
+                -- Steps from the start of the curve, so dashes stay put as the view moves.
+                local period = Snap((JUMP_DASH + JUMP_GAP) / z, length / JUMP_MAX_PIECES)
+                local dash = period * JUMP_DASH / (JUMP_DASH + JUMP_GAP)
+                for _, span in ipairs(spans) do
+                    for d = math.floor(span[1] / period) * period, span[2], period do
+                        local ax, ay = PointAlong(curve, d)
+                        local bx, by = PointAlong(curve, math.min(d + dash, total))
+                        JumpStroke(jump, style, ax, ay, bx, by)
+                    end
                 end
             else
-                local spacing = math.max(JUMP_DOT_SPACING / z, total / JUMP_MAX_PIECES)
-                for d = 0, total, spacing do
-                    local x, y = PointAlong(curve, d)
-                    JumpDot(jump, x, y, JUMP_DOT + 2, unpack(JUMP_OUTLINE_COLOR))
-                    JumpDot(jump, x, y, JUMP_DOT, style[2], style[3], style[4], style[5])
+                -- Dots in rows that halve the spacing: every 4th dot, every 2nd,
+                -- every one. A row shows once zooming spreads it to px apart on
+                -- screen, fading in or out over a moment (SetLineThickness and
+                -- OnUpdate), so zooming eases dots in and out rather than
+                -- refilling the line at the next build, and at rest every dot
+                -- is either fully shown or hidden. The finest row covers
+                -- zooming in 4 times before a rebuild is needed.
+                local spans, length = Spans(curve)
+                local size = style.dot or JUMP_DOT
+                local px = style.spacing or JUMP_DOT_SPACING
+                local fine = 2 ^ math.ceil(math.log(px / z) / math.log(2)) / 4
+                while length / fine > JUMP_MAX_PIECES * 2 do
+                    fine = fine * 2
                 end
+                -- Dots stop short of a finish mark rather than run under it.
+                local last = style.finish and total - (style.finish[2] / 2 + px / 3) / z or total
+                for _, span in ipairs(spans) do
+                    for k = math.ceil(span[1] / fine), math.floor(math.min(span[2], last) / fine) do
+                        -- Spacing of the sparsest row this dot is in.
+                        local row, n = k == 0 and total or fine, k
+                        while n > 0 and n % 2 == 0 and row < total do
+                            n, row = n / 2, row * 2
+                        end
+                        local target = row * z >= px and 1 or 0
+                        local x, y = PointAlong(curve, k * fine)
+                        for layer, dot in ipairs({
+                            JumpDot(jump, x, y, size + 2, unpack(JUMP_OUTLINE_COLOR)),
+                            JumpDot(jump, x, y, size, style[2], style[3], style[4], style[5]),
+                        }) do
+                            -- The coloured dot on a sublayer above its outline: in one
+                            -- sublayer the order is not kept, and the outline can cover it.
+                            dot:SetDrawLayer("OVERLAY", layer - 1)
+                            local key = x .. ":" .. y .. ":" .. layer
+                            local alpha = fadingAlpha[key] or target
+                            dot.fade, dot.fadePx, dot.target, dot.alpha, dot.key = row, px, target, alpha, key
+                            dot:SetAlpha(alpha)
+                        end
+                    end
+                end
+            end
+            if style.finish then
+                JumpDot(jump, spec[3], spec[4], style.finish[2], 1, 1, 1, 1, style.finish[1])
             end
 
             if style.icon then
@@ -1135,6 +1233,13 @@ local function SetLineThickness()
     for i = 1, jumpDotCount do
         local dot = jumpDots[i]
         dot:SetSize(dot.size / z, dot.size / z)
+        if dot.fade then
+            local target = dot.fade * z >= dot.fadePx and 1 or 0
+            if target ~= dot.target then
+                dot.target = target
+                state.dotsFading = true
+            end
+        end
     end
     state.lineZoom = z
 end
@@ -1274,7 +1379,7 @@ local function BuildPath()
         lines[i]:Hide()
     end
     state.lineCount, state.shown, state.lineZoom = #drawn, shown, z
-    BuildJumps(drawn, shown, z)
+    BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
     state.built = { x1, y1, x2, y2, zoom = z }
     -- Mote line indexes point into the old list, so respawn them all.
     for _, m in ipairs(motes) do
@@ -2005,6 +2110,21 @@ end
 
 local function OnUpdate(_, elapsed)
     local moved = false
+    -- Jump dots the zoom has shown or hidden fade over a quarter second.
+    if state.dotsFading then
+        local step, fading = elapsed * 4, false
+        for i = 1, jumpDotCount do
+            local dot = jumpDots[i]
+            local alpha = dot.alpha
+            if alpha and alpha ~= dot.target then
+                alpha = dot.target > alpha and math.min(dot.target, alpha + step) or math.max(dot.target, alpha - step)
+                dot.alpha = alpha
+                dot:SetAlpha(alpha)
+                fading = fading or alpha ~= dot.target
+            end
+        end
+        state.dotsFading = fading
+    end
     if state.zoom ~= state.targetZoom then
         local z = state.zoom * (state.targetZoom / state.zoom) ^ math.min(1, elapsed * ZOOM_SPEED)
         if math.abs(math.log(state.targetZoom / z)) < 0.01 then
