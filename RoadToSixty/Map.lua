@@ -432,6 +432,7 @@ local function MapTransform(uiMap)
         return (dx * by - dy * bx) / det, (ax * dy - ay * dx) / det
     end
 end
+ns.MapTransform = MapTransform
 
 -- Covers the content rectangle x1, y1 - x2, y2 with uiMap's art.
 local function AddArt(parent, uiMap, x1, y1, x2, y2)
@@ -587,6 +588,8 @@ local function SetupWorld(worldLayer)
             AddTerrainTiles(continentID, child.mapID, toMap, toContent)
         end
     end
+    -- Islands the world map leaves out, such as Zephras Isle (Islands.lua).
+    ns.Islands:Add(worldLayer, state.toContent, W, H)
     return next(state.toContent) ~= nil
 end
 
@@ -1705,6 +1708,7 @@ local function ApplyView()
     zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
+    ns.Islands:SetZoom(z)
     if not ns.db.terrain and z >= zoneView.FADE[1] then
         zoneView:SetZoom(z)
         zoneView:Update(ViewArea(0))

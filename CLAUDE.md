@@ -25,6 +25,7 @@ for data, its exact format; read that before changing a module.
 | Health.lua | `/rts check` |
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
+| Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Panel.lua, GearCard.lua, QuestPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua | developer tools, left out of releases |

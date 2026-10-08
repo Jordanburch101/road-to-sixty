@@ -8,6 +8,9 @@
                                  and city_<uiMapID>.tga for the cities in
                                  CITY_MASKS: where the city's street plan has
                                  drawing, so the zone around shows past it,
+                                 island_<uiMapID>.tga for the islands in
+                                 ISLAND_MASKS: where the island's map has
+                                 land, so it can be drawn on the world map,
                                  and paper.tga, a seamless tile of blank
                                  parchment from Stormwind's plan, for land no
                                  zone map covers
@@ -120,6 +123,23 @@ CITY_MASKS = {
         (25, 25), (175, 25), (180, 75), (210, 70), (215, 20), (330, 5), (400, 15), (455, 40), (455, 120),
         (440, 150), (455, 200), (455, 270), (400, 285), (330, 280), (320, 330), (250, 330), (215, 250),
         (205, 200), (195, 170), (140, 165), (65, 160), (65, 90), (30, 65)])]),
+}
+
+# Islands with a map of their own that the world map art leaves out, drawn
+# on it by Islands.lua: island_<uiMapID>.tga, where the island's map has
+# land, made the same way as a city mask. Zephras Isle's land is too close
+# to the parchment in colour to find, so it is outlined by hand.
+ISLAND_MASKS = {
+    # Grown well past the coast: the island's own parchment around it fades
+    # into the paper and sea, and its outlying platforms and skydocks stay whole.
+    2521: dict(soft=8, grow=12, poly=[view_poly([                                            # Zephras Isle
+        (150, 68), (165, 50), (195, 40), (240, 38), (260, 48), (275, 63), (290, 60), (305, 68), (325, 73),
+        (350, 88), (359, 110), (356, 130), (345, 140), (356, 150), (368, 155), (382, 170), (382, 183),
+        (365, 190), (353, 193), (350, 205),
+        (363, 213), (365, 235), (360, 258), (345, 273), (320, 280), (318, 290), (328, 300), (330, 318),
+        (315, 326), (293, 316), (283, 300), (273, 295), (260, 298), (235, 293), (220, 280), (210, 250),
+        (205, 225), (193, 213), (190, 200), (170, 198), (153, 185), (145, 160), (148, 125), (145, 100),
+        (148, 80)])]),
 }
 
 
@@ -267,8 +287,8 @@ def city_mask(full, size, p):
 
 
 def city_masks(maps_by_art):
-    """Writes a mask per city in CITY_MASKS, and the paper tile; returns the
-    cities' uiMap IDs."""
+    """Writes a mask per city in CITY_MASKS and per island in ISLAND_MASKS,
+    and the paper tile; returns the cities' uiMap IDs."""
     sizes = {r["UiMapArtStyleID"]: (int(r["LayerWidth"]), int(r["LayerHeight"]))
              for r in table("UiMapArtStyleLayer") if r["LayerIndex"] == "0"}
     styles = {r["ID"]: r["UiMapArtStyleID"] for r in table("UiMapArt")}
@@ -276,11 +296,15 @@ def city_masks(maps_by_art):
     done = []
     for art, maps in sorted(maps_by_art.items()):
         for m in maps:
-            if m not in CITY_MASKS and m != PAPER_CITY:
+            if m not in CITY_MASKS and m not in ISLAND_MASKS and m != PAPER_CITY:
                 continue
             full = map_art(art, rows)
             if m == PAPER_CITY:
                 paper(full).save(MASKS / "paper.tga")
+            if m in ISLAND_MASKS:
+                mask = Image.new("RGBA", (CITY_SIZE, CITY_SIZE), (255, 255, 255, 0))
+                mask.putalpha(city_mask(full, sizes[styles[art]], ISLAND_MASKS[m]))
+                mask.save(MASKS / f"island_{m}.tga")
             if m in CITY_MASKS:
                 mask = Image.new("RGBA", (CITY_SIZE, CITY_SIZE), (255, 255, 255, 0))
                 mask.putalpha(city_mask(full, sizes[styles[art]], CITY_MASKS[m]))
