@@ -96,7 +96,26 @@ local function Launch(join)
         c:SetVertexColor(unpack(colors[i % 3 + 1]))
     end
     pop.title:SetText("<" .. join.name .. ">")
+    -- The join's marker stays hidden until the banner has finished, then
+    -- takes over where it landed.
+    pop.marker = ns.Map:GuildMarker(join.t, join.c)
+    if pop.marker then
+        pop.marker.popping = (pop.marker.popping or 0) + 1
+        ns.Map:RefreshMarkers()
+    end
     pop:Show()
+end
+
+-- Takes the pop off the map and gives its marker back.
+local function Release()
+    pop.join = nil
+    pop:Hide()
+    local m = pop.marker
+    if m then
+        m.popping = m.popping and m.popping > 1 and m.popping - 1 or nil
+        pop.marker = nil
+        ns.Map:RefreshMarkers()
+    end
 end
 
 local function Draw()
@@ -173,8 +192,7 @@ function GuildPop:Update(elapsed)
     if pop and pop.join then
         pop.age = pop.age + elapsed
         if pop.age >= LENGTH then
-            pop.join = nil
-            pop:Hide()
+            Release()
         else
             Draw()
             return
@@ -189,9 +207,8 @@ end
 -- Takes the pop off the map at once, such as when the map closes.
 function GuildPop:Clear()
     wipe(waiting)
-    if pop then
-        pop.join = nil
-        pop:Hide()
+    if pop and pop.join then
+        Release()
     end
 end
 

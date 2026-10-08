@@ -2934,6 +2934,16 @@ function Map:QuestMarker(t, c)
     end
 end
 
+-- The marker of the guild event at time t on continent c, if there is one.
+function Map:GuildMarker(t, c)
+    for i = 1, state.markerCount do
+        local m = markers[i]
+        if m.category == "guilds" and m.c == c and m.t == t then
+            return m
+        end
+    end
+end
+
 -- Shows or hides the markers again, after a quest pop ended on one.
 function Map:RefreshMarkers()
     if frame and frame:IsShown() then

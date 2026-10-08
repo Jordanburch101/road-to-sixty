@@ -158,7 +158,7 @@ end
 
 -- Showing them ------------------------------------------------------------------
 
--- For a guild whose tabard cannot be drawn: the guild tabard item.
+-- The guild tabard item, for the History filter's Guild button.
 Guilds.ICON = "Interface\\Icons\\INV_Shirt_GuildTabard_01"
 
 -- interface/guildframe/guildinspect-parts (512 x 512) holds the retail guild
@@ -176,8 +176,13 @@ local BORDER_LEFT = 7 / 146         -- from the cloth's left, of its height
 local EMBLEM_SIZE = 0.62            -- of the banner's height
 local EMBLEM_RAISE = 0.08           -- above the middle, as a share of the height
 
--- A frame for a guild's tabard, size pixels high: its banner (BANNER_WIDTH
--- as wide), or the tabard item's icon (square). Filled in by SetBadge.
+-- A guild without a tabard: a grey banner with the client's own "no logo"
+-- emblem (interface/guildframe/guildlogo-nologo, a grey helm).
+local NO_TABARD = { bg = { 0.55, 0.55, 0.55 }, border = { 0.25, 0.25, 0.25 } }
+local NO_LOGO = 460904
+
+-- A frame for a guild's banner, size pixels high and BANNER_WIDTH as wide.
+-- Filled in by SetBadge.
 function Guilds:CreateBadge(parent, size)
     local badge = CreateFrame("Frame", nil, parent)
     local function Layer(sublevel)
@@ -195,9 +200,6 @@ function Guilds:CreateBadge(parent, size)
     badge.unusedBg, badge.unusedBorder = Layer(0), Layer(0)
     badge.unusedBg:Hide()
     badge.unusedBorder:Hide()
-    badge.icon = Layer(0)
-    badge.icon:SetTexture(self.ICON)
-    badge.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     self:SizeBadge(badge, size or 32)
     return badge
 end
@@ -210,38 +212,37 @@ function Guilds:SizeBadge(badge, size)
     badge.border:SetPoint("TOPLEFT", badge.cloth, "TOPLEFT", size * BORDER_LEFT, 0)
     badge.emblem:SetSize(size * EMBLEM_SIZE, size * EMBLEM_SIZE)
     badge.emblem:SetPoint("CENTER", 0, size * EMBLEM_RAISE)
-    badge.icon:SetSize(size * 0.8, size * 0.8)
 end
 
 -- Draws a tabard saved by ReadTabard on a badge: the banner in its colours,
 -- with the emblem drawn the way the client's own guild frames draw it
 -- (SetLargeGuildTabardTextures, given the saved emblem and colour instead of
--- a unit, so it works for any guild ever joined). Shows the tabard item for
--- a guild without a tabard. Returns whether the tabard was drawn.
+-- a unit, so it works for any guild ever joined). A guild without a tabard
+-- (nil) gets the grey banner. Returns whether the guild's own tabard was drawn.
 function Guilds:SetBadge(badge, tabard)
     local t = tabard
-    local drawn = t and t.bg and t.border and true or false
-    local emblem = false
-    if drawn then
-        badge.cloth:SetVertexColor(unpack(t.bg))
-        badge.border:SetVertexColor(unpack(t.border))
-        if t.emblem and t.emblemColor and SetLargeGuildTabardTextures and CreateColor then
-            local data = {
-                backgroundColor = CreateColor(unpack(t.bg)),
-                borderColor = CreateColor(unpack(t.border)),
-                emblemColor = CreateColor(unpack(t.emblemColor)),
-                emblemFileID = t.emblem,
-                emblemStyle = t.style,
-            }
-            emblem = pcall(SetLargeGuildTabardTextures, nil, badge.emblem, badge.unusedBg,
-                badge.unusedBorder, data)
-        end
+    local own = t and t.bg and t.border and true or false
+    t = own and t or NO_TABARD
+    badge.cloth:SetVertexColor(unpack(t.bg))
+    badge.border:SetVertexColor(unpack(t.border))
+    local drawn = false
+    if own and t.emblem and t.emblemColor and SetLargeGuildTabardTextures and CreateColor then
+        local data = {
+            backgroundColor = CreateColor(unpack(t.bg)),
+            borderColor = CreateColor(unpack(t.border)),
+            emblemColor = CreateColor(unpack(t.emblemColor)),
+            emblemFileID = t.emblem,
+            emblemStyle = t.style,
+        }
+        drawn = pcall(SetLargeGuildTabardTextures, nil, badge.emblem, badge.unusedBg,
+            badge.unusedBorder, data)
     end
-    badge.cloth:SetShown(drawn)
-    badge.border:SetShown(drawn)
-    badge.emblem:SetShown(emblem)
-    badge.icon:SetShown(not drawn)
-    return drawn
+    if not drawn then
+        badge.emblem:SetTexture(NO_LOGO)
+        badge.emblem:SetTexCoord(0, 1, 0, 1)
+        badge.emblem:SetVertexColor(1, 1, 1)
+    end
+    return own and drawn
 end
 
 -- The tabard of the guild an event is about: the one saved at the latest
