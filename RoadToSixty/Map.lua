@@ -43,7 +43,7 @@ local CONTINENT_FADE = { 1.6, 2.6 }
 local TERRAIN_FADE = { 3, 5 }
 
 -- Minimap terrain folder per continent ID, matching MinimapTiles.lua
-ns.MinimapDirs = { [0] = "Azeroth", [1] = "Kalimdor" }
+ns.MinimapDirs = { [0] = "Azeroth", [1] = "Kalimdor", [2991] = "2991" }
 
 -- Arcane sparkles drifting along the visible path.
 local MOTES = 40                -- most at once
@@ -73,6 +73,8 @@ local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
 -- in Travel\ (scripts/lane-textures.py), its length over its height, speed
 -- in repeats a second }. replay = seconds the replay's arrow takes along the
 -- jump at normal speed (1 if unset); without, a jump would pass in a frame.
+-- instant = the arrow does not travel the jump but appears at its end, for
+-- jumps nobody travelled (logging out in one place and in at another).
 -- With pace (map units a second; the world map is about 1000 wide) the time
 -- follows the jump's length instead, replay being the least: a crossing by
 -- sea takes a while, so the camera following it can load the terrain.
@@ -90,7 +92,7 @@ local JUMP_STYLES = {
     b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11, replay = 2.5, pace = 60,
         start = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\ring", 18 },
         finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
-    l = { "Logged in", 1, 1, 1, 0.7, style = "dots", replay = 0.3 },
+    l = { "Logged in", 1, 1, 1, 0.7, style = "dots", instant = true },
 }
 local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
 -- Sizes in screen pixels.
@@ -1612,8 +1614,10 @@ local function PlaceHead()
     local px, py = state.px, state.py
     local x, y, rotation = px[seq], py[seq], HeadRotation(seq)
     local i = seq + 1
-    -- A segment break without moving (a reload in place) has no curve.
-    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq]) then
+    -- A segment break without moving (a reload in place) has no curve, and
+    -- the arrow skips instant jumps.
+    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq])
+        and not (JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN).instant then
         local trip = state.seaTrips[i]
         local curve = trip and (trip.curve or JumpCurve(trip[1], trip[2], trip[3], trip[4]))
             or JumpCurve(px[seq], py[seq], px[i], py[i])
@@ -1843,7 +1847,7 @@ local function ApplyView()
     zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
-    ns.Islands:SetZoom(z)
+    ns.Islands:SetZoom(z, ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     if not ns.db.terrain and z >= zoneView.FADE[1] then
         zoneView:SetZoom(z)
         zoneView:Update(ViewArea(0))
@@ -2332,12 +2336,13 @@ local function OnUpdate(_, elapsed)
     if state.playing then
         local before = state.markerNow
         -- Along a jump, at its style's pace rather than a point at a time;
-        -- a break without moving passes as any other point.
+        -- a break without moving, or an instant jump, passes as any other point.
         local seq = math.floor(state.cur)
         local rate = REPLAY_POINTS
-        if seq >= 1 and seq < state.n and state.brk[seq + 1]
+        local style = seq >= 1 and seq < state.n and state.brk[seq + 1]
+            and (JUMP_STYLES[state.pj[seq + 1]] or JUMP_UNKNOWN)
+        if style and not style.instant
             and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
-            local style = JUMP_STYLES[state.pj[seq + 1]] or JUMP_UNKNOWN
             local seconds = style.replay or 1
             -- The length is known once the arrow is on the jump (PlaceHead).
             local jump = state.headJump
