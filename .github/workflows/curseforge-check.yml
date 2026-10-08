@@ -1,9 +1,21 @@
 # Run by hand (Actions > CurseForge check > Run workflow) to test the
 # CurseForge token and game versions without uploading anything.
+#
+# With a tag (v1.4.0), uploads that GitHub release's zip to CurseForge
+# instead, with its notes from CHANGELOG.md: for when the Release
+# workflow's upload failed after the GitHub release was made.
 name: CurseForge check
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upload this existing release (e.g. v1.4.0); empty to only check"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -11,7 +23,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check token and game versions
+        if: inputs.tag == ''
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
         run: bash scripts/curseforge.sh check
+      - name: Upload an existing release
+        if: inputs.tag != ''
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          case "$TAG" in
+            *alpha*) type=alpha ;;
+            *beta*)  type=beta ;;
+            *)       type=release ;;
+          esac
+          gh release download "$TAG" --pattern "RoadToSixty-$version.zip" --dir dist
+          bash scripts/curseforge.sh upload "dist/RoadToSixty-$version.zip" \
+            "Road to Sixty $version" "$type" "$(bash scripts/changelog.sh "$TAG")"

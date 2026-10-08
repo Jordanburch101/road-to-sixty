@@ -73,11 +73,17 @@ case "${1:-}" in
         metadata=$(jq -n --arg name "$name" --arg type "$type" --arg changelog "$changelog" --argjson versions "$ids" \
             '{displayName: $name, releaseType: $type, changelog: $changelog, changelogType: "markdown", gameVersions: $versions}')
         echo "Uploading $zip to CurseForge project $CF_PROJECT_ID as $type: $metadata"
+        # From a file: curl -F reads a ";" in a value as the start of an
+        # option such as type=, which cut the JSON short at the first ";"
+        # in the release notes. A file's content is sent as it is.
+        meta_file=$(mktemp)
+        printf '%s' "$metadata" > "$meta_file"
         curl -sS --fail-with-body \
             -H "X-Api-Token: $CF_API_TOKEN" \
-            -F "metadata=$metadata" \
+            -F "metadata=<$meta_file;type=application/json" \
             -F "file=@$zip" \
             "$API/projects/$CF_PROJECT_ID/upload-file"
+        rm -f "$meta_file"
         echo
         ;;
     *)
