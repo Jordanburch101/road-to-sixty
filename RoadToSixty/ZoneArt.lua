@@ -218,10 +218,11 @@ ns.EdgeMask = EdgeMask
 -- street plans, so a city shows the art of the zone around it instead,
 -- trimmed to the city's rectangle and kept inside that zone's art, whose
 -- edge has a burnt border; that zone's outline leaves the city out. A city
--- with a mask of where its plan has drawing (ns.CityMasks, Stormwind) shows
--- its plan cut to that, over the zone around it. Under everything lies
--- paper over each continent, so land no zone map covers shows parchment
--- grain over the continent art below, which is far coarser than zone art.
+-- with a mask of where its plan has drawing (ns.CityMasks, every capital)
+-- shows its plan cut to that, over the zone around it, host or not, unless
+-- the city art option (ns.db.cityArt) is off. Under everything lies paper
+-- over each continent, so land no zone map covers shows parchment grain
+-- over the continent art below, which is far coarser than zone art.
 -- Any other zone without an outline paints the land around it too, so only
 -- the one under the middle of the view shows, with faded edges, and moving
 -- to another cross-fades. Art is built the first time a zone is near the view.
@@ -237,6 +238,8 @@ local PAPER_SUBLEVEL = -8
 
 local ZoneView = {
     FADE = { 4, 6 },    -- zoom where the layer starts to fade in and is fully shown
+    PLAN_FADE = { 9, 12 },  -- the same for the cities' street plans
+    views = {},         -- every zone view made, for ns.RefreshCityArt
 }
 ZoneView.__index = ZoneView
 
@@ -251,10 +254,7 @@ function ns.CreateZoneView(layer)
         active = nil,       -- uiMapID of the zone under the middle of the view, if any
         fading = false,     -- true while some zone art is still fading
     }, ZoneView)
-    --@debug@
-    ZoneView.views = ZoneView.views or {}
     table.insert(ZoneView.views, view)
-    --@end-debug@
     return view
 end
 
@@ -278,7 +278,7 @@ function ZoneView:AddContinent(uiMap, x1, y1, w, h)
 
     -- A city's host: of the outlined zones whose rectangle holds the city's
     -- middle, the one whose middle is nearest it.
-    for _, city in pairs(added) do
+    for cityID, city in pairs(added) do
         if not city.outline then
             local cx, cy = (city[1] + city[3]) / 2, (city[2] + city[4]) / 2
             local best
@@ -290,7 +290,10 @@ function ZoneView:AddContinent(uiMap, x1, y1, w, h)
                     end
                 end
             end
-            city.together = city.host ~= nil
+            -- A city with a mask of its plan shows with the others even
+            -- without a host, as its plan is cut to the city; with the city
+            -- art option off, such a city shows nothing.
+            city.together = city.host ~= nil or (ns.CityMasks and ns.CityMasks[cityID]) ~= nil
         end
     end
 
@@ -322,11 +325,20 @@ function ZoneView:ZoneAt(x, y)
     end
 end
 
+-- Opacity of the cities' street plans for the zoom: they fade in only close
+-- up, over the art of the zone around the city (see ZoneView:SetZoom).
+ZoneView.planAlpha = 0
+
 local function SetZoneAlpha(zone, alpha)
     zone.alpha = alpha
     for _, tex in ipairs(zone.textures or {}) do
         tex:SetAlpha(alpha)
         tex:SetShown(alpha > 0)
+    end
+    local plan = alpha * ZoneView.planAlpha
+    for _, tex in ipairs(zone.plan or {}) do
+        tex:SetAlpha(plan)
+        tex:SetShown(plan > 0)
     end
 end
 
@@ -336,40 +348,51 @@ local UNDER_SUBLEVEL = -2
 -- Draw sublevel of a city's own street plan, above any zone's art.
 local CITY_SUBLEVEL = 2
 
+-- Builds a zone's art: zone.textures, and for a city with a mask of its
+-- plan (unless the city art option is off) zone.plan, the plan cut to the
+-- mask alone: the mask already leaves out the plan's burnt rim, and the
+-- usual edge fade would cut into districts that reach the edge.
 function ZoneView:Build(id, zone)
-    local art, masks, sublevel = id, nil, nil
     local o = zone.outline
     local a = self.zones[id]
+    zone.textures, zone.plan = {}, nil
     if o then
-        masks = { OutlineMask(self.layer, id, o[2], o[3], o[4], o[5]),
+        local masks = { OutlineMask(self.layer, id, o[2], o[3], o[4], o[5]),
             EdgeMask(self.layer, zone[1], zone[2], zone[3], zone[4]) }
-    elseif zone.host and not (ns.CityMasks and ns.CityMasks[id]) and not ZoneView.cityOwnArt then
-        art = zone.host
-        a = self.zones[art]
-        -- Grown past the city, but no further than the host's art reaches.
-        local gx, gy = (zone[3] - zone[1]) * CITY_GROW, (zone[4] - zone[2]) * CITY_GROW
-        masks = { EdgeMask(self.layer, math.max(a[1], zone[1] - gx), math.max(a[2], zone[2] - gy),
-            math.min(a[3], zone[3] + gx), math.min(a[4], zone[4] + gy)) }
-    elseif zone.host then
-        masks = { EdgeMask(self.layer, zone[1], zone[2], zone[3], zone[4]) }
-        if ns.CityMasks and ns.CityMasks[id] then
-            local mask = self.layer:CreateMaskTexture()
-            mask:SetTexture(MASK_PATH .. "city_" .. id, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            mask:SetPoint("TOPLEFT", self.layer, "TOPLEFT", zone[1], -zone[2])
-            mask:SetPoint("BOTTOMRIGHT", self.layer, "TOPLEFT", zone[3], -zone[4])
-            masks[#masks + 1] = mask
-        end
-        sublevel = CITY_SUBLEVEL
-    end
-    zone.textures = AddZoneArt(self.layer, art, a[1], a[2], a[3], a[4],
-        ZoneOverlays(art), masks and 0, masks, sublevel)
-    if o then
+        zone.textures = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), 0, masks)
         for _, tex in ipairs(AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), 0,
             { EdgeMask(self.layer, a[1], a[2], a[3], a[4]) }, UNDER_SUBLEVEL)) do
             zone.textures[#zone.textures + 1] = tex
         end
+    elseif zone.host then
+        local h = self.zones[zone.host]
+        -- Grown past the city, but no further than the host's art reaches.
+        local gx, gy = (zone[3] - zone[1]) * CITY_GROW, (zone[4] - zone[2]) * CITY_GROW
+        local masks = { EdgeMask(self.layer, math.max(h[1], zone[1] - gx), math.max(h[2], zone[2] - gy),
+            math.min(h[3], zone[3] + gx), math.min(h[4], zone[4] + gy)) }
+        zone.textures = AddZoneArt(self.layer, zone.host, h[1], h[2], h[3], h[4], ZoneOverlays(zone.host), 0, masks)
+    elseif not zone.together then
+        zone.textures = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id))
+    end
+    if not o and ns.db.cityArt and ns.CityMasks and ns.CityMasks[id] then
+        local mask = self.layer:CreateMaskTexture()
+        mask:SetTexture(MASK_PATH .. "city_" .. id, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("TOPLEFT", self.layer, "TOPLEFT", zone[1], -zone[2])
+        mask:SetPoint("BOTTOMRIGHT", self.layer, "TOPLEFT", zone[3], -zone[4])
+        zone.plan = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), 0, { mask }, CITY_SUBLEVEL)
     end
     SetZoneAlpha(zone, 0)
+end
+
+-- Sets the street plans' opacity for zoom z.
+function ZoneView:SetZoom(z)
+    local f = math.log(z / self.PLAN_FADE[1]) / math.log(self.PLAN_FADE[2] / self.PLAN_FADE[1])
+    f = math.max(0, math.min(1, f))
+    if f == ZoneView.planAlpha then return end
+    ZoneView.planAlpha = f
+    for _, zone in pairs(self.zones) do
+        if zone.plan then SetZoneAlpha(zone, zone.alpha) end
+    end
 end
 
 -- Moves the opacity of each zone shown alone towards shown for the
@@ -420,27 +443,17 @@ function ZoneView:Update(x1, y1, x2, y2)
     end
 end
 
---@debug@
--- /rts cityart: switches cities without a mask between the surrounding
--- zone's art and their own street plan, to compare. Textures cannot be deleted, so the old ones
--- are hidden and the cities built again.
-ns.Command("cityart", "compare city art: surrounding zone or own street plan (developer)", function()
-    ZoneView.cityOwnArt = not ZoneView.cityOwnArt
-    local rebuilt = {}
-    for _, view in ipairs(ZoneView.views or {}) do
+-- Builds every city again after the city art option changed. Textures
+-- cannot be deleted, so the old ones are hidden.
+function ns.RefreshCityArt()
+    for _, view in ipairs(ZoneView.views) do
         for id, zone in pairs(view.zones) do
-            if zone.host and zone.textures then
+            if not zone.outline and zone.together and zone.textures then
                 local alpha = zone.alpha
                 SetZoneAlpha(zone, 0)
                 view:Build(id, zone)
                 SetZoneAlpha(zone, alpha)
-                local info = C_Map.GetMapInfo(id)
-                rebuilt[#rebuilt + 1] = ("%s %d (host %s, %d textures, alpha %.1f)"):format(
-                    info and info.name or "?", id, tostring(zone.host), #zone.textures, alpha)
             end
         end
     end
-    ns.Print("Cities now show " .. (ZoneView.cityOwnArt and "their own street plan." or "the surrounding zone's art."))
-    ns.Print(#rebuilt > 0 and ("Rebuilt: " .. table.concat(rebuilt, "; ")) or "No city built yet; zoom into one first.")
-end)
---@end-debug@
+end

@@ -1706,6 +1706,7 @@ local function ApplyView()
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
     if not ns.db.terrain and z >= zoneView.FADE[1] then
+        zoneView:SetZoom(z)
         zoneView:Update(ViewArea(0))
     end
 

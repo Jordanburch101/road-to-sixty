@@ -66,30 +66,61 @@ MASK_SOFT = 2
 EDGE_SIZE = 128
 EDGE_CLEAR, EDGE_SOLID = 0.02, 0.09
 
-# City street plans whose drawing sits on bare parchment, which would hide
-# the zone around the city. The mask keeps the drawing: pixels whose colour
-# differs from the parchment (summed over the channels, at CITY_WORK width)
-# by more than cut, closed by close to join the districts, holes filled,
-# opened by open to drop specks and stray letters, grown by grow, softened
-# by soft. band is the burnt edge, never drawing. fill lists boxes (shares
-# of the art: x1, y1, x2, y2) kept, such as plain ground between districts
-# that would show the zone's art there; clear lists boxes left out, such as
-# the title banner the zone around already has. Other cities' plans are drawn edge to edge, so this
-# would cut them to pieces; they have no mask.
 # ZoneMasks/paper.tga: PAPER_BOX of Stormwind's plan (blank parchment, clear
 # of a speck), scaled to PAPER_SIZE square, its slow light and dark taken
 # out (PAPER_FLATTEN blur), and blended with a half-tile shifted copy so it
 # repeats without seams.
 PAPER_CITY, PAPER_BOX, PAPER_SIZE, PAPER_FLATTEN = 1453, (910, 520, 990, 600), 256, 40
 
+# City street plans sit on bare parchment, which would hide the zone around
+# the city, so each gets a mask of where it has drawing, worked out at
+# CITY_WORK pixels wide. No one test finds the drawing in every plan, so
+# each city picks:
+#   signal="colour"  pixels whose colour differs from the parchment (summed
+#                    over the channels) by more than cut; for plans in
+#                    strong colours (Stormwind)
+#   signal="edge"    ink: edge strength, spread out and scaled from 0 to 255,
+#                    above cut; for plans of many small outlined buildings
+#   poly             outlines drawn by hand, as lists of points in shares of
+#                    the art, for plans where the labels outweigh the rest
+# The shape found is closed by close to join the districts, holes filled,
+# opened by open to drop specks and stray letters, grown by grow and
+# softened by soft. band is the burnt edge, never drawing; the mask is the
+# plan's only edge in game, so it must clear it. fill lists boxes
+# (shares of the art: x1, y1, x2, y2) kept, such as plain ground between
+# districts that would show the zone's art there; clear lists boxes left
+# out, such as the crest each plan has in a corner, or the title banner the
+# zone around already has.
 CITY_WORK = 250
-CITY_SIZE = 256
+CITY_SIZE = 128
+
+
+def view_poly(points):
+    """Points measured on a 501 by 334 view of a plan, as shares of the art."""
+    return [(x / 501, y / 334) for x, y in points]
+
+
 CITY_MASKS = {
     # Stormwind: the canal and wall between the harbour and the districts.
-    1453: dict(cut=120, close=9, open=6, grow=2, soft=3, band=6,
+    1453: dict(signal="colour", cut=120, close=9, open=6, grow=2, soft=3, band=6,
                fill=[(0.26, 0.1, 0.38, 0.6)], clear=[(0.5, 0.0, 0.95, 0.2)]),
+    1454: dict(signal="edge", cut=90, close=6, open=3, grow=2, soft=3, band=10,      # Orgrimmar
+               clear=[(0.69, 0.59, 0.91, 0.92)]),
+    1456: dict(signal="edge", cut=90, close=6, open=3, grow=2, soft=3, band=10,      # Thunder Bluff
+               clear=[(0.72, 0.55, 0.93, 0.94)]),
+    1455: dict(soft=3, band=5, poly=[view_poly([                                             # Ironforge
+        (95, 5), (195, 3), (205, 15), (290, 5), (395, 3), (415, 40), (410, 100), (385, 120), (375, 145),
+        (445, 140), (450, 195), (395, 200), (395, 300), (330, 305), (320, 322), (175, 322), (165, 305),
+        (40, 312), (32, 232), (85, 225), (85, 100), (95, 60)])]),
+    1457: dict(soft=3, band=5, poly=[view_poly([                                             # Darnassus
+        (140, 5), (375, 2), (380, 95), (425, 85), (470, 90), (470, 160), (380, 160), (375, 280),
+        (330, 290), (330, 318), (175, 318), (170, 295), (115, 290), (110, 145), (25, 150), (25, 100),
+        (110, 100), (125, 70)])]),
+    1458: dict(soft=3, band=5, poly=[view_poly([                                             # Undercity
+        (25, 25), (175, 25), (180, 75), (210, 70), (215, 20), (330, 5), (400, 15), (455, 40), (455, 120),
+        (440, 150), (455, 200), (455, 270), (400, 285), (330, 280), (320, 330), (250, 330), (215, 250),
+        (205, 200), (195, 170), (140, 165), (65, 160), (65, 90), (30, 65)])]),
 }
-
 
 
 def fetch(url):
@@ -181,33 +212,57 @@ def paper(full):
     return Image.composite(flat, ImageChops.offset(flat, n // 2, n // 2), weight)
 
 
+def grow_shape(shape, n):
+    """The shape grown by n pixels (Pillow crashes on a rank filter of size 1)."""
+    return shape.filter(ImageFilter.MaxFilter(2 * n + 1)) if n else shape
+
+
+def shrink_shape(shape, n):
+    return shape.filter(ImageFilter.MinFilter(2 * n + 1)) if n else shape
+
+
 def city_mask(full, size, p):
     """The mask alpha for a city's street plan, CITY_SIZE pixels square."""
     w = CITY_WORK
     h = round(w * size[1] / size[0])
-    plan = full.crop((0, 0) + size).resize((w, h), Image.LANCZOS).filter(ImageFilter.GaussianBlur(1))
+    art = full.crop((0, 0) + size)
+    b = p.get("band", 0)
 
-    # The parchment's colour: the median just inside the burnt edge.
-    b = p["band"]
-    edge = [plan.getpixel((x, y)) for x in range(b, w - b) for y in (b, h - b - 1)]
-    edge += [plan.getpixel((w - b - 1, y)) for y in range(b, h - b)]
-    paper = tuple(sorted(px[i] for px in edge)[len(edge) // 2] for i in range(3))
-    r, g, bl = ImageChops.difference(plan, Image.new("RGB", plan.size, paper)).split()
-    diff = ImageChops.add(ImageChops.add(r, g), bl)
+    signal = p.get("signal")
+    if signal == "colour":
+        plan = art.resize((w, h), Image.LANCZOS).filter(ImageFilter.GaussianBlur(1))
+        # The parchment's colour: the median just inside the burnt edge.
+        edge = [plan.getpixel((x, y)) for x in range(b, w - b) for y in (b, h - b - 1)]
+        edge += [plan.getpixel((w - b - 1, y)) for y in range(b, h - b)]
+        paper = tuple(sorted(px[i] for px in edge)[len(edge) // 2] for i in range(3))
+        r, g, bl = ImageChops.difference(plan, Image.new("RGB", plan.size, paper)).split()
+        found = ImageChops.add(ImageChops.add(r, g), bl)
+    elif signal == "edge":
+        ink = art.convert("L").filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(6))
+        found = ink.resize((w, h), Image.BOX)
+        lo, hi = found.getextrema()
+        found = found.point(lambda v: round(255 * (v - lo) / max(1, hi - lo)))
+    else:
+        found = Image.new("L", (w, h))
+    shape = found.point(lambda v: 255 if signal and v > p["cut"] else 0)
+    shape = shrink_shape(grow_shape(shape, p.get("close", 0)), p.get("close", 0))
 
-    shape = diff.point(lambda v: 255 if v > p["cut"] else 0)
-    shape = shape.filter(ImageFilter.MaxFilter(2 * p["close"] + 1)).filter(ImageFilter.MinFilter(2 * p["close"] + 1))
     draw = ImageDraw.Draw(shape)
-    for box in [(0, 0, w, b), (0, h - b, w, h), (0, 0, b, h), (w - b, 0, w, h)]:
-        draw.rectangle(box, fill=0)
+    for points in p.get("poly", []):
+        draw.polygon([(x * w, y * h) for x, y in points], fill=255)
     for x1, y1, x2, y2 in p.get("fill", []):
         draw.rectangle((x1 * w, y1 * h, x2 * w, y2 * h), fill=255)
+    for box in [(0, 0, w, b), (0, h - b, w, h), (0, 0, b, h), (w - b, 0, w, h)] if b else []:
+        draw.rectangle(box, fill=0)
     for x1, y1, x2, y2 in p.get("clear", []):
         draw.rectangle((x1 * w, y1 * h, x2 * w, y2 * h), fill=0)
+    # Fill holes: a flood from a corner reaches everything outside. The
+    # corner is cleared first, as a hand outline may reach it.
+    draw.point((0, 0), fill=0)
     ImageDraw.floodfill(shape, (0, 0), 128)
     shape = shape.point(lambda v: 0 if v == 128 else 255)
-    shape = shape.filter(ImageFilter.MinFilter(2 * p["open"] + 1)).filter(ImageFilter.MaxFilter(2 * p["open"] + 1))
-    shape = shape.filter(ImageFilter.MaxFilter(2 * p["grow"] + 1)).filter(ImageFilter.GaussianBlur(p["soft"]))
+    shape = grow_shape(shrink_shape(shape, p.get("open", 0)), p.get("open", 0))
+    shape = grow_shape(shape, p.get("grow", 0)).filter(ImageFilter.GaussianBlur(p["soft"]))
     return shape.resize((CITY_SIZE, CITY_SIZE), Image.LANCZOS)
 
 

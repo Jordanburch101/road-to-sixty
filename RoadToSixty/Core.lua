@@ -3,6 +3,7 @@ local addonName, ns = ...
 local defaults = {
     greet = true,
     terrain = true,
+    cityArt = true,     -- with terrain off, capitals show their own street plans
     motes = true,
     showPaths = {},     -- roster key -> true to draw that character's path on the map
     historyFilter = {   -- history category -> false when hidden

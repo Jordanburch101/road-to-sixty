@@ -47,6 +47,15 @@ local SECTIONS = {
             set = function(on) ns.db.terrain = on end,
         },
         {
+            label = "Show city street plans",
+            tip = "With terrain off, the capitals show their own street plans when you zoom in. Off shows the land around them instead.",
+            get = function() return ns.db.cityArt end,
+            set = function(on)
+                ns.db.cityArt = on
+                ns.RefreshCityArt()
+            end,
+        },
+        {
             label = "Show sparkles along the path",
             tip = "Small motes of light drifting along your journey.",
             get = function() return ns.db.motes end,

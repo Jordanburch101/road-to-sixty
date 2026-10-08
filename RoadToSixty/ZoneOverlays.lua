@@ -731,4 +731,9 @@ ns.ZoneMasks = {
 -- plan has drawing, over the whole plan.
 ns.CityMasks = {
     [1453] = true,
+    [1454] = true,
+    [1455] = true,
+    [1456] = true,
+    [1457] = true,
+    [1458] = true,
 }
