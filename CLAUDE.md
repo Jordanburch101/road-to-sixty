@@ -115,6 +115,9 @@ Verified in game; trust these over web guides, and re-check after patches.
   as white shapes only, also on a `ModelScene` actor with
   `SetModelByCreatureDisplayID`), so only the logged-in character can be
   shown properly. `SetPlayerModelFromGlues` draws nothing in game.
+- Textures zoomed far in draw as hard blocks because of pixel snapping, not
+  filtering: `SetSnapToPixelGrid(false)` and `SetTexelSnappingBias(0)` make
+  them smooth (the filter argument of `SetTexture` alone does nothing).
 - `ModelScene` actors draw black until the scene's fog is cleared
   (`scene:ClearFog()`); light type 1 keeps them black.
 

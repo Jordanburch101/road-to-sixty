@@ -726,3 +726,9 @@ ns.ZoneMasks = {
     [2548] = true,
     [2652] = true,
 }
+
+-- Cities with a mask in ZoneMasks\city_<uiMapID>.tga: where their street
+-- plan has drawing, over the whole plan.
+ns.CityMasks = {
+    [1453] = true,
+}
