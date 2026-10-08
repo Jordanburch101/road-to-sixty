@@ -46,13 +46,27 @@ python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and Zone
 Run `check.ps1` from the repo root. It currently reports two old type
 warnings (Probe.lua:52, Recorder.lua:281); anything new is ours to fix.
 
-Release: add a `## X.Y.Z` section to CHANGELOG.md (non-technical, `### New`
-and `### Fixed`, written for players), commit and push `main`, then push an
-annotated tag `vX.Y.Z`. The workflow fails if the section is missing. The
-Release workflow checks, builds, makes the GitHub release and uploads to
-CurseForge. Tags containing `beta` or `alpha` become pre-releases. The
-version comes from the tag. The CurseForge description and screenshots are
-not synced; they are edited on CurseForge by hand.
+## Release
+
+1. Add the version's section to CHANGELOG.md as features land: `## X.Y.Z`
+   with `### New` and `### Fixed`, non-technical, written for players.
+   `bash scripts/changelog.sh X.Y.Z` prints what the release will use.
+2. Run `check.ps1` and `scripts/package.ps1`, commit, and push `main`.
+3. Push an annotated tag: `git tag -a vX.Y.Z -m "Road to Sixty X.Y.Z"`, then
+   `git push origin vX.Y.Z`. The version comes from the tag; tags containing
+   `beta` or `alpha` become pre-releases.
+4. The Release workflow fails at once if the changelog section is missing,
+   then checks, builds, makes the GitHub release with the zip and the notes,
+   and uploads to CurseForge. Watch it to the end (`gh run watch <id>
+   --exit-status`): the GitHub release can succeed while the upload fails.
+5. If only the CurseForge upload failed, fix the cause on `main`, then run
+   `gh workflow run curseforge-check.yml -f tag=vX.Y.Z`. It uploads the
+   existing GitHub release's zip with its notes. Never move or re-push a
+   tag. Without a tag, that workflow only checks the token and game version.
+6. Sweep the issues (see below).
+
+The CurseForge description and screenshots are not synced; they are
+edited on CurseForge by hand.
 
 ## Work tracking: GitHub issues
 
@@ -67,10 +81,15 @@ Treat them as the shared memory of what is planned, decided and done.
   change, what Jordan picked from a screenshot, what is left.
 - Keep the issue body's plan current if the design changes; the body is the
   summary, the comments are the history.
-- Reference the issue in commits (`Guilds: record joining (#5)`), and close
-  it with a short summary comment of what shipped (and in which version)
-  once the work is released or merged, not before. Open follow-up issues for
-  anything deferred.
+- Reference the issue in commits (`Guilds: record joining (#5)`). Close it
+  with a short summary comment of what shipped and in which version once
+  the work is released (tagged and published), not when it is committed.
+  Open follow-up issues for anything deferred.
+- After each release, sweep: `git log vPREV..vX.Y.Z --oneline` lists the
+  issues with work in it. Read each one with its comments. Close the
+  finished ones with a summary. Move anything left over, or marked "left
+  out", into a follow-up issue, and link it from the closing comment.
+  Issues without commits in the release stay open.
 - Issues are public: no secrets, personal paths or email addresses.
 
 ## Conventions
