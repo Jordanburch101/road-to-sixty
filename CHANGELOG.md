@@ -28,6 +28,10 @@ broken and now works. Leave out internal changes. Sections are
   parchment of the zone maps around it.
 - The map around Stormwind no longer shows hard edges and burnt map
   borders.
+- Zephras Isle now shows on the map, out at sea north of the Maelstrom,
+  with your path, events and zeppelin trips there. Before, nothing you
+  did on the island appeared. Zoomed out it looks like an unexplored map;
+  zoom in to see it in full.
 
 ## 1.3.0
 
