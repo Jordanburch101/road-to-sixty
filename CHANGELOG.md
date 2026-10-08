@@ -6,9 +6,15 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
-## 1.4.1
+## 1.5.0
 
 ### New
+- Guilds: your journey records when you join or leave a guild and when
+  your rank changes. They show in History and on the map with your
+  guild's own banner, in its colours and with its emblem, and the replay
+  celebrates joining a guild: the banner drops in to a burst of confetti.
+  Stats lists each guild you have been in and for how long, and the
+  Characters tab shows each character's guild.
 - Zephras Isle shows its terrain when you zoom in with terrain on, like
   the rest of the world.
 - The replay no longer travels along the line between where you logged
