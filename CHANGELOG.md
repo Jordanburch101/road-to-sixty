@@ -16,8 +16,19 @@ broken and now works. Leave out internal changes. Sections are
   version to share their journey.
 - Other characters' paths now keep their real shape and show their
   flights and travel, instead of rough straight lines.
-- Boat and zeppelin trips are drawn as a dotted red line with an X where
-  you landed.
+- Boat and zeppelin trips are drawn like an adventure map: a dotted red
+  line from a target ring where you set sail to an X where you landed.
+  Boats sail round the coasts instead of over land, and a route you took
+  more than once shows once, with the number of trips and the first and
+  last in its tooltip. Forever's new boats and zeppelins are named, such
+  as Powderfuse Port, Southshore and Valanaar.
+- Hearthstones and teleports have their own look: a green ribbon of
+  twining vines for hearthstones and a blue ribbon of arcane light for
+  teleports. Between Kalimdor and the Eastern Kingdoms they gather into
+  one lane each across the sea, so the middle of the map stays tidy.
+- The replay follows you along boat trips, hearthstones and teleports,
+  taking longer for longer journeys, instead of jumping straight to where
+  you arrived.
 - Capital cities: zooming in close with terrain off shows each city's own
   street plan, set into the land around it. Can be turned off in the
   options.
