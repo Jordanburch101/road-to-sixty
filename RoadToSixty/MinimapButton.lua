@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 -- Minimap button: the addon icon on the minimap's edge in the usual round
 -- tracking border. Left-click opens the journey map, right-click the options;
@@ -9,7 +9,7 @@ local addonName, ns = ...
 local MinimapButton = {}
 ns.MinimapButton = MinimapButton
 
-local ICON = "Interface\\AddOns\\" .. addonName .. "\\icon"
+local ICON = "Interface\\Icons\\Ability_Hunter_Pathfinding"
 local button
 
 local function OnClick(mouseButton)
