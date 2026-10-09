@@ -25,7 +25,8 @@ broken and now works. Leave out internal changes. Sections are
   you know. Stats shows how many players you have met and who you group
   with most, and the History filter has a Social button for groups and
   guilds.
-- Dungeon and raid runs list everyone who was in them with you.
+- Hovering a dungeon or raid run in History shows a card with everyone
+  who was in it with you, what you did there and the loot.
 - The minimap button has a new icon.
 - Zephras Isle shows its terrain when you zoom in with terrain on, like
   the rest of the world.
