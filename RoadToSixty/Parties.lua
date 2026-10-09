@@ -419,6 +419,45 @@ local function CardRow(k)
     return row
 end
 
+-- Fills the card with rows for list (members as Info gives them) from
+-- height y, and returns the height below them. e and info are the group's,
+-- for the notes on each member; nil leaves the notes out.
+local function Rows(list, y, e, info)
+    local people = Parties:PeopleTable()
+    local shown = math.min(#list, MAX_KNOWN)
+    for k = 1, shown do
+        local entry = list[k]
+        local m, p = entry.m, people[entry.m[1]]
+        local row = CardRow(k)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", CARD_PAD, -y)
+        SetPortrait(row.portrait, m)
+        row.name:SetText(m[2] or "?")
+        row.name:SetTextColor(ns.ClassColor(m[5]))
+        row.what:SetText(("%s %s %s"):format(m[6] and ("Level " .. m[6]) or "", RaceName(m[3]), ns.ClassName(m[5])))
+        local groups = p and ((p.groups or 0) + (p.raids or 0)) or 0
+        row.count:SetText(groups > 1 and Count(groups, "group") or "")
+        row.tags:SetText(e and table.concat(Tags(entry, p, e, info), ", ") or "")
+        row:Show()
+        y = y + CARD_ROW
+    end
+    for k = shown + 1, #card.rows do
+        card.rows[k]:Hide()
+    end
+    return y
+end
+
+-- The gold rule and the text under it, below height y; sizes the card.
+local function Footer(y, text)
+    card.rule:ClearAllPoints()
+    card.rule:SetPoint("TOPLEFT", CARD_PAD, -(y + 4))
+    card.rule:SetPoint("TOPRIGHT", -CARD_PAD, -(y + 4))
+    card.footer:ClearAllPoints()
+    card.footer:SetPoint("TOPLEFT", CARD_PAD, -(y + 12))
+    card.footer:SetText(text)
+    card:SetHeight(y + 16 + card.footer:GetStringHeight() + CARD_PAD)
+end
+
 local function FillCard(e)
     local info = Parties:Info(e)
     local people = Parties:PeopleTable()
@@ -447,37 +486,79 @@ local function FillCard(e)
         card.classes:Hide()
         card.known:Hide()
     end
-    local shown = math.min(#list, MAX_KNOWN)
-    for k = 1, shown do
-        local entry = list[k]
-        local m, p = entry.m, people[entry.m[1]]
-        local row = CardRow(k)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", CARD_PAD, -y)
-        SetPortrait(row.portrait, m)
-        row.name:SetText(m[2] or "?")
-        row.name:SetTextColor(ns.ClassColor(m[5]))
-        row.what:SetText(("%s %s %s"):format(m[6] and ("Level " .. m[6]) or "", RaceName(m[3]), ns.ClassName(m[5])))
-        local groups = p and ((p.groups or 0) + (p.raids or 0)) or 0
-        row.count:SetText(groups > 1 and Count(groups, "group") or "")
-        row.tags:SetText(table.concat(Tags(entry, p, e, info), ", "))
-        row:Show()
-        y = y + CARD_ROW
-    end
-    for k = shown + 1, #card.rows do
-        card.rows[k]:Hide()
-    end
+    y = Rows(list, y, e, info)
     local s = info.summary
     local did = s and Did(s, info) or ""
-    local footer = s and ("|cffffd100Together %s|r%s"):format(Duration(s.duration),
-        did ~= "" and ("\n" .. did) or "") or "|cffffd100Still together|r"
-    card.rule:ClearAllPoints()
-    card.rule:SetPoint("TOPLEFT", CARD_PAD, -(y + 4))
-    card.rule:SetPoint("TOPRIGHT", -CARD_PAD, -(y + 4))
-    card.footer:ClearAllPoints()
-    card.footer:SetPoint("TOPLEFT", CARD_PAD, -(y + 12))
-    card.footer:SetText(footer)
-    card:SetHeight(y + 16 + card.footer:GetStringHeight() + CARD_PAD)
+    Footer(y, s and ("|cffffd100Together %s|r%s"):format(Duration(s.duration),
+        did ~= "" and ("\n" .. did) or "") or "|cffffd100Still together|r")
+end
+
+-- The groups the character was in during a run from from to to, with the
+-- members in them: { e = grp event, info }, the ones it was in longest first.
+function Parties:GroupsDuring(from, to)
+    local found = {}
+    for _, e in ipairs(ns.view.events) do
+        if e[2] == "grp" and e[1] <= to then
+            local info = self:Info(e)
+            local finish = info.finish or to
+            local overlap = math.min(finish, to) - math.max(e[1], from)
+            if overlap > 0 then
+                found[#found + 1] = { e = e, info = info, overlap = overlap }
+            end
+        end
+    end
+    table.sort(found, function(a, b) return a.overlap > b.overlap end)
+    return found
+end
+
+-- The card of a dungeon or raid run, its "out" event out, entered at time
+-- from: what it was and how it went, who was in it (the run's own list, or
+-- for runs saved before it had one, the group the character was in then),
+-- and the loot.
+local function FillRunCard(out, from)
+    local s = out[7]
+    local people = Parties:PeopleTable()
+    card.title:SetText(s.name or "Instance")
+    card.led:SetText(s.type == "raid" and "Raid" or "Dungeon")
+    card.when:SetText((tostring(date("%A %d %B, %H:%M", from)):gsub(" 0", " ")) .. "  -  " .. Duration(s.duration))
+    card.classes:Hide()
+    card.known:Hide()
+    local y = CARD_PAD + CARD_HEADER
+
+    -- Members as their group saw them (for its notes), else from who was met.
+    local groups = Parties:GroupsDuring(from, out[1])
+    local list, e, info = {}, groups[1] and groups[1].e, groups[1] and groups[1].info
+    local byGuid = {}
+    for _, g in ipairs(groups) do
+        for _, entry in ipairs(g.info.members) do
+            byGuid[entry.m[1]] = byGuid[entry.m[1]] or entry
+        end
+    end
+    if s.party then
+        for _, guid in ipairs(s.party) do
+            local p = people[guid]
+            local entry = byGuid[guid] or (p and { m = { guid, p.name, p.race, p.sex, p.class, p.level } })
+            if entry then list[#list + 1] = entry end
+        end
+    elseif info then
+        list = info.members
+    end
+    y = Rows(list, y, e, info)
+
+    local parts = {}
+    if s.kills > 0 then parts[#parts + 1] = Count(s.kills, "kill") end
+    if s.xp > 0 then parts[#parts + 1] = ns.Commas(s.xp) .. " xp" end
+    if s.deaths > 0 then parts[#parts + 1] = Count(s.deaths, "death") end
+    if s.levels > 0 then parts[#parts + 1] = Count(s.levels, "level") .. " gained" end
+    if s.money > 0 then
+        parts[#parts + 1] = ("%dg %ds %dc"):format(math.floor(s.money / 10000), math.floor(s.money / 100) % 100,
+            s.money % 100)
+    end
+    local text = table.concat(parts, ", ")
+    if #s.items > 0 then
+        text = text .. "\n|cffffd100Loot|r\n" .. table.concat(s.items, "\n")
+    end
+    Footer(y, text)
 end
 
 -- Shows the card of the group grp event e next to owner, on its right, or
@@ -485,6 +566,17 @@ end
 function Parties:ShowCard(owner, e, side)
     if not card then CreateCard() end
     FillCard(e)
+    self:PlaceCard(owner, side)
+end
+
+-- Shows the card of a run, its "out" event out, entered at time from.
+function Parties:ShowRunCard(owner, out, from, side)
+    if not card then CreateCard() end
+    FillRunCard(out, from)
+    self:PlaceCard(owner, side)
+end
+
+function Parties:PlaceCard(owner, side)
     card:ClearAllPoints()
     if side == "left" then
         card:SetPoint("TOPRIGHT", owner, "TOPLEFT", -4, 0)

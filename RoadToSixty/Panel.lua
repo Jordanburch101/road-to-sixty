@@ -205,6 +205,8 @@ local function CreateHistoryRow(parent)
             GameTooltip:Show()
         elseif item.group then
             ns.Parties:ShowCard(self, item.group, "left")
+        elseif item.run then
+            ns.Parties:ShowRunCard(self, item.run, item.entered, "left")
         elseif item.lines then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:AddLine(item.title)
@@ -407,6 +409,7 @@ end
 -- quality, link, iconFile or lines where they apply.
 local function BuildHistory()
     local items, seenZones, instanceNames, flights = {}, {}, {}, {}
+    local entered = {}      -- instance ID -> when it was last entered
     ns.Parties:Reset()
     local zoneAt = ZoneTimeline()
     local level
@@ -465,6 +468,7 @@ local function BuildHistory()
             Add({ kind = kind, title = "Died" }, t, c, x, y, ("Level %s - %s"):format(level or "?", where))
         elseif kind == "in" then
             instanceNames[e[6]] = e[7]
+            entered[e[6]] = t
             Add({ kind = kind, title = "Entered " .. (e[7] or "an instance") }, t, c, x, y,
                 ("%s, level %s"):format(ns.InstanceTypes[e[8]] or "Instance", level or "?"))
         elseif kind == "out" and type(e[7]) == "table" then
@@ -480,18 +484,10 @@ local function BuildHistory()
             for _, link in ipairs(s.items) do
                 lines[#lines + 1] = link
             end
-            -- Who was there, as their group entries also show them.
-            local people = ns.Parties:PeopleTable()
-            for n, guid in ipairs(s.party or {}) do
-                local p = people[guid]
-                if p then
-                    if n == 1 then lines[#lines + 1] = "|cffffd100With|r" end
-                    local r, g, b = ns.ClassColor(p.class)
-                    lines[#lines + 1] = ("|cff%02x%02x%02x%s|r  %s"):format(r * 255, g * 255, b * 255,
-                        p.name or "?", ns.ClassName(p.class))
-                end
-            end
-            Add({ kind = "run", title = s.name or instanceNames[e[6]] or "Instance", lines = lines }, t, c, x, y,
+            -- The run's card shows it with who was in it; lines are for runs
+            -- saved without their own name, which have no card.
+            Add({ kind = "run", title = s.name or instanceNames[e[6]] or "Instance", lines = lines,
+                run = s.name and e or nil, entered = entered[e[6]] or (t - s.duration) }, t, c, x, y,
                 ("%s, %d kills, %d items"):format(FormatDuration(s.duration), s.kills, #s.items))
         elseif kind == "zone" and not seenZones[e[6]] then
             seenZones[e[6]] = true
