@@ -18,7 +18,29 @@ local WORLD_MAP = 947
 -- overlay = { kind, name, tint, blend, scale } drawn on top }. kind is
 -- "atlas", "file" or "none" (just the number). Empty while no icon choice
 -- is open (level ups now use the player frame's level badge).
-local SECTIONS = {}
+local SECTIONS = {
+    -- The History filter's Social button (groups and guilds, issue #16).
+    { "Social", {
+        { "atlas", "socialqueuing-icon-group", label = "sq group" },
+        { "atlas", "groupfinder-icon-friend", label = "gf friend" },
+        { "atlas", "communities-icon-chat", label = "comm chat" },
+        { "atlas", "UI-HUD-MicroMenu-SocialJournal-Up", label = "micro social" },
+        { "atlas", "UI-HUD-MicroMenu-Communities-Up", label = "micro comm" },
+        { "atlas", "UI-HUD-MicroMenu-GroupFinder-Up", label = "micro lfg" },
+        { "file", "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon", label = "friend toast" },
+        { "file", "Interface\\FriendsFrame\\UI-Toast-ChatInviteIcon", label = "chat invite" },
+    } },
+    { "Social icons", {
+        { "file", "Interface\\Icons\\Achievement_Reputation_01", crop = true, label = "handshake" },
+        { "file", "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend", crop = true, label = "everybody" },
+        { "file", "Interface\\Icons\\INV_Misc_GroupLooking", crop = true, label = "group looking" },
+        { "file", "Interface\\Icons\\INV_Misc_GroupNeedMore", crop = true, label = "group need" },
+        { "file", "Interface\\Icons\\Spell_Holy_PrayerOfFortitude", crop = true, label = "fortitude (now)" },
+        { "file", "Interface\\Icons\\Spell_Holy_PrayerOfSpirit", crop = true, label = "prayer spirit" },
+        { "file", "Interface\\Icons\\Ability_Warrior_BattleShout", crop = true, label = "battle shout" },
+        { "file", "Interface\\Icons\\Achievement_Guild_DoctorIsIn", crop = true, label = "guild doctor" },
+    } },
+}
 
 -- Replay timeline candidates, four cells wide, each a still bar 60% played
 -- with level bands and ticks. fill: texture for the bands (flat colour if

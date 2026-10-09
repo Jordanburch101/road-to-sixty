@@ -193,3 +193,75 @@ local function Build()
 end
 
 ns.Command("partyprobe", "test party member portraits (developer)", Build)
+
+-- /rts raiddemo: a made-up raid of 40 as the map shows it, the stack on
+-- the left (hover it to spread it) and its card beside it. Four of the
+-- raid are players the character has partied with before, one levelled
+-- in the raid, one came late and one left early. Nothing is saved.
+local RAID_CLASSES = {
+    { "WARRIOR", 8 }, { "PRIEST", 6 }, { "MAGE", 5 }, { "ROGUE", 5 }, { "WARLOCK", 4 },
+    { "HUNTER", 4 }, { "DRUID", 4 }, { "PALADIN", 3 },
+}
+local RAID_RACES = {
+    WARRIOR = "Human", PRIEST = "Dwarf", MAGE = "Gnome", ROGUE = "NightElf", WARLOCK = "Human",
+    HUNTER = "NightElf", DRUID = "NightElf", PALADIN = "Dwarf",
+}
+local RAID_KNOWN = {    -- index in the raid -> { groups, seconds, dungeons, raids }
+    [2] = { 14, 9 * 3600, 6, 3 }, [9] = { 6, 4 * 3600, 2, 2 }, [15] = { 3, 2 * 3600, 1, 1 },
+    [22] = { 1, 1800, 0, 0 },
+}
+local demoFrame
+ns.Command("raiddemo", "show a made-up raid of 40 on its card (developer)", function()
+    local start = time() - 3 * 3600
+    local e = { start, "grp", 0, 0, 0, "raid", {}, true }
+    local info = { kind = "raid", leader = true, start = start, finish = start + 3 * 3600 + 720, members = {},
+        mySub = 1, instances = { { "Molten Core", "raid" } } }
+    local people = {}
+    local n = 0
+    for _, c in ipairs(RAID_CLASSES) do
+        for _ = 1, c[2] do
+            n = n + 1
+            if n <= 39 then
+                local guid = "Player-0-DEMO" .. n
+                local m = { guid, ("Raider%d"):format(n), RAID_RACES[c[1]], n % 2 == 0 and "Female" or "Male",
+                    c[1], 60, nil, math.floor((n - 1) / 5) + 1 }
+                local entry = { m = m }
+                local known = RAID_KNOWN[n]
+                if known then
+                    people[guid] = { name = m[2], class = c[1], first = start - 20 * 86400,
+                        groups = known[1], seconds = known[2], dungeons = known[3], raids = known[4] }
+                end
+                if n == 9 then m[6], entry.endLevel = 59, 60 end
+                if n == 15 then entry.joined = start + 1800 end
+                if n == 22 then entry.left = start + 2 * 3600 end
+                info.members[#info.members + 1] = entry
+            end
+        end
+    end
+    info.summary = { duration = 3 * 3600 + 720, kills = 412, xp = 0, quests = 0, deaths = 7, instances = 1 }
+    ns.Parties:SetDemo(e, info, people)
+
+    if not demoFrame then
+        demoFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        demoFrame:SetSize(200, 70)
+        demoFrame:SetPoint("CENTER", -200, 120)
+        demoFrame:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background" })
+        demoFrame:SetBackdropColor(0.15, 0.13, 0.1, 0.9)
+        demoFrame.stack = ns.Parties:CreateStack(demoFrame, 24)
+        demoFrame.stack:SetPoint("CENTER")
+        demoFrame.stack:EnableMouse(true)
+        demoFrame.stack:SetScript("OnEnter", function(self) ns.Parties:Spread(self, true) end)
+        demoFrame.stack:SetScript("OnLeave", function(self) ns.Parties:Spread(self, false) end)
+        demoFrame:EnableMouse(true)
+        demoFrame:SetScript("OnMouseDown", function(self)
+            self:Hide()
+            ns.Parties:HideCard()
+            ns.Parties.demoPeople = nil
+            ns.Parties:Reset()
+        end)
+    end
+    ns.Parties:SetStack(demoFrame.stack, info)
+    demoFrame:Show()
+    ns.Parties:ShowCard(demoFrame, e)
+    ns.Print("Raid demo: hover the stack to spread it, click the box beside it to close.")
+end)

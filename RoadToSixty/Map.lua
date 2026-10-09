@@ -145,6 +145,7 @@ local MARKER_ZOOM = {
     profession = 2.5,
     recipe = 5,
     guild = 2.5,
+    group = 2.5,
 }
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
@@ -170,6 +171,7 @@ local EVENT_ICONS = {
     gj = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 20 },
     gl = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
     gr = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
+    grp = { atlas = "socialqueuing-icon-group", size = 20 },
 }
 
 local INSTANCE_TYPES = {
@@ -285,7 +287,7 @@ end
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
 local MARKER_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
-    gj = "guilds", gl = "guilds", gr = "guilds",
+    gj = "guilds", gl = "guilds", gr = "guilds", grp = "groups",
 }
 
 -- False if the player has turned this History filter category off.
@@ -663,9 +665,15 @@ end
 
 local function GetMarker(i)
     local m = markers[i]
-    -- A marker reused for another kind of event loses a guild banner it had.
+    -- A marker reused for another kind of event loses a guild banner or a
+    -- group's portraits it had.
     if m and m.badge then
         m.badge:Hide()
+        m.icon:Show()
+    end
+    if m and m.stack then
+        m.stack:Hide()
+        m.group = nil
         m.icon:Show()
     end
     if m then return m end
@@ -678,6 +686,12 @@ local function GetMarker(i)
     m.text:SetDrawLayer("OVERLAY", 7)
     m.text:SetPoint("CENTER", 0.5, 0)
     m:SetScript("OnEnter", function(self)
+        -- A group spreads its portraits out and shows its card.
+        if self.group then
+            ns.Parties:Spread(self.stack, true)
+            ns.Parties:ShowCard(self, self.group)
+            return
+        end
         -- Level ups with recorded gear show the gear card instead of a tooltip.
         if self.level and ns.GearCard:Show(self.level, self, self.title, self.detail) then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -685,9 +699,13 @@ local function GetMarker(i)
         GameTooltip:AddLine(self.detail, 1, 1, 1)
         GameTooltip:Show()
     end)
-    m:SetScript("OnLeave", function()
+    m:SetScript("OnLeave", function(self)
         GameTooltip_Hide()
         ns.GearCard:Hide()
+        if self.group then
+            ns.Parties:Spread(self.stack, false)
+            ns.Parties:HideCard()
+        end
     end)
     markers[i] = m
     return m
@@ -698,6 +716,7 @@ end
 local function BuildMarkers()
     local count, level, zone = 0, nil, nil
     local visit     -- the quest marker turn-ins are joining: { m, c, x, y, last, names }
+    ns.Parties:Reset()
     for _, e in ipairs(ns.view.events) do
         local t, kind, toContent = e[1], e[2], state.toContent[e[3]]
         if kind == "on" or kind == "lvl" then
@@ -761,6 +780,26 @@ local function BuildMarkers()
                 m.title = title
                 m.detail = ("%s\n%s\n%s"):format(detail, ZoneName(zone), FormatTime(t))
             end
+        elseif toContent and kind == "grp" then
+            -- The group's portraits, overlapping; the marker grows with them.
+            count = count + 1
+            local m = GetMarker(count)
+            m.t, m.popping, m.level, m.group = t, nil, nil, e
+            m.x, m.y = toContent(e[4], e[5])
+            m.c = e[3]
+            m.category = MARKER_CATEGORY[kind]
+            m.minZoom = MARKER_ZOOM.group
+            m.title, m.detail = ns.Parties:Describe(e)
+            if not m.stack then
+                m.stack = ns.Parties:CreateStack(m, 24)
+                m.stack:SetPoint("CENTER")
+                m.stack.onResize = function(stack)
+                    m:SetSize(stack:GetWidth(), stack:GetHeight())
+                end
+            end
+            m.icon:Hide()
+            m.stack:Show()
+            ns.Parties:SetStack(m.stack, ns.Parties:Info(e))
         elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then
             count = count + 1
             local m = GetMarker(count)

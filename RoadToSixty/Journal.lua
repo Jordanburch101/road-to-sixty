@@ -98,60 +98,218 @@ end
 -- A run is one visit to an instance. ns.char.run holds the totals at entry,
 -- so leaving can log what happened inside. It is saved, so a run survives a
 -- logout inside the instance.
-local function StartRun(name)
+--
+-- Dungeons have no run ID, only the instance's map ID, and dying means
+-- coming back to life at a graveyard outside. So leaving does not end a
+-- run at once: run.left keeps when and where it was left and the summary
+-- then. Back into the same instance within RUN_GAP, the run carries on;
+-- otherwise it ends as it was when left, so what happens outside does not
+-- count towards it.
+local RUN_GAP = 30 * 60
+
+-- Puts event e into the journal in time order (it can be from the past).
+local function Insert(e)
+    local events = ns.char.events
+    local at = #events + 1
+    while at > 1 and events[at - 1][1] > e[1] do
+        at = at - 1
+    end
+    table.insert(events, at, e)
+end
+
+local function StartRun(name, instanceType)
     local t = ns.char.totals
     ns.char.run = {
-        t = time(), name = name, level = UnitLevel("player"),
+        t = time(), name = name, type = instanceType, level = UnitLevel("player"),
         kills = t.kills, xp = t.killXP + t.questXP, deaths = t.deaths, money = GetMoney(),
-        items = {},
+        items = {}, party = {},
+    }
+    for _, guid in ipairs(ns.Groups:Current() or {}) do
+        ns.char.run.party[guid] = true
+    end
+end
+
+-- Notes that the player with guid was in the group during the run, so the
+-- run lists everyone who was there at any point, not only those left at
+-- the end (Groups.lua calls this on every roster update).
+function Journal:JoinRun(guid)
+    local run = ns.char.run
+    if run and not run.left then
+        run.party = run.party or {}
+        run.party[guid] = true
+    end
+end
+
+-- The run so far: { name, duration (seconds), kills, xp, deaths, money
+-- (copper), levels, items = { itemLink, ... }, party = guids of everyone
+-- else who was in the group at any point during the run, if any (see
+-- Groups.lua), type = the instance type, "party" or "raid" }. This is the
+-- summary its "out" event gets.
+local function RunSummary(run)
+    local t = ns.char.totals
+    local seen, party = {}, {}
+    for guid in pairs(run.party or {}) do
+        seen[guid] = true
+        party[#party + 1] = guid
+    end
+    for _, guid in ipairs(ns.Groups:Current() or {}) do
+        if not seen[guid] then party[#party + 1] = guid end
+    end
+    return {
+        name = run.name,
+        duration = time() - run.t,
+        kills = t.kills - run.kills,
+        xp = t.killXP + t.questXP - run.xp,
+        deaths = t.deaths - run.deaths,
+        money = GetMoney() - run.money,
+        levels = UnitLevel("player") - run.level,
+        items = { unpack(run.items) },
+        party = #party > 0 and party or nil,
+        type = run.type,
     }
 end
 
--- Logs leaving the instance with a summary: { name, duration (seconds),
--- kills, xp, deaths, money (copper), levels, items = { itemLink, ... },
--- party = guids of the others in the group, if any (see Groups.lua) }.
-local function EndRun(instanceID)
-    local run, t = ns.char.run, ns.char.totals
-    local summary
-    if run then
-        summary = {
-            name = run.name,
-            duration = time() - run.t,
-            kills = t.kills - run.kills,
-            xp = t.killXP + t.questXP - run.xp,
-            deaths = t.deaths - run.deaths,
-            money = GetMoney() - run.money,
-            levels = UnitLevel("player") - run.level,
-            items = run.items,
-            party = ns.Groups:Current(),
-        }
-        ns.Groups:CountRun(summary.party)
-    end
-    Journal:Log("out", instanceID, summary)
+-- Ends the run that was left, logging "out" when and where it was left.
+local function FinishRun()
+    local run = ns.char.run
     ns.char.run = nil
+    local left = run and run.left
+    if not left then return end
+    ns.Groups:CountRun(left.summary.party, run.type == "raid")
+    Insert({ left.t, "out", left.c, left.x, left.y, left.id, left.summary })
+end
+
+-- Notes leaving instanceID; the run ends later unless it is entered again.
+local function LeaveRun(instanceID)
+    local run = ns.char.run
+    if not run then
+        Journal:Log("out", instanceID)
+        return
+    end
+    local c, x, y = ns.Recorder:Position()
+    run.left = { t = time(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run) }
+    local left = run.left
+    C_Timer.After(RUN_GAP + 1, function()
+        ns.SafeCall(function()
+            if ns.char.run and ns.char.run.left == left then FinishRun() end
+        end)
+    end)
 end
 
 local function CheckInstance()
     local char = ns.char
+    local run = char.run
+    -- A run left too long ago, or left before a logout, has ended.
+    if run and run.left and time() - run.left.t >= RUN_GAP then
+        FinishRun()
+        run = nil
+    end
     local inInstance, instanceType = IsInInstance()
     if inInstance then
         local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
+        if run and run.left then
+            if run.left.id == instanceID then
+                -- Back in, after a death or a trip out: the same run.
+                run.left = nil
+                char.instance = instanceID
+                return
+            end
+            FinishRun()
+        end
         if char.instance ~= instanceID then
             if char.instance then
-                EndRun(char.instance)
+                LeaveRun(char.instance)
+                FinishRun()
             end
             char.instance = instanceID
             char.totals.instances = char.totals.instances + 1
             Journal:Log("in", instanceID, name, instanceType)
-            StartRun(name)
+            StartRun(name, instanceType)
         end
     elseif char.instance then
-        EndRun(char.instance)
+        LeaveRun(char.instance)
         char.instance = nil
     end
 end
 
+-- Everyone in either list of guids, once each, in order; nil if no one.
+local function MergeParty(a, b)
+    local seen, list = {}, {}
+    for _, party in ipairs({ a or {}, b or {} }) do
+        for _, guid in ipairs(party) do
+            if not seen[guid] then
+                seen[guid] = true
+                list[#list + 1] = guid
+            end
+        end
+    end
+    return #list > 0 and list or nil
+end
+
+-- Joins runs that earlier versions split in two when the character died
+-- and ran back in: an "out" followed within RUN_GAP by an "in" to the same
+-- instance, with nothing else between, becomes one run.
+function Journal:TidyRuns()
+    local events = ns.char.events
+    local i = 1
+    while i <= #events do
+        local out = events[i]
+        local back = events[i + 1]
+        local k = i + 1
+        while back and back[2] ~= "in" and back[2] ~= "out" do
+            k = k + 1
+            back = events[k]
+        end
+        if out[2] == "out" and back and back[2] == "in" and back[6] == out[6]
+            and back[1] - out[1] < RUN_GAP and type(out[7]) == "table" then
+            local first = out[7]
+            -- Where the second part's summary goes: its own "out", or the
+            -- run still going on.
+            local j = k + 1
+            while events[j] and events[j][2] ~= "out" and events[j][2] ~= "in" do
+                j = j + 1
+            end
+            local second = events[j]
+            local merged = true
+            if second and second[2] == "out" and second[6] == out[6] and type(second[7]) == "table" then
+                local s = second[7]
+                s.duration = s.duration + first.duration + (back[1] - out[1])
+                s.kills, s.xp, s.deaths = s.kills + first.kills, s.xp + first.xp, s.deaths + first.deaths
+                s.money, s.levels = s.money + first.money, s.levels + first.levels
+                for n, link in ipairs(first.items) do
+                    table.insert(s.items, n, link)
+                end
+                s.party = MergeParty(first.party, s.party)
+            elseif not second and ns.char.run and ns.char.instance == out[6] then
+                local run = ns.char.run
+                run.t = run.t - first.duration - (back[1] - out[1])
+                run.kills, run.xp, run.deaths = run.kills - first.kills, run.xp - first.xp, run.deaths - first.deaths
+                run.money, run.level = run.money - first.money, run.level - first.levels
+                for n, link in ipairs(first.items) do
+                    table.insert(run.items, n, link)
+                end
+                run.party = run.party or {}
+                for _, guid in ipairs(first.party or {}) do
+                    run.party[guid] = true
+                end
+            else
+                merged = false
+            end
+            if merged then
+                table.remove(events, k)
+                table.remove(events, i)
+                ns.char.totals.instances = math.max(0, ns.char.totals.instances - 1)
+            else
+                i = i + 1
+            end
+        else
+            i = i + 1
+        end
+    end
+end
+
 ns.On("PLAYER_LOGIN", function()
+    if not ns.char.seeded then ns.SafeCall(Journal.TidyRuns, Journal) end
     local level = UnitLevel("player")
     local snapshot = ns.char.levels[level]
     if not snapshot then
@@ -265,7 +423,8 @@ ns.lootTracked = ns.On("CHAT_MSG_LOOT", function(msg)
     local quality = ItemQuality(link)
     if not quality or quality < MIN_LOOT_QUALITY then return end
     Journal:Log("loot", link, quality, ns.char.instance)
-    if ns.char.run then
+    -- Not once the run has been left: loot outside is not the run's.
+    if ns.char.run and not ns.char.run.left then
         table.insert(ns.char.run.items, link)
     end
 end)

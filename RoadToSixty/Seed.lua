@@ -243,6 +243,12 @@ end
 
 -- Writing --------------------------------------------------------------------
 
+-- The seeded party: { name, race, sex, class }.
+local SEED_PARTY = {
+    { "Brightmane", "Human", "Female", "PRIEST" }, { "Oakhorn", "Tauren", "Male", "DRUID" },
+    { "Fizzlewick", "Gnome", "Female", "MAGE" },
+}
+
 local function Log(kind, ...)
     table.insert(G.char.events, { G.t, kind, G.c, round(G.x), round(G.y), ... })
 end
@@ -558,7 +564,7 @@ local function Begin(zone, x, y, daysAgo, items, settings)
         killBuf = {}, mobIndex = {},
     }
     G.char.kills = { d = "", last = 0, names = {} }
-    G.char.skills, G.char.recipes = {}, {}
+    G.char.skills, G.char.recipes, G.char.people = {}, {}, {}
     for k, v in pairs(settings) do
         G[k] = v
     end
@@ -980,9 +986,34 @@ local function SeedRealistic(items)
         if i == 2 then
             Log("gj", "Seeded Adventurers", "Initiate")
             G.char.guild = { "Seeded Adventurers", "Initiate", 4 }
+            -- And forms a party, logged like Groups.lua does, that lasts
+            -- until the next zone.
+            local members = {}
+            for k, d in ipairs(SEED_PARTY) do
+                local guid = "Player-0-SEED000" .. k
+                members[k] = { guid, d[1], d[2], d[3], d[4], G.level }
+                G.char.people[guid] = {
+                    name = d[1], race = d[2], sex = d[3], class = d[4], level = G.level,
+                    first = G.t, last = G.t, c = G.c, x = round(G.x), y = round(G.y),
+                    groups = 1, seconds = 0, dungeons = 0,
+                }
+            end
+            Log("grp", "party", members, true)
+            G.party = { t = G.t, kills = G.char.totals.kills, quests = G.char.totals.quests }
         elseif i == 3 and G.char.guild then
             Log("gr", "Seeded Adventurers", "Member", true)
             G.char.guild[2], G.char.guild[3] = "Member", 3
+        end
+        if i == 3 and G.party then
+            local duration = G.t - G.party.t
+            for _, p in pairs(G.char.people) do
+                p.seconds, p.last = duration, G.t
+            end
+            Log("grpx", {
+                duration = duration, kills = G.char.totals.kills - G.party.kills, xp = 0,
+                quests = G.char.totals.quests - G.party.quests, deaths = 0, instances = 0, met = #SEED_PARTY,
+            })
+            G.party = nil
         end
         -- Quest from this zone's town until the level to move on.
         local leaveAt = ends[zone.leaveAt - 1] or REALISTIC_POINTS

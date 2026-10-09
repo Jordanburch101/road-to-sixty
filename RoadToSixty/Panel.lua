@@ -24,9 +24,11 @@ local currentIndex              -- index in historyList.data of the entry at cur
 local summaryValues = {}
 
 local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes", "Guild" }
+    "Professions", "Recipes", "Guild", "Players met" }
 local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
 local GUILD_ROW = 12        -- hovering it lists each guild and when
+local PEOPLE_ROW = 13       -- hovering it lists the players grouped with most
+local PEOPLE_LISTED = 12
 
 local function ZoneName(mapID)
     local info = mapID and C_Map.GetMapInfo(mapID)
@@ -201,6 +203,8 @@ local function CreateHistoryRow(parent)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetHyperlink(item.link)
             GameTooltip:Show()
+        elseif item.group then
+            ns.Parties:ShowCard(self, item.group, "left")
         elseif item.lines then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:AddLine(item.title)
@@ -218,6 +222,7 @@ local function CreateHistoryRow(parent)
     row:SetScript("OnLeave", function()
         GameTooltip_Hide()
         ns.GearCard:Hide()
+        ns.Parties:HideCard()
     end)
     return row
 end
@@ -238,6 +243,7 @@ local TITLE_COLORS = {
     gj = { 0.25, 1, 0.25 },
     gl = { 0.25, 1, 0.25 },
     gr = { 0.25, 1, 0.25 },
+    grp = { 0.67, 0.67, 1 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -249,6 +255,7 @@ local function UpdateHistoryRow(row, item)
     row:SetAlpha(item.t > currentTime and 0.35 or 1)
     local header = item.header ~= nil
     if row.badge then row.badge:Hide() end
+    if row.stack then row.stack:Hide() end
     row.header:SetShown(header)
     row.rule:SetShown(header)
     row.highlight:SetShown(not header)
@@ -272,6 +279,17 @@ local function UpdateHistoryRow(row, item)
         ns.Guilds:SetBadge(row.badge, item.tabard)
         row.badge:Show()
         row.icon:Hide()
+    end
+    -- Groups show the first member's portrait.
+    if item.group then
+        if not row.stack then
+            row.stack = ns.Parties:CreateStack(row, HISTORY_ROW - 8)
+            row.stack:SetPoint("CENTER", row.icon)
+        end
+        local members = ns.Parties:Info(item.group).members
+        ns.Parties:SetStack(row.stack, { members = { members[1] } })
+        row.stack:SetShown(members[1] ~= nil)
+        row.icon:SetShown(members[1] == nil)
     end
     ns.SetQualityOverlay(row.quality, item.kind == "loot" and item.quality or nil)
     row.title:SetText(item.title)
@@ -301,7 +319,7 @@ local HISTORY_FILTERS = {
     { "Crafting", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
     } },
-    { "Guild", { "gj" }, { { "guilds", "Guild" } } },
+    { "Social", { atlas = "socialqueuing-icon-group" }, { { "groups", "Groups" }, { "guilds", "Guild" } } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
@@ -310,6 +328,7 @@ local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
+    grp = "groups",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -388,6 +407,7 @@ end
 -- quality, link, iconFile or lines where they apply.
 local function BuildHistory()
     local items, seenZones, instanceNames, flights = {}, {}, {}, {}
+    ns.Parties:Reset()
     local zoneAt = ZoneTimeline()
     local level
 
@@ -460,6 +480,17 @@ local function BuildHistory()
             for _, link in ipairs(s.items) do
                 lines[#lines + 1] = link
             end
+            -- Who was there, as their group entries also show them.
+            local people = ns.Parties:PeopleTable()
+            for n, guid in ipairs(s.party or {}) do
+                local p = people[guid]
+                if p then
+                    if n == 1 then lines[#lines + 1] = "|cffffd100With|r" end
+                    local r, g, b = ns.ClassColor(p.class)
+                    lines[#lines + 1] = ("|cff%02x%02x%02x%s|r  %s"):format(r * 255, g * 255, b * 255,
+                        p.name or "?", ns.ClassName(p.class))
+                end
+            end
             Add({ kind = "run", title = s.name or instanceNames[e[6]] or "Instance", lines = lines }, t, c, x, y,
                 ("%s, %d kills, %d items"):format(FormatDuration(s.duration), s.kills, #s.items))
         elseif kind == "zone" and not seenZones[e[6]] then
@@ -492,6 +523,9 @@ local function BuildHistory()
             if title then
                 Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y, detail .. " - " .. where)
             end
+        elseif kind == "grp" then
+            local title, detail = ns.Parties:Describe(e)
+            Add({ kind = kind, title = title, group = e }, t, c, x, y, detail .. " - " .. where)
         elseif kind == "gj" or kind == "gl" or kind == "gr" then
             local title, detail, icon, tabard = ns.Guilds:Describe(e)
             if title then
@@ -764,6 +798,14 @@ local function ProfessionsSummary()
     return ("%d, best %s %d"):format(#list, best[1], best[2])
 end
 
+-- Players met, and the one grouped with most.
+local function PeopleSummary()
+    local list = ns.Parties:People()
+    if #list == 0 then return "-" end
+    local p = list[1][2]
+    return ("%d, most with %s"):format(#list, p.name or "?")
+end
+
 local function RefreshStats()
     local char, t = ns.view, ns.view.totals
     local zones = {}
@@ -788,6 +830,7 @@ local function RefreshStats()
         ProfessionsSummary(),
         ("%d learned, %d known"):format(ns.Crafts:RecipeCounts()),
         char.guild and ("<%s>"):format(char.guild[1]) or "-",
+        PeopleSummary(),
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -848,6 +891,30 @@ local function CreateStatsPane(pane)
         GameTooltip:Show()
     end)
     guildHover:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- And the players row the ones grouped with most.
+    local peopleHover = CreateFrame("Frame", nil, pane)
+    peopleHover:SetPoint("TOPLEFT", 0, -(PEOPLE_ROW - 1) * SUMMARY_ROW + 2)
+    peopleHover:SetPoint("RIGHT")
+    peopleHover:SetHeight(SUMMARY_ROW)
+    peopleHover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Grouped with most")
+        local list = ns.Parties:People()
+        for k = 1, math.min(#list, PEOPLE_LISTED) do
+            local p = list[k][2]
+            local r, g, b = ns.ClassColor(p.class)
+            GameTooltip:AddDoubleLine(p.name or "?", ("%d groups, %s"):format(p.groups, FormatDuration(p.seconds)),
+                r, g, b, 1, 1, 1)
+        end
+        if #list > PEOPLE_LISTED then
+            GameTooltip:AddLine(("and %d more"):format(#list - PEOPLE_LISTED), 0.7, 0.7, 0.7)
+        elseif #list == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    peopleHover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do
