@@ -265,3 +265,96 @@ ns.Command("raiddemo", "show a made-up raid of 40 on its card (developer)", func
     ns.Parties:ShowCard(demoFrame, e)
     ns.Print("Raid demo: hover the stack to spread it, click the box beside it to close.")
 end)
+
+-- /rts instprobe: looks for a way to tell one copy of a dungeon from
+-- another (issue #16). GetInstanceInfo gives only the map. Creature GUIDs
+-- are Creature-0-server-map-copy-npc-spawn, and the copy part should be the
+-- same for every mob of one copy and new after a reset, but on Forever some
+-- GUIDs are secret values that cannot be read. This tries every source:
+-- target, mouseover, focus, boss frames and nameplates now, and while
+-- watching (/rts instprobe watch), the source of every corpse looted.
+local function Plain(...)
+    local parts = {}
+    for i = 1, select("#", ...) do
+        parts[#parts + 1] = tostring((select(i, ...)))
+    end
+    return table.concat(parts, ", ")
+end
+
+local function Secret(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+-- Prints a GUID from source split into its parts, or says why it cannot.
+local copies = {}
+local function ShowGUID(source, guid, name)
+    if guid == nil then return false end
+    if Secret(guid) then
+        ns.Print(("  %s: secret"):format(source))
+        return true
+    end
+    local kind, _, server, map, copy, npc, spawn = strsplit("-", guid)
+    if kind == "Creature" or kind == "Vehicle" or kind == "GameObject" then
+        local key = tostring(map) .. "-" .. tostring(copy)
+        copies[key] = (copies[key] or 0) + 1
+        ns.Print(("  %s %s: %s, map %s, |cff73ff73copy %s|r, npc %s, spawn %s"):format(source, tostring(name or ""),
+            tostring(kind), tostring(map), tostring(copy), tostring(npc), tostring(spawn)))
+    else
+        ns.Print(("  %s: %s"):format(source, guid))
+    end
+    return true
+end
+
+local function Copies()
+    local list = {}
+    for key, n in pairs(copies) do list[#list + 1] = ("%s (%d)"):format(key, n) end
+    ns.Print("Map-copy seen so far: " .. (#list > 0 and table.concat(list, ", ") or "none"))
+end
+
+local watching = false
+local lootWatch = CreateFrame("Frame")
+lootWatch:SetScript("OnEvent", function()
+    if not watching then return end
+    ns.Print("Loot window sources:")
+    local any = false
+    for slot = 1, GetNumLootItems() do
+        local sources = { pcall(GetLootSourceInfo, slot) }
+        if table.remove(sources, 1) then
+            -- GUID, quantity pairs.
+            for i = 1, #sources, 2 do
+                any = ShowGUID("loot " .. slot, sources[i]) or any
+            end
+        else
+            ns.Print("  loot " .. slot .. ": GetLootSourceInfo failed")
+        end
+    end
+    if not any then ns.Print("  none") end
+    Copies()
+end)
+lootWatch:RegisterEvent("LOOT_OPENED")
+
+ns.Command("instprobe", "check how one copy of an instance can be told from another (developer)", function(arg)
+    if arg == "watch" then
+        watching = not watching
+        ns.Print("Watching loot sources: " .. (watching and "on, loot some corpses" or "off"))
+        return
+    end
+    ns.Print("GetInstanceInfo: " .. Plain(GetInstanceInfo()))
+    local units = { "target", "mouseover", "focus", "boss1", "boss2", "boss3", "npc" }
+    for i = 1, 40 do units[#units + 1] = "nameplate" .. i end
+    local any, secret = false, 0
+    for _, unit in ipairs(units) do
+        local ok, guid = pcall(UnitGUID, unit)
+        if ok and guid then
+            any = true
+            if Secret(guid) then
+                secret = secret + 1
+            else
+                ShowGUID(unit, guid, UnitName(unit))
+            end
+        end
+    end
+    if secret > 0 then ns.Print(("  %d units with a secret GUID"):format(secret)) end
+    if not any then ns.Print("  No units: target a mob, or turn on enemy nameplates.") end
+    Copies()
+end)

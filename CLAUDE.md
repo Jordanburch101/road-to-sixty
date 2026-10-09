@@ -112,6 +112,12 @@ Treat them as the shared memory of what is planned, decided and done.
 Verified in game; trust these over web guides, and re-check after patches.
 
 - Combat log is blocked for addons; kills come from `CHAT_MSG_COMBAT_XP_GAIN`.
+- One copy of a dungeon cannot be told from another: `GetInstanceInfo`
+  gives only the map ID, 5-man dungeons have no saved lockout, and creature
+  GUIDs (target, nameplates) are secret values (`issecretvalue`), so their
+  copy part cannot be read. Loot source GUIDs are believed secret too (not
+  probed). Runs are joined by time and group instead (Journal.lua).
+  Other players' GUIDs, names and guilds are readable.
 - SavedVariables are written only on logout, quit, disconnect or `/reload`.
   `ReloadUI()` needs a hardware event (a click or key), never a timer.
 - Some UI values are retail-style "secret values"; reading their rects or
