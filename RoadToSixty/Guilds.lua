@@ -10,8 +10,10 @@ local _, ns = ...
 --   gr  name, rank, up                 rank changed; up = true for a promotion
 --
 -- ns.char.guild is the guild last seen: { name, rank, rankIndex, tabard },
--- false when in none, nil until first read. Ranks are compared by index, as
--- guild masters can rename them; a lower index is a higher rank.
+-- false when in none, nil until first read. A rank change needs both the
+-- rank's index and its name to change: guild masters can rename ranks, and
+-- the client can report another index for a moment. A lower index is a
+-- higher rank.
 --
 -- tabard is what the client tells about the guild's tabard, saved so it can
 -- be drawn later, also for other characters: { files = the six
@@ -63,7 +65,14 @@ function Guilds:ReadTabard()
             tabard.files = files
         end
     end
-    return next(tabard) and tabard or nil
+    -- Without its colours the tabard cannot be drawn: right after joining
+    -- the client can have the files but not the rest yet.
+    return tabard.bg and tabard.border and tabard or nil
+end
+
+-- True if tabard has what drawing it needs (see ReadTabard).
+local function Complete(tabard)
+    return tabard and tabard.bg and tabard.border and true or false
 end
 
 -- The guild now: { name, rank, rankIndex }, false when in none, or nil when
@@ -133,7 +142,9 @@ function Guilds:Check()
         return
     end
 
-    if now[3] and known[3] and now[3] ~= known[3] then
+    -- The client can report another rank number for a moment while the
+    -- rank stays the same, so only a change of both counts.
+    if now[3] and known[3] and now[3] ~= known[3] and now[2] ~= known[2] then
         Log("gr", now[1], now[2], now[3] < known[3])
     end
     known[2], known[3] = now[2], now[3]
@@ -147,12 +158,45 @@ function Guilds:Check()
         for i = #events, 1, -1 do
             local e = events[i]
             if e[2] == "gj" then
-                if e[6] == known[1] and not e[9] then
+                if e[6] == known[1] and not Complete(e[9]) then
                     e[9] = tabard
                 end
                 break
             end
         end
+    end
+end
+
+-- Repairs what earlier versions saved wrongly: rank changes logged when
+-- only the rank number flickered (the rank name the same as before), and
+-- joins saved with a tabard missing its colours, filled from the current
+-- guild's when it has them.
+function Guilds:Tidy()
+    local events, ranks = ns.char.events, {}
+    local known = ns.char.guild
+    for i = #events, 1, -1 do
+        local e = events[i]
+        if e[2] == "gj" and known and e[6] == known[1] and not Complete(e[9]) and Complete(known[4]) then
+            e[9] = known[4]
+        end
+    end
+    local i = 1
+    while i <= #events do
+        local e = events[i]
+        if e[2] == "gj" then
+            ranks[e[6]] = e[7]
+        elseif e[2] == "gr" then
+            if ranks[e[6]] == e[7] then
+                table.remove(events, i)
+                i = i - 1
+            else
+                ranks[e[6]] = e[7]
+            end
+        end
+        i = i + 1
+    end
+    if known and not Complete(known[4]) then
+        known[4] = nil
     end
 end
 
@@ -307,7 +351,10 @@ local DISBANDED = Exact(ERR_GUILD_DISBANDED)
 ns.On("PLAYER_LOGIN", function()
     C_Timer.After(GUILD_READY, function()
         ready = true
-        ns.SafeCall(Guilds.Check, Guilds)
+        ns.SafeCall(function()
+            if not ns.char.seeded then Guilds:Tidy() end
+            Guilds:Check()
+        end)
     end)
 end)
 ns.On("PLAYER_GUILD_UPDATE", function() Guilds:Check() end)
