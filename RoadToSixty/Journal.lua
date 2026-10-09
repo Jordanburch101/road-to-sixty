@@ -102,9 +102,10 @@ end
 -- Dungeons have no run ID, only the instance's map ID, and dying means
 -- coming back to life at a graveyard outside. So leaving does not end a
 -- run at once: run.left keeps when and where it was left and the summary
--- then. Back into the same instance within RUN_GAP, the run carries on;
--- otherwise it ends as it was when left, so what happens outside does not
--- count towards it.
+-- then. Back into the same instance within RUN_GAP and with the same group
+-- (or still without one), the run carries on; otherwise it ends as it was
+-- when left, so what happens outside does not count towards it. A new
+-- group going back in is a new run, even minutes later.
 local RUN_GAP = 30 * 60
 
 -- Puts event e into the journal in time order (it can be from the past).
@@ -187,7 +188,10 @@ local function LeaveRun(instanceID)
         return
     end
     local c, x, y = ns.Recorder:Position()
-    run.left = { t = time(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run) }
+    run.left = {
+        t = time(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run),
+        group = ns.char.group and ns.char.group.t or false,
+    }
     local left = run.left
     C_Timer.After(RUN_GAP + 1, function()
         ns.SafeCall(function()
@@ -208,7 +212,8 @@ local function CheckInstance()
     if inInstance then
         local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
         if run and run.left then
-            if run.left.id == instanceID then
+            local group = ns.char.group and ns.char.group.t or false
+            if run.left.id == instanceID and (run.left.group == nil or run.left.group == group) then
                 -- Back in, after a death or a trip out: the same run.
                 run.left = nil
                 char.instance = instanceID
@@ -248,7 +253,8 @@ end
 
 -- Joins runs that earlier versions split in two when the character died
 -- and ran back in: an "out" followed within RUN_GAP by an "in" to the same
--- instance, with nothing else between, becomes one run.
+-- instance, with no other instance and no group starting or ending
+-- between, becomes one run.
 function Journal:TidyRuns()
     local events = ns.char.events
     local i = 1
@@ -256,11 +262,13 @@ function Journal:TidyRuns()
         local out = events[i]
         local back = events[i + 1]
         local k = i + 1
+        local regrouped = false
         while back and back[2] ~= "in" and back[2] ~= "out" do
+            regrouped = regrouped or back[2] == "grp" or back[2] == "grpx"
             k = k + 1
             back = events[k]
         end
-        if out[2] == "out" and back and back[2] == "in" and back[6] == out[6]
+        if out[2] == "out" and not regrouped and back and back[2] == "in" and back[6] == out[6]
             and back[1] - out[1] < RUN_GAP and type(out[7]) == "table" then
             local first = out[7]
             -- Where the second part's summary goes: its own "out", or the

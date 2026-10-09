@@ -99,6 +99,20 @@ now, inside, instanceID = 5200, true, 34
 Fire("PLAYER_ENTERING_WORLD")
 check(Kinds() == "in@5000 out@5100 in@5200", "a different instance is a new run: " .. Kinds())
 
+-- Going back in with a new group is a new run, even soon after.
+ns.char = NewChar()
+ns.view = ns.char
+now, inside, instanceID = 8000, true, 36
+ns.char.group = { t = 7900 }
+Fire("PLAYER_ENTERING_WORLD")
+now, inside = 8100, false
+Fire("PLAYER_ENTERING_WORLD")
+ns.char.group = { t = 8200 }
+now, inside = 8300, true
+Fire("PLAYER_ENTERING_WORLD")
+check(Kinds() == "in@8000 out@8100 in@8300", "a new group going back in is a new run: " .. Kinds())
+ns.char.group = nil
+
 -- Old split runs are joined.
 local function Summary(duration, kills, item, party)
     return { name = "Deadmines", duration = duration, kills = kills, xp = kills * 10, deaths = 1, money = 5,
@@ -125,6 +139,21 @@ check(table.concat(joined[7].items, ",") == "a,b", "joined loot in order: " .. t
 check(ns.char.totals.instances == 1, "instance count corrected: " .. ns.char.totals.instances)
 check(table.concat(joined[7].party, ",") == "tank,healer,new tank",
     "joined party has everyone once: " .. table.concat(joined[7].party or {}, ","))
+
+-- Not when the group changed between leaving and going back in.
+ns.char = NewChar()
+ns.view = ns.char
+ns.char.events = {
+    { 100, "in", 0, 0, 0, 36, "Deadmines", "party" },
+    { 400, "out", 0, 0, 0, 36, Summary(300, 10, "a") },
+    { 410, "grpx", 0, 0, 0, {} },
+    { 450, "grp", 0, 0, 0, "party", {} },
+    { 500, "in", 0, 0, 0, 36, "Deadmines", "party" },
+}
+ns.char.instance = 36
+ns.char.run = { t = 500, name = "Deadmines", kills = 10, xp = 100, deaths = 1, money = 5, level = 20, items = { "b" } }
+Journal:TidyRuns()
+check(Kinds() == "in@100 out@400 in@500", "runs of different groups stay apart: " .. Kinds())
 
 -- A split run still going on folds its first part into the run.
 ns.char = NewChar()
