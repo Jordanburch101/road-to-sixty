@@ -17,10 +17,24 @@ broken and now works. Leave out internal changes. Sections are
   grey banner, filled in with its colours once it has one while you are
   still a member. Stats lists each guild you have been in and for how
   long, and the Characters tab shows each character's guild.
+- Groups: your journey records every party and raid you join and who was
+  in it. On the map, the members' portraits sit where the group formed
+  and spread out when you hover them, with a card of who they were, how
+  often you have grouped with each, when they came and went, and what
+  you did together. Raids sum up their classes and pick out the players
+  you know. Stats shows how many players you have met and who you group
+  with most, and the History filter has a Social button for groups and
+  guilds.
+- Dungeon and raid runs list everyone who was in them with you.
+- The minimap button has a new icon.
 - Zephras Isle shows its terrain when you zoom in with terrain on, like
   the rest of the world.
 - The replay no longer travels along the line between where you logged
   out and where you logged in next; it goes straight on from there.
+
+### Fixed
+- Dying in a dungeon and running back in no longer splits the run in
+  two. Runs split this way before are joined.
 
 ## 1.4.0
 
