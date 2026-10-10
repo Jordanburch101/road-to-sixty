@@ -25,9 +25,13 @@ broken and now works. Leave out internal changes. Sections are
 - The gear card's model now holds your main hand weapon. It showed the
   ranged weapon in hand instead, whatever your class; hunters still hold
   their bow.
+
+## 1.6.1
+
+### Fixed
 - German clients no longer get a Lua error with every kill. Kills, loot,
-  recipes, reputation, mounts and guild changes are now recorded there
-  too, and on other clients whose messages number their parts.
+  recipes and guild changes are now recorded there too, and on other
+  clients whose messages number their parts.
 
 ## 1.6.0
 
