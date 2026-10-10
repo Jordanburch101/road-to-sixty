@@ -9,6 +9,7 @@
 ## SavedVariablesPerCharacter: RoadToSixtyCharDB
 
 Core.lua
+ChatPatterns.lua
 MinimapTiles.lua
 ZoneOverlays.lua
 ZoneArt.lua

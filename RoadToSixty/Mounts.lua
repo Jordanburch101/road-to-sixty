@@ -262,11 +262,8 @@ end
 
 -- Listening ---------------------------------------------------------------------
 
--- A chat message as a pattern matching the whole of it.
-local function Pattern(text)
-    return text and ("^" .. text:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.+)") .. "$")
-end
-local LEARNED = { Pattern(ERR_LEARN_SPELL_S), Pattern(ERR_LEARN_ABILITY_S) }
+-- "You have learned a new spell: %s.", matched whole.
+local LEARNED = { ns.ChatMatcher(ERR_LEARN_SPELL_S, true), ns.ChatMatcher(ERR_LEARN_ABILITY_S, true) }
 
 ns.On("PLAYER_LOGIN", function()
     C_Timer.After(READY, function()
@@ -287,8 +284,8 @@ ns.On("SKILL_LINES_CHANGED", function() Mounts:CheckRiding() end)
 ns.On("MOUNT_JOURNAL_LIST_UPDATE", function() Mounts:CheckMounts() end)
 
 ns.On("CHAT_MSG_SYSTEM", function(msg)
-    for _, pattern in pairs(LEARNED) do
-        local what = msg:match(pattern)
+    for _, match in ipairs(LEARNED) do
+        local what = match(msg)
         if what then
             -- The spell's link names the mount exactly.
             Learned(nil, tonumber(what:match("|Hspell:(%d+)")))

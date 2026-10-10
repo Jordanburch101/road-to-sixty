@@ -212,9 +212,8 @@ end
 
 -- Listening ---------------------------------------------------------------------
 
--- "You are now %s with %s." as a pattern giving the faction's name.
-local changedPattern = "^" .. (FACTION_STANDING_CHANGED or "You are now %s with %s.")
-    :gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.+)")
+-- "You are now %s with %s.", the second argument being the faction's name.
+local matchChanged = ns.ChatMatcher(FACTION_STANDING_CHANGED or "You are now %s with %s.")
 
 local function Known(name)
     for _, f in pairs(ns.char.reps or {}) do
@@ -232,7 +231,7 @@ end)
 ns.On("UPDATE_FACTION", function() Reputation:Check() end)
 
 ns.On("CHAT_MSG_SYSTEM", function(msg)
-    local _, name = msg:match(changedPattern)
+    local _, name = matchChanged(msg)
     if name then
         -- A faction met under a collapsed header is only found by opening it.
         Reputation:Check(not Known(name))

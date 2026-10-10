@@ -83,6 +83,7 @@ C_Reputation = {
     CollapseFactionHeader = function(i) Flat()[i].collapsed = true end,
 }
 
+assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Reputation.lua"))("RoadToSixty", ns)
 local Reputation = ns.Reputation
 
