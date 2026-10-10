@@ -6,6 +6,37 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.6.0
+
+### New
+- Hearthstones and teleports are now portals on the map: a swirling
+  portal where you left and a bright one where you arrived, green for
+  hearthstones and blue for teleports. In the replay you dive into the
+  first, a comet flies across, and you spin out of the second. Hover a
+  portal to see a comet fly to where it leads. Portals show once you zoom
+  in a little.
+- Leaving a group inside a dungeon, which sends you to a graveyard, shows
+  as a grey portal instead of a walk out of the dungeon.
+- Dying inside a dungeon now shows as a ghostly line to the graveyard,
+  like your corpse run back.
+- Markers that would sit on top of each other, such as several groups
+  formed at a dungeon's door or a guild joined and left by the bank, now
+  show as one with a count. Hover it and they fan out so you can see each
+  one. Markers of different kinds move apart a little so all stay
+  readable.
+- The replay celebrates each level you reach: your level badge pops up
+  and flips to the new level with a golden flash.
+- Your path is drawn in smooth curves when you zoom in.
+
+### Fixed
+- Levels reached and deaths inside a dungeon now show on the map, at the
+  dungeon's entrance.
+- Tooltips and History named "Eastern Kingdoms" instead of the zone in a
+  few spots, such as the Deadmines' mine. Those are corrected, and the
+  continent no longer counts as a discovered zone.
+- A death could be counted twice. Deaths counted twice before are
+  corrected.
+
 ## 1.5.0
 
 ### New
