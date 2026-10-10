@@ -1013,6 +1013,16 @@ local function SeedRealistic(items)
             Log("rep", id, standing, name, true)
             G.char.reps = { [id] = { standing, name } }
         end
+        -- Riding and a mount in the fourth town, logged like Mounts.lua does:
+        -- far below level 40, so the short seed shows them.
+        if i == 4 then
+            local mount, spellID = "Brown Horse", 458
+            if faction == "Horde" then mount, spellID = "Timber Wolf", 580 end
+            Log("ride", 33388, "Apprentice Riding")
+            G.t = G.t + 60
+            Log("mount", nil, mount, spellID, nil, "n")
+            G.char.riding = { [33388] = { "Apprentice Riding", G.t, G.level } }
+        end
         if i == 3 and G.party then
             local duration = G.t - G.party.t
             for _, p in pairs(G.char.people) do

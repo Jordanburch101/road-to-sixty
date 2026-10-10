@@ -50,6 +50,12 @@
         "ExpandFactionHeader",
         "CollapseFactionHeader",
         "FACTION_BAR_COLORS",
-        "FACTION_STANDING_CHANGED"
+        "FACTION_STANDING_CHANGED",
+        "GetNumSpellTabs",
+        "GetSpellTabInfo",
+        "GetSpellBookItemName",
+        "GetSpellBookItemInfo",
+        "ERR_LEARN_SPELL_S",
+        "ERR_LEARN_ABILITY_S"
     ]
 }

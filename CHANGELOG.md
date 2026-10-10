@@ -15,6 +15,11 @@ broken and now works. Leave out internal changes. Sections are
   in Stats, where hovering Reputation lists every faction and when you
   reached its standing. Turn it on or off under Social in the History
   filter.
+- Riding and mounts: learning to ride and each new mount are recorded
+  where they happened. They show in History, on the map
+  (even zoomed out, like dungeons), and in Stats, where Riding tells the
+  level you learned it at. Turn them on or off under Travel in the History
+  filter.
 
 ## 1.6.0
 

@@ -156,6 +156,7 @@ local MARKER_ZOOM = {
     recipe = 5,
     guild = 2.5,
     reputation = 2.5,
+    mount = 1,                  -- riding is a milestone, like a dungeon
     group = 2.5,
 }
 -- Turn-ins this close in place and time are one visit to a quest giver,
@@ -183,6 +184,8 @@ local EVENT_ICONS = {
     gl = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
     gr = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
     rep = { file = "Interface\\Icons\\Achievement_Reputation_01", size = 18 },
+    ride = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
+    mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
 }
 
@@ -300,6 +303,7 @@ local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths
 local MARKER_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
     gj = "guilds", gl = "guilds", gr = "guilds", grp = "groups", rep = "reps",
+    ride = "mounts", mount = "mounts",
 }
 
 -- False if the player has turned this History filter category off.
@@ -793,9 +797,11 @@ local function BuildMarkers()
                 m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), Where(inside, zone), FormatTime(visit.first))
             end
         elseif toContent and (kind == "prof" or kind == "rec" or kind == "gj" or kind == "gl" or kind == "gr"
-            or kind == "rep") then
+            or kind == "rep" or kind == "ride" or kind == "mount") then
             local guild = kind == "gj" or kind == "gl" or kind == "gr"
-            local source = guild and ns.Guilds or kind == "rep" and ns.Reputation or ns.Crafts
+            local mount = kind == "ride" or kind == "mount"
+            local source = guild and ns.Guilds or kind == "rep" and ns.Reputation or mount and ns.Mounts
+                or ns.Crafts
             local title, detail, icon, tabard = source:Describe(e)
             if title then
                 count = count + 1
@@ -813,6 +819,7 @@ local function BuildMarkers()
                 m.c = c
                 m.category = MARKER_CATEGORY[kind]
                 m.minZoom = guild and MARKER_ZOOM.guild or kind == "rep" and MARKER_ZOOM.reputation
+                    or mount and MARKER_ZOOM.mount
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)

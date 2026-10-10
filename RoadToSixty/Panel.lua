@@ -24,11 +24,12 @@ local currentIndex              -- index in historyList.data of the entry at cur
 local summaryValues = {}
 
 local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes", "Guild", "Players met", "Reputation" }
+    "Professions", "Recipes", "Guild", "Players met", "Reputation", "Riding" }
 local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
 local GUILD_ROW = 12        -- hovering it lists each guild and when
 local PEOPLE_ROW = 13       -- hovering it lists the players grouped with most
 local REPUTATION_ROW = 14   -- hovering it lists each faction's standing
+local RIDING_ROW = 15       -- hovering it lists riding learned and mounts
 local PEOPLE_LISTED = 12
 
 local function ZoneName(mapID)
@@ -247,6 +248,8 @@ local TITLE_COLORS = {
     gl = { 0.25, 1, 0.25 },
     gr = { 0.25, 1, 0.25 },
     grp = { 0.67, 0.67, 1 },
+    ride = { 1, 0.75, 0.45 },
+    mount = { 1, 0.75, 0.45 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -312,7 +315,7 @@ local HISTORY_FILTERS = {
     { "Dungeons", { "run" }, { { "dungeons", "Dungeons" } } },
     { "Travel", { "flight" }, {
         { "flights", "Flight paths" }, { "hearths", "Hearthstones" },
-        { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" },
+        { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" }, { "mounts", "Riding and mounts" },
     } },
     { "New zones", { "zone" }, { { "zones", "New zones" } } },
     { "Quests", { "qd" }, { { "quests", "Quests turned in" } } },
@@ -333,7 +336,7 @@ local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
-    grp = "groups", rep = "reps",
+    grp = "groups", rep = "reps", ride = "mounts", mount = "mounts",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -536,6 +539,10 @@ local function BuildHistory()
             local title, detail, icon = ns.Reputation:Describe(e)
             Add({ kind = kind, title = title, iconFile = icon, color = { ns.Reputation:Color(e[7]) } }, t, c, x, y,
                 detail .. " - " .. where)
+        elseif kind == "ride" or kind == "mount" then
+            local title, detail, icon = ns.Mounts:Describe(e)
+            Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y,
+                ("%s, level %s - %s"):format(detail, level or "?", where))
         end
     end
 
@@ -817,6 +824,19 @@ local function ReputationSummary()
     return ("%s with %s"):format(ns.Reputation:Label(best[2]), best[1])
 end
 
+-- When riding was learned, and the new mounts since tracking began (the
+-- collection may be the whole account's, so it is not counted).
+local function RidingSummary()
+    local learnedAt, known, events = ns.Mounts:Summary()
+    local count = 0
+    for _, e in ipairs(events) do
+        if e[2] == "mount" then count = count + 1 end
+    end
+    local riding = learnedAt and ("level " .. learnedAt) or known and "before tracking" or nil
+    if not riding then return count > 0 and ("%d mounts"):format(count) or "-" end
+    return ("%s, %d mount%s"):format(riding, count, count == 1 and "" or "s")
+end
+
 local function RefreshStats()
     local char, t = ns.view, ns.view.totals
     local zones = {}
@@ -843,6 +863,7 @@ local function RefreshStats()
         char.guild and ("<%s>"):format(char.guild[1]) or "-",
         PeopleSummary(),
         ReputationSummary(),
+        RidingSummary(),
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -949,6 +970,25 @@ local function CreateStatsPane(pane)
         GameTooltip:Show()
     end)
     repHover:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- And the riding row riding learned and the new mounts.
+    local rideHover = CreateFrame("Frame", nil, pane)
+    rideHover:SetPoint("TOPLEFT", 0, -(RIDING_ROW - 1) * SUMMARY_ROW + 2)
+    rideHover:SetPoint("RIGHT")
+    rideHover:SetHeight(SUMMARY_ROW)
+    rideHover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Riding and mounts")
+        local _, _, events = ns.Mounts:Summary()
+        for _, e in ipairs(events) do
+            GameTooltip:AddDoubleLine((ns.Mounts:Describe(e)), tostring(date("%d %b %Y", e[1])), 1, 1, 1, 1, 1, 1)
+        end
+        if #events == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    rideHover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do

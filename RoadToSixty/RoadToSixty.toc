@@ -17,6 +17,7 @@ Journal.lua
 Crafts.lua
 Guilds.lua
 Reputation.lua
+Mounts.lua
 Groups.lua
 Parties.lua
 Roster.lua
@@ -44,4 +45,5 @@ IconBrowser.lua
 GuildProbe.lua
 PartyProbe.lua
 LevelProbe.lua
+MountProbe.lua
 #@end-debug@

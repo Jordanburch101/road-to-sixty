@@ -141,6 +141,11 @@ Verified in game; trust these over web guides, and re-check after patches.
 - Reputation uses the modern `C_Reputation` (`GetNumFactions`,
   `GetFactionDataByIndex`, `GetFactionDataByID`, expand and collapse);
   classic `GetFactionInfo` and friends do not exist.
+- Riding is modern: the trainer teaches Apprentice Riding (33388, level 40)
+  and Journeyman Riding (33391, level 60), skill line "Riding". The mount
+  collection (`C_MountJournal`) lists the classic mounts (Brown Horse is
+  mount 6). Mount vendors will not open without riding, so how buying a
+  mount works was not seen on the beta.
 - Continents: Eastern Kingdoms is continent 0 / uiMap 1415, Kalimdor is 1 / 1414.
 - Models of other characters: `DressUpModel:SetCustomRace` does not exist.
   `SetDisplayInfo` with a saved `C_PlayerInfo.GetDisplayID()` gives the right

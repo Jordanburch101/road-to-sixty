@@ -29,6 +29,7 @@ local charDefaults = {
     -- skills (profession -> { rank, max }) is left out: nil until first read
     -- guild (see Guilds.lua) too: nil until first read, false when in none
     -- reps (factionID -> { standing, name }, see Reputation.lua) too
+    -- riding, mounts and mountItems (see Mounts.lua) too
     totals = {
         kills = 0,
         killXP = 0,
