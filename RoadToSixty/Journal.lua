@@ -89,7 +89,7 @@ end
 local function CheckZone()
     if IsInInstance() then return end
     local mapID = C_Map.GetBestMapForUnit("player")
-    if mapID and mapID ~= ns.char.lastZone then
+    if mapID and mapID ~= ns.char.lastZone and ns.IsPlaceMap(mapID) then
         ns.char.lastZone = mapID
         Journal:Log("zone", mapID)
     end
@@ -316,8 +316,44 @@ function Journal:TidyRuns()
     end
 end
 
+-- Takes out events that versions up to 1.5.0 saved wrongly, from a journey
+-- (this character's, or a roster copy): "zone" events for a continent (see
+-- ns.IsPlaceMap), and a death logged a second time in the same second (the
+-- client fired PLAYER_DEAD twice), which the totals counted too.
+function Journal:TidyEvents(journey)
+    local events, kept, lastDeath = journey.events or {}, 0, nil
+    local doubled = 0
+    for i = 1, #events do
+        local e = events[i]
+        local keep = true
+        if e[2] == "zone" then
+            keep = ns.IsPlaceMap(e[6])
+        elseif e[2] == "die" then
+            keep = e[1] ~= lastDeath
+            doubled = doubled + (keep and 0 or 1)
+            lastDeath = e[1]
+        end
+        if keep then
+            kept = kept + 1
+            events[kept] = e
+        end
+    end
+    for i = #events, kept + 1, -1 do
+        events[i] = nil
+    end
+    if doubled > 0 and journey.totals then
+        journey.totals.deaths = math.max(0, journey.totals.deaths - doubled)
+    end
+end
+
 ns.On("PLAYER_LOGIN", function()
     if not ns.char.seeded then ns.SafeCall(Journal.TidyRuns, Journal) end
+    ns.SafeCall(Journal.TidyEvents, Journal, ns.char)
+    for _, e in pairs(ns.db.roster or {}) do
+        if e.journey and e.journey.events ~= ns.char.events then
+            ns.SafeCall(Journal.TidyEvents, Journal, e.journey)
+        end
+    end
     local level = UnitLevel("player")
     local snapshot = ns.char.levels[level]
     if not snapshot then
@@ -359,7 +395,14 @@ ns.On("TIME_PLAYED_MSG", function(total)
     pendingPlayedLevel = nil
 end)
 
+-- The client can fire PLAYER_DEAD twice for one death (seen once, both in
+-- the same second). Only the same second counts as one death: a shaman's
+-- Reincarnation can be followed by a real second death within moments.
+local lastDeath
+
 ns.On("PLAYER_DEAD", function()
+    if time() == lastDeath then return end
+    lastDeath = time()
     ns.char.totals.deaths = ns.char.totals.deaths + 1
     Journal:Log("die")
 end)

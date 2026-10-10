@@ -120,6 +120,22 @@ ns.On("PLAYER_LOGIN", function()
     end
 end)
 
+-- Whether a map is a place the player can be in (a zone, city or dungeon),
+-- not the continent or world the client sometimes reports at a zone's
+-- edges: in the Deadmines' mine it gives Eastern Kingdoms. Journal logs
+-- only places as zones, and tidies the rest out of older journeys.
+local isPlace = {}
+function ns.IsPlaceMap(mapID)
+    if not mapID then return false end
+    local place = isPlace[mapID]
+    if place == nil then
+        local info = C_Map.GetMapInfo(mapID)
+        place = not (info and info.mapType and info.mapType <= Enum.UIMapType.Continent)
+        isPlace[mapID] = place
+    end
+    return place
+end
+
 -- Slash commands: modules add their own with ns.Command.
 local commands, commandOrder = {}, {}
 

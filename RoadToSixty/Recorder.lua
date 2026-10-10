@@ -10,7 +10,10 @@ local _, ns = ...
 --
 -- seg.j says why the path jumped to this segment, when known:
 --   h hearthstone, p teleport spell, d died (sent to a graveyard),
---   i left an instance, b boat or zeppelin (new continent), l logged in.
+--   di died inside an instance (sent to a graveyard outside it),
+--   i left an instance through its door, it sent out of an instance far
+--   from where the player went in (left the group), b boat or zeppelin (new
+--   continent), l logged in.
 
 local Recorder = {}
 ns.Recorder = Recorder
@@ -28,6 +31,10 @@ local TELEPORT_SPELLS = {   -- mage city teleports
     [3561] = true, [3562] = true, [3563] = true, [3565] = true, [3566] = true, [3567] = true,
 }
 local PENDING_SECONDS = 60  -- a cast or login explains a jump within this long
+-- Yards from where the player went into an instance that they can come out
+-- of its door. Further, they were sent out (left the group, say), and the
+-- jump is a teleport.
+local INSTANCE_DOOR = 150
 
 local current           -- open segment: { seg, buf, mode, c, x, y, t }
 local prev              -- previous sample, stored or not
@@ -35,6 +42,7 @@ local lastKnown = {}    -- last outdoor position, used to place indoor events
 local ticker
 local pending, pendingAt    -- jump reason from a cast or login, waiting for the jump
 local leftInstance          -- position was hidden by an instance since the last segment
+local entered               -- { c, x, y } where the player went into that instance
 local lastMode, lastC       -- mode and continent of the last sample with a position
 
 -- Health for /rts check: GetTime() of the last sample, and counts this session.
@@ -87,20 +95,32 @@ local function CloseSegment()
     current = nil
 end
 
--- Why a new segment starts here (see seg.j), or nil if unknown. previousMode
--- and previousC are from the last sample that had a position.
-local function JumpReason(mode, c, previousMode, previousC)
+-- Out of an instance: through its door ("i"), or sent away from where the
+-- player went in at c1, x1, y1 to c2, x2, y2 ("it").
+local function InstanceExit(c1, x1, y1, c2, x2, y2)
+    return (c1 ~= c2 or Dist(x1, y1, x2, y2) > INSTANCE_DOOR) and "it" or "i"
+end
+
+-- Why a new segment starts here at c, x, y (see seg.j), or nil if unknown.
+-- previousMode and previousC are from the last sample that had a position.
+-- Dying inside an instance puts the ghost at a graveyard outside: a death,
+-- not a walk out. That holds even when the last sample outside was a ghost
+-- too (a corpse run back in, revived inside, then died again): ghosts are
+-- revived on entering, so a ghost coming out has died in there.
+local function JumpReason(mode, c, x, y, previousMode, previousC)
     local reason
     if pending and GetTime() - pendingAt < PENDING_SECONDS then
         reason = pending
-    elseif leftInstance then
-        reason = "i"
+    elseif mode == "g" and leftInstance then
+        reason = "di"
     elseif mode == "g" and previousMode and previousMode ~= "g" then
         reason = "d"
+    elseif leftInstance then
+        reason = entered and InstanceExit(entered.c, entered.x, entered.y, c, x, y) or "i"
     elseif previousC and c ~= previousC then
         reason = "b"
     end
-    pending, leftInstance = nil, false
+    pending, leftInstance, entered = nil, false, nil
     return reason
 end
 
@@ -121,6 +141,10 @@ local function Sample()
     end
     if not c then
         if IsInInstance() then
+            -- The last outdoor position is where the player went in.
+            if not leftInstance and lastKnown.c then
+                entered = { c = lastKnown.c, x = lastKnown.x, y = lastKnown.y }
+            end
             leftInstance = true
         end
         CloseSegment()
@@ -140,7 +164,7 @@ local function Sample()
         CloseSegment()
     end
     if not current then
-        OpenSegment(mode, c, x, y, t, JumpReason(mode, c, previousMode, previousC))
+        OpenSegment(mode, c, x, y, t, JumpReason(mode, c, x, y, previousMode, previousC))
         return
     end
 
@@ -169,7 +193,13 @@ local function Decode(seg, d)
         t, x, y = t + tonumber(dt), x + tonumber(dx), y + tonumber(dy)
         ts[#ts + 1], xs[#xs + 1], ys[#ys + 1] = t, x, y
     end
-    return { m = seg.m, c = seg.c, j = seg.j, t = ts, x = xs, y = ys }
+    -- Up to 1.5.0 a death inside an instance was saved as leaving it; a
+    -- ghost's segment after an instance is that death.
+    local j = seg.j
+    if j == "i" and seg.m == "g" then
+        j = "di"
+    end
+    return { m = seg.m, c = seg.c, j = j, t = ts, x = xs, y = ys }
 end
 
 -- Decodes a closed segment of this format, such as the roster's copies.
@@ -192,13 +222,26 @@ function Recorder:GetPath(i)
     return path
 end
 
+-- Saves up to 1.5.0 have every way out of an instance as "i". Marks the ones
+-- far from where the previous path ended, where the player went in, as
+-- teleports out ("it"), in a list of decoded paths. Returns the list.
+function Recorder:MarkTeleportsOut(paths)
+    for i = 2, #paths do
+        local path, before = paths[i], paths[i - 1]
+        if path.j == "i" and #before.x > 0 and #path.x > 0 then
+            path.j = InstanceExit(before.c, before.x[#before.x], before.y[#before.y], path.c, path.x[1], path.y[1])
+        end
+    end
+    return paths
+end
+
 -- Decoded copy of every segment, as GetPath.
 function Recorder:GetPaths()
     local paths = {}
     for i = 1, #ns.char.segments do
         paths[i] = self:GetPath(i)
     end
-    return paths
+    return self:MarkTeleportsOut(paths)
 end
 
 -- Counts for /rts stats. Bytes is the size of the packed path strings.

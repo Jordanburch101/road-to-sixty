@@ -19,6 +19,7 @@ ns.view = ns.char
 ns.Recorder = {
     GetPath = function(_, i) return recorded[i] end,
     GetPaths = function() return recorded end,
+    MarkTeleportsOut = function(_, paths) return paths end,
     -- As Recorder.lua's Decode.
     Decode = function(_, seg)
         local t, x, y = seg.t, seg.x, seg.y

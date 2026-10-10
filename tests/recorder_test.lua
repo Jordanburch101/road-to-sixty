@@ -173,12 +173,63 @@ game.instance = false
 Tick()
 check(lastJump() == "i", "left an instance, got " .. tostring(lastJump()))
 
+-- Sent out of an instance far from its door (left the group): a teleport.
+game.instance = true
+Tick()
+game.instance = false
+game.x = game.x + 1000
+Tick()
+check(lastJump() == "it", "sent out of an instance, got " .. tostring(lastJump()))
+
+-- Old saves have that as "i"; read back, it is marked by distance.
+local function Seg(x, j)
+    return { m = "w", c = 0, t = 1, x = x, y = 0, d = "", j = j }
+end
+local marked = Recorder:MarkTeleportsOut({
+    Recorder:Decode(Seg(0)), Recorder:Decode(Seg(1000, "i")), Recorder:Decode(Seg(1050, "i")),
+})
+check(marked[2].j == "it" and marked[3].j == "i", ("old exits marked by distance, got %s, %s"):format(
+    tostring(marked[2].j), tostring(marked[3].j)))
+
 game.ghost = true
 game.x = game.x + 500
 Tick()
 check(lastJump() == "d", "died, got " .. tostring(lastJump()))
 game.ghost = false
 Tick()
+
+-- Dying inside an instance: the ghost appears at a graveyard outside.
+game.instance = true
+Tick()
+game.instance = false
+game.ghost = true
+game.x = game.x + 800
+Tick()
+check(lastJump() == "di", "died in an instance, got " .. tostring(lastJump()))
+game.ghost = false
+Tick()
+
+-- A corpse run back in as a ghost, revived inside, died again: still a death.
+game.ghost = true
+game.x = game.x + 200
+Tick()
+game.instance = true
+Tick()
+game.ghost = false
+Tick()
+game.instance = false
+game.ghost = true
+game.x = game.x + 800
+Tick()
+check(lastJump() == "di", "died again after a corpse run in, got " .. tostring(lastJump()))
+game.ghost = false
+Tick()
+
+-- Old saves have such deaths as "i"; they decode as deaths.
+local old = Recorder:Decode({ m = "g", c = 0, t = 1, x = 0, y = 0, d = "", j = "i" })
+check(old.j == "di", "old death in an instance decodes as a death, got " .. tostring(old.j))
+check(Recorder:Decode({ m = "w", c = 0, t = 1, x = 0, y = 0, d = "", j = "i" }).j == "i",
+    "walking out of an instance stays as leaving it")
 
 game.x = game.x + 5000
 Tick()

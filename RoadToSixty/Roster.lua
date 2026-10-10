@@ -197,7 +197,7 @@ function Roster:Paths(e)
             end
             paths[i] = path
         end
-        return paths
+        return ns.Recorder:MarkTeleportsOut(paths)
     end
     for _, piece in ipairs(e.path or {}) do
         local xs, ys = {}, {}

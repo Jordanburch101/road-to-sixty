@@ -25,6 +25,7 @@ local ns = { char = NewChar() }
 ns.view = ns.char
 ns.Recorder = { Position = function() return 0, 10, 20 end }
 ns.Groups = { Current = function() return nil end, CountRun = function() end }
+ns.IsPlaceMap = function(mapID) return mapID ~= 1415 end   -- as Core.lua: Eastern Kingdoms is a continent
 function ns.On(event, fn)
     handlers[event] = handlers[event] or {}
     table.insert(handlers[event], fn)
@@ -169,6 +170,25 @@ Journal:TidyRuns()
 check(Kinds() == "in@100", "ongoing split run joined: " .. Kinds())
 check(ns.char.run.t == 100 and ns.char.run.kills == 0, "run starts at the first entry with its kills")
 check(table.concat(ns.char.run.items, ",") == "a,b", "run loot in order")
+
+-- Wrongly saved events are tidied out: continent "zone" events, and a death
+-- logged twice in one second, which the totals counted twice.
+ns.char = NewChar()
+ns.char.totals.deaths = 3
+ns.char.events = {
+    { 100, "zone", 0, 0, 0, 1436 },
+    { 110, "zone", 0, 0, 0, 1415 },
+    { 120, "die", 0, 0, 0 },
+    { 120, "die", 0, 0, 0 },
+    { 130, "zone", 0, 0, 0, 1436 },
+    { 140, "die", 0, 0, 0 },
+}
+Journal:TidyEvents(ns.char)
+local kept = {}
+for _, e in ipairs(ns.char.events) do kept[#kept + 1] = e[2] .. "@" .. e[1] end
+local left = table.concat(kept, " ")
+check(left =="zone@100 die@120 zone@130 die@140", "continent zone and doubled death tidied: " .. left)
+check(ns.char.totals.deaths == 2, "doubled death taken off the totals, got " .. ns.char.totals.deaths)
 
 if failures > 0 then
     print(failures .. " failure(s)")
