@@ -341,12 +341,9 @@ end
 
 -- Listening ---------------------------------------------------------------------
 
--- A system message as a pattern matching the whole of it.
-local function Exact(text)
-    return text and ("^" .. text:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1") .. "$")
-end
-local KICKED = Exact(ERR_GUILD_REMOVE_SELF)
-local DISBANDED = Exact(ERR_GUILD_DISBANDED)
+-- System messages matched whole.
+local isKicked = ns.ChatMatcher(ERR_GUILD_REMOVE_SELF, true)
+local isDisbanded = ns.ChatMatcher(ERR_GUILD_DISBANDED, true)
 
 ns.On("PLAYER_LOGIN", function()
     C_Timer.After(GUILD_READY, function()
@@ -361,9 +358,9 @@ ns.On("PLAYER_GUILD_UPDATE", function() Guilds:Check() end)
 ns.On("GUILD_ROSTER_UPDATE", function() Guilds:Check() end)
 
 ns.On("CHAT_MSG_SYSTEM", function(msg)
-    if KICKED and msg:match(KICKED) then
+    if isKicked(msg) then
         how.kind, how.at = "k", GetTime()
-    elseif DISBANDED and msg:match(DISBANDED) then
+    elseif isDisbanded(msg) then
         how.kind, how.at = "d", GetTime()
     end
 end)

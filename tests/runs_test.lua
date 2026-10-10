@@ -50,6 +50,7 @@ GetInventoryItemID = function() return nil end
 GetInventorySlotInfo = function() return 1 end
 UnitXP, UnitXPMax = function() return 0 end, function() return 1 end
 
+assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 local Journal = ns.Journal
 

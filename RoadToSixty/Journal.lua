@@ -433,23 +433,15 @@ ns.On("QUEST_TURNED_IN", function(questID, xp, money)
     Journal:Log("qd", questID, xp, money, QuestTitle(questID))
 end)
 
--- Turns a client chat format string such as "%s dies, you gain %d experience."
--- into a Lua pattern capturing each %s and %d, matching from the start.
-local function ChatPattern(format)
-    local pattern = format:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
-    pattern = pattern:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)")
-    return "^" .. pattern
-end
-
 -- The combat log is blocked for addons on Forever, so kills are counted from
 -- "X dies, you gain N experience." Kills that give no XP (gray mobs) are missed.
-local killPattern = ChatPattern(COMBATLOG_XPGAIN_FIRSTPERSON or "%s dies, you gain %d experience.")
+local matchKill = ns.ChatMatcher(COMBATLOG_XPGAIN_FIRSTPERSON or "%s dies, you gain %d experience.")
 
 -- Loot: "You receive loot: [item]." (and "...x3." for stacks). Quest rewards
 -- come as "You receive item:" and are left out, as they are not drops.
-local lootPatterns = {
-    ChatPattern(LOOT_ITEM_SELF_MULTIPLE or "You receive loot: %sx%d."),
-    ChatPattern(LOOT_ITEM_SELF or "You receive loot: %s."),
+local lootMatchers = {
+    ns.ChatMatcher(LOOT_ITEM_SELF_MULTIPLE or "You receive loot: %sx%d."),
+    ns.ChatMatcher(LOOT_ITEM_SELF or "You receive loot: %s."),
 }
 local MIN_LOOT_QUALITY = 2      -- uncommon (green)
 local LINK_QUALITY = { ["1eff00"] = 2, ["0070dd"] = 3, ["a335ee"] = 4, ["ff8000"] = 5 }
@@ -466,8 +458,8 @@ end
 
 ns.lootTracked = ns.On("CHAT_MSG_LOOT", function(msg)
     local link
-    for _, pattern in ipairs(lootPatterns) do
-        link = msg:match(pattern)
+    for _, match in ipairs(lootMatchers) do
+        link = match(msg)
         if link then break end
     end
     if not link then return end
@@ -534,7 +526,7 @@ function Journal:Reset()
 end
 
 ns.killsTracked = ns.On("CHAT_MSG_COMBAT_XP_GAIN", function(msg)
-    local name, xp = msg:match(killPattern)
+    local name, xp = matchKill(msg)
     if xp then
         local totals = ns.char.totals
         totals.kills = totals.kills + 1

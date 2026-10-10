@@ -241,9 +241,8 @@ end
 
 -- Listening ---------------------------------------------------------------------
 
--- "You have learned how to create a new item: %s." as a pattern.
-local recipePattern = "^" .. (ERR_LEARN_RECIPE_S or "You have learned how to create a new item: %s.")
-    :gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.+)")
+-- "You have learned how to create a new item: %s."
+local matchRecipe = ns.ChatMatcher(ERR_LEARN_RECIPE_S or "You have learned how to create a new item: %s.")
 
 ns.On("PLAYER_LOGIN", function()
     -- Professions can be missing for a moment at login.
@@ -266,7 +265,7 @@ ns.recipeEventTracked = ns.On("NEW_RECIPE_LEARNED", function(spellID)
 end)
 
 ns.On("CHAT_MSG_SYSTEM", function(msg)
-    local name = msg:match(recipePattern)
+    local name = matchRecipe(msg)
     if name then
         LogRecipe(name)
     end
