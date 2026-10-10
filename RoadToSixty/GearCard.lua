@@ -323,11 +323,27 @@ function Card:Dress(gear)
         model.ready = true
     end
     model:Undress()
+    -- A ranged weapon tried on takes the main hand's place on the model, so
+    -- the weapon that matters goes on last: the ranged one for hunters, the
+    -- hand weapons for everyone else, who show a ranged weapon only with no
+    -- main hand weapon.
+    local ranged, mainHand
+    for _, cell in ipairs(self.cells) do
+        if cell.name == "RangedSlot" then ranged = gear[cell.slot] end
+        if cell.name == "MainHandSlot" then mainHand = gear[cell.slot] end
+    end
+    local hunter = select(2, UnitClass("player")) == "HUNTER"
+    if ranged and not hunter and not mainHand then
+        model:TryOn("item:" .. ranged)
+    end
     for _, cell in ipairs(self.cells) do
         local itemID = gear[cell.slot]
-        if itemID and VISIBLE[cell.name] then
+        if itemID and VISIBLE[cell.name] and cell.name ~= "RangedSlot" then
             model:TryOn("item:" .. itemID)
         end
+    end
+    if ranged and hunter then
+        model:TryOn("item:" .. ranged)
     end
     if first then
         C_Timer.After(0.1, function()

@@ -21,6 +21,11 @@ broken and now works. Leave out internal changes. Sections are
   level you learned it at. Turn them on or off under Travel in the History
   filter.
 
+### Fixed
+- The gear card's model now holds your main hand weapon. It showed the
+  ranged weapon in hand instead, whatever your class; hunters still hold
+  their bow.
+
 ## 1.6.0
 
 ### New
