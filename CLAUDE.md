@@ -27,9 +27,12 @@ for data, its exact format; read that before changing a module.
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
-| Panel.lua, GearCard.lua, QuestPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
+| Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
+| PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
+| MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
+| Panel.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua | developer tools, left out of releases |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua | developer tools, left out of releases |
 
 Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 (per character, `version` field; bump it when the layout changes).

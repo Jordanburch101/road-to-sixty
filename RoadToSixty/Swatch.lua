@@ -169,6 +169,26 @@ local PORTAL_SAMPLES = {
         travel = "comet" },
 }
 
+-- Path smoothing candidates, two cells wide: one zig-zag stretch of path
+-- with sharp turns, drawn as the map draws a walked line (2 px, green) and
+-- smoothed several ways. cut: passes of corner cutting (Chaikin; each pass
+-- doubles the lines); curve: a Catmull-Rom curve through the points, steps
+-- lines per stretch; joins: a round dot where two lines meet.
+local PATH_SPAN = 2
+local PATH_WIDTH = 2
+local PATH_COLOR = { 0.12, 1, 0, 0.95 }
+local PATH_POINTS = {    -- in a cell two wide, y down from its top
+    { 10, -34 }, { 40, -12 }, { 58, -38 }, { 72, -10 }, { 104, -30 }, { 116, -8 }, { 150, -36 }, { 158, -14 },
+}
+local PATH_SAMPLES = {
+    { "Now" },
+    { "Round joins", joins = true },
+    { "Corner cut x1", cut = 1 },
+    { "Corner cut x2", cut = 2 },
+    { "Curve", curve = 4 },
+    { "Corner cut x1 + round joins", cut = 1, joins = true },
+}
+
 -- Jump line candidates (hearthstone, teleport, boat), two cells wide like
 -- the magic samples. style: "solid", "dash" or "dots"; arc bends the line;
 -- icon is drawn at the middle of it.
@@ -501,6 +521,67 @@ local function AddJumpCell(index, sample)
         icon:SetSize(18, 18)
         icon:SetPoint("CENTER", cell, "TOPLEFT", x, y)
     end
+end
+
+-- Corner cutting (Chaikin): each line keeps its middle half, so every
+-- corner becomes two shorter turns. The ends stay put.
+local function CutCorners(points, passes)
+    for _ = 1, passes do
+        local out = { points[1] }
+        for i = 1, #points - 1 do
+            local a, b = points[i], points[i + 1]
+            out[#out + 1] = { a[1] * 0.75 + b[1] * 0.25, a[2] * 0.75 + b[2] * 0.25 }
+            out[#out + 1] = { a[1] * 0.25 + b[1] * 0.75, a[2] * 0.25 + b[2] * 0.75 }
+        end
+        out[#out + 1] = points[#points]
+        points = out
+    end
+    return points
+end
+
+-- A Catmull-Rom curve through the points, steps lines per stretch.
+local function CurveThrough(points, steps)
+    local out = { points[1] }
+    for i = 1, #points - 1 do
+        local p0, p1 = points[math.max(1, i - 1)], points[i]
+        local p2, p3 = points[i + 1], points[math.min(#points, i + 2)]
+        for k = 1, steps do
+            local t = k / steps
+            local t2, t3 = t * t, t * t * t
+            local function At(n)
+                return 0.5 * (2 * p1[n] + (p2[n] - p0[n]) * t + (2 * p0[n] - 5 * p1[n] + 4 * p2[n] - p3[n]) * t2
+                    + (3 * p1[n] - p0[n] - 3 * p2[n] + p3[n]) * t3)
+            end
+            out[#out + 1] = { At(1), At(2) }
+        end
+    end
+    return out
+end
+
+local function AddPathCell(index, sample)
+    local cell = CreateCell(index, sample[1], PATH_SPAN)
+    local points = PATH_POINTS
+    if sample.cut then
+        points = CutCorners(points, sample.cut)
+    elseif sample.curve then
+        points = CurveThrough(points, sample.curve)
+    end
+    for i = 2, #points do
+        NewLine(cell, points[i - 1][1], points[i - 1][2], points[i][1], points[i][2], PATH_WIDTH)
+            :SetColorTexture(unpack(PATH_COLOR))
+    end
+    if sample.joins then
+        for i = 2, #points - 1 do
+            local dot = cell:CreateTexture(nil, "ARTWORK", nil, 1)
+            dot:SetAtlas("WhiteCircle-RaidBlips")
+            dot:SetVertexColor(unpack(PATH_COLOR))
+            dot:SetSize(PATH_WIDTH, PATH_WIDTH)
+            dot:SetPoint("CENTER", cell, "TOPLEFT", points[i][1], points[i][2])
+        end
+    end
+    local count = cell:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    count:SetPoint("TOP", cell.label, "BOTTOM", 0, -1)
+    count:SetText(("%d lines%s"):format(#points - 1, sample.joins and (", " .. (#points - 2) .. " dots") or ""))
 end
 
 -- A lane ribbon: dark outline, deep fill, the effects scrolling inside it
@@ -936,6 +1017,7 @@ end
 local function CreateWindow()
     local rows = math.ceil(#TIMELINE_SAMPLES * TIMELINE_SPAN / COLUMNS)
     rows = rows + math.ceil(#PORTAL_SAMPLES * PORTAL_SPAN / COLUMNS)
+    rows = rows + math.ceil(#PATH_SAMPLES * PATH_SPAN / COLUMNS)
     for _, section in ipairs(SECTIONS) do
         rows = rows + math.ceil(#section[2] / COLUMNS)
     end
@@ -973,6 +1055,11 @@ local function CreateWindow()
     dark:SetColorTexture(0.05, 0.05, 0.05)
 
     local row = 0
+    AddSectionLabel(row, "Path")
+    for i, sample in ipairs(PATH_SAMPLES) do
+        AddPathCell(row * COLUMNS + (i - 1) * PATH_SPAN + 1, sample)
+    end
+    row = row + math.ceil(#PATH_SAMPLES * PATH_SPAN / COLUMNS)
     AddSectionLabel(row, "Portals")
     for i, sample in ipairs(PORTAL_SAMPLES) do
         AddPortalCell(row * COLUMNS + (i - 1) * PORTAL_SPAN + 1, sample)

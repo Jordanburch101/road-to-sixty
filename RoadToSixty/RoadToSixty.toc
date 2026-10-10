@@ -23,11 +23,13 @@ Health.lua
 Routes.lua
 Islands.lua
 Portals.lua
+PathCurve.lua
 Map.lua
 Panel.lua
 GearCard.lua
 QuestPop.lua
 GuildPop.lua
+LevelPop.lua
 KillPop.lua
 KillMarks.lua
 MarkerPiles.lua
@@ -40,4 +42,5 @@ Swatch.lua
 IconBrowser.lua
 GuildProbe.lua
 PartyProbe.lua
+LevelProbe.lua
 #@end-debug@

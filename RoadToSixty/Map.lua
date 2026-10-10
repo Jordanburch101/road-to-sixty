@@ -732,13 +732,28 @@ local function GetMarker(i)
 end
 
 -- Events are in time order, so level and zone are tracked in the same pass
--- rather than looked up per marker.
+-- rather than looked up per marker. Inside an instance the client gives no
+-- position (c is -1), so events there (a level reached, a death) are placed
+-- at the door the player went in by, the last "in" event's place, and say
+-- which instance (inside).
 local function BuildMarkers()
     local count, level, zone = 0, nil, nil
     local visit     -- the quest marker turn-ins are joining: { m, c, x, y, last, names }
+    local door      -- the last "in" event with a place
+    local function Where(instance, zoneID)
+        return instance and ("Inside " .. instance) or ZoneName(zoneID)
+    end
     ns.Parties:Reset()
     for _, e in ipairs(ns.view.events) do
-        local t, kind, toContent = e[1], e[2], state.toContent[e[3]]
+        local t, kind, c, x, y = e[1], e[2], e[3], e[4], e[5]
+        if kind == "in" and state.toContent[c] then
+            door = e
+        end
+        local inside
+        if not state.toContent[c] and door then
+            c, x, y, inside = door[3], door[4], door[5], door[7] or "an instance"
+        end
+        local toContent = state.toContent[c]
         if kind == "on" or kind == "lvl" then
             level = e[6]
         elseif kind == "zone" then
@@ -751,17 +766,17 @@ local function BuildMarkers()
                 local ok, title = pcall(C_QuestLog.GetTitleForQuestID, e[6])
                 name = ok and title ~= "" and title or ("Quest " .. tostring(e[6]))
             end
-            local near = visit and visit.c == e[3] and t - visit.last <= QUEST_VISIT.seconds
-                and (e[4] - visit.x) ^ 2 + (e[5] - visit.y) ^ 2 <= QUEST_VISIT.yards ^ 2
+            local near = visit and visit.c == c and t - visit.last <= QUEST_VISIT.seconds
+                and (x - visit.x) ^ 2 + (y - visit.y) ^ 2 <= QUEST_VISIT.yards ^ 2
             if not near then
                 count = count + 1
                 local m = GetMarker(count)
                 m.t, m.level, m.category, m.minZoom = t, nil, "quests", MARKER_ZOOM.quest
-                m.x, m.y = toContent(e[4], e[5])
-                m.c, m.popping = e[3], nil
+                m.x, m.y = toContent(x, y)
+                m.c, m.popping = c, nil
                 local size = ns.SetEventIcon(m.icon, m.text, kind)
                 m:SetSize(size, size)
-                visit = { m = m, c = e[3], x = e[4], y = e[5], names = {}, first = t }
+                visit = { m = m, c = c, x = x, y = y, names = {}, first = t }
             end
             visit.last = t
             visit.m.lastT = t
@@ -770,10 +785,10 @@ local function BuildMarkers()
             local xp = (e[7] and e[7] > 0) and ("+" .. ns.Commas(e[7]) .. " xp") or nil
             if #names == 1 then
                 m.title = name
-                m.detail = ("%s%s\n%s"):format(xp and (xp .. "\n") or "", ZoneName(zone), FormatTime(t))
+                m.detail = ("%s%s\n%s"):format(xp and (xp .. "\n") or "", Where(inside, zone), FormatTime(t))
             else
                 m.title = ("%d quests turned in"):format(#names)
-                m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), ZoneName(zone), FormatTime(visit.first))
+                m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), Where(inside, zone), FormatTime(visit.first))
             end
         elseif toContent and (kind == "prof" or kind == "rec" or kind == "gj" or kind == "gl" or kind == "gr") then
             local crafts = kind == "prof" or kind == "rec"
@@ -790,23 +805,23 @@ local function BuildMarkers()
                     m.icon:Hide()
                 end
                 m.t, m.popping, m.level = t, nil, nil
-                m.x, m.y = toContent(e[4], e[5])
-                m.c = e[3]
+                m.x, m.y = toContent(x, y)
+                m.c = c
                 m.category = MARKER_CATEGORY[kind]
                 m.minZoom = not crafts and MARKER_ZOOM.guild
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
                 m.title = title
-                m.detail = ("%s\n%s\n%s"):format(detail, ZoneName(zone), FormatTime(t))
+                m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end
         elseif toContent and kind == "grp" then
             -- The group's portraits, overlapping; the marker grows with them.
             count = count + 1
             local m = GetMarker(count)
             m.t, m.popping, m.level, m.group = t, nil, nil, e
-            m.x, m.y = toContent(e[4], e[5])
-            m.c = e[3]
+            m.x, m.y = toContent(x, y)
+            m.c = c
             m.category = MARKER_CATEGORY[kind]
             m.minZoom = MARKER_ZOOM.group
             m.title, m.detail = ns.Parties:Describe(e)
@@ -824,7 +839,7 @@ local function BuildMarkers()
             count = count + 1
             local m = GetMarker(count)
             m.t, m.popping = t, nil
-            m.x, m.y = toContent(e[4], e[5])
+            m.x, m.y = toContent(x, y)
             m.category = MARKER_CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
@@ -834,12 +849,12 @@ local function BuildMarkers()
                 m.minZoom = l % 10 == 0 and MARKER_ZOOM.level10
                     or l % 5 == 0 and MARKER_ZOOM.level5 or MARKER_ZOOM.level
                 m.title = "Reached level " .. l
-                m.detail = ("%s\n%s"):format(ZoneName(zone), FormatTime(t))
+                m.detail = ("%s\n%s"):format(Where(inside, zone), FormatTime(t))
             elseif kind == "die" then
                 m.minZoom = MARKER_ZOOM.death
                 m.title = "Died"
                 m.detail = ("Level %d, %s\n%s"):format(
-                    level or ns.Roster:ViewLevel(), ZoneName(zone), FormatTime(t))
+                    level or ns.Roster:ViewLevel(), Where(inside, zone), FormatTime(t))
             else
                 m.minZoom = MARKER_ZOOM.dungeon
                 m.title = e[7] or "Instance"
@@ -1542,7 +1557,8 @@ local function BuildPath()
 
     local lod, list
     lod, list, state.lodLevel = PickLod(state, x1, y1, x2, y2, z, MAX_LINES)
-    local drawn = LinesIn(state, lod, list, x1, y1, x2, y2, true)
+    -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
+    local drawn = ns.CurveLines(LinesIn(state, lod, list, x1, y1, x2, y2, true), z, MAX_LINES)
     state.drawn = drawn
     BuildOtherLines(x1, y1, x2, y2, z)
 
@@ -2505,10 +2521,12 @@ local function OnUpdate(_, elapsed)
         local now = state.markerNow == math.huge and time() or state.markerNow
         ns.QuestPop:Passed(before, now)
         ns.GuildPop:Passed(before, now)
+        ns.LevelPop:Passed(before, now)
         ns.KillPop:Passed(before, now)
     end
     ns.QuestPop:Update(elapsed)
     ns.GuildPop:Update(elapsed)
+    ns.LevelPop:Update(elapsed)
     ns.KillPop:Update(elapsed)
 end
 
@@ -2662,6 +2680,7 @@ local function CreateWindow()
         SetPlaying(false)
         ns.QuestPop:Clear()
         ns.GuildPop:Clear()
+        ns.LevelPop:Clear()
         ns.KillPop:Clear()
         drag = nil
         state.targetZoom = state.zoom
@@ -2782,6 +2801,7 @@ local function CreateWindow()
     headFrame:SetFrameLevel(overlay:GetFrameLevel() + 5)
     ns.QuestPop:Attach(overlay)
     ns.GuildPop:Attach(overlay)
+    ns.LevelPop:Attach(overlay)
     ns.KillPop:Attach(overlay)
     head = headFrame:CreateTexture(nil, "OVERLAY")
     head:SetSize(HEAD.SIZE, HEAD.SIZE)
@@ -2886,6 +2906,7 @@ function Map:Open()
     ns.GearCard:Rebuild()
     ns.QuestPop:Rebuild()
     ns.GuildPop:Rebuild()
+    ns.LevelPop:Rebuild()
     ns.KillPop:Rebuild()
     ns.KillMarks:Rebuild()
     StartWarmUp()
@@ -3054,6 +3075,16 @@ function Map:GuildMarker(t, c)
     for i = 1, state.markerCount do
         local m = markers[i]
         if m.category == "guilds" and m.c == c and m.t == t then
+            return m
+        end
+    end
+end
+
+-- The marker of the level reached at time t, if there is one.
+function Map:LevelMarker(t)
+    for i = 1, state.markerCount do
+        local m = markers[i]
+        if m.category == "levels" and m.t == t then
             return m
         end
     end
