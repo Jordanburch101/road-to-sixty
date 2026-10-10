@@ -93,6 +93,8 @@ Treat them as the shared memory of what is planned, decided and done.
   finished ones with a summary. Move anything left over, or marked "left
   out", into a follow-up issue, and link it from the closing comment.
   Issues without commits in the release stay open.
+- Anything that can only be checked once Forever is live goes on the
+  launch day checklist, issue #23, with a link to its own issue.
 - Issues are public: no secrets, personal paths or email addresses.
 
 ## Conventions
