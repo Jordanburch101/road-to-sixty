@@ -63,15 +63,20 @@ local LEVEL_COLORS = {
 local MODE_ALPHA = { w = 0.95, t = 0.5 }     -- on foot or mounted, flight path
 
 local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
+local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
 
 -- Jumps between segments are drawn as arcs, styled by why the path jumped
 -- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash",
 -- "solid" or "ribbon", icon = atlas at the top of the arc, dot / spacing =
 -- dot size and spacing in screen pixels, start / finish = texture at the
--- arc's start or end and its size }. A ribbon is a band width pixels wide
+-- arc's start or end and its size, bend = how far the arc bends (JUMP_ARC
+-- if unset), plain = a "solid" line as thin as the path with no outline }.
+-- A ribbon is a band width pixels wide
 -- in a deep shade of the colour, with effects flowing inside it: { texture
 -- in Travel\ (scripts/lane-textures.py), its length over its height, speed
--- in repeats a second }. replay = seconds the replay's arrow takes along the
+-- in repeats a second }. A "portal" jump has no line but a portal at each
+-- end, which the replay's arrow dives through (Portals.lua); its pace times
+-- the flight between. replay = seconds the replay's arrow takes along the
 -- jump at normal speed (1 if unset); without, a jump would pass in a frame.
 -- instant = the arrow does not travel the jump but appears at its end, for
 -- jumps nobody travelled (logging out in one place and in at another).
@@ -79,14 +84,20 @@ local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
 -- follows the jump's length instead, replay being the least: a crossing by
 -- sea takes a while, so the camera following it can load the terrain.
 local JUMP_STYLES = {
-    -- Nature magic: vines twining with sparkles.
-    h = { "Hearthstone", 0.4, 1, 0.45, 1, style = "ribbon", width = 5, icon = "Innkeeper", replay = 1.2, pace = 80,
-        effects = { { "vines", 8, 0.12 }, { "sparkles", 4, 0.3 } } },
-    -- Arcane, like a mage's portal: wisps of light with sparkles.
-    p = { "Teleport", 0.35, 0.65, 1, 1, style = "ribbon", width = 5, icon = "MagePortalAlliance", replay = 1.2, pace = 80,
-        effects = { { "wisps", 8, 0.2 }, { "sparkles", 4, 0.45 } } },
+    -- Portals in nature green for hearthstones and arcane blue for
+    -- teleports, like a mage's. They were ribbons (vines or wisps with
+    -- sparkles, { "vines", 8, 0.12 }, { "wisps", 8, 0.2 }, { "sparkles", 4, 0.3 })
+    -- and may be again, see issue #18.
+    h = { "Hearthstone", 0.4, 1, 0.45, 1, style = "portal", pace = 80 },
+    p = { "Teleport", 0.35, 0.65, 1, 1, style = "portal", pace = 80 },
     d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots", replay = 0.6 },
+    -- From the instance's door, where the path stopped, to the graveyard:
+    -- drawn like the ghost's run back that follows it.
+    di = { "Died in an instance - to the graveyard", GHOST_COLOR[1], GHOST_COLOR[2], GHOST_COLOR[3], GHOST_COLOR[4],
+        style = "solid", plain = true, bend = 0, replay = 0.6 },
     i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
+    -- Sent out of an instance to a graveyard (left the group): portals, in grey.
+    it = { "Teleported out of an instance", 0.75, 0.75, 0.8, 1, style = "portal", pace = 80 },
     -- Like a travel map in an adventure film: red dots from a target ring to
     -- an X where it lands.
     b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11, replay = 2.5, pace = 60,
@@ -111,7 +122,6 @@ local JUMP_OUTLINE_COLOR = { 0, 0, 0, 0.6 }
 local HOVER_PIXELS = 6
 local HOVER_INTERVAL = 0.05
 local HOVER_WIDTH = 5
-local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
 
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their path in class colour.
@@ -124,7 +134,7 @@ local OTHER = {
     ALPHA = { w = 0.55, t = 0.3, g = 0.2, j = 0.3 },
 }
 
-local HEAD_TEXTURE = "Interface\\WorldMap\\WorldMapArrow"
+local HEAD = { TEXTURE = "Interface\\WorldMap\\WorldMapArrow", SIZE = 24 }   -- the replay's arrow
 local JUMP_ZOOM = 6             -- zoom the map goes to at least when jumping to an event
 local MAP_BORDER = 4            -- the map's and panel's frames reach this far outside them
 local MAP_SHADOW = { 18, 0.55 } -- inner edge shadow: width, darkest alpha
@@ -284,7 +294,7 @@ end
 
 -- The History filter applies to the map too. Category of each jump reason
 -- (seg.j); reasons without one are always shown.
-local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
+local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
 local MARKER_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
     gj = "guilds", gl = "guilds", gr = "guilds", grp = "groups",
@@ -634,8 +644,10 @@ local function BuildPoints(paths)
                             trips[#trips + 1] = n
                             seaTrips[n].trips, seaTrips[n].dupe = trips, #trips > 1
                         end
-                    elseif previous and state.toContent[previous.c] then
-                        -- Hearthstones and teleports across the sea take their lane.
+                    elseif previous and state.toContent[previous.c]
+                        and (JUMP_STYLES[path.j] or JUMP_UNKNOWN).style ~= "portal" then
+                        -- Hearthstones and teleports across the sea take their
+                        -- lane, when drawn as a line rather than portals.
                         local last = #previous.x
                         seaTrips[n] = ns.SeaLane(path.j, previous.c,
                             { state.toContent[previous.c](previous.x[last], previous.y[last]) },
@@ -676,7 +688,10 @@ local function GetMarker(i)
         m.group = nil
         m.icon:Show()
     end
-    if m then return m end
+    if m then
+        ns.MarkerPiles:Reset(m)
+        return m
+    end
     m = CreateFrame("Frame", nil, overlay)
     m:SetSize(14, 14)
     m:EnableMouse(true)
@@ -686,6 +701,11 @@ local function GetMarker(i)
     m.text:SetDrawLayer("OVERLAY", 7)
     m.text:SetPoint("CENTER", 0.5, 0)
     m:SetScript("OnEnter", function(self)
+        -- A pile of markers fans out, then this one shows its own.
+        if self.pile then
+            ns.MarkerPiles:Fan(self)
+            return
+        end
         -- A group spreads its portraits out and shows its card.
         if self.group then
             ns.Parties:Spread(self.stack, true)
@@ -1035,8 +1055,10 @@ end
 -- Jump arcs ------------------------------------------------------------------------
 
 -- Points along an arc from (x1, y1) to (x2, y2) in content units, bent up
--- the screen: { x, y, distance along the arc }.
-local function JumpCurve(x1, y1, x2, y2)
+-- the screen by bend (JUMP_ARC if unset; 0 is straight): { x, y, distance
+-- along the arc }.
+local function JumpCurve(x1, y1, x2, y2, bend)
+    bend = bend or JUMP_ARC
     local dx, dy = x2 - x1, y2 - y1
     local length = math.sqrt(dx * dx + dy * dy)
     -- Unit normal, turned to point up the screen (content y runs down).
@@ -1044,8 +1066,8 @@ local function JumpCurve(x1, y1, x2, y2)
     if ny > 0 or (ny == 0 and nx > 0) then
         nx, ny = -nx, -ny
     end
-    local cx = (x1 + x2) / 2 + nx * length * JUMP_ARC
-    local cy = (y1 + y2) / 2 + ny * length * JUMP_ARC
+    local cx = (x1 + x2) / 2 + nx * length * bend
+    local cy = (y1 + y2) / 2 + ny * length * bend
     local points, along = {}, 0
     for i = 0, JUMP_ARC_STEPS do
         local f = i / JUMP_ARC_STEPS
@@ -1121,8 +1143,10 @@ local function JumpLine(jump, ax, ay, bx, by, width, r, g, b, a, layer)
 end
 
 local function JumpStroke(jump, style, ax, ay, bx, by)
-    JumpLine(jump, ax, ay, bx, by, JUMP_OUTLINE, unpack(JUMP_OUTLINE_COLOR))
-    JumpLine(jump, ax, ay, bx, by, JUMP_LINE, style[2], style[3], style[4], style[5], 1)
+    if not style.plain then
+        JumpLine(jump, ax, ay, bx, by, JUMP_OUTLINE, unpack(JUMP_OUTLINE_COLOR))
+    end
+    JumpLine(jump, ax, ay, bx, by, style.plain and LINE_WIDTH or JUMP_LINE, style[2], style[3], style[4], style[5], 1)
 end
 
 -- A dot of a jump. size is in screen pixels. file, if given, replaces the
@@ -1172,6 +1196,7 @@ local function BuildJumps(drawn, shown, z, area)
         end
     end
     jumpLineCount, jumpDotCount, jumpIconCount = 0, 0, 0
+    ns.Portals:Begin(z)
     local jumps = {}
     -- Ribbon effect lines for OnUpdate to scroll, and the sea lanes whose
     -- trunk is drawn already.
@@ -1242,7 +1267,7 @@ local function BuildJumps(drawn, shown, z, area)
             local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
             local ends = state.seaTrips[spec[6]]
             local curve = ends and (ends.curve or JumpCurve(ends[1], ends[2], ends[3], ends[4]))
-                or JumpCurve(spec[1], spec[2], spec[3], spec[4])
+                or JumpCurve(spec[1], spec[2], spec[3], spec[4], style.bend)
             local total = curve[#curve][3]
             -- Dots are counted from anchor, so trips on one route share them:
             -- a boat course's middle waypoint, or the middle of the arc.
@@ -1256,7 +1281,12 @@ local function BuildJumps(drawn, shown, z, area)
             local jump = { index = i, parts = {}, spec = spec }
             spec.curve = curve
 
-            if style.style == "solid" then
+            if style.style == "portal" then
+                -- Hovered at its ends, not along the arc (LineAt).
+                spec.portal = true
+                ns.Portals:Add(jump, style, curve[1][1], curve[1][2],
+                    curve[#curve][1], curve[#curve][2], i <= shown)
+            elseif style.style == "solid" then
                 for p = 2, #curve do
                     JumpStroke(jump, style, curve[p - 1][1], curve[p - 1][2], curve[p][1], curve[p][2])
                 end
@@ -1384,6 +1414,7 @@ local function BuildJumps(drawn, shown, z, area)
     for i = jumpIconCount + 1, #jumpIcons do
         jumpIcons[i]:Hide()
     end
+    ns.Portals:Finish()
     state.jumps = jumps
     ShowJumps(shown)
 end
@@ -1409,6 +1440,7 @@ local function SetLineThickness()
             end
         end
     end
+    ns.Portals:SetZoom(z)
     state.lineZoom = z
 end
 
@@ -1480,7 +1512,8 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
             for _, spec in ipairs(LinesIn(track, lod, list, x1, y1, x2, y2, true)) do
                 spec.track = track
                 if spec[5] == "j" and track.pj[spec[6]] then
-                    local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4])
+                    local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
+                        (JUMP_STYLES[track.pj[spec[6]]] or JUMP_UNKNOWN).bend)
                     for p = 2, #curve do
                         local a, b = curve[p - 1], curve[p]
                         Add(track, { a[1], a[2], b[1], b[2], "j", spec[6], track = track, curve = curve }, "j")
@@ -1663,59 +1696,87 @@ end
 
 -- Puts the arrow at the replay position, kept in state.headX, headY. Between
 -- the two points of a jump it travels along the jump's curve as drawn (a sea
--- course or lane, else the arc), facing along it.
+-- course or lane, else the arc), facing along it; through portals it dives
+-- into the first, a comet flies the arc, and it comes out of the second.
 local function PlaceHead()
     local seq = math.floor(state.cur)
     if seq < 1 or seq > state.n then
+        ns.Portals:Cross()
         head:Hide()
         return
     end
     local px, py = state.px, state.py
     local x, y, rotation = px[seq], py[seq], HeadRotation(seq)
+    local size = 1
     local i = seq + 1
+    local style = JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN
+    local portal = false
     -- A segment break without moving (a reload in place) has no curve, and
     -- the arrow skips instant jumps.
-    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq])
-        and not (JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN).instant then
+    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq]) and not style.instant then
         local trip = state.seaTrips[i]
         local curve = trip and (trip.curve or JumpCurve(trip[1], trip[2], trip[3], trip[4]))
-            or JumpCurve(px[seq], py[seq], px[i], py[i])
+            or JumpCurve(px[seq], py[seq], px[i], py[i], style.bend)
         -- A boat route can be drawn the other way round from how it was sailed.
         local f = state.cur - seq
         if trip and trip.flip then
             f = 1 - f
         end
         local total = curve[#curve][3]
-        -- Its length, for the replay's pace along it (OnUpdate).
+        -- Its length and time at normal speed, for the replay's pace (OnUpdate).
         if not state.headJump or state.headJump.i ~= i then
-            state.headJump = { i = i, total = total }
+            local seconds = style.replay or 1
+            if style.style == "portal" then
+                seconds = ns.Portals:Seconds(total, style.pace)
+            elseif style.pace then
+                seconds = math.max(seconds, total / style.pace)
+            end
+            state.headJump = { i = i, total = total, seconds = seconds }
         end
-        local d, step = f * total, total * 0.01
-        x, y = PointAlong(curve, d)
-        local ax, ay = PointAlong(curve, math.max(0, d - step))
-        local bx, by = PointAlong(curve, math.min(total, d + step))
-        rotation = math.atan2(-(by - ay), bx - ax) - math.pi / 2 + (trip and trip.flip and math.pi or 0)
+        if style.style == "portal" then
+            portal = true
+            local seconds = state.headJump.seconds
+            local phase, spin
+            phase, size, spin, x, y = ns.Portals:Cross(i, style, f * seconds, seconds, curve)
+            -- Into the portal facing the way the player walked, out of it
+            -- facing the way they walked on.
+            rotation = (phase == "emerge" and HeadRotation(math.min(i + 1, state.n)) or rotation) - spin
+        else
+            local d, step = f * total, total * 0.01
+            x, y = PointAlong(curve, d)
+            local ax, ay = PointAlong(curve, math.max(0, d - step))
+            local bx, by = PointAlong(curve, math.min(total, d + step))
+            rotation = math.atan2(-(by - ay), bx - ax) - math.pi / 2 + (trip and trip.flip and math.pi or 0)
+        end
+    end
+    if not portal then
+        ns.Portals:Cross()
     end
     state.headX, state.headY = x, y
     head:ClearAllPoints()
     head:SetPoint("CENTER", overlay, "TOPLEFT", ToCanvas(x, y))
     head:SetRotation(rotation)
-    head:Show()
+    head:SetSize(HEAD.SIZE * size, HEAD.SIZE * size)
+    head:SetShown(size > 0.05)
 end
 
--- Shows markers the replay has reached and the zoom allows, placed on the view.
+-- Shows markers the replay has reached and the zoom allows, placed on the
+-- view; ones that would cover each other pile up or move apart (MarkerPiles.lua).
 local function UpdateMarkers()
     local now, z = state.markerNow, state.zoom
+    local shown = state.markersShown or {}
+    state.markersShown = wipe(shown)
     for i = 1, state.markerCount do
         local m = markers[i]
         -- A quest marker with a pop playing on it waits for the pop to end.
-        local show = m.t <= now and z >= m.minZoom and ns.FilterShown(m.category) and not m.popping
-        if show then
-            m:ClearAllPoints()
-            m:SetPoint("CENTER", overlay, "TOPLEFT", ToCanvas(m.x, m.y))
+        if m.t <= now and z >= m.minZoom and ns.FilterShown(m.category) and not m.popping then
+            m.cx, m.cy = ToCanvas(m.x, m.y)
+            shown[#shown + 1] = m
+        else
+            m:Hide()
         end
-        m:SetShown(show)
     end
+    ns.MarkerPiles:Place(shown, overlay, state.W, state.H)
 end
 
 -- Other characters ---------------------------------------------------------------
@@ -2210,7 +2271,17 @@ local function LineAt(cx, cy)
         if i <= state.shown and not drawn[i].hidden then
             local s = drawn[i]
             local d
-            if s.curve then
+            if s.portal then
+                -- Portals have no line: over either one counts as on it.
+                local c = s.curve
+                local x1, y1, x2, y2 = ns.Portals:Ends(s[6])
+                if not x1 then
+                    x1, y1, x2, y2 = c[1][1], c[1][2], c[#c][1], c[#c][2]
+                end
+                local near = math.min((x - x1) ^ 2 + (y - y1) ^ 2, (x - x2) ^ 2 + (y - y2) ^ 2)
+                -- Zoomed out the portals are hidden, so not hovered either.
+                d = z >= ns.Portals.ZOOM and near < (ns.Portals.RADIUS / z) ^ 2 and 0 or math.huge
+            elseif s.curve then
                 -- Jumps are drawn as arcs: measure to the arc, not the straight line.
                 local c = s.curve
                 d = math.huge
@@ -2287,6 +2358,11 @@ local function UpdateHover()
     if spec == state.hover then return end
     state.hover = spec
     ShowJumpIcons()
+    if spec and spec.portal then
+        ns.Portals:Hover(spec[6], spec.curve, JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN)
+    else
+        ns.Portals:Hover()
+    end
     if spec then
         -- The straight highlight would not follow a jump's arc, so jumps get none.
         if spec.curve then
@@ -2380,6 +2456,7 @@ local function OnUpdate(_, elapsed)
     if ns.db.motes then
         UpdateMotes(elapsed)
     end
+    ns.Portals:Update(elapsed)
     if zoneView.fading then
         zoneView:Step(elapsed)
     end
@@ -2402,12 +2479,10 @@ local function OnUpdate(_, elapsed)
             and (JUMP_STYLES[state.pj[seq + 1]] or JUMP_UNKNOWN)
         if style and not style.instant
             and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
-            local seconds = style.replay or 1
-            -- The length is known once the arrow is on the jump (PlaceHead).
+            -- Its time follows its length, known once the arrow is on the
+            -- jump (PlaceHead).
             local jump = state.headJump
-            if style.pace and jump and jump.i == seq + 1 then
-                seconds = math.max(seconds, jump.total / style.pace)
-            end
+            local seconds = jump and jump.i == seq + 1 and jump.seconds or style.replay or 1
             rate = 1 / seconds
         end
         local cur = state.cur + elapsed * SPEEDS[state.speedIndex] * rate
@@ -2709,8 +2784,9 @@ local function CreateWindow()
     ns.GuildPop:Attach(overlay)
     ns.KillPop:Attach(overlay)
     head = headFrame:CreateTexture(nil, "OVERLAY")
-    head:SetSize(24, 24)
-    head:SetTexture(HEAD_TEXTURE)
+    head:SetSize(HEAD.SIZE, HEAD.SIZE)
+    head:SetTexture(HEAD.TEXTURE)
+    ns.Portals:Attach(pathLayer)
 
     for i = 1, MOTES do
         local tex = overlay:CreateTexture(nil, "OVERLAY", nil, 6)

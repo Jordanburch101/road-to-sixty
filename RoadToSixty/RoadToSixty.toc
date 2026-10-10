@@ -22,6 +22,7 @@ Roster.lua
 Health.lua
 Routes.lua
 Islands.lua
+Portals.lua
 Map.lua
 Panel.lua
 GearCard.lua
@@ -29,6 +30,7 @@ QuestPop.lua
 GuildPop.lua
 KillPop.lua
 KillMarks.lua
+MarkerPiles.lua
 MinimapButton.lua
 Options.lua
 #@debug@

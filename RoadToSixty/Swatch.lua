@@ -130,6 +130,45 @@ local LANE_SAMPLES = {
     { "Nature: vines, pulsing", color = NATURE, width = 12, pulse = true, effects = { { "vines", 0.15 } } },
 }
 
+-- Portal candidates for hearthstones and teleports, in place of their
+-- ribbons: a portal at each end and no line, four cells wide. Each cell
+-- loops the replay: the arrow walks in, dives into the first portal, crosses,
+-- and comes out of the second. from / to: how each end looks, { layers =
+-- textures from scripts/portal-textures.py, bottom to top ("hole" is drawn
+-- dark, the rest added as light; "swirl" spins), spin = 1 or -1 for the way
+-- it turns, scale = size, dim = alpha of the layers, core = a bright pulsing
+-- middle, star = a turning star in the middle, ripple = "out" (rings
+-- spreading from it) or "in" (rings closing into it), icon = atlas above }.
+-- travel: how the crossing shows, "comet" (a spark flies an arc between
+-- them), "arc" (a trail of stars draws the arc, then fades) or "blink"
+-- (nothing between; the second flares as the first closes).
+-- Picked so far: swirl + rim over the hole, comet (issue #18); these try
+-- telling the two ends apart.
+local HEAD_TEXTURE = "Interface\\WorldMap\\WorldMapArrow"
+local PORTAL_SPAN = 4
+local PORTAL_SIZE = 30
+local PORTAL_LOOP = 4.6         -- seconds per loop of the animation
+local PICKED = { layers = { "hole", "swirl", "rim" } }
+local EXIT_CORE = { layers = { "hole", "swirl", "rim" }, spin = -1, core = true }
+local EXIT_RIPPLE = { layers = { "hole", "swirl", "rim" }, ripple = "out" }
+local ENTRY_SINK = { layers = { "hole", "swirl", "rim" }, ripple = "in" }
+local ENTRY_DARK = { layers = { "hole", "swirl" }, scale = 0.85, dim = 0.7 }
+local EXIT_BRIGHT = { layers = { "swirl", "rim" }, spin = -1, core = true, star = true }
+local PORTAL_SAMPLES = {
+    { "Teleport: same both ends (now)", color = PORTAL, from = PICKED, to = PICKED, travel = "comet" },
+    { "Hearthstone: same both ends (now)", color = NATURE, from = PICKED, to = PICKED, travel = "comet" },
+    { "Teleport: exit turns back, bright core", color = PORTAL, from = PICKED, to = EXIT_CORE, travel = "comet" },
+    { "Hearthstone: exit turns back, bright core", color = NATURE, from = PICKED, to = EXIT_CORE, travel = "comet" },
+    { "Teleport: exit sends rings out", color = PORTAL, from = PICKED, to = EXIT_RIPPLE, travel = "comet" },
+    { "Hearthstone: exit sends rings out", color = NATURE, from = PICKED, to = EXIT_RIPPLE, travel = "comet" },
+    { "Teleport: rings sink in, rings come out", color = PORTAL, from = ENTRY_SINK, to = EXIT_RIPPLE, travel = "comet" },
+    { "Hearthstone: rings sink in, rings come out", color = NATURE, from = ENTRY_SINK, to = EXIT_RIPPLE,
+        travel = "comet" },
+    { "Teleport: dark entry, bright star exit", color = PORTAL, from = ENTRY_DARK, to = EXIT_BRIGHT, travel = "comet" },
+    { "Hearthstone: dark entry, bright star exit", color = NATURE, from = ENTRY_DARK, to = EXIT_BRIGHT,
+        travel = "comet" },
+}
+
 -- Jump line candidates (hearthstone, teleport, boat), two cells wide like
 -- the magic samples. style: "solid", "dash" or "dots"; arc bends the line;
 -- icon is drawn at the middle of it.
@@ -508,6 +547,217 @@ local function AddLaneCell(index, sample)
     end
 end
 
+-- Eases 0-1 with a little overshoot, for portals opening.
+local function Pop(f)
+    f = math.max(0, math.min(1, f))
+    return 1 + 2.2 * (f - 1) ^ 3 + 1.2 * (f - 1) ^ 2
+end
+
+-- One portal, looking as look (see PORTAL_SAMPLES): its layers, extras and
+-- a flare, sized each frame by Set(open, flare), open 0-1 for how far it has
+-- opened and flare 0-1 for the burst of light as something passes through.
+local function NewPortal(cell, x, y, color, look)
+    local r, g, b = unpack(color)
+    local lr, lg, lb = math.min(1, r + 0.3), math.min(1, g + 0.3), math.min(1, b + 0.3)
+    local portal = { spin = math.random() * 6.28, clock = math.random(), layers = {} }
+    local function Layer(file, sublayer, size, blend)
+        local tex = cell:CreateTexture(nil, "ARTWORK", nil, sublayer)
+        tex:SetTexture(file)
+        tex:SetPoint("CENTER", cell, "TOPLEFT", x, y)
+        if blend then
+            tex:SetBlendMode("ADD")
+        end
+        local layer = { tex = tex, size = size }
+        table.insert(portal.layers, layer)
+        return layer
+    end
+    for i, name in ipairs(look.layers) do
+        local layer = Layer(TRAVEL .. "portal-" .. name, i, name == "hole" and 0.9 or 1, name ~= "hole")
+        if name == "hole" then
+            layer.tex:SetVertexColor(r * 0.12, g * 0.12, b * 0.12, 0.92)
+        else
+            layer.tex:SetVertexColor(r, g, b, look.dim or 1)
+        end
+        layer.spins = name == "swirl" and (look.spin or 1)
+    end
+    -- A bright middle that breathes, a star turning against the swirl, and
+    -- rings spreading out or closing in, one every 1.2 seconds.
+    if look.core then
+        portal.core = Layer(TRAVEL .. "portal-glow", 5, 0.6, true)
+        portal.core.tex:SetVertexColor(lr, lg, lb)
+    end
+    if look.star then
+        portal.star = Layer(STAR, 6, 0.75, true)
+        portal.star.tex:SetVertexColor(lr, lg, lb)
+    end
+    if look.ripple then
+        portal.ripple = Layer(TRAVEL .. "portal-rim", 7, 1, true)
+        portal.ripple.tex:SetVertexColor(r, g, b)
+    end
+    local flare = cell:CreateTexture(nil, "OVERLAY", nil, 1)
+    flare:SetTexture(TRAVEL .. "portal-glow")
+    flare:SetBlendMode("ADD")
+    flare:SetVertexColor(lr, lg, lb)
+    flare:SetPoint("CENTER", cell, "TOPLEFT", x, y)
+    portal.flare = flare
+    if look.icon then
+        local icon = cell:CreateTexture(nil, "OVERLAY", nil, 3)
+        icon:SetAtlas(look.icon)
+        icon:SetPoint("CENTER", cell, "TOPLEFT", x, y + PORTAL_SIZE * 0.55)
+        portal.icon = icon
+    end
+
+    function portal:Set(open, burst, elapsed)
+        self.spin = self.spin - elapsed * (2 + 6 * burst)
+        self.clock = (self.clock + elapsed / 1.2) % 1
+        local size = PORTAL_SIZE * (look.scale or 1) * open * (1 + 0.35 * burst)
+        for _, layer in ipairs(self.layers) do
+            layer.tex:SetShown(open > 0.01)
+            layer.tex:SetSize(size * layer.size, size * layer.size)
+            if layer.spins then
+                layer.tex:SetRotation(self.spin * layer.spins)
+            end
+        end
+        if self.core then
+            self.core.tex:SetAlpha(0.7 + 0.3 * math.sin(self.clock * 2 * math.pi))
+        end
+        if self.star then
+            self.star.tex:SetRotation(-self.spin * 0.5)
+        end
+        if self.ripple then
+            -- Out: from the rim to 1.8 times as wide, fading. In: the other way.
+            local k = look.ripple == "out" and self.clock or 1 - self.clock
+            local s = size * (1 + 0.8 * k)
+            self.ripple.tex:SetSize(s, s)
+            self.ripple.tex:SetAlpha(0.8 * (1 - k))
+        end
+        self.flare:SetShown(burst > 0.01)
+        self.flare:SetSize(PORTAL_SIZE * 2.2, PORTAL_SIZE * 2.2)
+        self.flare:SetAlpha(burst)
+        if self.icon then
+            self.icon:SetShown(open > 0.5)
+            self.icon:SetSize(16 * open, 16 * open)
+        end
+    end
+    return portal
+end
+
+-- A portal sample: the arrow's loop, in seconds from its start:
+-- walk in, the first portal opening as it nears (0 - 1), dive in (1 - 1.5),
+-- cross while the second opens (1.5 - 2.4), come out (2.4 - 2.9), walk on
+-- (2.9 - 3.7), then both portals close (4.1 - 4.6).
+local function AddPortalCell(index, sample)
+    local cell = CreateCell(index, sample[1], PORTAL_SPAN)
+    local w = CELL_W * PORTAL_SPAN
+    local y = -28
+    local x0, ax, bx, x1 = 16, w * 0.3, w * 0.7, w - 16
+    local cx, cy = (ax + bx) / 2, y + 34
+    local r, g, b = unpack(sample.color)
+    local from = NewPortal(cell, ax, y, sample.color, sample.from)
+    local to = NewPortal(cell, bx, y, sample.color, sample.to)
+
+    local arrow = cell:CreateTexture(nil, "OVERLAY", nil, 5)
+    arrow:SetTexture(HEAD_TEXTURE)
+
+    local function ArcPoint(f)
+        return (1 - f) ^ 2 * ax + 2 * (1 - f) * f * cx + f * f * bx,
+            (1 - f) ^ 2 * y + 2 * (1 - f) * f * cy + f * f * y
+    end
+
+    -- The comet: a glow with a white core and a trail of stars behind it.
+    -- The arc: stars along it, each lit as the crossing passes it.
+    local stars = {}
+    local count = sample.travel == "comet" and 5 or sample.travel == "arc" and 16 or 0
+    for i = 1, count do
+        local star = cell:CreateTexture(nil, "OVERLAY", nil, 4)
+        star:SetTexture(STAR)
+        star:SetBlendMode("ADD")
+        star:SetVertexColor(math.min(1, r + 0.3), math.min(1, g + 0.3), math.min(1, b + 0.3))
+        stars[i] = star
+    end
+    local comet
+    if sample.travel == "comet" then
+        comet = cell:CreateTexture(nil, "OVERLAY", nil, 4)
+        comet:SetTexture(TRAVEL .. "portal-glow")
+        comet:SetBlendMode("ADD")
+        comet:SetVertexColor(r, g, b)
+        comet:SetSize(22, 22)
+    end
+
+    local clock = 0
+    table.insert(animated, function(elapsed)
+        clock = (clock + elapsed) % PORTAL_LOOP
+        local t = clock
+        local closing = Pop(1 - (t - 4.1) / 0.5)
+        local fromOpen = t < 4.1 and Pop((t - 0.4) / 0.6) or closing
+        local toOpen = t < 4.1 and Pop((t - 1.5) / 0.6) or closing
+        if sample.travel == "blink" then
+            toOpen = t < 4.1 and Pop((t - 2.1) / 0.3) or closing
+        end
+        local fromBurst = (t > 1 and t < 1.7) and math.sin(math.pi * (t - 1) / 0.7) or 0
+        local toBurst = (t > 2.3 and t < 3) and math.sin(math.pi * (t - 2.3) / 0.7) or 0
+        from:Set(fromOpen, fromBurst, elapsed)
+        to:Set(toOpen, toBurst, elapsed)
+
+        -- The arrow; the texture points north, so -pi/2 faces east.
+        local size, spin, px = 16, 0, nil
+        if t < 1 then
+            px = x0 + (ax - x0) * t
+        elseif t < 1.5 then
+            local f = (t - 1) / 0.5
+            px, size, spin = ax, 16 * (1 - f), f * 4 * math.pi
+        elseif t < 2.4 then
+            size = 0
+        elseif t < 2.9 then
+            local f = (t - 2.4) / 0.5
+            px, size, spin = bx, 16 * f, (1 - f) * 4 * math.pi
+        elseif t < 3.7 then
+            px = bx + (x1 - bx) * (t - 2.9) / 0.8
+        else
+            px = x1
+        end
+        arrow:SetShown(size > 0.5 and t < 4.1)
+        if px then
+            arrow:SetPoint("CENTER", cell, "TOPLEFT", px, y)
+            arrow:SetSize(size, size)
+            arrow:SetRotation(-math.pi / 2 - spin)
+        end
+
+        -- The crossing, 0-1 between leaving and arriving.
+        local f = (t - 1.5) / 0.9
+        if comet then
+            comet:SetShown(f > 0 and f < 1)
+            if f > 0 and f < 1 then
+                comet:SetPoint("CENTER", cell, "TOPLEFT", ArcPoint(f))
+            end
+            for i, star in ipairs(stars) do
+                local sf = f - i * 0.05
+                star:SetShown(sf > 0 and sf < 1)
+                if sf > 0 and sf < 1 then
+                    star:SetPoint("CENTER", cell, "TOPLEFT", ArcPoint(sf))
+                    local s = 10 - i * 1.3
+                    star:SetSize(s, s)
+                    star:SetAlpha(1 - i / (#stars + 1))
+                end
+            end
+        elseif sample.travel == "arc" then
+            for i, star in ipairs(stars) do
+                local at = (i - 0.5) / #stars
+                -- Lit as the crossing passes, fading out by the time it lands.
+                local age = f - at
+                local alpha = age > 0 and math.max(0, 1 - age / 0.9) or 0
+                star:SetShown(alpha > 0)
+                if alpha > 0 then
+                    star:SetPoint("CENTER", cell, "TOPLEFT", ArcPoint(at))
+                    local s = 6 + 6 * alpha
+                    star:SetSize(s, s)
+                    star:SetAlpha(alpha)
+                end
+            end
+        end
+    end)
+end
+
 local function AddTimelineCell(index, sample)
     local cell = CreateCell(index, sample[1], TIMELINE_SPAN)
     local w = CELL_W * TIMELINE_SPAN - 40
@@ -685,6 +935,7 @@ end
 
 local function CreateWindow()
     local rows = math.ceil(#TIMELINE_SAMPLES * TIMELINE_SPAN / COLUMNS)
+    rows = rows + math.ceil(#PORTAL_SAMPLES * PORTAL_SPAN / COLUMNS)
     for _, section in ipairs(SECTIONS) do
         rows = rows + math.ceil(#section[2] / COLUMNS)
     end
@@ -722,6 +973,11 @@ local function CreateWindow()
     dark:SetColorTexture(0.05, 0.05, 0.05)
 
     local row = 0
+    AddSectionLabel(row, "Portals")
+    for i, sample in ipairs(PORTAL_SAMPLES) do
+        AddPortalCell(row * COLUMNS + (i - 1) * PORTAL_SPAN + 1, sample)
+    end
+    row = row + math.ceil(#PORTAL_SAMPLES * PORTAL_SPAN / COLUMNS)
     AddSectionLabel(row, "Timeline")
     for i, sample in ipairs(TIMELINE_SAMPLES) do
         AddTimelineCell(row * COLUMNS + (i - 1) * TIMELINE_SPAN + 1, sample)
