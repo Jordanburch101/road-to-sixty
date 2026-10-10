@@ -6,27 +6,25 @@ local _, ns = ...
 --                                 Riding, Ram Riding, ...); late = true when
 --                                 found with no learn signal just before, so
 --                                 its time and place may be off
---   mount  mountID, name, spellID, itemID, how   a new mount: how "n" when
---                                 the client named it (NEW_MOUNT_ADDED or the
---                                 chat message's spell link), "w" when it was
---                                 the only new one in the collection just
---                                 after a learn signal, "i" when a mount
---                                 item came into the bags; mountID, spellID
---                                 and itemID when known
+--   mount  mountID, name, spellID, how   a mount learned into the collection:
+--                                 how "n" when the client named it
+--                                 (NEW_MOUNT_ADDED or the chat message's
+--                                 spell link), "w" when it was the only new
+--                                 one in the collection just after a learn
+--                                 signal
 --
 -- Saved, so a later version can repair or fill in what was missed:
---   ns.char.riding      spellID -> { name, time, level, base }
---   ns.char.mounts      mountID -> { time, continentID, x, y, level, base, logged }
---   ns.char.mountItems  itemID -> the same, for mount items in the bags
+--   ns.char.riding  spellID -> { name, time, level, base }
+--   ns.char.mounts  mountID -> { time, continentID, x, y, level, base, logged }
 -- each nil until first read. base = true for what was known at the first
 -- read (logged nothing); logged = true once a mount event was logged.
 --
--- Forever's mount collection (C_MountJournal) lists the classic mounts, but
--- buying riding or a mount could not be tried on the beta, so this reads
--- every way the client might show them. Collected mounts may be shared by
--- the whole account, as on retail, so a mount is only logged when tied to a
--- learn signal; others are only noted. Mounts may also be bag items that
--- summon, as in classic; a new one in the bags counts as learning it.
+-- Forever has a mount collection (C_MountJournal, listing the classic
+-- mounts) that mounts are learned into, but buying riding or a mount could
+-- not be tried on the beta, so riding and mounts are each looked for more
+-- than one way. Collected mounts may be shared by the whole account, as on
+-- retail, so a mount is only logged when tied to a learn signal; others are
+-- only noted.
 
 local Mounts = {}
 ns.Mounts = Mounts
@@ -157,23 +155,14 @@ local function Named(now, mountID, spellID)
     end
 end
 
-local function LogMount(mountID, itemID, how)
-    local known = ns.char.mounts or {}
-    ns.char.mounts = known
+local function LogMount(mountID, how)
+    local known = ns.char.mounts
     local note = known[mountID]
     if note and (note.logged or note[6]) then return end   -- logged already, or had before tracking
-    local name, spellID
-    if mountID and C_MountJournal and C_MountJournal.GetMountInfoByID then
-        name, spellID = C_MountJournal.GetMountInfoByID(mountID)
-    end
-    if not name and itemID and C_Item and C_Item.GetItemNameByID then
-        name = C_Item.GetItemNameByID(itemID)
-    end
-    Log("mount", mountID, name, spellID, itemID, how)
-    if mountID then
-        known[mountID] = note or Note()
-        known[mountID].logged = true
-    end
+    local name, spellID = C_MountJournal.GetMountInfoByID(mountID)
+    Log("mount", mountID, name, spellID, how)
+    known[mountID] = note or Note()
+    known[mountID].logged = true
 end
 
 -- Notes newly collected mounts, and logs one when it can be tied to a learn
@@ -194,7 +183,7 @@ function Mounts:CheckMounts(mountID, spellID)
     if baseline then return end
     local named = Named(now, mountID, spellID)
     if named then
-        LogMount(named, nil, "n")
+        LogMount(named, "n")
     elseif Recent() then
         local fresh
         for id, note in pairs(known) do
@@ -203,52 +192,8 @@ function Mounts:CheckMounts(mountID, spellID)
                 fresh = id
             end
         end
-        if fresh then LogMount(fresh, nil, "w") end
+        if fresh then LogMount(fresh, "w") end
     end
-end
-
--- Mount items in the bags: itemID -> mountID (or false when the collection
--- does not know it).
-function Mounts:ReadItems()
-    local items = {}
-    local bags = C_Container
-    if not (bags and bags.GetContainerNumSlots and bags.GetContainerItemInfo) then return items end
-    local fromItem = C_MountJournal and C_MountJournal.GetMountFromItem
-    for bag = 0, 4 do
-        for slot = 1, bags.GetContainerNumSlots(bag) do
-            local info = bags.GetContainerItemInfo(bag, slot)
-            local itemID = info and info.itemID
-            if itemID and items[itemID] == nil then
-                local mountID = fromItem and fromItem(itemID)
-                local classID, subclassID
-                if C_Item and C_Item.GetItemInfoInstant then
-                    classID, subclassID = select(6, C_Item.GetItemInfoInstant(itemID))
-                end
-                -- Item class 15 (miscellaneous), subclass 5 is a mount.
-                if mountID or (classID == 15 and subclassID == 5) then
-                    items[itemID] = mountID or false
-                end
-            end
-        end
-    end
-    return items
-end
-
--- Logs a mount item new to the bags, unless its mount is logged already.
-function Mounts:CheckItems()
-    if not ready or ns.char.seeded then return end
-    local known = ns.char.mountItems
-    local baseline = known == nil
-    known = known or {}
-    for itemID, mountID in pairs(self:ReadItems()) do
-        if not known[itemID] then
-            known[itemID] = Note(baseline)
-            if not baseline then
-                LogMount(mountID or nil, itemID, "i")
-            end
-        end
-    end
-    ns.char.mountItems = known
 end
 
 -- Something was just learned: read now, and again once the client has caught up.
@@ -288,20 +233,13 @@ local function SpellIcon(spellID)
     end
 end
 
-local function ItemIcon(itemID)
-    if itemID and C_Item and C_Item.GetItemIconByID then
-        return C_Item.GetItemIconByID(itemID)
-    end
-end
-
 -- How to show a ride or mount event: title, detail (what kind of entry, to
 -- go before the place) and icon.
 function Mounts:Describe(e)
     if e[2] == "ride" then
         return "Learned " .. (e[7] or "riding"), "Riding", SpellIcon(e[6]) or self.ICON
     elseif e[2] == "mount" then
-        return "New mount: " .. (e[7] or "?"), "Mount",
-            MountIcon(e[6], e[8]) or ItemIcon(e[9]) or self.ICON
+        return "New mount: " .. (e[7] or "?"), "Mount", MountIcon(e[6], e[8]) or self.ICON
     end
 end
 
@@ -336,7 +274,6 @@ ns.On("PLAYER_LOGIN", function()
         ns.SafeCall(function()
             Mounts:CheckRiding()
             Mounts:CheckMounts()
-            Mounts:CheckItems()
         end)
     end)
 end)
@@ -348,7 +285,6 @@ ns.On("LEARNED_SPELL_IN_SKILL_LINE", function(spellID) Learned(nil, spellID) end
 ns.On("SKILL_LINES_CHANGED", function() Mounts:CheckRiding() end)
 -- Quietly, so a collection that fills in late is noted, not logged.
 ns.On("MOUNT_JOURNAL_LIST_UPDATE", function() Mounts:CheckMounts() end)
-ns.On("BAG_UPDATE_DELAYED", function() Mounts:CheckItems() end)
 
 ns.On("CHAT_MSG_SYSTEM", function(msg)
     for _, pattern in pairs(LEARNED) do

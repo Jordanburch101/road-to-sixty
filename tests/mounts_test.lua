@@ -1,8 +1,8 @@
--- Offline test of Mounts.lua with a fake spellbook, mount collection and
--- bags: what is known at the first read logs nothing; riding is logged by
--- spell ID in any language and not while only listed as a future spell; a
--- mount only when tied to a learn signal, once, and never a burst of them;
--- a spell ID is not taken for a mount ID; mount items in the bags count.
+-- Offline test of Mounts.lua with a fake spellbook and mount collection:
+-- what is known at the first read logs nothing; riding is logged by spell
+-- ID in any language and not while only listed as a future spell; a mount
+-- only when tied to a learn signal, once, and never a burst of them; a
+-- spell ID is not taken for a mount ID.
 -- Run with LuaJIT from the repo root: luajit tests/mounts_test.lua
 
 local failures = 0
@@ -84,16 +84,7 @@ C_MountJournal = {
             if m[2] == spellID then return id end
         end
     end,
-    GetMountFromItem = function(itemID) return itemID == 5656 and 12 or nil end,
 }
-
--- Bags: one slot list.
-local bag = {}
-C_Container = {
-    GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end,
-    GetContainerItemInfo = function(_, slot) return bag[slot] and { itemID = bag[slot] } or nil end,
-}
-C_Item = { GetItemInfoInstant = function() return nil end, GetItemNameByID = function() return "Reins" end }
 
 assert(loadfile("RoadToSixty/Mounts.lua"))("RoadToSixty", ns)
 local Mounts = ns.Mounts
@@ -147,7 +138,7 @@ check(#ns.char.events == 1, "not logged before it is collected: " .. Kinds())
 journal[6][3] = true
 RunTimers()
 check(Kinds():match("mount 6 Brown Horse$"), "named mount logged: " .. Kinds())
-check(ns.char.events[#ns.char.events][10] == "n", "how = named")
+check(ns.char.events[#ns.char.events][9] == "n", "how = named")
 Fire("NEW_MOUNT_ADDED", 6)
 RunTimers()
 check(select(2, Kinds():gsub("mount 6", "")) == 1, "mount logged once: " .. Kinds())
@@ -161,18 +152,9 @@ Fire("COMPANION_LEARNED")
 RunTimers()
 check(#ns.char.events == count, "burst not logged: " .. Kinds())
 
--- Mount items: a new one in the bags is a new mount; one whose mount is
--- logged already is not logged again.
-journal[12][3] = false
-ns.char.mounts[12] = nil
-bag[1] = 5656
-Fire("BAG_UPDATE_DELAYED")
-check(Kinds():match("mount 12 Black Stallion$"), "mount item logged: " .. Kinds())
-check(ns.char.events[#ns.char.events][10] == "i", "how = item")
-journal[12][3] = true
+-- But the client naming one of them logs that one.
 Fire("NEW_MOUNT_ADDED", 12)
-RunTimers()
-check(select(2, Kinds():gsub("mount 12", "")) == 1, "item mount not logged again when learned: " .. Kinds())
+check(Kinds():match("mount 12 Black Stallion$"), "named mount from a burst logged: " .. Kinds())
 
 -- Titles, and Stats.
 check((Mounts:Describe(ns.char.events[1])) == "Learned Reiten: Pferd", "ride title")
