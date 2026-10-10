@@ -16,6 +16,7 @@ Recorder.lua
 Journal.lua
 Crafts.lua
 Guilds.lua
+Reputation.lua
 Groups.lua
 Parties.lua
 Roster.lua

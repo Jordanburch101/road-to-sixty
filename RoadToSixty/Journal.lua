@@ -20,6 +20,7 @@ local addonName, ns = ...
 --   eq   slot, itemID              equipment changed; itemID 0 when emptied
 --   prof, rec                      professions and recipes, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
+--   rep                            reputation standing changed, see Reputation.lua
 --   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
 -- Events inside instances use the last outdoor position.
 

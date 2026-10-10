@@ -43,6 +43,13 @@
         "SetLargeGuildTabardTextures",
         "LE_PARTY_CATEGORY_HOME",
         "UNKNOWNOBJECT",
-        "GetSpellInfo"
+        "GetSpellInfo",
+        "GetNumFactions",
+        "GetFactionInfo",
+        "GetFactionInfoByID",
+        "ExpandFactionHeader",
+        "CollapseFactionHeader",
+        "FACTION_BAR_COLORS",
+        "FACTION_STANDING_CHANGED"
     ]
 }

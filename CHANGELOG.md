@@ -6,6 +6,16 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.7.0
+
+### New
+- Reputation: each time you reach a new standing with a faction (Friendly,
+  Honored, Revered, Exalted, or a drop), it is recorded where you were. It
+  shows in History in the standing's colour, as a marker on the map, and
+  in Stats, where hovering Reputation lists every faction and when you
+  reached its standing. Turn it on or off under Social in the History
+  filter.
+
 ## 1.6.0
 
 ### New

@@ -1004,6 +1004,15 @@ local function SeedRealistic(items)
             Log("gr", "Seeded Adventurers", "Member", true)
             G.char.guild[2], G.char.guild[3] = "Member", 3
         end
+        -- The home city's standing rises in the second and fourth towns,
+        -- logged like Reputation.lua does.
+        if i == 2 or i == 4 then
+            local id, name = 72, "Stormwind"
+            if faction == "Horde" then id, name = 76, "Orgrimmar" end
+            local standing = i == 2 and 6 or 7
+            Log("rep", id, standing, name, true)
+            G.char.reps = { [id] = { standing, name } }
+        end
         if i == 3 and G.party then
             local duration = G.t - G.party.t
             for _, p in pairs(G.char.people) do

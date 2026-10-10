@@ -24,10 +24,11 @@ local currentIndex              -- index in historyList.data of the entry at cur
 local summaryValues = {}
 
 local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes", "Guild", "Players met" }
+    "Professions", "Recipes", "Guild", "Players met", "Reputation" }
 local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
 local GUILD_ROW = 12        -- hovering it lists each guild and when
 local PEOPLE_ROW = 13       -- hovering it lists the players grouped with most
+local REPUTATION_ROW = 14   -- hovering it lists each faction's standing
 local PEOPLE_LISTED = 12
 
 local function ZoneName(mapID)
@@ -295,7 +296,7 @@ local function UpdateHistoryRow(row, item)
     end
     ns.SetQualityOverlay(row.quality, item.kind == "loot" and item.quality or nil)
     row.title:SetText(item.title)
-    row.title:SetTextColor(unpack(TITLE_COLORS[item.kind] or { 1, 1, 1 }))
+    row.title:SetTextColor(unpack(item.color or TITLE_COLORS[item.kind] or { 1, 1, 1 }))
     row.detail:SetText(item.detail)
     row.time:SetText(date("%H:%M", item.t))
 end
@@ -321,7 +322,9 @@ local HISTORY_FILTERS = {
     { "Crafting", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
     } },
-    { "Social", { atlas = "socialqueuing-icon-group" }, { { "groups", "Groups" }, { "guilds", "Guild" } } },
+    { "Social", { atlas = "socialqueuing-icon-group" }, {
+        { "groups", "Groups" }, { "guilds", "Guild" }, { "reps", "Reputation" },
+    } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
@@ -330,7 +333,7 @@ local KIND_CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
-    grp = "groups",
+    grp = "groups", rep = "reps",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -528,6 +531,11 @@ local function BuildHistory()
                 Add({ kind = kind, title = title, iconFile = icon, guild = true, tabard = tabard }, t, c, x, y,
                     detail .. " - " .. where)
             end
+        elseif kind == "rep" then
+            -- In the colour of the standing reached, as the reputation bars show it.
+            local title, detail, icon = ns.Reputation:Describe(e)
+            Add({ kind = kind, title = title, iconFile = icon, color = { ns.Reputation:Color(e[7]) } }, t, c, x, y,
+                detail .. " - " .. where)
         end
     end
 
@@ -802,6 +810,13 @@ local function PeopleSummary()
     return ("%d, most with %s"):format(#list, p.name or "?")
 end
 
+-- The best standing, and with whom.
+local function ReputationSummary()
+    local best = ns.Reputation:Standings()[1]
+    if not best then return "-" end
+    return ("%s with %s"):format(ns.Reputation:Label(best[2]), best[1])
+end
+
 local function RefreshStats()
     local char, t = ns.view, ns.view.totals
     local zones = {}
@@ -827,6 +842,7 @@ local function RefreshStats()
         ("%d learned, %d known"):format(ns.Crafts:RecipeCounts()),
         char.guild and ("<%s>"):format(char.guild[1]) or "-",
         PeopleSummary(),
+        ReputationSummary(),
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -911,6 +927,28 @@ local function CreateStatsPane(pane)
         GameTooltip:Show()
     end)
     peopleHover:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- And the reputation row each faction, with when its standing was reached.
+    local repHover = CreateFrame("Frame", nil, pane)
+    repHover:SetPoint("TOPLEFT", 0, -(REPUTATION_ROW - 1) * SUMMARY_ROW + 2)
+    repHover:SetPoint("RIGHT")
+    repHover:SetHeight(SUMMARY_ROW)
+    repHover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Reputation")
+        local list = ns.Reputation:Standings()
+        for _, f in ipairs(list) do
+            local r, g, b = ns.Reputation:Color(f[2])
+            local label = ns.Reputation:Label(f[2])
+            GameTooltip:AddDoubleLine(f[1], f[3] and ("%s, %s"):format(label, date("%d %b %Y", f[3])) or label,
+                1, 1, 1, r, g, b)
+        end
+        if #list == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    repHover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do

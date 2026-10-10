@@ -138,6 +138,9 @@ Verified in game; trust these over web guides, and re-check after patches.
 - Professions and recipes use the modern APIs: `GetProfessions` /
   `GetProfessionInfo` (secondary skills included) and `C_TradeSkillUI`
   (window open). Classic `GetSkillLineInfo` and `GetTradeSkillInfo` do not exist.
+- Reputation uses the modern `C_Reputation` (`GetNumFactions`,
+  `GetFactionDataByIndex`, `GetFactionDataByID`, expand and collapse);
+  classic `GetFactionInfo` and friends do not exist.
 - Continents: Eastern Kingdoms is continent 0 / uiMap 1415, Kalimdor is 1 / 1414.
 - Models of other characters: `DressUpModel:SetCustomRace` does not exist.
   `SetDisplayInfo` with a saved `C_PlayerInfo.GetDisplayID()` gives the right
