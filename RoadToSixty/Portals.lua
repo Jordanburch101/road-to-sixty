@@ -165,11 +165,15 @@ local function NewPortal(look)
         if not def.dark then
             tex:SetBlendMode("ADD")
         end
+        -- Textures are created shown, at their file's size; Draw shows and
+        -- sizes them.
+        tex:Hide()
         p.layers[i] = tex
     end
     p.flare = layer:CreateTexture(nil, "OVERLAY", nil, 7)
     p.flare:SetTexture(TRAVEL .. "glow")
     p.flare:SetBlendMode("ADD")
+    p.flare:Hide()
     return p
 end
 
