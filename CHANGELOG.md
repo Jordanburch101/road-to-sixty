@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.6.1
+
+### Fixed
+- German clients no longer get a Lua error with every kill. Kills, loot,
+  recipes and guild changes are now recorded there too, and on other
+  clients whose messages number their parts.
+
 ## 1.6.0
 
 ### New
