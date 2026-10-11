@@ -53,6 +53,11 @@ local function Trace(text)
     trace[#trace + 1] = ("%.1f %s"):format(GetTime(), text)
     if #trace > 12 then table.remove(trace, 1) end
 end
+-- /rts rareprobe match: each time an elite or rare target went (cleared or
+-- seen dead), whatever the test mode, to match against the kill list:
+-- { time(), classification, level, GUID or false }. special is the one
+-- targeted now, alive.
+local moments, special = {}, nil
 --@end-debug@
 
 local function Secret(v)
@@ -115,6 +120,15 @@ function Rares:Target()
     lastLook = ("%s, %s"):format(tostring(class), not rare and "not a rare" or TargetDead() and "dead already"
         or "engaged")
     Trace(("target %s, dead %s"):format(UnitExists("target") and tostring(class) or "none", tostring(TargetDead())))
+    if special and gone then
+        moments[#moments + 1] = { time(), special[1], special[2], special[3] }
+        if #moments > 10 then table.remove(moments, 1) end
+    end
+    special = nil
+    if (class == "elite" or RARE[class]) and not TargetDead() then
+        local okGuid, guid = pcall(UnitGUID, "target")
+        special = { class, UnitLevel("target"), okGuid and not Secret(guid) and guid or false }
+    end
     --@end-debug@
     if rare and not TargetDead() then
         local ok, level = pcall(UnitLevel, "target")
@@ -204,6 +218,30 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
     if arg == "elites" then
         testElites = not testElites
         P("Elites count as rares: " .. (testElites and "on (target one, then kill it; it is recorded)" or "off") .. ".")
+        return
+    end
+    if arg == "match" then
+        -- Each elite or rare target that went, with the kills recorded within
+        -- MATCH seconds of it: the name the kill list would give it.
+        local MATCH = 2
+        if #moments == 0 then
+            P("No elite or rare target has gone yet. Target one, kill it, then run this again.")
+            return
+        end
+        local kills = ns.Journal:Kills()
+        for _, m in ipairs(moments) do
+            local near = {}
+            for k = #kills, 1, -1 do
+                local kill = kills[k]
+                if kill.t < m[1] - MATCH then break end
+                if kill.t <= m[1] + MATCH then
+                    near[#near + 1] = ("%s (%+ds, %d xp)"):format(tostring(kill.name), kill.t - m[1], kill.xp)
+                end
+            end
+            local npc = m[4] and m[4]:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+            P(("%s: %s level %s, NPC %s -> %s"):format(date("%H:%M:%S", m[1]), m[2], tostring(m[3]),
+                npc or "(secret)", #near > 0 and table.concat(near, ", ") or "no kill recorded (no XP?)"))
+        end
         return
     end
     if arg == "loot" then
