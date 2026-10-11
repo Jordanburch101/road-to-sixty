@@ -24,12 +24,13 @@ local currentIndex              -- index in historyList.data of the entry at cur
 local summaryValues = {}
 
 local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes", "Guild", "Players met", "Reputation", "Riding" }
+    "Professions", "Recipes", "Guild", "Players met", "Reputation", "Riding", "Rare mobs" }
 local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
 local GUILD_ROW = 12        -- hovering it lists each guild and when
 local PEOPLE_ROW = 13       -- hovering it lists the players grouped with most
 local REPUTATION_ROW = 14   -- hovering it lists each faction's standing
 local RIDING_ROW = 15       -- hovering it lists riding learned and mounts
+local RARES_ROW = 16        -- hovering it lists the rares killed
 local PEOPLE_LISTED = 12
 
 local function ZoneName(mapID)
@@ -251,6 +252,7 @@ local TITLE_COLORS = {
     grp = { 0.67, 0.67, 1 },
     ride = { 1, 0.75, 0.45 },
     mount = { 1, 0.75, 0.45 },
+    rare = { 0.85, 0.88, 1 },
 }
 
 local function UpdateHistoryRow(row, item)
@@ -313,6 +315,7 @@ end
 local HISTORY_FILTERS = {
     { "Levels", { "lvl", 10 }, { { "levels", "Levels" } } },
     { "Deaths", { "die" }, { { "deaths", "Deaths" } } },
+    { "Rare mobs", { "rare" }, { { "rares", "Rare mobs killed" } } },
     { "Dungeons", { "run" }, { { "dungeons", "Dungeons" } } },
     { "Travel", { "flight" }, {
         { "flights", "Flight paths" }, { "hearths", "Hearthstones" },
@@ -337,6 +340,7 @@ local KIND_CATEGORY = {
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
     grp = "groups", rep = "reps", ride = "mounts", mount = "mounts",
+    rare = "rares",
 }
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
@@ -543,6 +547,9 @@ local function BuildHistory()
             local title, detail, icon = ns.Mounts:Describe(e)
             Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y,
                 ("%s, level %s - %s"):format(detail, level or "?", where))
+        elseif kind == "rare" then
+            local title, detail = ns.Rares:Describe(e)
+            Add({ kind = kind, title = title }, t, c, x, y, detail .. " - " .. where)
         end
     end
 
@@ -848,6 +855,7 @@ local function RefreshStats()
         end
     end
 
+    local rareCount = #ns.Rares:List()
     local values = {
         ns.Roster:ViewLevel(),
         FormatDuration(char.played),
@@ -864,6 +872,7 @@ local function RefreshStats()
         PeopleSummary(),
         ReputationSummary(),
         RidingSummary(),
+        rareCount > 0 and rareCount or "-",
     }
     for i, value in ipairs(values) do
         summaryValues[i]:SetText(value)
@@ -989,6 +998,27 @@ local function CreateStatsPane(pane)
         GameTooltip:Show()
     end)
     rideHover:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- And the rare mobs row each rare killed, with when and how often.
+    local rareHover = CreateFrame("Frame", nil, pane)
+    rareHover:SetPoint("TOPLEFT", 0, -(RARES_ROW - 1) * SUMMARY_ROW + 2)
+    rareHover:SetPoint("RIGHT")
+    rareHover:SetHeight(SUMMARY_ROW)
+    rareHover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Rare mobs killed")
+        local list = ns.Rares:List()
+        for _, r in ipairs(list) do
+            local when = tostring(date("%d %b %Y", r[3]))
+            GameTooltip:AddDoubleLine(r[1], r[2] > 1 and ("%s, %d kills"):format(when, r[2]) or when,
+                1, 1, 1, 1, 1, 1)
+        end
+        if #list == 0 then
+            GameTooltip:AddLine("None yet", 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    rareHover:SetScript("OnLeave", GameTooltip_Hide)
 
     local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
     for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do

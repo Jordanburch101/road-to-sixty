@@ -22,6 +22,7 @@ local addonName, ns = ...
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 --   rep                            reputation standing changed, see Reputation.lua
 --   ride, mount                    riding learned, new mount, see Mounts.lua
+--   rare                           first kill of a rare mob, see Rares.lua
 --   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
 -- Events inside instances use the last outdoor position.
 
@@ -637,6 +638,7 @@ ns.killsTracked = ns.On("CHAT_MSG_COMBAT_XP_GAIN", function(msg)
         totals.kills = totals.kills + 1
         totals.killXP = totals.killXP + tonumber(xp)
         AddKill(name, tonumber(xp))
+        if ns.Rares then ns.Rares:Killed(name) end
     end
 end)
 

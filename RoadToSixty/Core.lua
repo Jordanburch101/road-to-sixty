@@ -31,6 +31,7 @@ local charDefaults = {
     -- guild (see Guilds.lua) too: nil until first read, false when in none
     -- reps (factionID -> { standing, name }, see Reputation.lua) too
     -- riding and mounts (see Mounts.lua) too
+    -- rares (name -> { count, first kill time }, see Rares.lua) too
     totals = {
         kills = 0,
         killXP = 0,

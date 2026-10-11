@@ -20,6 +20,7 @@ Crafts.lua
 Guilds.lua
 Reputation.lua
 Mounts.lua
+Rares.lua
 Groups.lua
 Parties.lua
 Roster.lua

@@ -1013,6 +1013,11 @@ local function SeedRealistic(items)
             Log("rep", id, standing, name, true)
             G.char.reps = { [id] = { standing, name } }
         end
+        -- A rare killed in the third town, logged like Rares.lua does.
+        if i == 3 then
+            Log("rare", "Seeded Dreadmaw", "rareelite", G.level + 2)
+            G.char.rares = { ["Seeded Dreadmaw"] = { 1, G.t } }
+        end
         -- Riding and a mount in the fourth town, logged like Mounts.lua does:
         -- far below level 40, so the short seed shows them.
         if i == 4 then
