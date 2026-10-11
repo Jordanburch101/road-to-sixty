@@ -48,8 +48,8 @@ local engaged, pending, lost
 
 --@debug@
 -- /rts rareprobe elites counts elites as rares too, to try the whole path
--- without finding a rare.
-local testElites = false
+-- without finding a rare; /rts rareprobe all counts normal mobs as well.
+local testElites, testAll = false, false
 local lootWatch = false     -- /rts rareprobe loot: print where loot came from
 -- The last target looked at and the last kill, and what became of them, for the probe.
 local lastLook, lastKill = "none", "none"
@@ -99,7 +99,7 @@ local function IsRare(info)
     if not info then return false end
     local rare = RARE[info.class] or false
     --@debug@
-    rare = rare or (testElites and info.class == "elite")
+    rare = rare or (testElites and info.class == "elite") or (testAll and info.class == "normal")
     --@end-debug@
     return rare
 end
@@ -109,7 +109,7 @@ local function Recording()
     local skip = ns.char.seeded
     --@debug@
     -- Testing with elites records into a seeded journey too.
-    skip = skip and not testElites
+    skip = skip and not (testElites or testAll)
     --@end-debug@
     return not skip
 end
@@ -302,7 +302,7 @@ end
 
 -- Showing them ------------------------------------------------------------------
 
-local CLASSES = { rare = "Rare", rareelite = "Rare elite", elite = "Elite (test)" }
+local CLASSES = { rare = "Rare", rareelite = "Rare elite", elite = "Elite (test)", normal = "Normal (test)" }
 
 -- How to show a rare event: title and detail (what kind of entry, to go
 -- before the place).
@@ -342,6 +342,12 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
     if arg == "elites" then
         testElites = not testElites
         P("Elites count as rares: " .. (testElites and "on (target one, then kill it; it is recorded)" or "off") .. ".")
+        return
+    end
+    if arg == "all" then
+        testAll, testElites = not testAll, not testAll
+        P("Normal mobs and elites count as rares: " .. (testAll and "on (every kill is recorded as one; "
+            .. "turn it off after a few)" or "off") .. ".")
         return
     end
     if arg == "match" then
@@ -432,7 +438,7 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
     P(("Engaged: %s. Rares remembered: %d. Test mode %s.%s"):format(
         engaged and ("%s level %s, %s"):format(tostring(engaged.class), tostring(engaged.level),
             engaged.name or "name secret") or "none", remembered,
-        testElites and "on" or "off", ns.char.seeded and not testElites
+        testAll and "all" or testElites and "elites" or "off", ns.char.seeded and not testElites
             and " This journey is seeded: nothing is recorded outside test mode." or ""))
     P("Last target: " .. lastLook .. ". Last kill: " .. lastKill .. ".")
     for _, line in ipairs(trace) do P("  " .. line) end
