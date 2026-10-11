@@ -43,6 +43,7 @@ local lost
 -- /rts rareprobe elites counts elites as rares too, to try the whole path
 -- without finding a rare.
 local testElites = false
+local lootWatch = false     -- /rts rareprobe loot: print where loot came from
 -- The last target looked at and the last kill, and what became of them, for the probe.
 local lastLook, lastKill = "none", "none"
 -- What happened lately, in order, with times, for the probe: target
@@ -205,6 +206,11 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
         P("Elites count as rares: " .. (testElites and "on (target one, then kill it; it is recorded)" or "off") .. ".")
         return
     end
+    if arg == "loot" then
+        lootWatch = not lootWatch
+        P("Loot sources: " .. (lootWatch and "on (open a corpse's loot to see them)" or "off") .. ".")
+        return
+    end
     if UnitExists("target") then
         local ok, class = pcall(UnitClassification, "target")
         local okName, name = pcall(UnitName, "target")
@@ -244,9 +250,21 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
         if left then parts[#parts + 1] = Show("GameTooltip line 1", left.GetText, left) end
         GameTooltip:Hide()
         P(table.concat(parts, ", ") .. ".")
+        local okGuid, guid = pcall(UnitGUID, "target")
+        local npc = okGuid and not Secret(guid) and tostring(guid):match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+        P(("GUID %s, NPC ID %s."):format(not okGuid and "error" or Secret(guid) and "(secret)" or tostring(guid),
+            tostring(npc)))
     else
         P("No target.")
     end
+    -- Where: secret values may depend on the place (an instance, Zephras Isle) or combat.
+    local inInstance, instanceType = IsInInstance()
+    local mapID = C_Map.GetBestMapForUnit("player")
+    local info = mapID and C_Map.GetMapInfo(mapID)
+    local c = ns.GetWorldPosition and ns.GetWorldPosition()
+    P(("Where: %s (map %s, continent %s), instance %s (%s), in combat %s."):format(info and info.name or "?",
+        tostring(mapID), tostring(c), tostring(inInstance), tostring(instanceType),
+        tostring(UnitAffectingCombat("player"))))
     P(("Engaged: %s. Test mode %s.%s"):format(
         engaged and ("%s level %s%s"):format(engaged[1], tostring(engaged[2]),
             engaged[3] and (", died %ds ago"):format(math.floor(GetTime() - engaged[3])) or "") or "none",
@@ -254,5 +272,26 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
             and " This journey is seeded: nothing is recorded outside test mode." or ""))
     P("Last target: " .. lastLook .. ". Last kill: " .. lastKill .. ".")
     for _, line in ipairs(trace) do P("  " .. line) end
+end)
+
+-- /rts rareprobe loot: when a loot window opens, what each slot says about
+-- where it came from (a corpse's GUID would confirm which mob died).
+ns.On("LOOT_OPENED", function()
+    if not lootWatch then return end
+    local count = GetNumLootItems and GetNumLootItems() or 0
+    ns.Print(("Loot window: %d slot(s)."):format(count))
+    for slot = 1, count do
+        local sources = { pcall(GetLootSourceInfo, slot) }
+        local okCall = table.remove(sources, 1)
+        local shown = {}
+        for i = 1, #sources, 2 do
+            local guid = sources[i]
+            local npc = not Secret(guid) and tostring(guid):match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+            shown[#shown + 1] = ("%s (NPC %s) x%s"):format(Secret(guid) and "(secret)" or tostring(guid),
+                tostring(npc), Secret(sources[i + 1]) and "(secret)" or tostring(sources[i + 1]))
+        end
+        ns.Print(("  slot %d: %s"):format(slot, not okCall and "error" or #shown > 0 and table.concat(shown, ", ")
+            or "no source"))
+    end
 end)
 --@end-debug@
