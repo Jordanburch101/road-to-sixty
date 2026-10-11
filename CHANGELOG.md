@@ -13,13 +13,13 @@ broken and now works. Leave out internal changes. Sections are
   Honored, Revered, Exalted, or a drop), it is recorded where you were. It
   shows in History in the standing's colour, as a marker on the map, and
   in Stats, where hovering Reputation lists every faction and when you
-  reached its standing. Turn it on or off under Social in the History
+  reached its standing. Turn it on or off under Learned in the History
   filter.
 - Riding and mounts: learning to ride and each new mount are recorded
   where they happened. They show in History, on the map
   (even zoomed out, like dungeons), and in Stats, where Riding tells the
-  level you learned it at. Turn them on or off under Travel in the History
-  filter.
+  level you learned it at. Turn them on or off under Learned in the
+  History filter.
 
 ### Fixed
 - The gear card's model now holds your main hand weapon. It showed the

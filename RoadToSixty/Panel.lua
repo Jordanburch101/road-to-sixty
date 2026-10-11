@@ -315,19 +315,18 @@ local HISTORY_FILTERS = {
     { "Dungeons", { "run" }, { { "dungeons", "Dungeons" } } },
     { "Travel", { "flight" }, {
         { "flights", "Flight paths" }, { "hearths", "Hearthstones" },
-        { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" }, { "mounts", "Riding and mounts" },
+        { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" },
     } },
     { "New zones", { "zone" }, { { "zones", "New zones" } } },
     { "Quests", { "qd" }, { { "quests", "Quests turned in" } } },
     { "Loot", { atlas = "Banker" }, {
         { "greens", "Green items" }, { "blues", "Blue items and better" },
     } },
-    { "Crafting", { atlas = "Profession" }, {
+    { "Learned", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
+        { "reps", "Reputation" }, { "mounts", "Riding and mounts" },
     } },
-    { "Social", { atlas = "socialqueuing-icon-group" }, {
-        { "groups", "Groups" }, { "guilds", "Guild" }, { "reps", "Reputation" },
-    } },
+    { "Social", { atlas = "socialqueuing-icon-group" }, { { "groups", "Groups" }, { "guilds", "Guild" } } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
