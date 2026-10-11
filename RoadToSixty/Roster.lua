@@ -11,6 +11,9 @@ local _, ns = ...
 --     path = { { c = continentID, d = "x,y;x,y;..." }, ... },  -- world yards
 --   }
 --
+-- Unlike Recorder.lua's segments, the points in d are absolute positions,
+-- not deltas. Roster:Entries() also writes each entry's key into entry.key.
+--
 -- The coarse path is kept up to date while playing, written into its
 -- strings every minute and on logout.
 
