@@ -23,7 +23,9 @@ for data, its exact format; read that before changing a module.
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
 | Roster.lua | account-wide character list with coarse paths |
 | Health.lua | `/rts check` |
+| Style.lua | shared look: path colours, jump styles, event and class icons, History categories, docks |
 | Map.lua | journey map window, layers, replay, markers |
+| MinimapButton.lua, Options.lua | minimap button and the settings panel |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Panel.lua, GearCard.lua, QuestPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand |

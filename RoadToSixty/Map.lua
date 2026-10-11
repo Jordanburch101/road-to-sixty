@@ -50,33 +50,7 @@ local MOTES = 40                -- most at once
 local MOTE_SPEED = 30           -- screen pixels per second
 local MOTE_TEXTURE = "Interface\\Cooldown\\star4"
 
--- Path colour by level, after item quality: common, uncommon, rare, epic,
--- legendary, artifact. { first level of the next band, r, g, b }
-local LEVEL_COLORS = {
-    { 10, 1, 1, 1 },
-    { 20, 0.12, 1, 0 },
-    { 30, 0.25, 0.6, 1 },       -- lighter than item blue, so it shows on terrain
-    { 40, 0.64, 0.21, 0.93 },
-    { 50, 1, 0.5, 0 },
-    { math.huge, 0.9, 0.8, 0.5 },
-}
-local MODE_ALPHA = { w = 0.95, t = 0.5 }     -- on foot or mounted, flight path
-
-local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
-
--- Jumps between segments are drawn as arcs, styled by why the path jumped
--- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash" or
--- "solid", icon = atlas at the top of the arc }.
-local JUMP_STYLES = {
-    h = { "Hearthstone", 0.3, 1, 0.45, 1, style = "dots", icon = "Innkeeper" },
-    p = { "Teleport", 0.8, 0.45, 1, 1, style = "solid", icon = "MagePortalAlliance" },
-    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots" },
-    i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
-    b = { "Boat or zeppelin", 0.3, 0.85, 0.85, 1, style = "dash", icon = "poi-islands-table" },
-    l = { "Logged in", 1, 1, 1, 0.7, style = "dots" },
-}
-local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
--- Sizes in screen pixels.
+-- Jump arcs (styled in Style.lua): sizes in screen pixels.
 local JUMP_LINE, JUMP_OUTLINE = 2.5, 5
 local JUMP_DASH, JUMP_GAP = 7, 5
 local JUMP_DOT, JUMP_DOT_SPACING = 5, 8
@@ -92,11 +66,9 @@ local JUMP_OUTLINE_COLOR = { 0, 0, 0, 0.6 }
 local HOVER_PIXELS = 6
 local HOVER_INTERVAL = 0.05
 local HOVER_WIDTH = 5
-local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
 
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their coarse path in class colour.
-local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local OTHER_MAX_LINES = 1500    -- most lines per other character's path in range of the view
 local OTHER_LINE_WIDTH = 1.5
 local OTHER_ALPHA = 0.55
@@ -125,33 +97,6 @@ local MARKER_ZOOM = {
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
 local QUEST_VISIT = { yards = 30, seconds = 180 }
-
--- Event icons, shared with the side panel. { atlas, size }
--- { atlas = name } or { file = texture path }, and size. Spell and item icons
--- (file) are cropped to hide their border.
-local EVENT_ICONS = {
-    lvl = { atlas = "UI-HUD-UnitFrame-SmallCircle", size = 22 },
-    die = { atlas = "DungeonSkull", size = 16 },
-    ["in"] = { atlas = "Dungeon", size = 20 },
-    run = { atlas = "Dungeon", size = 20 },
-    zone = { atlas = "Waypoint-MapPin-Untracked", size = 16 },
-    flight = { atlas = "TaxiNode_Neutral", size = 18 },
-    hearth = { atlas = "Innkeeper", size = 18 },
-    teleport = { atlas = "MagePortalAlliance", size = 20 },
-    boat = { atlas = "poi-islands-table", size = 20 },
-    loot = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 },
-    qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
-    prof = { file = "Interface\\Icons\\INV_Misc_Book_11", size = 18 },
-    rec = { file = "Interface\\Icons\\INV_Scroll_03", size = 16 },
-}
-
-local INSTANCE_TYPES = {
-    party = "Dungeon",
-    raid = "Raid",
-    pvp = "Battleground",
-    arena = "Arena",
-}
-ns.InstanceTypes = INSTANCE_TYPES
 
 local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton, gearButton
 local continentLayer, terrainLayer, othersLayer, pathLayer
@@ -218,150 +163,6 @@ local state = {
 
 local function FormatTime(t)
     return tostring(date("%d %b %Y, %H:%M", t))
-end
-
-local function LevelBand(level)
-    for band, entry in ipairs(LEVEL_COLORS) do
-        if level < entry[1] then return band end
-    end
-    return #LEVEL_COLORS
-end
-
-function ns.LevelColor(level)
-    local entry = LEVEL_COLORS[LevelBand(level)]
-    return entry[2], entry[3], entry[4]
-end
-
-function ns.ClassColor(class)
-    local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if color then
-        return color.r, color.g, color.b
-    end
-    return 0.8, 0.8, 0.8
-end
-
-function ns.SetClassIcon(texture, class)
-    local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
-    if coords then
-        texture:SetTexture(CLASS_ICONS)
-        texture:SetTexCoord(unpack(coords))
-    else
-        texture:SetTexture(nil)
-    end
-end
-
-function ns.ClassName(class)
-    return LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class or "?"
-end
-
--- The History filter applies to the map too. Category of each jump reason
--- (seg.j); reasons without one are always shown.
-local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", i = "dungeons" }
-local MARKER_CATEGORY = {
-    lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
-}
-
--- False if the player has turned this History filter category off.
-function ns.FilterShown(category)
-    return not category or ns.db.historyFilter[category] ~= false
-end
-
--- Boat and zeppelin docks, in world yards: { name, continentID, x, y }. A
--- boat jump is named after the docks nearest its two ends. Stormwind Harbor
--- and Auberdine come from a recorded trip; the others are estimates, hence
--- the generous range.
-local DOCKS = {
-    { "Stormwind Harbor", 0, -8550, 1450 },
-    { "Menethil Harbor", 0, -3800, -700 },
-    { "Booty Bay", 0, -14350, 450 },
-    { "Undercity zeppelin", 0, 2070, 290 },
-    { "Grom'gol zeppelin", 0, -12410, 210 },
-    { "Auberdine", 1, 6650, 950 },
-    { "Rut'theran Village", 1, 8450, 1000 },
-    { "Theramore", 1, -3900, -4600 },
-    { "Ratchet", 1, -950, -3750 },
-    { "Orgrimmar zeppelin", 1, 1330, -4650 },
-}
-local DOCK_RANGE = 2500
-
--- The dock nearest a world position, or nil if none is within DOCK_RANGE.
-function ns.DockName(c, x, y)
-    local best, bestD = nil, DOCK_RANGE * DOCK_RANGE
-    for _, dock in ipairs(DOCKS) do
-        if dock[2] == c then
-            local d = (dock[3] - x) ^ 2 + (dock[4] - y) ^ 2
-            if d < bestD then
-                best, bestD = dock[1], d
-            end
-        end
-    end
-    return best
-end
-
--- "Stormwind Harbor to Auberdine" for a boat trip between two world
--- positions, or nil unless both ends are near a dock.
-function ns.BoatRoute(c1, x1, y1, c2, x2, y2)
-    local from, to = ns.DockName(c1, x1, y1), ns.DockName(c2, x2, y2)
-    return from and to and (from .. " to " .. to)
-end
-
--- "5m ago", "3h ago", "2d ago".
-function ns.FormatAgo(t)
-    local seconds = time() - (t or 0)
-    if seconds < 3600 then return ("%dm ago"):format(math.max(1, math.floor(seconds / 60))) end
-    if seconds < 86400 then return ("%dh ago"):format(math.floor(seconds / 3600)) end
-    return ("%dd ago"):format(math.floor(seconds / 86400))
-end
-
--- Quality borders over item icons, by item quality (2 green to 5 orange),
--- for looted items in the History list and the loot filters.
-local QUALITY_BORDERS = {
-    [2] = "loottoast-itemborder-green", [3] = "loottoast-itemborder-blue",
-    [4] = "loottoast-itemborder-purple", [5] = "loottoast-itemborder-orange",
-}
-
--- Shows overlay (a texture over an icon) as the quality's border, or hides
--- it when quality is nil or below green.
-function ns.SetQualityOverlay(overlay, quality)
-    local atlas = quality and QUALITY_BORDERS[math.min(quality, 5)]
-    if atlas then
-        overlay:SetAtlas(atlas)
-    end
-    overlay:SetShown(atlas ~= nil)
-end
-
--- Sets icon (a texture) and text (a font string on top of it) for an event
--- kind. file, if given, replaces the kind's own icon (an item's icon for
--- loot). Level icons are the player frame's level badge with the level
--- number in white on top. Returns the icon size.
-function ns.SetEventIcon(icon, text, kind, level, file)
-    local style = EVENT_ICONS[kind]
-    if file or style.file then
-        icon:SetTexture(file or style.file)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    elseif not icon:SetAtlas(style.atlas) and style.fallback then
-        icon:SetTexture(style.fallback)
-        icon:SetTexCoord(0, 1, 0, 1)
-    end
-    icon:SetVertexColor(1, 1, 1)
-    text:SetText("")
-    if kind == "lvl" then
-        text:SetText(level)
-        text:SetTextColor(1, 1, 1)
-        text:SetShadowOffset(1, -1)
-    end
-    return style.size
-end
-
--- Colour of a line for movement mode and level band: r, g, b, a.
-local function LineColor(mode, band)
-    if mode == "g" then
-        return unpack(GHOST_COLOR)
-    elseif mode == "t" then
-        return unpack(FLIGHT_COLOR)
-    end
-    local entry = LEVEL_COLORS[band]
-    return entry[2], entry[3], entry[4], MODE_ALPHA[mode]
 end
 
 -- 0 below range[1], 1 above range[2], smooth in between on a log scale.
@@ -592,7 +393,7 @@ local function BuildPoints(paths)
     end
     state.timelines = tl
     local nextChange = 1
-    local band = LevelBand(changes[1] and changes[1][6] or 1)
+    local band = ns.LevelBand(changes[1] and changes[1][6] or 1)
 
     local n = 0
     local boats, previous = {}, nil
@@ -602,7 +403,7 @@ local function BuildPoints(paths)
             for i = 1, #path.x do
                 local t = path.t[i]
                 while changes[nextChange] and changes[nextChange][1] <= t do
-                    band = LevelBand(changes[nextChange][6])
+                    band = ns.LevelBand(changes[nextChange][6])
                     nextChange = nextChange + 1
                 end
                 n = n + 1
@@ -715,7 +516,7 @@ local function BuildMarkers()
                 m.t, m.popping, m.level = t, nil, nil
                 m.x, m.y = toContent(e[4], e[5])
                 m.c = e[3]
-                m.category = MARKER_CATEGORY[kind]
+                m.category = ns.MARKER_CATEGORY[kind]
                 m.minZoom = kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
@@ -727,7 +528,7 @@ local function BuildMarkers()
             local m = GetMarker(count)
             m.t, m.popping = t, nil
             m.x, m.y = toContent(e[4], e[5])
-            m.category = MARKER_CATEGORY[kind]
+            m.category = ns.MARKER_CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
             m:SetSize(size, size)
@@ -746,7 +547,7 @@ local function BuildMarkers()
                 m.minZoom = MARKER_ZOOM.dungeon
                 m.title = e[7] or "Instance"
                 m.detail = ("%s, level %d\n%s"):format(
-                    INSTANCE_TYPES[e[8]] or "Instance", level or UnitLevel("player"), FormatTime(t))
+                    ns.InstanceTypes[e[8]] or "Instance", level or UnitLevel("player"), FormatTime(t))
             end
         end
     end
@@ -1068,7 +869,7 @@ local function BuildJumps(drawn, shown, z)
     local jumps = {}
     for i, spec in ipairs(drawn) do
         if spec[5] == "j" and not spec.hidden then
-            local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
+            local style = ns.JumpStyle(state.pj[spec[6]])
             local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4])
             local total = curve[#curve][3]
             local jump = { index = i, parts = {}, spec = spec }
@@ -1235,7 +1036,7 @@ local function BuildPath()
         local mode, band = spec[5], pb[spec[6]]
         -- Lines the filter hides get no tooltip, motes or arc either.
         spec.hidden = mode == "t" and not ns.FilterShown("flights")
-            or mode == "j" and not ns.FilterShown(JUMP_CATEGORY[state.pj[spec[6]]])
+            or mode == "j" and not ns.FilterShown(ns.JUMP_CATEGORY[state.pj[spec[6]]])
         -- A jump's own line stays invisible; BuildJumps draws its arc.
         local colorKey = (mode == "j" or spec.hidden) and "none"
             or (mode == "g" or mode == "t") and mode or mode .. band
@@ -1243,7 +1044,7 @@ local function BuildPath()
             if colorKey == "none" then
                 line:SetColorTexture(0, 0, 0, 0)
             else
-                line:SetColorTexture(LineColor(mode, band))
+                line:SetColorTexture(ns.LineColor(mode, band))
             end
             line.colorKey = colorKey
         end
@@ -1491,10 +1292,10 @@ end
 local function ColorMote(m)
     local spec = state.drawn[m.line]
     if spec[5] == "j" then
-        local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
+        local style = ns.JumpStyle(state.pj[spec[6]])
         m.tex:SetVertexColor(style[2], style[3], style[4])
     else
-        local r, g, b = LineColor(spec[5], state.pb[spec[6]])
+        local r, g, b = ns.LineColor(spec[5], state.pb[spec[6]])
         m.tex:SetVertexColor(r, g, b)
     end
 end
@@ -1730,7 +1531,7 @@ local function BuildScrub()
             piece.bright:SetHeight(SCRUB.TRACK)
             scrub.pieces[k] = piece
         end
-        local _, r, g, b = unpack(LEVEL_COLORS[run.band])
+        local r, g, b = ns.BandColor(run.band)
         piece.dim:SetTexture(SCRUB.FILL)
         piece.dim:SetVertexColor(r * 0.35, g * 0.35, b * 0.35)
         piece.bright:SetTexture(SCRUB.FILL)
@@ -1863,8 +1664,6 @@ end
 
 -- Hovering lines -------------------------------------------------------------------
 
-local MODE_NAMES = { w = "On foot", t = "Flight path", g = "Ghost" }
-
 local function DistSqToSegment(x, y, ax, ay, bx, by)
     local dx, dy = bx - ax, by - ay
     local length = dx * dx + dy * dy
@@ -1927,12 +1726,12 @@ local function ShowLineTooltip(spec)
         local i, pt = spec[6], state.pt
         if spec[5] == "j" then
             -- Point i starts the segment after the jump; i - 1 ends the one before.
-            local style = JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN
+            local style = ns.JumpStyle(state.pj[i])
             GameTooltip:AddLine(style[1], style[2], style[3], style[4])
             GameTooltip:AddLine(state.boats[i] or ("%s to %s"):format(ZoneAt(pt[i - 1]), ZoneAt(pt[i])), 1, 1, 1)
         else
-            local r, g, b = LineColor(spec[5], state.pb[i])
-            GameTooltip:AddLine(MODE_NAMES[spec[5]] or "Path", r, g, b)
+            local r, g, b = ns.LineColor(spec[5], state.pb[i])
+            GameTooltip:AddLine(ns.MODE_NAMES[spec[5]] or "Path", r, g, b)
             GameTooltip:AddLine(ZoneAt(pt[i]), 1, 1, 1)
         end
         GameTooltip:AddLine(("Level %d - %s"):format(LevelAt(pt[i]), FormatTime(pt[i])), 0.7, 0.7, 0.7)
