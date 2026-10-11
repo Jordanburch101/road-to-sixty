@@ -17,10 +17,12 @@ local handlers = {}
 local now = 1000
 local ns = { char = { events = {} } }
 ns.view = ns.char
+local kills = {}     -- the kill list, as Journal:Kills gives it
 ns.Journal = {
     Log = function(_, kind, ...)
         table.insert(ns.char.events, { now, kind, 0, 0, 0, ... })
     end,
+    Kills = function() return kills end,
 }
 function ns.On(event, fn)
     handlers[event] = handlers[event] or {}
@@ -167,11 +169,27 @@ loot = { { Guid(4425, "G8") } }
 Fire("LOOT_OPENED")
 check(Last()[9] == 4425, "loot adds the NPC ID inside an instance")
 
+-- A rare killed while not targeted (say by a pet), with XP, then its corpse
+-- clicked: named from the kill list's only kill in the last seconds.
+now = now + 20 * 60
+kills[#kills + 1] = { t = now - 2, xp = 76, name = "Tormented Soul" }
+units.target = { nil, "rare", 14, nil, true, false }
+Fire("PLAYER_TARGET_CHANGED")
+check(Count() == 6 and Last()[6] == "Tormented Soul" and Last()[10] == "c", "corpse named from the kill list")
+
+-- Two kills just before (area damage): no guess.
+now = now + 20 * 60
+kills[#kills + 1] = { t = now - 3, xp = 70, name = "Kraul Bat" }
+kills[#kills + 1] = { t = now - 1, xp = 90, name = "Agathelos the Raging" }
+units.target = { nil, "rareelite", 33, nil, true, false }
+Fire("PLAYER_TARGET_CHANGED")
+check(Count() == 7 and Last()[6] == nil, "several kills just before: left nameless")
+
 -- A rare with no XP: its corpse clicked records it without a name.
 now = now + 20 * 60
 units.target = { nil, "rare", 28, nil, true, false }
 Fire("PLAYER_TARGET_CHANGED")
-check(Count() == 6 and Last()[6] == nil and Last()[10] == "c", "instance rare with no XP, nameless")
+check(Count() == 8 and Last()[6] == nil and Last()[10] == "c", "instance rare with no XP, nameless")
 check((Rares:Describe(Last())) == "Killed a rare", "nameless title")
 
 -- The target cleared just before the XP message: still the rare's kill.
@@ -181,18 +199,18 @@ units.target = nil
 Fire("PLAYER_TARGET_CHANGED")
 now = now + 0.2
 Rares:Killed("Aggem Thorncurse")
-check(Count() == 7 and Last()[6] == "Aggem Thorncurse", "message just after the target went")
+check(Count() == 9 and Last()[6] == "Aggem Thorncurse", "message just after the target went")
 
 -- Stats list.
 local list = Rares:List()
-check(#list == 7 and list[1][1] == "Mor'Ladim" and list[1][2] == 2, "list, first killed first")
+check(#list == 9 and list[1][1] == "Mor'Ladim" and list[1][2] == 2, "list, first killed first")
 
 -- A seeded journey is left alone.
 inside = false
 ns.char.seeded = true
 Target("Seeded Rare", "rare", 10, Guid(9, "H9"))
 KillTarget("Seeded Rare")
-check(Count() == 7, "seeded journey not recorded")
+check(Count() == 9, "seeded journey not recorded")
 
 if failures > 0 then
     print(("rares_test: %d failure(s)"):format(failures))

@@ -22,8 +22,10 @@ local _, ns = ...
 --   the target when the XP message comes, and the target is gone (or dead)
 --   within KILL_SECONDS after it, the name coming from the message; the
 --   message comes while the dying target still shows alive, and the target
---   is cleared at once. With no XP, a dead rare corpse clicked records it
---   without a name, and looting it adds the NPC ID.
+--   is cleared at once. A dead rare corpse clicked records one not caught
+--   so (no XP, or killed while not targeted), named from the kill list when
+--   it has exactly one kill in the last LOOKBACK seconds; looting it adds
+--   the NPC ID.
 -- A target the player was not tapped on (someone else's kill) is not one.
 
 local Rares = {}
@@ -33,6 +35,7 @@ local KILL_SECONDS = 1          -- the target is gone this soon after its XP mes
 local SEEN_SECONDS = 30 * 60    -- how long a rare seen counts
 local SAME_CORPSE = 10 * 60     -- a rare corpse inside an instance with the same classification
                                 -- and level this soon after one recorded is the same one
+local LOOKBACK = 15             -- seconds back the kill list may name a rare corpse clicked
 
 local Log = function(...) ns.Journal:Log(...) end
 
@@ -149,6 +152,20 @@ local function Record(info, name, how)
     rares[key] = { 1, time(), name, info.npc, info.class }
 end
 
+-- Inside an instance (no GUID), a rare corpse clicked has no name; if the
+-- kill list has exactly one kill in the last LOOKBACK seconds, that was it
+-- (several, say from area damage, could be any of them).
+local function RecentKillName()
+    if ns.view ~= ns.char then return end   -- Journal:Kills reads the journey shown
+    local name, count = nil, 0
+    local kills = ns.Journal:Kills()
+    for k = #kills, 1, -1 do
+        if kills[k].t < time() - LOOKBACK then break end
+        name, count = kills[k].name, count + 1
+    end
+    return count == 1 and name or nil
+end
+
 -- Inside an instance (no GUID): whether a rare corpse is one recorded lately.
 local function RecentCorpse(info)
     for i = #recent, 1, -1 do
@@ -215,7 +232,7 @@ function Rares:Target()
         engaged = rare
         self:Look("target")
     elseif not rare.tapDenied and (rare.guid or not RecentCorpse(rare)) then
-        Record(Seen(rare.guid) or rare, nil, "c")
+        Record(Seen(rare.guid) or rare, not rare.guid and RecentKillName() or nil, "c")
     end
 end
 
