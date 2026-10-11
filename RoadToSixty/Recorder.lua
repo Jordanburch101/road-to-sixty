@@ -1,10 +1,12 @@
 local _, ns = ...
 
--- Records the player's path as segments of world coordinates (yards).
+-- Records the player's path as segments of world coordinates (yards; X runs
+-- north and Y runs west, as the client's world positions do).
 --
 -- A segment is one unbroken line: { m = mode, c = continentID, t = startTime,
 -- x = startX, y = startY, d = "dt,dx,dy;dt,dx,dy;..." } where each step is
--- a delta from the previous point. A new segment starts on loading screens,
+-- a delta from the previous point, all integers, and the string is empty
+-- for a segment with only its start point. A new segment starts on loading screens,
 -- teleports, instance entry and mode changes, so the map never draws a line
 -- across a hearthstone or a dungeon.
 --

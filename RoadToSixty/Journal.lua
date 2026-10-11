@@ -4,7 +4,10 @@ local addonName, ns = ...
 -- (ns.char.levels[level], including the equipped gear: slot -> item ID, and
 -- gearLater = true when it was taken at a later login, not at the level up).
 --
--- Each event: { time, kind, continentID, x, y, ... }. Kinds and extra fields:
+-- Each event is an array: { time, kind, continentID, x, y, ... } with the
+-- kind's own fields from index 6 on (so e[6] is the first one below). The
+-- position is in world yards; when none is known it is -1, 0, 0. Kinds and
+-- extra fields:
 --   on   level                     session start
 --   off                            session end
 --   lvl  level                     level reached

@@ -1,5 +1,25 @@
 local addonName, ns = ...
 
+-- Shared ground for every module: saved variable defaults, ns.On (event
+-- bus), ns.Command (slash commands), ns.SafeCall and ns.Print.
+--
+-- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
+-- defaults below, plus roster (Roster.lua). RoadToSixtyCharDB (ns.char) is
+-- one character's journey, with charDefaults below plus fields that start
+-- nil on purpose and are set by the file that owns them:
+--   gear       slot -> item ID last seen, for logging real changes (Journal.lua)
+--   lastZone   uiMapID of the last zone event (Journal.lua)
+--   instance   instance ID while inside one; run holds that visit's totals
+--              at entry, so leaving can log a summary (Journal.lua)
+--   played     total seconds played, from the last TIME_PLAYED_MSG (Journal.lua)
+--   skills     profession -> { rank, max, icon }; nil means professions
+--              have never been read, so the first read logs them as a
+--              baseline (Crafts.lua)
+--   rosterBuilt  layout version of the roster's journey copy last built
+--              from the full journey (Roster.lua)
+--   seeded     true for a fake journey from /rts seed (Seed.lua)
+-- version is written but not yet read: nothing migrates old layouts.
+
 local defaults = {
     greet = true,
     levelChat = true,       -- the addon's own summary in chat at each level up
