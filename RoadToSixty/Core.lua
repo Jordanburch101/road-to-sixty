@@ -71,6 +71,21 @@ function ns.SafeCall(fn, ...)
     end
 end
 
+-- Index of the last entry of times (sorted ascending) that is at or before
+-- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)].
+function ns.LastIndex(times, t)
+    local lo, hi = 0, #times
+    while lo < hi do
+        local mid = math.floor((lo + hi + 1) / 2)
+        if times[mid] <= t then
+            lo = mid
+        else
+            hi = mid - 1
+        end
+    end
+    return lo
+end
+
 -- Event bus so each module can listen without owning a frame.
 -- Returns false if the client refuses the event (unknown or restricted).
 local frame = CreateFrame("Frame")
