@@ -317,6 +317,77 @@ function Rares:Looted()
     end
 end
 
+-- Portraits ------------------------------------------------------------------------
+
+-- A rare's portrait, picked from candidates on a screenshot: its model, drawn
+-- from the NPC ID, in front of a dark disc with a silver ring (a model
+-- cannot be cut round, but its background is clear), with the silver rare
+-- dragon at the top right. The client only draws creatures it has seen, so
+-- with no NPC ID, or no model loaded a moment later, the dragon alone shows.
+local DISC = 452111             -- interface/guildframe/guildlogomask_l: a white disc
+local SILVER = { 0.78, 0.8, 0.86 }
+local DRAGON = "nameplates-icon-elite-silver"
+local LOAD_SECONDS = 1          -- a model not loaded by then is not coming
+
+local function Disc(f, layer, size, r, g, b)
+    local t = f:CreateTexture(nil, layer)
+    t:SetTexture(DISC)
+    t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    t:SetVertexColor(r, g, b)
+    t:SetPoint("CENTER")
+    t:SetSize(size, size)
+    return t
+end
+
+function Rares:CreatePortrait(parent, size)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(size, size)
+    f.ring = Disc(f, "BACKGROUND", size, unpack(SILVER))
+    f.inner = Disc(f, "BORDER", size * 0.86, 0.1, 0.1, 0.12)
+    f.model = CreateFrame("PlayerModel", nil, f)
+    f.model:SetPoint("TOPLEFT", 1, -1)
+    f.model:SetPoint("BOTTOMRIGHT", -1, 1)
+    -- The dragon over the model, which draws above its parent's textures.
+    f.top = CreateFrame("Frame", nil, f)
+    f.top:SetAllPoints()
+    f.top:SetFrameLevel(f.model:GetFrameLevel() + 1)
+    f.dragon = f.top:CreateTexture(nil, "OVERLAY")
+    f.dragon:SetAtlas(DRAGON)
+    f.dragon:SetSize(size * 0.5, size * 0.5)
+    f.dragon:SetPoint("CENTER", f, "TOPRIGHT", -size * 0.1, -size * 0.1)
+    f.icon = f.top:CreateTexture(nil, "OVERLAY")
+    f.icon:SetAtlas(DRAGON)
+    f.icon:SetAllPoints()
+    return f
+end
+
+local function ShowModel(f, on)
+    f.ring:SetShown(on)
+    f.inner:SetShown(on)
+    f.model:SetShown(on)
+    f.dragon:SetShown(on)
+    f.icon:SetShown(not on)
+end
+
+-- Shows npc's portrait on f (from CreatePortrait), or the dragon without one.
+function Rares:SetPortrait(f, npc)
+    f.npc = npc
+    if not npc then
+        ShowModel(f, false)
+        return
+    end
+    ShowModel(f, true)
+    local model = f.model
+    model:ClearModel()
+    pcall(model.SetCreature, model, npc)
+    pcall(model.SetPortraitZoom, model, 1)
+    C_Timer.After(LOAD_SECONDS, function()
+        if f.npc ~= npc then return end
+        local ok, file = pcall(model.GetModelFileID, model)
+        if not (ok and file and file ~= 0) then ShowModel(f, false) end
+    end)
+end
+
 -- Showing them ------------------------------------------------------------------
 
 local CLASSES = { rare = "Rare", rareelite = "Rare elite", elite = "Elite (test)", normal = "Normal (test)" }

@@ -187,7 +187,7 @@ local EVENT_ICONS = {
     rep = { file = "Interface\\Icons\\Achievement_Reputation_01", size = 18 },
     ride = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
-    rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
+    rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 28 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
 }
 
@@ -696,6 +696,10 @@ local function GetMarker(i)
         m.group = nil
         m.icon:Show()
     end
+    if m and m.portrait then
+        m.portrait:Hide()
+        m.icon:Show()
+    end
     if m then
         ns.MarkerPiles:Reset(m)
         return m
@@ -825,6 +829,14 @@ local function BuildMarkers()
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
+                -- Rares show their portrait instead of the icon.
+                if kind == "rare" then
+                    m.portrait = m.portrait or ns.Rares:CreatePortrait(m, size)
+                    m.portrait:SetPoint("CENTER")
+                    ns.Rares:SetPortrait(m.portrait, e[9])
+                    m.portrait:Show()
+                    m.icon:Hide()
+                end
                 m.title = title
                 m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end
