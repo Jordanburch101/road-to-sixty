@@ -49,4 +49,5 @@ GuildProbe.lua
 PartyProbe.lua
 LevelProbe.lua
 MountProbe.lua
+PortraitProbe.lua
 #@end-debug@
