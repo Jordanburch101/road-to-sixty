@@ -123,7 +123,13 @@ Verified in game; trust these over web guides, and re-check after patches.
   GUIDs (target, nameplates) are secret values (`issecretvalue`), so their
   copy part cannot be read. Loot source GUIDs are believed secret too (not
   probed). Runs are joined by time and group instead (Journal.lua).
-  Other players' GUIDs, names and guilds are readable.
+  Other players' GUIDs, names and guilds are readable. A mob's name is
+  secret every way it can be read (`UnitName`, `UnitNameUnmodified`,
+  `GetUnitName`, its tooltip, the target frame text), and so is its health
+  (`UnitHealth`, `UnitHealthMax`); its classification, level and
+  `UnitIsDead` are readable. The XP kill message names the mob in plain text;
+  it comes while the dying target still shows alive, and the target is
+  cleared at the same moment (no `UNIT_HEALTH` death is seen first).
 - SavedVariables are written only on logout, quit, disconnect or `/reload`.
   `ReloadUI()` needs a hardware event (a click or key), never a timer.
 - Some UI values are retail-style "secret values"; reading their rects or
