@@ -1,43 +1,50 @@
 local _, ns = ...
 
 -- Records rare mobs (issue #6) as journal events:
---   rare  name, classification, level   the first kill of a rare: "rare" or
---                                       "rareelite"; level -1 when shown as
---                                       a skull
+--   rare  name, classification, level, npcID, how   the first kill of a
+--         rare: classification "rare" or "rareelite"; level -1 when shown as
+--         a skull; how it was known: "x" its XP message, "l" its loot, "c"
+--         its corpse clicked. name or npcID is nil when it could not be
+--         read (a kill with no XP inside an instance has neither until it
+--         is looted).
 --
--- ns.char.rares is the rares killed: name -> { count, first kill time },
--- nil until the first.
+-- ns.char.rares is the rares killed: key -> { count, first kill time, name,
+-- npcID, classification }, key the NPC ID when known, else the name, else
+-- the classification and time; nil until the first.
 --
--- The combat log is blocked on Forever, so kills come from the XP message,
--- which names the mob (Journal.lua passes each one to Rares:Killed). Mob
--- names on units are secret values there, so a rare cannot be remembered by
--- name; classification and level can be read. On Forever the XP message
--- comes while the dying target still shows as alive, and the target is
--- cleared at the same moment. So a kill is a rare's when a rare targeted
--- while alive is the target when the XP message comes, and the target is
--- gone (or dead) within KILL_SECONDS after it. An add killed while the rare
--- stays targeted does not clear the target, so it is not taken for the
--- rare. The name comes from the message. A rare that dies while not
--- targeted is missed, but every kill is also saved with its name in the
--- kill list, so rares can still be found there later by name.
+-- What the client lets an addon read on Forever decides how (see CLAUDE.md):
+-- - In the open world a mob's name and GUID can be read, even in combat.
+--   Every rare targeted, moused over or with a nameplate is remembered by
+--   GUID. A kill message naming it, its loot (loot sources are GUIDs), or
+--   its corpse clicked records it, so kills with no XP count too.
+-- - Inside instances names and GUIDs are secret; classification and level
+--   are not. A kill there is a rare's when a rare targeted while alive is
+--   the target when the XP message comes, and the target is gone (or dead)
+--   within KILL_SECONDS after it, the name coming from the message; the
+--   message comes while the dying target still shows alive, and the target
+--   is cleared at once. With no XP, a dead rare corpse clicked records it
+--   without a name, and looting it adds the NPC ID.
+-- A target the player was not tapped on (someone else's kill) is not one.
 
 local Rares = {}
 ns.Rares = Rares
 
-local KILL_SECONDS = 1      -- the target is gone this soon after its XP message
+local KILL_SECONDS = 1          -- the target is gone this soon after its XP message
+local SEEN_SECONDS = 30 * 60    -- how long a rare seen counts
+local SAME_CORPSE = 10 * 60     -- a rare corpse inside an instance with the same classification
+                                -- and level this soon after one recorded is the same one
 
 local Log = function(...) ns.Journal:Log(...) end
 
 local RARE = { rare = true, rareelite = true }
 
--- The rare targeted while alive: { classification, level }.
-local engaged
--- A kill message that came while a rare was engaged: { name, GetTime() },
--- waiting for the target to go.
-local pending
--- The engaged rare whose target just went with no kill message yet:
--- { engaged, GetTime() }, in case the message comes just after.
-local lost
+local seen = {}     -- open world: GUID -> unit info (see Read) of a rare seen alive, with t = GetTime()
+local done = {}     -- GUID -> true once its kill is recorded this session
+local recent = {}   -- inside instances: { classification, level, GetTime() } of kills recorded
+-- The rare targeted while alive (unit info), and a kill message waiting for
+-- its target to go: { name, GetTime() }. lost is the engaged rare whose
+-- target went with no message yet: { info, GetTime() }.
+local engaged, pending, lost
 
 --@debug@
 -- /rts rareprobe elites counts elites as rares too, to try the whole path
@@ -64,16 +71,37 @@ local function Secret(v)
     return issecretvalue and issecretvalue(v) or false
 end
 
--- The target's classification, if it is a mob and the client lets it be read.
-local function TargetClass()
-    if not UnitExists("target") or UnitIsPlayer("target") then return end
-    local ok, class = pcall(UnitClassification, "target")
-    if ok and not Secret(class) then return class end
+-- A value from fn(...), or nil when it errors or is secret.
+local function Read(fn, ...)
+    if not fn then return end
+    local ok, value = pcall(fn, ...)
+    if ok and not Secret(value) then return value end
 end
 
-local function TargetDead()
-    local ok, dead = pcall(UnitIsDead, "target")
-    return ok and not Secret(dead) and dead == true
+local function NpcID(guid)
+    local kind, id = tostring(guid or ""):match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+    if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
+end
+
+-- What can be read of a mob unit: { class, level, guid, name, npc, dead,
+-- tapDenied }, each nil when secret; nil for no unit or a player.
+local function UnitInfo(unit)
+    if not UnitExists(unit) or Read(UnitIsPlayer, unit) then return end
+    local guid = Read(UnitGUID, unit)
+    return {
+        class = Read(UnitClassification, unit), level = Read(UnitLevel, unit),
+        guid = guid, name = Read(UnitName, unit), npc = NpcID(guid),
+        dead = Read(UnitIsDead, unit) == true, tapDenied = Read(UnitIsTapDenied, unit) == true,
+    }
+end
+
+local function IsRare(info)
+    if not info then return false end
+    local rare = RARE[info.class] or false
+    --@debug@
+    rare = rare or (testElites and info.class == "elite")
+    --@end-debug@
+    return rare
 end
 
 -- Whether this journey records rares now: not a seeded one, unless testing.
@@ -86,60 +114,115 @@ local function Recording()
     return not skip
 end
 
--- The engaged rare died with the kill message pending: logs its first kill.
-local function Confirm()
-    local name, rare = pending[1], engaged
-    pending, engaged = nil, nil
+-- The rares entry with this name, for a kill message of a rare killed before.
+local function KnownByName(name)
+    for _, r in pairs(ns.char.rares or {}) do
+        if r[3] == name then return r end
+    end
+end
+
+-- Records a rare's kill: logs the first of each, counts the rest. info is
+-- its unit info, name the best name known for it, how as in the header.
+local function Record(info, name, how)
+    if info.guid then
+        if done[info.guid] then return end
+        done[info.guid] = true
+    else
+        recent[#recent + 1] = { info.class, info.level, GetTime() }
+    end
+    name = name or info.name
     --@debug@
-    lastKill = name .. (Recording() and ", logged" or ", not recorded (seeded journey)")
+    lastKill = ("%s, %s (%s)"):format(tostring(name), Recording() and "recorded" or "not recorded (seeded journey)", how)
     --@end-debug@
     if not Recording() then return end
-    Log("rare", name, rare[1], rare[2])
-    ns.char.rares = ns.char.rares or {}
-    ns.char.rares[name] = { 1, time() }
+    local rares = ns.char.rares or {}
+    ns.char.rares = rares
+    -- One with neither (no XP inside an instance) is a kill of its own.
+    local key = info.npc or name or ("%s %d"):format(tostring(info.class), time())
+    local known = rares[key]
+    if known then
+        known[1] = known[1] + 1
+        known[3] = known[3] or name
+        return
+    end
+    Log("rare", name, info.class, info.level, info.npc, how)
+    rares[key] = { 1, time(), name, info.npc, info.class }
+end
+
+-- Inside an instance (no GUID): whether a rare corpse is one recorded lately.
+local function RecentCorpse(info)
+    for i = #recent, 1, -1 do
+        local r = recent[i]
+        if GetTime() - r[3] > SAME_CORPSE then break end
+        if r[1] == info.class and r[2] == info.level then return true end
+    end
+    return false
+end
+
+-- Remembers a rare seen alive in the open world, by GUID.
+function Rares:Look(unit)
+    local info = UnitInfo(unit)
+    if info and info.guid and not info.dead and IsRare(info) then
+        info.t = GetTime()
+        seen[info.guid] = info
+    end
+end
+
+-- The rare remembered by GUID, if seen lately.
+local function Seen(guid)
+    local s = guid and seen[guid]
+    if s and GetTime() - s.t <= SEEN_SECONDS then return s end
 end
 
 local function Fresh()
     return pending and engaged and GetTime() - pending[2] <= KILL_SECONDS
 end
 
--- A new target: if the engaged rare's target went just after its kill
--- message, that was its kill. Then engaged if the new target is a rare (or,
--- testing, an elite) still alive.
+local function Confirm()
+    local name, info = pending[1], engaged
+    pending, engaged = nil, nil
+    Record(info, name, "x")
+end
+
+-- A new target: the engaged rare gone just after its kill message was its
+-- kill; a rare corpse clicked is one (if not someone else's); a rare alive
+-- is engaged (and, in the open world, remembered).
 function Rares:Target()
-    local gone = not UnitExists("target") or TargetDead()
+    local info = UnitInfo("target")
+    local gone = not info or info.dead
     if Fresh() and gone then
         Confirm()
     end
     lost = engaged and not pending and gone and { engaged, GetTime() } or nil
     pending, engaged = nil, nil
-    local class = TargetClass()
-    local rare = RARE[class]
+    local rare = info and IsRare(info) and info or nil
     --@debug@
-    rare = rare or (testElites and class == "elite")
-    lastLook = ("%s, %s"):format(tostring(class), not rare and "not a rare" or TargetDead() and "dead already"
-        or "engaged")
-    Trace(("target %s, dead %s"):format(UnitExists("target") and tostring(class) or "none", tostring(TargetDead())))
+    local what = "not a rare"
+    if rare then what = rare.dead and "dead" or "engaged" end
+    lastLook = ("%s, %s"):format(tostring(info and info.class), what)
+    Trace(("target %s, dead %s"):format(info and tostring(info.class) or "none", tostring(info and info.dead)))
     if special and gone then
         moments[#moments + 1] = { time(), special[1], special[2], special[3] }
         if #moments > 10 then table.remove(moments, 1) end
     end
     special = nil
-    if (class == "elite" or RARE[class]) and not TargetDead() then
-        local okGuid, guid = pcall(UnitGUID, "target")
-        special = { class, UnitLevel("target"), okGuid and not Secret(guid) and guid or false }
+    if info and (info.class == "elite" or RARE[info.class]) and not info.dead then
+        special = { info.class, info.level, info.guid or false }
     end
     --@end-debug@
-    if rare and not TargetDead() then
-        local ok, level = pcall(UnitLevel, "target")
-        engaged = { class, ok and not Secret(level) and level or nil }
+    if not rare then return end
+    if not rare.dead then
+        engaged = rare
+        self:Look("target")
+    elseif not rare.tapDenied and (rare.guid or not RecentCorpse(rare)) then
+        Record(Seen(rare.guid) or rare, nil, "c")
     end
 end
 
 -- The target's health changed: a target seen dead just after its kill
 -- message also confirms it.
 function Rares:Health(unit)
-    if unit ~= "target" or not TargetDead() then return end
+    if unit ~= "target" or not Read(UnitIsDead, "target") then return end
     --@debug@
     if trace[#trace] and not trace[#trace]:find("target died", 1, true) then
         Trace("target died")
@@ -148,34 +231,72 @@ function Rares:Health(unit)
     if Fresh() then Confirm() end
 end
 
--- A kill from the XP message: counts a rare killed before, or holds the
--- name until the engaged rare is seen gone (see the header).
+-- A kill from the XP message (Journal.lua passes each one here).
 function Rares:Killed(name)
     if not name then return end
     --@debug@
-    Trace(("kill %s (target %s, dead %s, engaged %s)"):format(name, UnitExists("target") and "yes" or "none",
-        tostring(TargetDead()), engaged and "yes" or "no"))
+    Trace(("kill %s (target %s, engaged %s)"):format(name, UnitExists("target") and "yes" or "none",
+        engaged and "yes" or "no"))
+    lastKill = name .. ", not a rare"
     --@end-debug@
-    local known = ns.char.rares and ns.char.rares[name]
-    if known then
-        --@debug@
-        lastKill = name .. ", counted again"
-        --@end-debug@
-        if Recording() then known[1] = known[1] + 1 end
-        return
+    -- Open world: a rare seen alive with this name.
+    for guid, s in pairs(seen) do
+        if s.name == name and not done[guid] and Seen(guid) then
+            Record(s, name, "x")
+            if engaged and engaged.guid == guid then engaged = nil end
+            return
+        end
     end
-    -- The rare's target went just before its message.
+    -- The engaged rare's target went just before its message.
     if not engaged and lost and GetTime() - lost[2] <= KILL_SECONDS then
         engaged, pending, lost = lost[1], { name, GetTime() }, nil
         Confirm()
         return
     end
-    --@debug@
-    lastKill = name .. (engaged and ", waiting for the target to go" or ", not a rare target")
-    --@end-debug@
     if engaged then
+        --@debug@
+        lastKill = name .. ", waiting for the target to go"
+        --@end-debug@
         pending = { name, GetTime() }
-        if TargetDead() then Confirm() end
+        if Read(UnitIsDead, "target") then Confirm() end
+        return
+    end
+    -- A rare killed before, met again unseen: counted.
+    local known = KnownByName(name)
+    if known and Recording() then known[1] = known[1] + 1 end
+end
+
+-- Loot: its sources are GUIDs, readable even inside instances. A rare seen
+-- alive is recorded (a kill with no XP). Inside an instance, looting a rare
+-- corpse targeted gives its NPC ID to the kill recorded without one.
+function Rares:Looted()
+    local npcs, count = {}, 0
+    for slot = 1, (Read(GetNumLootItems) or 0) do
+        local sources = { pcall(GetLootSourceInfo, slot) }
+        if table.remove(sources, 1) then
+            for i = 1, #sources, 2 do
+                local guid = not Secret(sources[i]) and sources[i] or nil
+                local s = Seen(guid)
+                if s and not done[guid] then Record(s, s.name, "l") end
+                local npc = NpcID(guid)
+                if npc and not npcs[npc] then
+                    npcs[npc] = true
+                    count = count + 1
+                end
+            end
+        end
+    end
+    local target = UnitInfo("target")
+    if count ~= 1 or not (target and target.dead and IsRare(target)) or target.guid then return end
+    local npc = next(npcs)
+    local events = ns.char.events
+    for i = #events, 1, -1 do
+        local e = events[i]
+        if e[1] < time() - SAME_CORPSE then break end
+        if e[2] == "rare" and not e[9] and e[7] == target.class and e[8] == target.level then
+            e[9] = npc
+            return
+        end
     end
 end
 
@@ -186,19 +307,19 @@ local CLASSES = { rare = "Rare", rareelite = "Rare elite", elite = "Elite (test)
 -- How to show a rare event: title and detail (what kind of entry, to go
 -- before the place).
 function Rares:Describe(e)
-    local level = e[8]
-    local detail = CLASSES[e[7]] or "Rare"
+    local class, level = CLASSES[e[7]] or "Rare", e[8]
+    local detail = class
     if level then
         detail = detail .. (level < 0 and ", level ??" or (", level " .. level))
     end
-    return "Killed " .. (e[6] or "?"), detail
+    return "Killed " .. (e[6] or ("a " .. class:lower())), detail
 end
 
 -- Rares killed in the journey shown: { name, count, first time }, first killed first.
 function Rares:List()
     local list = {}
-    for name, r in pairs(ns.view.rares or {}) do
-        list[#list + 1] = { name, r[1], r[2] }
+    for _, r in pairs(ns.view.rares or {}) do
+        list[#list + 1] = { r[3] or ("a " .. (CLASSES[r[5]] or "Rare"):lower()), r[1], r[2] }
     end
     table.sort(list, function(a, b) return a[3] < b[3] end)
     return list
@@ -208,6 +329,9 @@ end
 
 ns.On("PLAYER_TARGET_CHANGED", function() Rares:Target() end)
 ns.On("UNIT_HEALTH", function(unit) Rares:Health(unit) end)
+ns.On("UPDATE_MOUSEOVER_UNIT", function() Rares:Look("mouseover") end)
+ns.On("NAME_PLATE_UNIT_ADDED", function(unit) Rares:Look(unit) end)
+ns.On("LOOT_OPENED", function() Rares:Looted() end)
 
 --@debug@
 -- /rts rareprobe: what the client tells about the target, and what the
@@ -255,7 +379,7 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
         P(("Target: name %s, classification %s, level %s, dead %s."):format(
             okName and (Secret(name) and "(secret)" or tostring(name)) or "error",
             ok and (Secret(class) and "(secret)" or tostring(class)) or "error",
-            tostring(UnitLevel("target")), tostring(TargetDead())))
+            tostring(UnitLevel("target")), tostring(Read(UnitIsDead, "target"))))
         -- Other ways the name might be read, and whether health can be (to
         -- tell a death from Esc when there is no XP message).
         local function Show(label, fn, ...)
@@ -303,9 +427,11 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
     P(("Where: %s (map %s, continent %s), instance %s (%s), in combat %s."):format(info and info.name or "?",
         tostring(mapID), tostring(c), tostring(inInstance), tostring(instanceType),
         tostring(UnitAffectingCombat("player"))))
-    P(("Engaged: %s. Test mode %s.%s"):format(
-        engaged and ("%s level %s%s"):format(engaged[1], tostring(engaged[2]),
-            engaged[3] and (", died %ds ago"):format(math.floor(GetTime() - engaged[3])) or "") or "none",
+    local remembered = 0
+    for _ in pairs(seen) do remembered = remembered + 1 end
+    P(("Engaged: %s. Rares remembered: %d. Test mode %s.%s"):format(
+        engaged and ("%s level %s, %s"):format(tostring(engaged.class), tostring(engaged.level),
+            engaged.name or "name secret") or "none", remembered,
         testElites and "on" or "off", ns.char.seeded and not testElites
             and " This journey is seeded: nothing is recorded outside test mode." or ""))
     P("Last target: " .. lastLook .. ". Last kill: " .. lastKill .. ".")
