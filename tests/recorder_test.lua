@@ -79,6 +79,7 @@ for _ = 1, 60 do
 end
 check(#ns.char.segments == 1, "walking makes one segment, got " .. #ns.char.segments)
 check(Recorder:OpenPoints() == 20, "20 points while walking, got " .. Recorder:OpenPoints())
+check(ns.char.segments[1].d ~= "", "a minute of walking is written into the segment before logout")
 
 -- 2. Teleport 5000 yards: new segment, no line across.
 game.x = game.x + 5000

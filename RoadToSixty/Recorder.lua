@@ -16,6 +16,7 @@ local Recorder = {}
 ns.Recorder = Recorder
 
 local SAMPLE_INTERVAL = 1   -- seconds between position checks
+local FLUSH_SAMPLES = 60    -- samples between writes of the open segment into its string
 local TELEPORT_DIST = 300   -- yards; a bigger jump between two samples is a teleport
 
 -- Modes: w = on foot or mounted, t = flight path, g = ghost (corpse run).
@@ -122,6 +123,16 @@ end
 local function Sample()
     Recorder.lastSample = GetTime()
     Recorder.samples = Recorder.samples + 1
+
+    -- The open segment's points sit in a buffer until Flush writes them into
+    -- its string. Logout flushes, but a session that ends without that event
+    -- would lose everything since the segment opened, so flush every minute.
+    if Recorder.samples % FLUSH_SAMPLES == 0 then
+        Flush()
+        if ns.Roster then
+            ns.Roster:Flush()
+        end
+    end
 
     -- Instances are logged as enter/leave events only, never as path.
     local c, x, y

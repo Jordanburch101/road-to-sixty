@@ -269,9 +269,11 @@ end)
 -- ns.char.kills = { d = "dt,xp,n;...", last = time of the last kill,
 -- names = { mob name, ... } }, where dt is seconds since the previous kill
 -- and n indexes names. About 8 bytes a kill. No position: the replay puts a
--- kill where the path was at that time. This session's kills wait in
--- killBuffer and are packed in at logout (and /reload).
+-- kill where the path was at that time. The first kill's dt is its full
+-- timestamp, as last starts at 0. This session's kills wait in killBuffer
+-- and are packed in every minute and at logout (and /reload).
 local killBuffer, nameIndex = {}, nil
+local PACK_INTERVAL = 60
 
 local function AddKill(name, xp)
     local kills = ns.char.kills
@@ -292,10 +294,16 @@ local function AddKill(name, xp)
     kills.last = t
 end
 
-ns.On("PLAYER_LOGOUT", function()
+local function PackKills()
+    if #killBuffer == 0 then return end
     local kills = ns.char.kills
     kills.d = kills.d .. table.concat(killBuffer)
     wipe(killBuffer)
+end
+
+ns.On("PLAYER_LOGOUT", PackKills)
+ns.On("PLAYER_LOGIN", function()
+    C_Timer.NewTicker(PACK_INTERVAL, function() ns.SafeCall(PackKills) end)
 end)
 
 -- Every recorded kill, oldest first: { t, xp, name }.

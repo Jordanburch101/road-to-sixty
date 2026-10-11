@@ -11,7 +11,8 @@ local _, ns = ...
 --     path = { { c = continentID, d = "x,y;x,y;..." }, ... },  -- world yards
 --   }
 --
--- The coarse path is kept up to date while playing and saved on logout.
+-- The coarse path is kept up to date while playing, written into its
+-- strings every minute and on logout.
 
 local Roster = {}
 ns.Roster = Roster
@@ -27,7 +28,8 @@ function Roster:Key()
     return UnitName("player") .. "-" .. GetRealmName()
 end
 
--- Writes buffered points into the open piece's string.
+-- Writes buffered points into the open piece's string. The recorder calls
+-- it every minute, and logout calls it too.
 local function Flush()
     if entry and buf and #buf > 0 then
         local piece = entry.path[#entry.path]
@@ -36,6 +38,7 @@ local function Flush()
         wipe(buf)
     end
 end
+Roster.Flush = Flush
 
 -- Adds a point the recorder stored, keeping one every COARSE_YARDS.
 function Roster:Track(c, x, y)
