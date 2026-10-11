@@ -59,7 +59,11 @@ function Crafts:CheckSkills()
         elseif (s[2] or 0) > (old[2] or 0) then
             Log("prof", name, s[1], s[2])
         end
-        known[name] = { s[1], s[2], s[3] or (old and old[3]) }
+        -- This runs on every weapon and defence skill point too, so leave the
+        -- saved table alone when nothing about the profession changed.
+        if not (old and old[1] == s[1] and old[2] == s[2] and (old[3] or not s[3])) then
+            known[name] = { s[1], s[2], s[3] or (old and old[3]) }
+        end
     end
     ns.char.skills = known
 end
@@ -253,7 +257,18 @@ ns.On("SKILL_LINES_CHANGED", function() Crafts:CheckSkills() end)
 ns.On("CHAT_MSG_SKILL", function() Crafts:CheckSkills() end)
 
 ns.On("TRADE_SKILL_SHOW", function() Crafts:CheckRecipes() end)
-ns.On("TRADE_SKILL_LIST_UPDATE", function() Crafts:CheckRecipes() end)
+
+-- The list updates on every craft and filter change, and each check reads
+-- every recipe, so a burst of updates is read once after it settles.
+local recipeCheckPending = false
+ns.On("TRADE_SKILL_LIST_UPDATE", function()
+    if recipeCheckPending then return end
+    recipeCheckPending = true
+    C_Timer.After(0.5, function()
+        recipeCheckPending = false
+        ns.SafeCall(Crafts.CheckRecipes, Crafts)
+    end)
+end)
 
 ns.On("TRAINER_SHOW", function() trainerOpen = true end)
 ns.On("TRAINER_CLOSED", function() trainerOpen = false end)
