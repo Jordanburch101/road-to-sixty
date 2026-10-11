@@ -401,16 +401,7 @@ local function ZoneTimeline()
         end
     end
     return function(t)
-        local lo, hi = 0, #times
-        while lo < hi do
-            local mid = math.floor((lo + hi + 1) / 2)
-            if times[mid] <= t then
-                lo = mid
-            else
-                hi = mid - 1
-            end
-        end
-        return zones[lo]
+        return zones[ns.LastIndex(times, t)]
     end
 end
 

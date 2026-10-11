@@ -224,6 +224,9 @@ local state = {
     -- each detail level, made when first needed (see GetLod).
     n = 0, px = {}, py = {}, pt = {}, pm = {}, pb = {}, brk = {}, pj = {},
     bounds = { 0, 0, 0, 0 }, lods = {},
+    -- Level and zone over time, for the info line and tooltips: the level
+    -- (zone) at time t is levels[LastIndex(levelTimes, t)].
+    timelines = { levelTimes = {}, levels = {}, zoneTimes = {}, zones = {} },
     markerCount = 0,
     markerNow = math.huge,      -- markers up to this time are shown
 
@@ -380,15 +383,10 @@ end
 
 -- Timeline lookups for the info line ------------------------------------------
 
+-- Both read the timelines BuildPoints makes, as they run every replay frame.
 local function LevelAt(t)
-    local level
-    for _, e in ipairs(ns.view.events) do
-        if e[1] > t then break end
-        if e[2] == "on" or e[2] == "lvl" then
-            level = e[6]
-        end
-    end
-    return level or ns.Roster:ViewLevel()
+    local tl = state.timelines
+    return tl.levels[ns.LastIndex(tl.levelTimes, t)] or ns.Roster:ViewLevel()
 end
 
 local function ZoneName(mapID)
@@ -397,14 +395,8 @@ local function ZoneName(mapID)
 end
 
 local function ZoneAt(t)
-    local zone
-    for _, e in ipairs(ns.view.events) do
-        if e[1] > t then break end
-        if e[2] == "zone" then
-            zone = e[6]
-        end
-    end
-    return ZoneName(zone)
+    local tl = state.timelines
+    return ZoneName(tl.zones[ns.LastIndex(tl.zoneTimes, t)])
 end
 
 -- World setup, once per session -------------------------------------------------
@@ -603,13 +595,19 @@ end
 local function BuildPoints(paths)
     local px, py, pt, pm, pb, brk, pj = {}, {}, {}, {}, {}, {}, {}
 
-    -- Level changes in time order, walked alongside the points.
+    -- Level changes in time order, walked alongside the points. The same
+    -- pass builds the level and zone timelines.
     local changes = {}
+    local tl = { levelTimes = {}, levels = {}, zoneTimes = {}, zones = {} }
     for _, e in ipairs(ns.view.events) do
         if e[2] == "on" or e[2] == "lvl" then
             changes[#changes + 1] = e
+            tl.levelTimes[#tl.levelTimes + 1], tl.levels[#tl.levels + 1] = e[1], e[6]
+        elseif e[2] == "zone" then
+            tl.zoneTimes[#tl.zoneTimes + 1], tl.zones[#tl.zones + 1] = e[1], e[6]
         end
     end
+    state.timelines = tl
     local nextChange = 1
     local band = LevelBand(changes[1] and changes[1][6] or 1)
 
@@ -1144,12 +1142,16 @@ local function ShowJumpIcons()
     end
 end
 
--- Shows the jumps the replay has reached (up to drawn line shown).
+-- Shows the jumps the replay has reached (up to drawn line shown). An arc
+-- can be hundreds of pieces, so only arcs whose state changed are touched.
 local function ShowJumps(shown)
     for _, jump in ipairs(state.jumps) do
-        jump.visible = jump.index <= shown
-        for _, part in ipairs(jump.parts) do
-            part:SetShown(jump.visible)
+        local visible = jump.index <= shown
+        if visible ~= jump.visible then
+            jump.visible = visible
+            for _, part in ipairs(jump.parts) do
+                part:SetShown(visible)
+            end
         end
     end
     ShowJumpIcons()
@@ -2010,9 +2012,13 @@ local function ApplyView()
         zoneView:Update(ViewArea(0))
     end
 
+    -- Resizing every line each frame is most of the cost of zooming, so
+    -- while the zoom animates it only happens after a tenth of drift, and
+    -- once more when the animation settles.
+    local settled = z == state.targetZoom
     if NeedsPathBuild() then
         BuildPath()
-    elseif z ~= state.lineZoom then
+    elseif z ~= state.lineZoom and (settled or math.abs(z / state.lineZoom - 1) > 0.1) then
         SetLineThickness()
     end
     UpdateVisible()
@@ -2027,7 +2033,7 @@ local function ApplyView()
         end
     end
     ShowJumpIcons()
-    if z ~= state.otherZoom then
+    if z ~= state.otherZoom and (settled or math.abs(z / state.otherZoom - 1) > 0.1) then
         SetOtherThickness()
     end
 
