@@ -77,6 +77,9 @@ end
 
 local function Show(npc, name)
     if not frame then Build() end
+    for i, kind in ipairs(KINDS) do
+        frame.cells[i].label:SetText(("%s. %s"):format(string.char(64 + i), kind))
+    end
     frame.title:SetText(("NPC %d%s"):format(npc, name and (" - " .. name) or ""))
     local report = {}
     for i, cell in ipairs(frame.cells) do
@@ -110,7 +113,59 @@ local function Show(npc, name)
         npc, table.concat(report, ", ")))
 end
 
+-- /rts portraitprobe display: the target's display ID, read from a model
+-- set to the unit, then drawn back from it (A by NPC ID, B by that display
+-- ID), to see whether the exact look of a creature with several can be kept.
+local reader
+local function ShowDisplay()
+    if not UnitExists("target") then
+        ns.Print("Target a mob first.")
+        return
+    end
+    reader = reader or CreateFrame("PlayerModel", nil, UIParent)
+    reader:SetSize(1, 1)
+    reader:SetPoint("TOPLEFT", -10, 10)
+    local ok, err = pcall(reader.SetUnit, reader, "target")
+    if not ok then
+        ns.Print("SetUnit on the target failed: " .. tostring(err))
+        return
+    end
+    -- The model loads a moment later; its display ID only then.
+    C_Timer.After(0.5, function()
+        local okRead, display = pcall(reader.GetDisplayInfo, reader)
+        local npc = TargetNpc()
+        ns.Print(("Target display ID: %s%s, NPC ID %s."):format(
+            not okRead and "error" or Secret(display) and "(secret)" or tostring(display),
+            reader.GetDisplayInfo and "" or " (no GetDisplayInfo)", tostring(npc)))
+        if not (okRead and type(display) == "number" and display > 0) then return end
+        if not frame then Build() end
+        frame.title:SetText(("NPC %s, display %d"):format(tostring(npc), display))
+        local a, b, c = frame.cells[1].model, frame.cells[2].model, frame.cells[3].model
+        for _, model in ipairs({ a, b, c }) do
+            if model then model:ClearModel() end
+        end
+        if a and npc then
+            pcall(a.SetCreature, a, npc)
+            pcall(a.SetPortraitZoom, a, 1)
+        end
+        if b then
+            local okSet, setErr = pcall(b.SetDisplayInfo, b, display)
+            pcall(b.SetPortraitZoom, b, 1)
+            if not okSet then ns.Print("SetDisplayInfo failed: " .. tostring(setErr)) end
+        end
+        frame.cells[1].label:SetText("A. by NPC ID")
+        frame.cells[2].label:SetText("B. by display ID")
+        frame.cells[3].label:SetText("C. (empty)")
+        SetPortraitTexture(frame.live.tex, "target")
+        frame:Show()
+    end)
+end
+
 ns.Command("portraitprobe", "draw a creature from its NPC ID every way the client allows (developer)", function(arg)
+    if arg == "display" then
+        ShowDisplay()
+        return
+    end
     local npc, name = tonumber(arg), nil
     if not npc then npc = TargetNpc() end
     if not npc then npc, name = LastRareNpc() end
