@@ -161,9 +161,107 @@ local function ShowDisplay()
     end)
 end
 
+-- /rts portraitprobe looks [npcID]: candidate looks for a rare's portrait,
+-- each at the sizes it would have in a History row, a map marker and a
+-- replay pop, to pick one from a screenshot. A model cannot be cut round,
+-- but its background is clear, so in front of a disc it reads as round.
+local DISC = 452111         -- interface/guildframe/guildlogomask_l: a white disc
+local DRAGON = "nameplates-icon-elite-silver"
+local SILVER = { 0.78, 0.8, 0.86 }
+local LOOK_SIZES = { 28, 40, 72 }
+local LOOKS = { "Edge", "Edge + dragon", "Disc", "Disc + dragon", "Icon (no model)" }
+local looks
+
+local function Dragon(parent, size)
+    local t = parent:CreateTexture(nil, "OVERLAY")
+    t:SetAtlas(DRAGON)
+    t:SetSize(size * 0.5, size * 0.5)
+    t:SetPoint("CENTER", parent, "TOPRIGHT", -size * 0.1, -size * 0.1)
+end
+
+-- One candidate of the given look and size, drawing npc.
+local function Candidate(parent, look, size, npc)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(size, size)
+    if look == "Icon (no model)" then
+        local t = f:CreateTexture(nil, "ARTWORK")
+        t:SetAtlas(DRAGON)
+        t:SetAllPoints()
+        return f
+    end
+    if look:find("Disc") then
+        local ring = f:CreateTexture(nil, "BACKGROUND")
+        ring:SetTexture(DISC)
+        ring:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ring:SetVertexColor(unpack(SILVER))
+        ring:SetAllPoints()
+        local inner = f:CreateTexture(nil, "BORDER")
+        inner:SetTexture(DISC)
+        inner:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        inner:SetVertexColor(0.1, 0.1, 0.12)
+        inner:SetPoint("CENTER")
+        inner:SetSize(size * 0.86, size * 0.86)
+    else
+        local bg = f:CreateTexture(nil, "BACKGROUND")
+        bg:SetColorTexture(unpack(SILVER))
+        bg:SetAllPoints()
+        local inner = f:CreateTexture(nil, "BORDER")
+        inner:SetColorTexture(0.1, 0.1, 0.12)
+        inner:SetPoint("TOPLEFT", 1, -1)
+        inner:SetPoint("BOTTOMRIGHT", -1, 1)
+    end
+    local model = CreateFrame("PlayerModel", nil, f)
+    model:SetPoint("TOPLEFT", 1, -1)
+    model:SetPoint("BOTTOMRIGHT", -1, 1)
+    pcall(model.SetCreature, model, npc)
+    pcall(model.SetPortraitZoom, model, 1)
+    if look:find("dragon") then Dragon(f, size) end
+    return f
+end
+
+local function ShowLooks(npc, name)
+    if looks then looks:Hide() end
+    looks = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    local colX = { 130, 180, 250 }
+    local rowH = 84
+    looks:SetSize(colX[3] + LOOK_SIZES[3] + 24, 50 + #LOOKS * rowH)
+    looks:SetPoint("CENTER")
+    looks:SetMovable(true)
+    looks:EnableMouse(true)
+    looks:RegisterForDrag("LeftButton")
+    looks:SetScript("OnDragStart", looks.StartMoving)
+    looks:SetScript("OnDragStop", looks.StopMovingOrSizing)
+    local title = looks:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText(("Rare portrait looks: NPC %d%s"):format(npc, name and (" - " .. name) or ""))
+    for r, look in ipairs(LOOKS) do
+        local y = -36 - (r - 1) * rowH
+        local label = looks:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("TOPLEFT", 16, y - 24)
+        label:SetText(("%d. %s"):format(r, look))
+        for c, size in ipairs(LOOK_SIZES) do
+            local f = Candidate(looks, look, size, npc)
+            f:SetPoint("CENTER", looks, "TOPLEFT", colX[c] + LOOK_SIZES[3] / 2 - (c < 3 and 20 or 0),
+                y - LOOK_SIZES[3] / 2)
+        end
+    end
+    looks:Show()
+end
+
 ns.Command("portraitprobe", "draw a creature from its NPC ID every way the client allows (developer)", function(arg)
     if arg == "display" then
         ShowDisplay()
+        return
+    end
+    if arg:match("^looks") then
+        local npc, name = tonumber(arg:match("(%d+)")), nil
+        if not npc then npc = TargetNpc() end
+        if not npc then npc, name = LastRareNpc() end
+        if not npc then
+            ns.Print("Give an NPC ID (/rts portraitprobe looks 30) or target a mob in the open world.")
+            return
+        end
+        ShowLooks(npc, name)
         return
     end
     local npc, name = tonumber(arg), nil
