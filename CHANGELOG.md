@@ -16,10 +16,11 @@ broken and now works. Leave out internal changes. Sections are
   reached its standing. Turn it on or off under Learned in the History
   filter.
 - Riding and mounts: learning to ride and each new mount are recorded
-  where they happened. They show in History, on the map
-  (even zoomed out, like dungeons), and in Stats, where Riding tells the
-  level you learned it at. Turn them on or off under Learned in the
-  History filter.
+  where they happened. They show in History, on the map (even zoomed
+  out, like dungeons), and in Stats, where Riding tells the level you
+  learned it at. Turn them on or off under Learned in the History filter.
+- The History filter's Crafting button is now called Learned: it holds
+  professions and recipes as before, and now reputation and riding too.
 - Hovering the replay bar under the map now also shows your time played
   at that point of the journey, in total and in that level.
 - Each level up now prints a short summary in chat: where you reached
