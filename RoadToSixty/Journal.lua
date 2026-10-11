@@ -381,10 +381,50 @@ end)
 
 ns.On("ZONE_CHANGED_NEW_AREA", CheckZone)
 
+-- Asking for the time played makes the game print its /played lines in
+-- chat; LevelChat.lua's summary says it instead. So the chat windows stop
+-- listening for the answer to this one request and listen again just after
+-- it, or after PLAYED_TIMEOUT seconds if it never comes. A /played typed by
+-- the player still shows.
+local PLAYED_TIMEOUT = 10
+local mutedChats
+
+local function UnmuteChats()
+    for _, chat in ipairs(mutedChats or {}) do
+        chat:RegisterEvent("TIME_PLAYED_MSG")
+    end
+    mutedChats = nil
+end
+
+local function MuteChats()
+    if mutedChats then return end
+    mutedChats = {}
+    for i = 1, NUM_CHAT_WINDOWS or 10 do
+        local chat = _G["ChatFrame" .. i]
+        if chat and chat:IsEventRegistered("TIME_PLAYED_MSG") then
+            chat:UnregisterEvent("TIME_PLAYED_MSG")
+            mutedChats[#mutedChats + 1] = chat
+        end
+    end
+    C_Timer.After(PLAYED_TIMEOUT, function() ns.SafeCall(UnmuteChats) end)
+end
+
+--@debug@
+-- /rts playedprobe: asks for the time played the way a level up does, so
+-- the chat option can be tried without levelling.
+ns.Command("playedprobe", "ask for the time played as a level up does (developer)", function()
+    MuteChats()
+    ns.Print(("Asked for the time played; %d chat window(s) muted, so the game's lines should not show."):format(
+        mutedChats and #mutedChats or 0))
+    RequestTimePlayed()
+end)
+--@end-debug@
+
 ns.On("PLAYER_LEVEL_UP", function(level)
     Snapshot(level)
     Journal:Log("lvl", level)
     pendingPlayedLevel = level
+    MuteChats()
     RequestTimePlayed()
 end)
 
@@ -395,7 +435,70 @@ ns.On("TIME_PLAYED_MSG", function(total)
         snapshot.played = total
     end
     pendingPlayedLevel = nil
+    -- A moment later, so the chat windows do not still get this answer.
+    if mutedChats then
+        C_Timer.After(0.5, function() ns.SafeCall(UnmuteChats) end)
+    end
 end)
+
+-- Time played ----------------------------------------------------------------------
+
+-- The play sessions of the journey shown, from its "on" and "off" events:
+-- { from, to } in time order. A session with no "off" (the game crashed)
+-- ends at its last event; this character's current one runs to now.
+local sessionCache = { view = nil, count = -1, list = nil }
+
+local function Sessions()
+    local events = ns.view.events
+    if sessionCache.view == ns.view and sessionCache.count == #events then
+        return sessionCache.list or {}
+    end
+    local list, open, last = {}, nil, nil
+    for _, e in ipairs(events) do
+        if e[2] == "on" then
+            if open then list[#list + 1] = { open, last } end
+            open = e[1]
+        elseif e[2] == "off" and open then
+            list[#list + 1] = { open, e[1] }
+            open = nil
+        end
+        last = e[1]
+    end
+    if open then
+        list[#list + 1] = { open, ns.view == ns.char and math.huge or last }
+    end
+    sessionCache.view, sessionCache.count, sessionCache.list = ns.view, #events, list
+    return list
+end
+
+-- Seconds online between times a and b.
+local function OnlineBetween(a, b)
+    local seconds = 0
+    for _, s in ipairs(Sessions()) do
+        local from, to = math.max(s[1], a), math.min(s[2], b, time())
+        if to > from then seconds = seconds + to - from end
+    end
+    return seconds
+end
+
+-- Time played at time t in the journey shown: the total, and in the level
+-- the character was at then. Each is from the last level up with a saved
+-- time played, plus the time online since. The level's is nil when its
+-- start has no saved time (tracking began partway through it); both are
+-- nil before the first.
+function Journal:PlayedAt(t)
+    local current, known
+    for _, s in pairs(ns.view.levels) do
+        if s.t and s.t <= t then
+            if not current or s.t > current.t then current = s end
+            if s.played and (not known or s.t > known.t) then known = s end
+        end
+    end
+    if not known then return end
+    local total = known.played + OnlineBetween(known.t, t)
+    local level = current.played and not current.partial and OnlineBetween(current.t, t) or nil
+    return total, level
+end
 
 -- The client can fire PLAYER_DEAD twice for one death (seen once, both in
 -- the same second). Only the same second counts as one death: a shaman's

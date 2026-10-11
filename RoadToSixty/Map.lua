@@ -2193,6 +2193,12 @@ local function ShowScrubTooltip(seq)
         GameTooltip:AddLine(("Level %d"):format(LevelAt(t)), ns.LevelColor(LevelAt(t)))
         GameTooltip:AddLine(ZoneAt(t), 1, 1, 1)
         GameTooltip:AddLine(FormatTime(t), 0.7, 0.7, 0.7)
+        local total, level = ns.Journal:PlayedAt(t)
+        if total then
+            local played = "Played " .. ns.FormatDuration(total)
+            if level then played = played .. ", this level " .. ns.FormatDuration(level) end
+            GameTooltip:AddLine(played, 0.7, 0.7, 0.7)
+        end
     end
     GameTooltip:Show()
 end

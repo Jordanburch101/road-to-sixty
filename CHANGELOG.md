@@ -20,6 +20,16 @@ broken and now works. Leave out internal changes. Sections are
   (even zoomed out, like dungeons), and in Stats, where Riding tells the
   level you learned it at. Turn them on or off under Learned in the
   History filter.
+- Hovering the replay bar under the map now also shows your time played
+  at that point of the journey, in total and in that level.
+- Each level up now prints a short summary in chat: where you reached
+  it, how long the last level took compared with the one before, and its
+  kills, quests, deaths, distance walked and money. Click Open map in it
+  to see the moment on the journey map. It can be turned off in the
+  options.
+- The game's "Total time played" lines no longer appear in chat at every
+  level up; the summary above tells the time instead. Typing /played
+  still shows them.
 
 ### Fixed
 - The gear card's model now holds your main hand weapon. It showed the

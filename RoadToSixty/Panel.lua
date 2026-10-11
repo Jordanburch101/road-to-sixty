@@ -45,6 +45,7 @@ local function FormatDuration(seconds)
     if h > 0 then return ("%dh %dm"):format(h, m) end
     return ("%dm"):format(m)
 end
+ns.FormatDuration = FormatDuration
 
 local function Commas(n)
     local s, count = tostring(math.floor(n)), 0

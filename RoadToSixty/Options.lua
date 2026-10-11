@@ -37,6 +37,13 @@ local SECTIONS = {
             get = function() return ns.db.greet end,
             set = function(on) ns.db.greet = on end,
         },
+        {
+            label = "Show a summary in chat at each level up",
+            tip = "Where you reached the level, how long the last one took, and its kills, quests, deaths, "
+                .. "distance walked and money. Click Open map in it to see the level up on the journey map.",
+            get = function() return ns.db.levelChat end,
+            set = function(on) ns.db.levelChat = on end,
+        },
     },
     {
         title = "Journey map",

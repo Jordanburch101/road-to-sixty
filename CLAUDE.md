@@ -21,6 +21,7 @@ for data, its exact format; read that before changing a module.
 | ChatPatterns.lua | `ns.ChatMatcher`: matches messages against the client's format strings in any language (numbered `%1$s` arguments too) |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
+| LevelChat.lua | the summary in chat at each level up, with an Open map link |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Health.lua | `/rts check` |

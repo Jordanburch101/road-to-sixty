@@ -15,6 +15,7 @@ ZoneOverlays.lua
 ZoneArt.lua
 Recorder.lua
 Journal.lua
+LevelChat.lua
 Crafts.lua
 Guilds.lua
 Reputation.lua

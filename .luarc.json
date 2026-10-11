@@ -56,6 +56,7 @@
         "GetSpellBookItemName",
         "GetSpellBookItemInfo",
         "ERR_LEARN_SPELL_S",
-        "ERR_LEARN_ABILITY_S"
+        "ERR_LEARN_ABILITY_S",
+        "NUM_CHAT_WINDOWS"
     ]
 }
