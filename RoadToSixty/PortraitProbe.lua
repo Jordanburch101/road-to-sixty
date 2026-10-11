@@ -253,6 +253,29 @@ ns.Command("portraitprobe", "draw a creature from its NPC ID every way the clien
         ShowDisplay()
         return
     end
+    -- /rts portraitprobe stress [count]: that many rare portraits at once, to
+    -- compare the frame rate with the window open and closed.
+    if arg:match("^stress") then
+        local count = tonumber(arg:match("(%d+)")) or 50
+        local npc = TargetNpc() or LastRareNpc() or 30
+        local stress = _G["RoadToSixtyPortraitStress"]
+            or CreateFrame("Frame", "RoadToSixtyPortraitStress", UIParent, "BasicFrameTemplateWithInset")
+        stress:SetSize(10 * 34 + 24, math.ceil(count / 10) * 34 + 40)
+        stress:SetPoint("CENTER")
+        stress.portraits = stress.portraits or {}
+        for _, p in ipairs(stress.portraits) do p:Hide() end
+        for i = 1, count do
+            local p = stress.portraits[i] or ns.Rares:CreatePortrait(stress, 28)
+            stress.portraits[i] = p
+            p:SetPoint("TOPLEFT", 12 + ((i - 1) % 10) * 34, -30 - math.floor((i - 1) / 10) * 34)
+            ns.Rares:SetPortrait(p, npc)
+            p:Show()
+        end
+        stress:Show()
+        ns.Print(("%d portraits of NPC %d. Compare the frame rate (Ctrl+R) with this window open and closed.")
+            :format(count, npc))
+        return
+    end
     if arg:match("^looks") then
         local npc, name = tonumber(arg:match("(%d+)")), nil
         if not npc then npc = TargetNpc() end

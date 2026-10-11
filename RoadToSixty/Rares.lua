@@ -328,6 +328,7 @@ local DISC = 452111             -- interface/guildframe/guildlogomask_l: a white
 local SILVER = { 0.78, 0.8, 0.86 }
 local DRAGON = "nameplates-icon-elite-silver"
 local LOAD_SECONDS = 1          -- a model not loaded by then is not coming
+local MODEL_SHARE = 0.7         -- of the portrait's size: a square that fits in the circle
 
 local function Disc(f, layer, size, r, g, b)
     local t = f:CreateTexture(nil, layer)
@@ -344,9 +345,10 @@ function Rares:CreatePortrait(parent, size)
     f:SetSize(size, size)
     f.ring = Disc(f, "BACKGROUND", size, unpack(SILVER))
     f.inner = Disc(f, "BORDER", size * 0.86, 0.1, 0.1, 0.12)
+    -- A square inside the dark disc, so the model's corners stay in the ring.
     f.model = CreateFrame("PlayerModel", nil, f)
-    f.model:SetPoint("TOPLEFT", 1, -1)
-    f.model:SetPoint("BOTTOMRIGHT", -1, 1)
+    f.model:SetPoint("CENTER")
+    f.model:SetSize(size * MODEL_SHARE, size * MODEL_SHARE)
     -- The dragon over the model, which draws above its parent's textures.
     f.top = CreateFrame("Frame", nil, f)
     f.top:SetAllPoints()
