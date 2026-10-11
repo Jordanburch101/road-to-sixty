@@ -320,35 +320,27 @@ end
 -- Portraits ------------------------------------------------------------------------
 
 -- A rare's portrait, picked from candidates on a screenshot: its model, drawn
--- from the NPC ID, in front of a dark disc with a silver ring (a model
--- cannot be cut round, but its background is clear), with the silver rare
--- dragon at the top right. The client only draws creatures it has seen, so
--- with no NPC ID, or no model loaded a moment later, the dragon alone shows.
-local DISC = 452111             -- interface/guildframe/guildlogomask_l: a white disc
+-- from the NPC ID, in a dark square with a thin silver edge, with the silver
+-- rare dragon at the top right. The client only draws creatures it has
+-- seen, so with no NPC ID, or no model loaded a moment later, the dragon
+-- alone shows.
 local SILVER = { 0.78, 0.8, 0.86 }
 local DRAGON = "nameplates-icon-elite-silver"
 local LOAD_SECONDS = 1          -- a model not loaded by then is not coming
-local MODEL_SHARE = 0.7         -- of the portrait's size: a square that fits in the circle
-
-local function Disc(f, layer, size, r, g, b)
-    local t = f:CreateTexture(nil, layer)
-    t:SetTexture(DISC)
-    t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    t:SetVertexColor(r, g, b)
-    t:SetPoint("CENTER")
-    t:SetSize(size, size)
-    return t
-end
 
 function Rares:CreatePortrait(parent, size)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(size, size)
-    f.ring = Disc(f, "BACKGROUND", size, unpack(SILVER))
-    f.inner = Disc(f, "BORDER", size * 0.86, 0.1, 0.1, 0.12)
-    -- A square inside the dark disc, so the model's corners stay in the ring.
+    f.ring = f:CreateTexture(nil, "BACKGROUND")
+    f.ring:SetColorTexture(unpack(SILVER))
+    f.ring:SetAllPoints()
+    f.inner = f:CreateTexture(nil, "BORDER")
+    f.inner:SetColorTexture(0.1, 0.1, 0.12)
+    f.inner:SetPoint("TOPLEFT", 1, -1)
+    f.inner:SetPoint("BOTTOMRIGHT", -1, 1)
     f.model = CreateFrame("PlayerModel", nil, f)
-    f.model:SetPoint("CENTER")
-    f.model:SetSize(size * MODEL_SHARE, size * MODEL_SHARE)
+    f.model:SetPoint("TOPLEFT", 1, -1)
+    f.model:SetPoint("BOTTOMRIGHT", -1, 1)
     -- The dragon over the model, which draws above its parent's textures.
     f.top = CreateFrame("Frame", nil, f)
     f.top:SetAllPoints()
