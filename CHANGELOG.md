@@ -6,6 +6,18 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.8.0
+
+### New
+- Rare mobs: the first time you kill each rare (the silver dragons), it is
+  recorded where it fell, even a rare too low to give you experience, as
+  long as you loot it or click its corpse. It shows in History and on the
+  map with a silver dragon; hover it for a card with the rare's portrait,
+  its level, where and when you killed it, your level then, and how often
+  you have killed it. Stats counts your rares, and the History filter has
+  a Rare mobs button. Inside dungeons, a rare that gives no experience is
+  recorded as "a rare" or "a rare elite", as the game hides its name there.
+
 ## 1.7.0
 
 ### New
