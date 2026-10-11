@@ -187,7 +187,7 @@ local EVENT_ICONS = {
     rep = { file = "Interface\\Icons\\Achievement_Reputation_01", size = 18 },
     ride = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
-    rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 28 },
+    rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
 }
 
@@ -696,10 +696,7 @@ local function GetMarker(i)
         m.group = nil
         m.icon:Show()
     end
-    if m and m.portrait then
-        m.portrait:Hide()
-        m.icon:Show()
-    end
+    if m then m.rare = nil end
     if m then
         ns.MarkerPiles:Reset(m)
         return m
@@ -726,6 +723,10 @@ local function GetMarker(i)
         end
         -- Level ups with recorded gear show the gear card instead of a tooltip.
         if self.level and ns.GearCard:Show(self.level, self, self.title, self.detail) then return end
+        if self.rare then
+            ns.Rares:ShowCard(self, self.rare[1], self.rare[2])
+            return
+        end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(self.title)
         GameTooltip:AddLine(self.detail, 1, 1, 1)
@@ -734,6 +735,7 @@ local function GetMarker(i)
     m:SetScript("OnLeave", function(self)
         GameTooltip_Hide()
         ns.GearCard:Hide()
+        ns.Rares:HideCard()
         if self.group then
             ns.Parties:Spread(self.stack, false)
             ns.Parties:HideCard()
@@ -829,14 +831,8 @@ local function BuildMarkers()
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
-                -- Rares show their portrait instead of the icon.
-                if kind == "rare" then
-                    m.portrait = m.portrait or ns.Rares:CreatePortrait(m, size)
-                    m.portrait:SetPoint("CENTER")
-                    ns.Rares:SetPortrait(m.portrait, e[9])
-                    m.portrait:Show()
-                    m.icon:Hide()
-                end
+                -- Rares show a card with their portrait when hovered.
+                m.rare = kind == "rare" and { e, Where(inside, zone) } or nil
                 m.title = title
                 m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end

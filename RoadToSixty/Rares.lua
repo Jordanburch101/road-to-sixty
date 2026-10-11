@@ -390,6 +390,83 @@ function Rares:SetPortrait(f, npc)
     end)
 end
 
+-- The card ---------------------------------------------------------------------------
+
+-- Hovering a rare (a History row or a map marker) shows a card with its
+-- portrait and what is known of the kill. Markers and rows show only the
+-- silver dragon: a live model each cost too much frame rate, one at a time
+-- in the card does not.
+local CARD_PORTRAIT = 72
+local CARD_PAD = 10
+local CARD_TEXT = 190
+local HOW = { l = "No experience: recognised by its loot", c = "No experience: recognised by its corpse" }
+local card
+
+local function CreateCard()
+    card = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    card:SetFrameStrata("TOOLTIP")
+    card:SetClampedToScreen(true)
+    card:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    card:SetBackdropColor(0.04, 0.04, 0.05, 0.94)
+    card.portrait = Rares:CreatePortrait(card, CARD_PORTRAIT)
+    card.portrait:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD)
+    card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    card.title:SetPoint("TOPLEFT", card.portrait, "TOPRIGHT", CARD_PAD, -2)
+    card.title:SetWidth(CARD_TEXT)
+    card.title:SetJustifyH("LEFT")
+    card.title:SetTextColor(0.85, 0.88, 1)
+    card.text = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
+    card.text:SetWidth(CARD_TEXT)
+    card.text:SetJustifyH("LEFT")
+    card.text:SetSpacing(2)
+end
+
+-- The character's level at time t in the journey shown.
+local function LevelAt(t)
+    local level
+    for _, e in ipairs(ns.view.events) do
+        if e[1] > t then break end
+        if e[2] == "on" or e[2] == "lvl" then level = e[6] end
+    end
+    return level
+end
+
+-- Shows the card of rare event e next to owner, on its right, or on its
+-- left with side "left". where names the place.
+function Rares:ShowCard(owner, e, where, side)
+    if not card then CreateCard() end
+    local title, detail = self:Describe(e)
+    card.title:SetText(e[6] or title:gsub("^Killed ", ""):gsub("^a", "A"))
+    local lines = { detail }
+    if where then lines[#lines + 1] = where end
+    lines[#lines + 1] = tostring(date("%d %b %Y, %H:%M", e[1]))
+    local level = LevelAt(e[1])
+    if level then lines[#lines + 1] = ("You were level %d"):format(level) end
+    local known = ns.view.rares and ns.view.rares[e[9] or e[6] or ""]
+    if known and known[1] > 1 then lines[#lines + 1] = ("Killed %d times"):format(known[1]) end
+    if HOW[e[10]] then lines[#lines + 1] = "|cff999999" .. HOW[e[10]] .. "|r" end
+    card.text:SetText(table.concat(lines, "\n"))
+    self:SetPortrait(card.portrait, e[9])
+    local textHeight = card.title:GetStringHeight() + 4 + card.text:GetStringHeight()
+    card:SetSize(CARD_PORTRAIT + CARD_TEXT + 3 * CARD_PAD, math.max(CARD_PORTRAIT, textHeight) + 2 * CARD_PAD)
+    card:ClearAllPoints()
+    if side == "left" then
+        card:SetPoint("TOPRIGHT", owner, "TOPLEFT", -4, 0)
+    else
+        card:SetPoint("TOPLEFT", owner, "TOPRIGHT", 4, 0)
+    end
+    card:Show()
+end
+
+function Rares:HideCard()
+    if card then card:Hide() end
+end
+
 -- Showing them ------------------------------------------------------------------
 
 local CLASSES = { rare = "Rare", rareelite = "Rare elite", elite = "Elite (test)", normal = "Normal (test)" }

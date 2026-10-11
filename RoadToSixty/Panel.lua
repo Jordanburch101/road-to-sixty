@@ -209,6 +209,8 @@ local function CreateHistoryRow(parent)
             GameTooltip:Show()
         elseif item.group then
             ns.Parties:ShowCard(self, item.group, "left")
+        elseif item.rare then
+            ns.Rares:ShowCard(self, item.rare, item.where, "left")
         elseif item.run then
             ns.Parties:ShowRunCard(self, item.run, item.entered, "left")
         elseif item.lines then
@@ -229,6 +231,7 @@ local function CreateHistoryRow(parent)
         GameTooltip_Hide()
         ns.GearCard:Hide()
         ns.Parties:HideCard()
+        ns.Rares:HideCard()
     end)
     return row
 end
@@ -265,7 +268,6 @@ local function UpdateHistoryRow(row, item)
     local header = item.header ~= nil
     if row.badge then row.badge:Hide() end
     if row.stack then row.stack:Hide() end
-    if row.portrait then row.portrait:Hide() end
     row.header:SetShown(header)
     row.rule:SetShown(header)
     row.highlight:SetShown(not header)
@@ -288,16 +290,6 @@ local function UpdateHistoryRow(row, item)
         end
         ns.Guilds:SetBadge(row.badge, item.tabard)
         row.badge:Show()
-        row.icon:Hide()
-    end
-    -- Rares show their own portrait.
-    if item.rare then
-        if not row.portrait then
-            row.portrait = ns.Rares:CreatePortrait(row, HISTORY_ROW - 4)
-            row.portrait:SetPoint("CENTER", row.icon)
-        end
-        ns.Rares:SetPortrait(row.portrait, item.npc)
-        row.portrait:Show()
         row.icon:Hide()
     end
     -- Groups show the first member's portrait.
@@ -560,7 +552,7 @@ local function BuildHistory()
                 ("%s, level %s - %s"):format(detail, level or "?", where))
         elseif kind == "rare" then
             local title, detail = ns.Rares:Describe(e)
-            Add({ kind = kind, title = title, rare = true, npc = e[9] }, t, c, x, y, detail .. " - " .. where)
+            Add({ kind = kind, title = title, rare = e, where = where }, t, c, x, y, detail .. " - " .. where)
         end
     end
 
