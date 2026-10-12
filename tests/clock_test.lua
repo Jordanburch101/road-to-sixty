@@ -1,8 +1,9 @@
 -- Every time the addon saves has to come from the game server's clock, so
 -- journeys from two computers with different clocks can be merged without
--- their sessions seeming to overlap (#35). This fails on any time() call in
--- a file the release toc lists. Developer-only files keep time(). Run with
--- LuaJIT from the repo root: luajit tests/clock_test.lua
+-- their sessions seeming to overlap (#35). Saved times go through ns.Now(),
+-- and this fails on any time() call in a file the release toc lists, except
+-- ns.Now's own fallback in Core.lua. Developer-only files keep time(). Run
+-- with LuaJIT from the repo root: luajit tests/clock_test.lua
 
 local failures = 0
 
@@ -24,12 +25,17 @@ local files = ShippedFiles()
 assert(#files > 20, "found only " .. #files .. " shipped files in the toc")
 
 for _, name in ipairs(files) do
-    local n = 0
+    local n, inNow = 0, false
     for line in io.lines("RoadToSixty/" .. name) do
         n = n + 1
+        if name == "Core.lua" and line:find("^function ns%.Now%(") then
+            inNow = true
+        elseif inNow and line:find("^end") then
+            inNow = false
+        end
         -- time() on its own, not os.time() or GetServerTime().
         local stripped = line:gsub("GetServerTime%(%)", ""):gsub("os%.time%(%)", "")
-        if stripped:find("%f[%w_]time%(%)") then
+        if not inNow and stripped:find("%f[%w_]time%(%)") then
             failures = failures + 1
             print(("FAIL: %s:%d uses time(): %s"):format(name, n, line:match("^%s*(.-)%s*$")))
         end
