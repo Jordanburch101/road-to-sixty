@@ -18,6 +18,8 @@ for data, its exact format; read that before changing a module.
 | File | Role |
 |---|---|
 | Core.lua | saved variable defaults, `ns.On` (event bus), `ns.Command` (slash commands), `ns.SafeCall`, `ns.Print` |
+| Packed.lua | the packed kill and path formats as plain functions (no game calls) |
+| Tidy.lua | the login repairs of saved journeys as plain functions (no game calls); `tests/pure_test.lua` keeps both pure |
 | ChatPatterns.lua | `ns.ChatMatcher`: matches messages against the client's format strings in any language (numbered `%1$s` arguments too) |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
