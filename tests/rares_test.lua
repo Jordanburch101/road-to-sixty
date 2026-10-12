@@ -64,6 +64,8 @@ GetLootSourceInfo = function(slot)
 end
 
 ns.Now = function() return time() end
+ns.pc = "testpc"
+assert(loadfile("RoadToSixty/Tally.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Rares.lua"))("RoadToSixty", ns)
 local Rares = ns.Rares
 
@@ -139,7 +141,8 @@ check(Count() == 4 and Last()[6] == "Gruff Swiftbite" and Last()[10] == "x", "ra
 -- Mor'Ladim again, a new spawn: counted, not logged.
 Target("Mor'Ladim", "rareelite", 35, Guid(522, "A9"))
 KillTarget("Mor'Ladim")
-check(Count() == 4 and ns.char.rares[522][1] == 2, "second kill counted only")
+check(Count() == 4 and ns.Tally.Total(ns.char.rares[522][1]) == 2 and ns.char.rares[522][1].testpc == 2,
+    "second kill counted only, as this PC's")
 
 -- Normal mobs and elites are not rares.
 Target("Defias Thug", "normal", 12, Guid(116, "F6"))
@@ -205,6 +208,24 @@ check(Count() == 9 and Last()[6] == "Aggem Thorncurse", "message just after the 
 -- Stats list.
 local list = Rares:List()
 check(#list == 9 and list[1][1] == "Mor'Ladim" and list[1][2] == 2, "list, first killed first")
+
+-- A rare killed before, killed again unseen (no target, never looked at):
+-- counted by name, as this PC's.
+now = now + 600
+Rares:Killed("Foulmane")
+local foulmane
+for _, r in pairs(ns.char.rares) do
+    if r[3] == "Foulmane" then foulmane = r end
+end
+check(Count() == 9 and foulmane and ns.Tally.Total(foulmane[1]) == 2 and foulmane[1].testpc == 2,
+    "a known rare killed unseen is counted")
+
+-- A rare in an alt's roster copy, still at layout 2, lists with its count.
+local shown = ns.view
+ns.view = { rares = { [1] = { 3, 50, "Old Rare", 1, "rare" } } }
+local old = Rares:List()
+check(old[1][1] == "Old Rare" and old[1][2] == 3, "a layout 2 count still lists")
+ns.view = shown
 
 -- A seeded journey is left alone.
 inside = false

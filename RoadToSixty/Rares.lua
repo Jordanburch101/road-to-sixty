@@ -8,9 +8,10 @@ local _, ns = ...
 --         read (a kill with no XP inside an instance has neither until it
 --         is looted).
 --
--- ns.char.rares is the rares killed: key -> { count, first kill time, name,
--- npcID, classification }, key the NPC ID when known, else the name, else
--- the classification and time; nil until the first.
+-- ns.char.rares is the rares killed: key -> { count (a tally by PC, see
+-- Tally.lua), first kill time, name, npcID, classification }, key the NPC ID
+-- when known, else the name, else the classification and time; nil until
+-- the first.
 --
 -- What the client lets an addon read on Forever decides how (see CLAUDE.md):
 -- - In the open world a mob's name and GUID can be read, even in combat.
@@ -144,12 +145,12 @@ local function Record(info, name, how)
     local key = info.npc or name or ("%s %d"):format(tostring(info.class), ns.Now())
     local known = rares[key]
     if known then
-        known[1] = known[1] + 1
+        ns.Tally.Add(known, 1, ns.pc, 1)
         known[3] = known[3] or name
         return
     end
     Log("rare", name, info.class, info.level, info.npc, how)
-    rares[key] = { 1, ns.Now(), name, info.npc, info.class }
+    rares[key] = { { [ns.pc] = 1 }, ns.Now(), name, info.npc, info.class }
 end
 
 -- Inside an instance (no GUID), a rare corpse clicked has no name; if the
@@ -280,7 +281,7 @@ function Rares:Killed(name)
     end
     -- A rare killed before, met again unseen: counted.
     local known = KnownByName(name)
-    if known and Recording() then known[1] = known[1] + 1 end
+    if known and Recording() then ns.Tally.Add(known, 1, ns.pc, 1) end
 end
 
 -- Loot: its sources are GUIDs, readable even inside instances. A rare seen
@@ -440,7 +441,8 @@ function Rares:ShowCard(owner, e, where, side)
     local level = LevelAt(e[1])
     if level then lines[#lines + 1] = ("You were level %d"):format(level) end
     local known = ns.view.rares and ns.view.rares[e[9] or e[6] or ""]
-    if known and known[1] > 1 then lines[#lines + 1] = ("Killed %d times"):format(known[1]) end
+    local kills = known and ns.Tally.Total(known[1]) or 0
+    if kills > 1 then lines[#lines + 1] = ("Killed %d times"):format(kills) end
     if HOW[e[10]] then lines[#lines + 1] = "|cff999999" .. HOW[e[10]] .. "|r" end
     card.text:SetText(table.concat(lines, "\n"))
     self:SetPortrait(card.portrait, e[9])
@@ -478,7 +480,7 @@ end
 function Rares:List()
     local list = {}
     for _, r in pairs(ns.view.rares or {}) do
-        list[#list + 1] = { r[3] or ("a " .. (CLASSES[r[5]] or "Rare"):lower()), r[1], r[2] }
+        list[#list + 1] = { r[3] or ("a " .. (CLASSES[r[5]] or "Rare"):lower()), ns.Tally.Total(r[1]), r[2] }
     end
     table.sort(list, function(a, b) return a[3] < b[3] end)
     return list

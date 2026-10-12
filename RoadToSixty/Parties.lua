@@ -184,7 +184,7 @@ function Parties:SetStack(stack, info)
         local people = Parties:PeopleTable()
         local function Groups(entry)
             local p = people[entry.m[1]]
-            return p and p.groups or 0
+            return p and ns.Tally.Total(p.groups) or 0
         end
         members = { unpack(members) }
         table.sort(members, function(a, b) return Groups(a) > Groups(b) end)
@@ -280,12 +280,13 @@ function Parties:People()
     for guid, p in pairs(Parties:PeopleTable()) do
         list[#list + 1] = { guid, p }
     end
+    local Total = ns.Tally.Total
     -- Parties first: raid members are mostly people met once.
     table.sort(list, function(a, b)
         local pa, pb = a[2], b[2]
-        if (pa.groups or 0) ~= (pb.groups or 0) then return (pa.groups or 0) > (pb.groups or 0) end
-        if (pa.seconds or 0) ~= (pb.seconds or 0) then return (pa.seconds or 0) > (pb.seconds or 0) end
-        return (pa.raids or 0) > (pb.raids or 0)
+        if Total(pa.groups) ~= Total(pb.groups) then return Total(pa.groups) > Total(pb.groups) end
+        if Total(pa.seconds) ~= Total(pb.seconds) then return Total(pa.seconds) > Total(pb.seconds) end
+        return Total(pa.raids) > Total(pb.raids)
     end)
     return list
 end
@@ -435,7 +436,7 @@ local function Rows(list, y, e, info)
         row.name:SetText(m[2] or "?")
         row.name:SetTextColor(ns.ClassColor(m[5]))
         row.what:SetText(("%s %s %s"):format(m[6] and ("Level " .. m[6]) or "", RaceName(m[3]), ns.ClassName(m[5])))
-        local groups = p and ((p.groups or 0) + (p.raids or 0)) or 0
+        local groups = p and (ns.Tally.Total(p.groups) + ns.Tally.Total(p.raids)) or 0
         row.count:SetText(groups > 1 and Count(groups, "group") or "")
         row.tags:SetText(e and table.concat(Tags(entry, p, e, info), ", ") or "")
         row:Show()
@@ -473,7 +474,7 @@ local function FillCard(e)
         list = {}
         for _, entry in ipairs(info.members) do
             local p = people[entry.m[1]]
-            if p and (p.groups or 0) > 0 then list[#list + 1] = entry end
+            if p and ns.Tally.Total(p.groups) > 0 then list[#list + 1] = entry end
         end
         -- The rows are only the players also grouped with in parties.
         card.known:ClearAllPoints()
