@@ -18,6 +18,15 @@ broken and now works. Leave out internal changes. Sections are
   a Rare mobs button. Inside dungeons, a rare that gives no experience is
   recorded as "a rare" or "a rare elite", as the game hides its name there.
 
+### Fixed
+- Your path and kills are now stored every minute while you play, not
+  only when you log out, so a logout that goes wrong no longer loses the
+  session or puts the wrong times on later kills.
+- The journey map's replay and zooming run more smoothly on long
+  journeys.
+- Gaining weapon skill points and crafting no longer make the addon redo
+  work it had already done.
+
 ## 1.7.0
 
 ### New
