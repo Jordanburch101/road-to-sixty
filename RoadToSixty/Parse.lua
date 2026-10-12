@@ -147,3 +147,75 @@ function Parse.File(s)
     end
     return vars
 end
+
+local ESCAPED = { ["\\"] = "\\\\", ['"'] = '\\"', ["\n"] = "\\n", ["\r"] = "\\r", ["\0"] = "\\000" }
+
+-- Mixed key types are sorted by type first, since < between a number and a
+-- string errors.
+local KEY_ORDER = { number = 1, string = 2, boolean = 3 }
+
+local function KeyBefore(a, b)
+    local ta, tb = type(a), type(b)
+    if ta ~= tb then return KEY_ORDER[ta] < KEY_ORDER[tb] end
+    if ta == "boolean" then return not a and b end
+    return a < b
+end
+
+local WriteValue
+
+local function WriteNumber(x, out)
+    if x ~= x or x == math.huge or x == -math.huge then error("can't write " .. tostring(x), 0) end
+    -- The short form when it reads back exactly, else all 17 digits.
+    local text = format("%.14g", x)
+    if tonumber(text) ~= x then text = format("%.17g", x) end
+    out[#out + 1] = text
+end
+
+local function WriteTable(t, out, depth)
+    if depth >= Parse.MAX_DEPTH then error("tables nested too deep", 0) end
+    out[#out + 1] = "{"
+    local n = 0
+    while t[n + 1] ~= nil do
+        n = n + 1
+        WriteValue(t[n], out, depth + 1)
+        out[#out + 1] = ","
+    end
+    local keys = {}
+    for k in pairs(t) do
+        if not KEY_ORDER[type(k)] then error("can't write a " .. type(k) .. " key", 0) end
+        if not (type(k) == "number" and k >= 1 and k <= n and k == math.floor(k)) then
+            keys[#keys + 1] = k
+        end
+    end
+    table.sort(keys, KeyBefore)
+    for _, k in ipairs(keys) do
+        out[#out + 1] = "["
+        WriteValue(k, out, depth)
+        out[#out + 1] = "]="
+        WriteValue(t[k], out, depth + 1)
+        out[#out + 1] = ","
+    end
+    out[#out + 1] = "}"
+end
+
+function WriteValue(v, out, depth)
+    local kind = type(v)
+    if kind == "string" then
+        out[#out + 1] = '"' .. v:gsub('[%z\\"\n\r]', ESCAPED) .. '"'
+    elseif kind == "number" then
+        WriteNumber(v, out)
+    elseif kind == "boolean" then
+        out[#out + 1] = tostring(v)
+    elseif kind == "table" then
+        WriteTable(v, out, depth)
+    else
+        error("can't write a " .. kind, 0)
+    end
+end
+
+-- The text for value, which Read reads back as the same data.
+function Parse.Write(value)
+    local out = {}
+    WriteValue(value, out, 0)
+    return table.concat(out)
+end

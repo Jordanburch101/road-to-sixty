@@ -115,6 +115,93 @@ check(Refused(Parse.Read, "{" .. deepest .. "}"), "one deeper is refused")
 refused, err = Refused(Parse.Read, "{\n1,\n?}")
 check(refused and err:find("^line 3 "), "an error names its line: " .. err)
 
+-- 5. Numbers write in a short exact form and read back exactly.
+local NEGATIVE_ZERO = -1 / math.huge
+check(Parse.Write(1791712544) == "1791712544", "whole numbers write without a decimal point")
+check(Parse.Write(-8913.25) == "-8913.25" and Parse.Write(0.1) == "0.1", "decimals write short")
+check(Parse.Write(NEGATIVE_ZERO) == "-0", "negative zero keeps its sign")
+for _, x in ipairs({ 0, 1, -7, 2^31, 2^53, 2^63, 1 / 3, 0.1372549086809158, 1e-05, 1e-300, 1e300, 5e-324, 1.7976931348623157e308 }) do
+    check(Parse.Read(Parse.Write(x)) == x, "a number reads back exactly: " .. Parse.Write(x))
+end
+
+-- 6. Keys of every kind write in one order, whatever order they were added in.
+local mixed = { 1, 2, [10] = 3, a = 1, [true] = 1, [false] = 2, [1.5] = 1, [-1] = 1 }
+check(Parse.Write(mixed) == '{1,2,[-1]=1,[1.5]=1,[10]=3,["a"]=1,[false]=2,[true]=1,}', "mixed keys: " .. Parse.Write(mixed))
+local forwards, backwards = {}, {}
+for i = 1, 26 do forwards[string.char(96 + i)] = i end
+for i = 26, 1, -1 do backwards[string.char(96 + i)] = i end
+check(Parse.Write(forwards) == Parse.Write(backwards), "the order keys were added in doesn't change the text")
+check(Parse.Write({ 1, nil, 3 }) == "{1,[3]=3,}", "a gap ends the array part")
+
+-- 7. Strings escape only what the game escapes, and every byte reads back.
+local bytes = {}
+for b = 0, 255 do bytes[#bytes + 1] = string.char(b) end
+local all = table.concat(bytes)
+check(Parse.Read(Parse.Write(all)) == all, "all 256 bytes read back")
+check(Parse.Write('a"b\\c\nd\re\0f\tg') == '"a\\"b\\\\c\\nd\\re\\000f\tg"', "escapes: " .. Parse.Write('a"b\\c\nd\re\0f\tg'))
+
+-- 8. The fixture and a full-size made-up journey survive a write and a read.
+local text = Parse.Write(char)
+check(DeepEqual(Parse.Read(text), char), "the fixture's journey reads back the same")
+check(Parse.Write(Parse.Read(text)) == text, "writing what was read gives the same text")
+
+math.randomseed(7)
+local function FullSize()
+    local journey = { version = 2, addon = "1.9.0", segments = {}, events = {}, levels = {} }
+    local steps = {}
+    for i = 1, 30000 do
+        steps[i] = ("%d,%d,%d"):format(math.random(1, 9), math.random(-40, 40), math.random(-40, 40))
+    end
+    for i = 1, 300 do
+        local from = (i - 1) % 100 * 300 + 1
+        journey.segments[i] = { m = "w", c = i % 2, t = 1791712544 + i * 600, x = math.random(-9000, 9000) + 0.25,
+            y = math.random(-9000, 9000), d = table.concat(steps, ";", from, from + 299) }
+    end
+    for i = 1, 30000 do
+        journey.events[i] = { 1791712544 + i * 7, "qd", math.random() * 10000, math.random() * 10000, 0,
+            math.random(1, 9000), "Quest " .. i }
+    end
+    for level = 2, 60 do
+        journey.levels[level] = { t = 1791712544 + level * 9000, played = level * 3600, money = level * 1000,
+            gear = { [1] = "item:" .. level, [5] = "item:" .. level * 2 } }
+    end
+    local kills, names = {}, {}
+    for i = 1, 20000 do
+        kills[i] = ("%d,%d,%d;"):format(math.random(1, 60), math.random(1, 500), math.random(1, 300))
+    end
+    for i = 1, 300 do names[i] = "Mob " .. i end
+    journey.kills = { d = table.concat(kills), last = 1791712544 + 999999, names = names }
+    return journey
+end
+local big = FullSize()
+local started = os.clock()
+local bigText = Parse.Write(big)
+local wrote = os.clock()
+local back = Parse.Read(bigText)
+local read = os.clock()
+check(#bigText > 1000000, "the made-up journey is full size: " .. #bigText .. " bytes")
+check(DeepEqual(back, big), "a full-size journey reads back the same")
+print(("Full-size journey: %d bytes, written in %d ms, read in %d ms."):format(
+    #bigText, math.floor((wrote - started) * 1000), math.floor((read - wrote) * 1000)))
+
+-- 9. Write refuses what Read couldn't read back.
+local holdsItself = {}
+holdsItself.self = holdsItself
+local unwritable = {
+    ["a function"] = print,
+    inf = math.huge,
+    nan = 0 / 0,
+    ["a table key"] = { [{}] = 1 },
+    ["a table holding itself"] = holdsItself,
+}
+for what, value in pairs(unwritable) do
+    check(Refused(Parse.Write, value), "wrote " .. what)
+end
+local nest = {}
+for _ = 2, Parse.MAX_DEPTH do nest = { nest } end
+check(pcall(Parse.Write, nest), "nesting MAX_DEPTH deep writes")
+check(Refused(Parse.Write, { nest }), "one deeper is refused")
+
 if failures == 0 then
     print("Parse tests passed.")
 else
