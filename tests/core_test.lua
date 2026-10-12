@@ -29,10 +29,11 @@ time = function() return 1000 end
 GetServerTime = function() return 2000 end
 C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "9.9.9" or nil end }
 
-local function Load(saved)
-    RoadToSixtyDB, RoadToSixtyCharDB = nil, saved
+local function Load(saved, db)
+    RoadToSixtyDB, RoadToSixtyCharDB = db, saved
     local ns = {}
     assert(loadfile("RoadToSixty/Core.lua"))("RoadToSixty", ns)
+    assert(loadfile("RoadToSixty/Tally.lua"))("RoadToSixty", ns)
     script(nil, "ADDON_LOADED", "RoadToSixty")
     return ns
 end
@@ -40,7 +41,7 @@ end
 -- 1. A new character starts on the current layout, all by the realm's clock.
 local ns = Load(nil)
 local current = ns.char.version
-check(current >= 2, "a new character is on layout 2 or later, got " .. tostring(current))
+check(current == 3, "a new character is on layout 3, got " .. tostring(current))
 check(ns.char.clockFrom == nil, "a new journey has no PC clock part")
 check(ns.char.addon == "9.9.9", "the addon version is saved")
 check(ns.Now() == 2000, "ns.Now reads the realm's clock")
@@ -55,6 +56,30 @@ check(#ns.char.events == 1 and ns.char.kills and ns.char.totals, "an old file ke
 -- 3. Loading again changes nothing more.
 ns = Load(ns.char)
 check(ns.char.clockFrom == 2000, "clockFrom is set once")
+
+-- 4. Each PC gets an ID once, kept with the account's saved variables.
+ns = Load(nil)
+local pc = ns.pc
+check(type(pc) == "string" and #pc == 12 and ns.db.pc == pc, "a PC ID is made: " .. tostring(pc))
+local db = ns.db
+ns = Load(nil, db)
+check(ns.pc == pc, "the PC ID is kept across loads")
+
+-- 5. A layout 2 file's counts become this PC's tallies.
+ns = Load({
+    version = 2,
+    people = { g = { name = "A", groups = 3, seconds = 600, raids = 0 } },
+    rares = { [522] = { 2, 100, "Mor'Ladim" } },
+}, db)
+local p, r = ns.char.people.g, ns.char.rares[522]
+check(ns.char.version == 3, "a layout 2 file is brought up to layout 3")
+check(p.groups[pc] == 3 and p.seconds[pc] == 600 and p.raids == nil and p.name == "A", "a player's counts become tallies")
+check(r[1][pc] == 2 and r[3] == "Mor'Ladim", "a rare's count becomes a tally")
+check(ns.char.clockFrom == nil, "a layout 2 file was already on the realm's clock")
+
+-- 6. A layout 1 file gets both upgrades at once.
+ns = Load({ version = 1, people = { g = { groups = 1 } } }, db)
+check(ns.char.clockFrom == 2000 and ns.char.people.g.groups[pc] == 1, "layout 1 gets clockFrom and tallies")
 
 if failures == 0 then
     print("Core tests passed.")
