@@ -99,12 +99,17 @@ function ns.SafeCall(fn, ...)
 end
 
 -- Index of the last entry of times (sorted ascending) that is at or before
--- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)].
-function ns.LastIndex(times, t)
+-- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)]. With
+-- key, entries are tables sorted by entry[key].
+function ns.LastIndex(times, t, key)
     local lo, hi = 0, #times
     while lo < hi do
         local mid = math.floor((lo + hi + 1) / 2)
-        if times[mid] <= t then
+        local v = times[mid]
+        if key then
+            v = v[key]
+        end
+        if v <= t then
             lo = mid
         else
             hi = mid - 1

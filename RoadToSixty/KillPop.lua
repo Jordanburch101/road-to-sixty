@@ -109,12 +109,7 @@ end
 -- The replay moved forward from time from to time to: queue what it passed.
 function KillPop:Passed(from, to)
     if not (parent and ns.db.killPops) or to <= from then return end
-    local lo, hi = 1, #kills + 1
-    while lo < hi do
-        local mid = math.floor((lo + hi) / 2)
-        if kills[mid].t <= from then lo = mid + 1 else hi = mid end
-    end
-    for i = lo, #kills do
+    for i = ns.LastIndex(kills, from, "t") + 1, #kills do
         local kill = kills[i]
         if kill.t > to then break end
         combo = clock - comboAt <= COMBO_WINDOW and combo + 1 or 1

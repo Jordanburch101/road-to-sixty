@@ -491,16 +491,8 @@ end
 
 -- Index of the last timeline entry at or before t, or nil.
 local function IndexAt(t)
-    local lo, hi = 0, #timeline
-    while lo < hi do
-        local mid = math.floor((lo + hi + 1) / 2)
-        if timeline[mid].t <= t then
-            lo = mid
-        else
-            hi = mid - 1
-        end
-    end
-    return lo > 0 and lo or nil
+    local i = ns.LastIndex(timeline, t, "t")
+    return i > 0 and i or nil
 end
 
 -- parent: the map's overlay frame; the card sits in its bottom-left corner.

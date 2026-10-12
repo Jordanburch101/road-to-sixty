@@ -928,17 +928,7 @@ end
 
 -- Number of built lines whose end point is at or before point index seq.
 local function CountUpTo(seq)
-    local drawn = state.drawn
-    local lo, hi = 0, #drawn
-    while lo < hi do
-        local mid = math.floor((lo + hi + 1) / 2)
-        if drawn[mid][6] <= seq then
-            lo = mid
-        else
-            hi = mid - 1
-        end
-    end
-    return lo
+    return ns.LastIndex(state.drawn, seq, 6)
 end
 
 -- Merge distance in content units of detail level k. Level 0 is fine enough
@@ -2097,16 +2087,7 @@ local BUTTON_HEIGHT = 22
 
 -- Last point at or before time t, 0 if none.
 local function SeqAt(t)
-    local pt, lo, hi = state.pt, 0, state.n
-    while lo < hi do
-        local mid = math.floor((lo + hi + 1) / 2)
-        if pt[mid] <= t then
-            lo = mid
-        else
-            hi = mid - 1
-        end
-    end
-    return lo
+    return ns.LastIndex(state.pt, t)
 end
 
 local function ScrubX(seq)

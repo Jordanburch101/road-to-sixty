@@ -206,12 +206,7 @@ end
 function QuestPop:Passed(from, to)
     if not (parent and ns.db.questPops) or to <= from then return end
     -- First turn-in after from.
-    local lo, hi = 1, #turnins + 1
-    while lo < hi do
-        local mid = math.floor((lo + hi) / 2)
-        if turnins[mid].t <= from then lo = mid + 1 else hi = mid end
-    end
-    for i = lo, #turnins do
+    for i = ns.LastIndex(turnins, from, "t") + 1, #turnins do
         local turnin = turnins[i]
         if turnin.t > to then break end
         if not turnin.title then
