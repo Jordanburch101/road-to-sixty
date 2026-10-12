@@ -25,7 +25,7 @@ local _, ns = ...
 local Crafts = {}
 ns.Crafts = Crafts
 
-local Log = function(...) ns.Journal:Log(...) end
+local Log = function(...) return ns.Journal:Log(...) end
 
 local trainerOpen = false
 local lastRecipe = { name = nil, t = 0, event = nil }   -- to log a recipe once when two sources report it
@@ -128,13 +128,11 @@ local function LogRecipe(name, spellID, profession)
     local now = GetTime()
     local e = lastRecipe.event
     if lastRecipe.name == name and now - lastRecipe.t < 5 and e then
-        e[7] = e[7] or spellID
-        e[8] = e[8] or profession
+        ns.Journal:Amend(e, nil, spellID, profession)
         return
     end
-    Log("rec", name, spellID, profession, trainerOpen and "t" or nil)
     lastRecipe.name, lastRecipe.t = name, now
-    lastRecipe.event = ns.char.events[#ns.char.events]
+    lastRecipe.event = Log("rec", name, spellID, profession, trainerOpen and "t" or nil)
 end
 
 -- Adds the open profession window's recipes to the ones known. Only for

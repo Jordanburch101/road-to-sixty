@@ -94,6 +94,11 @@ game.position = false
 Journal:Log("die")
 local die = ns.char.events[#ns.char.events]
 check(die[3] == -1 and die[4] == 0 and die[5] == 0, "unknown position is stored as -1, 0, 0")
+local rec = Journal:Log("rec", "Linen Bandage", nil, nil, "t")
+check(rec == ns.char.events[#ns.char.events], "Log returns the event it logged")
+Journal:Amend(rec, "Other", 3275, "First Aid")
+check(rec[6] == "Linen Bandage" and rec[7] == 3275 and rec[8] == "First Aid" and rec[9] == "t",
+    "Amend fills only the fields the event lacks")
 game.position = true
 
 -- 2. Kills: the chat pattern against real messages, including a rested bonus suffix.

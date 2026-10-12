@@ -36,7 +36,19 @@ local pendingPlayedLevel
 
 function Journal:Log(kind, ...)
     local c, x, y = ns.Recorder:Position()
-    table.insert(ns.char.events, { time(), kind, c or -1, x or 0, y or 0, ... })
+    local e = { time(), kind, c or -1, x or 0, y or 0, ... }
+    table.insert(ns.char.events, e)
+    return e
+end
+
+-- Fills in a logged event's own fields (from index 6, in Log's order) that
+-- it was logged without; fields it already has are kept.
+function Journal:Amend(e, ...)
+    for i = 1, select("#", ...) do
+        if e[5 + i] == nil then
+            e[5 + i] = (select(i, ...))
+        end
+    end
 end
 
 -- Equipment slots, in character sheet order, by the names the client uses.
