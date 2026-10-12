@@ -1,7 +1,8 @@
 -- The files the sync server runs must work with nothing but standard Lua
--- 5.1: no game API. This loads each one in an environment holding only the
--- standard library, then calls what it defines, so a game call anywhere in
--- them fails here. Run with LuaJIT from the repo root: luajit tests/pure_test.lua
+-- 5.1: no game API. It reads every global each file uses from LuaJIT's
+-- bytecode listing, which covers branches no call below reaches and a
+-- missing local, then loads each file in an environment holding only the
+-- standard library and calls what it defines. Run with LuaJIT from the repo root: luajit tests/pure_test.lua
 
 local STANDARD = {
     "assert", "error", "ipairs", "next", "pairs", "pcall", "select", "setmetatable",
@@ -14,6 +15,15 @@ local function Load(name, ns)
     local chunk = assert(loadfile("RoadToSixty/" .. name))
     setfenv(chunk, env)
     chunk("RoadToSixty", ns)
+end
+
+local allowed = {}
+for _, key in ipairs(STANDARD) do allowed[key] = true end
+for _, name in ipairs({ "Packed.lua", "Tidy.lua" }) do
+    local listing = io.popen("luajit -bl RoadToSixty/" .. name):read("*a")
+    for global in listing:gmatch('G[GS]ET%s+%d+%s+%d+%s+; "([^"]+)"') do
+        assert(allowed[global], name .. " uses the global " .. global .. ", which the server does not have")
+    end
 end
 
 local ns = {}
