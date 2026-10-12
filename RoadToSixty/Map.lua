@@ -435,7 +435,7 @@ local function BuildPoints(paths)
                 px[n], py[n] = toContent(path.x[i], path.y[i])
                 pt[n], pm[n], pb[n], brk[n] = t, path.m, band, i == 1
                 if i == 1 then
-                    pj[n] = path.j
+                    pj[n] = ns.Recorder:JumpReason(previous, path)
                     if path.j == "b" and previous then
                         local last = #previous.x
                         boats[n] = ns.BoatRoute(previous.c, previous.x[last], previous.y[last],
@@ -454,11 +454,11 @@ local function BuildPoints(paths)
                             seaTrips[n].trips, seaTrips[n].dupe = trips, #trips > 1
                         end
                     elseif previous and state.toContent[previous.c]
-                        and Style.Jump(path.j).style ~= "portal" then
+                        and Style.Jump(pj[n]).style ~= "portal" then
                         -- Hearthstones and teleports across the sea take their
                         -- lane, when drawn as a line rather than portals.
                         local last = #previous.x
-                        seaTrips[n] = ns.SeaLane(path.j, previous.c,
+                        seaTrips[n] = ns.SeaLane(pj[n], previous.c,
                             { state.toContent[previous.c](previous.x[last], previous.y[last]) },
                             path.c, { px[n], py[n] }, state.W, state.H)
                     end
@@ -1282,6 +1282,7 @@ local function BuildOtherTracks()
             local px, py, pm, pj, brk, n = {}, {}, {}, {}, {}, 0
             -- This character's own journey is live, its roster copy as of logout.
             local paths = ns.Roster:IsMe(e) and ns.Recorder:GetPaths() or ns.Roster:Paths(e)
+            local previous
             for _, path in ipairs(paths) do
                 local toContent = state.toContent[path.c]
                 if toContent and #path.x > 0 then
@@ -1290,8 +1291,9 @@ local function BuildOtherTracks()
                         px[n], py[n] = toContent(path.x[i], path.y[i])
                         pm[n], brk[n] = path.m, i == 1
                     end
-                    pj[n - #path.x + 1] = path.j
+                    pj[n - #path.x + 1] = ns.Recorder:JumpReason(previous, path)
                 end
+                previous = path
             end
             local r, g, b = ns.ClassColor(e.class)
             local colors = {}

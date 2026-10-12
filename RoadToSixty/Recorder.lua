@@ -245,6 +245,22 @@ function Recorder:MarkTeleportsOut(paths)
     return paths
 end
 
+-- Why the path jumped to the start of path (decoded) from the end of
+-- previous: its saved reason, or "u" for a jump with none that is further
+-- than TELEPORT_DIST on one continent while alive. That was a teleport by
+-- something the recorder does not recognise: a quest, an NPC, a spell cast
+-- on the player. Not saved, so it also covers journeys recorded before.
+function Recorder:JumpReason(previous, path)
+    if path.j or not previous or previous.c ~= path.c or path.m == "g" then
+        return path.j
+    end
+    local last = #previous.x
+    if last > 0 and path.x[1]
+        and Dist(previous.x[last], previous.y[last], path.x[1], path.y[1]) > TELEPORT_DIST then
+        return "u"
+    end
+end
+
 -- Decoded copy of every segment, as GetPath.
 function Recorder:GetPaths()
     local paths = {}

@@ -62,6 +62,9 @@ local JUMP_STYLES = {
         start = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\ring", 18 },
         finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
     l = { "Logged in", 1, 1, 1, 0.7, style = "dots", instant = true },
+    -- A teleport the recorder could not name (Recorder:JumpReason): portals
+    -- in a pale gold, apart from the hearthstone's green and the mage's blue.
+    u = { "Teleported", 1, 0.85, 0.55, 1, style = "portal", pace = 80 },
 }
 local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
 
@@ -140,7 +143,7 @@ end
 -- reason (seg.j), and of each History item or map marker kind (event kinds,
 -- plus run, zone and the travel kinds Panel.lua makes). Reasons and kinds
 -- without one are always shown; loot is split by quality in Panel.lua.
-local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
+local JUMP_CATEGORY = { h = "hearths", p = "teleports", u = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
 local CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",

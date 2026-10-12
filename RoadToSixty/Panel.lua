@@ -344,7 +344,7 @@ local MIN_FLIGHT_SECONDS = 15
 
 -- Jump reasons (seg.j in Recorder.lua) listed as travel, and their kind.
 -- The title is the jump's label in Style.lua.
-local TRAVEL_JUMPS = { h = "hearth", p = "teleport", b = "boat" }
+local TRAVEL_JUMPS = { h = "hearth", p = "teleport", u = "teleport", b = "boat" }
 
 local historyItems = {}     -- every history item, before the filter
 
@@ -419,7 +419,8 @@ local function BuildHistory()
     local previous
     for _, path in ipairs(ns.Roster:ViewPaths()) do
         local startT, endT = path.t[1], path.t[#path.t]
-        local jump = TRAVEL_JUMPS[path.j]
+        local reason = ns.Recorder:JumpReason(previous, path)
+        local jump = TRAVEL_JUMPS[reason]
         if jump then
             local from = ZoneName(zoneAt(previous and previous.t[#previous.t] or startT))
             local to = ZoneName(zoneAt(startT))
@@ -430,7 +431,7 @@ local function BuildHistory()
                 route = ns.BoatRoute(previous.c, previous.x[last], previous.y[last],
                     path.c, path.x[1], path.y[1]) or route
             end
-            Add({ kind = jump, title = ns.Style.Jump(path.j)[1] }, startT, path.c, path.x[1], path.y[1], route)
+            Add({ kind = jump, title = ns.Style.Jump(reason)[1] }, startT, path.c, path.x[1], path.y[1], route)
         end
         if path.m == "t" and endT - startT >= MIN_FLIGHT_SECONDS then
             local flight = Add({ kind = "flight", title = "Flight path" }, startT, path.c, path.x[1], path.y[1])

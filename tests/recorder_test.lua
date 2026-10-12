@@ -241,6 +241,16 @@ game.x = game.x + 5000
 Tick()
 check(lastJump() == nil, "someone else's hearthstone is ignored")
 
+-- Reading back: a far jump with no saved reason is an unnamed teleport.
+local function P(c, m, j, x, y) return { c = c, m = m, j = j, x = { x }, y = { y } } end
+local JR = function(a, b) return Recorder:JumpReason(a, b) end
+check(JR(P(0, "w", nil, 0, 0), P(0, "w", nil, 5000, 0)) == "u", "a far unexplained jump reads as a teleport")
+check(JR(P(0, "w", nil, 0, 0), P(0, "t", nil, 20, 0)) == nil, "a mode change in place stays unexplained")
+check(JR(P(0, "w", nil, 0, 0), P(0, "g", nil, 5000, 0)) == nil, "a ghost's jump is not a teleport")
+check(JR(P(0, "w", nil, 0, 0), P(0, "w", "h", 5000, 0)) == "h", "a saved reason is kept")
+check(JR(nil, P(0, "w", nil, 5000, 0)) == nil, "the first segment has no jump")
+check(JR({ c = 0, m = "w", x = {}, y = {} }, P(0, "w", nil, 5000, 0)) == nil, "an empty segment before is skipped")
+
 check(ns.errors.count == 0, "no errors while recording")
 
 if failures == 0 then

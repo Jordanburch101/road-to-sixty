@@ -52,7 +52,7 @@ python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and Zone
 ```
 
 Run `check.ps1` from the repo root. It currently reports three old
-warnings (Probe.lua:52, Probe.lua:830, Recorder.lua:333); anything new is
+warnings (Probe.lua:52, Probe.lua:830, Recorder.lua:349); anything new is
 ours to fix.
 
 ## Release
