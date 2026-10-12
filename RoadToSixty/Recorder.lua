@@ -163,7 +163,7 @@ local function Sample()
     end
     lastKnown.c, lastKnown.x, lastKnown.y = c, x, y
 
-    local t, mode = time(), Recorder:Mode()
+    local t, mode = ns.Now(), Recorder:Mode()
     local previousMode, previousC = lastMode, lastC
     lastMode, lastC = mode, c
     local jumped = prev and (prev.c ~= c or Dist(prev.x, prev.y, x, y) > TELEPORT_DIST)

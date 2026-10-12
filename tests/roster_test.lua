@@ -56,6 +56,7 @@ C_Map = { GetBestMapForUnit = function() return 1436 end }
 time = function() return now end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Roster.lua"))("RoadToSixty", ns)
 local Roster = ns.Roster
 

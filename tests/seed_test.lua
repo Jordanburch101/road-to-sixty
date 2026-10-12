@@ -67,6 +67,7 @@ GetItemInfoInstant = function(id)
     return id, nil, nil, EQUIP_LOCS[id]
 end
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Seed.lua"))("RoadToSixty", ns)
 local started = os.clock()
 commands.seed("confirm")

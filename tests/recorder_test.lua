@@ -58,6 +58,7 @@ IsInInstance = function() return game.instance end
 time = function() return game.now end
 GetTime = function() return game.now end
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Recorder.lua"))("RoadToSixty", ns)
 local Recorder = ns.Recorder
 

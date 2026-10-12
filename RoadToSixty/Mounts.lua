@@ -36,7 +36,7 @@ local RECHECK = 2       -- the collection can lag the signal, so it is read agai
 local Log = function(...) ns.Journal:Log(...) end
 
 local ready = false
-local signalAt = -math.huge     -- time() of the last learn signal
+local signalAt = -math.huge     -- ns.Now() of the last learn signal
 
 -- Riding spells: modern Apprentice, Journeyman, Expert, Artisan, Master,
 -- then the classic races' own.
@@ -67,11 +67,11 @@ end
 -- Where and when, for the saved notes.
 local function Note(base)
     local c, x, y = ns.Recorder:Position()
-    return { time(), c, x and math.floor(x), y and math.floor(y), UnitLevel("player"), base or nil }
+    return { ns.Now(), c, x and math.floor(x), y and math.floor(y), UnitLevel("player"), base or nil }
 end
 
 local function Recent()
-    return time() - signalAt <= LEARN_WINDOW
+    return ns.Now() - signalAt <= LEARN_WINDOW
 end
 
 -- Riding ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ end
 -- Something was just learned: read now, and again once the client has caught up.
 local function Learned(mountID, spellID)
     if not ready then return end
-    signalAt = time()
+    signalAt = ns.Now()
     Mounts:CheckRiding()
     Mounts:CheckMounts(mountID, spellID)
     C_Timer.After(RECHECK, function()

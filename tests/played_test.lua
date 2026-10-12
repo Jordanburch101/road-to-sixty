@@ -68,6 +68,7 @@ end
 ChatFrame1, ChatFrame2 = Chat(), Chat()
 NUM_CHAT_WINDOWS = 2
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 local Journal = ns.Journal

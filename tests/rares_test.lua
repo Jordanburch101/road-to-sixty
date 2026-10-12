@@ -63,6 +63,7 @@ GetLootSourceInfo = function(slot)
     return unpack(out)
 end
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Rares.lua"))("RoadToSixty", ns)
 local Rares = ns.Rares
 

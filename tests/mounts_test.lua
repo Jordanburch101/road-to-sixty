@@ -86,6 +86,7 @@ C_MountJournal = {
     end,
 }
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Mounts.lua"))("RoadToSixty", ns)
 local Mounts = ns.Mounts

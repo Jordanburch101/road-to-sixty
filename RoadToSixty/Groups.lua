@@ -211,7 +211,7 @@ end
 -- Compares the group with the one saved and logs what changed.
 function Groups:Check()
     if not ready or ns.char.seeded then return end
-    local g, t = ns.char.group, time()
+    local g, t = ns.char.group, ns.Now()
     if not InGroup() then
         if g then End(t) end
         return
@@ -283,7 +283,7 @@ function Groups:Resume()
     local g = ns.char.group
     if not g then return end
     if InGroup() then
-        local t = time()
+        local t = ns.Now()
         for guid, since in pairs(g.members) do
             Part(guid, since, g.seen, g.kind)
             g.members[guid] = t
@@ -341,7 +341,7 @@ end)
 ns.On("GROUP_ROSTER_UPDATE", CheckSoon)
 ns.On("GROUP_LEFT", CheckSoon)
 ns.On("PLAYER_LOGOUT", function()
-    if ns.char.group then ns.char.group.seen = time() end
+    if ns.char.group then ns.char.group.seen = ns.Now() end
 end)
 
 --@debug@

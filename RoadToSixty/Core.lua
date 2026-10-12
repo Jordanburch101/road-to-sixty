@@ -98,6 +98,15 @@ function ns.SafeCall(fn, ...)
     end
 end
 
+-- Now in Unix seconds by the realm's clock. Every saved time uses it, so
+-- journeys recorded on PCs whose clocks differ line up when merged (#1).
+-- GetServerTime was checked on Forever (#35); the PC's clock is the
+-- fallback if the client gives none.
+function ns.Now()
+    local t = GetServerTime and GetServerTime()
+    return t and t > 0 and t or time()
+end
+
 -- Index of the last entry of times (sorted ascending) that is at or before
 -- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)]. With
 -- key, entries are tables sorted by entry[key].
@@ -155,7 +164,7 @@ ns.On("ADDON_LOADED", function(name)
 
     -- SavedVariables are written on logout and /reload, so the data on disk
     -- is as of this load.
-    ns.loadedAt = time()
+    ns.loadedAt = ns.Now()
 end)
 
 ns.On("PLAYER_LOGIN", function()

@@ -138,7 +138,7 @@ ns.On("PLAYER_LOGIN", function()
     entry.name, entry.realm = UnitName("player"), GetRealmName()
     entry.class = select(2, UnitClass("player"))
     entry.level = UnitLevel("player")
-    entry.seen = time()
+    entry.seen = ns.Now()
     entry.played = ns.char.played or entry.played
     if ns.char.rosterBuilt ~= VERSION then
         Roster:Rebuild()
@@ -158,7 +158,7 @@ end)
 
 ns.On("PLAYER_LOGOUT", function()
     Roster:Sync()
-    entry.seen = time()
+    entry.seen = ns.Now()
 end)
 
 -- Every character, this one first, then the most recently seen.

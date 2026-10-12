@@ -65,7 +65,7 @@ local function Trace(text)
 end
 -- /rts rareprobe match: each time an elite or rare target went (cleared or
 -- seen dead), whatever the test mode, to match against the kill list:
--- { time(), classification, level, GUID or false }. special is the one
+-- { ns.Now(), classification, level, GUID or false }. special is the one
 -- targeted now, alive.
 local moments, special = {}, nil
 --@end-debug@
@@ -141,7 +141,7 @@ local function Record(info, name, how)
     local rares = ns.char.rares or {}
     ns.char.rares = rares
     -- One with neither (no XP inside an instance) is a kill of its own.
-    local key = info.npc or name or ("%s %d"):format(tostring(info.class), time())
+    local key = info.npc or name or ("%s %d"):format(tostring(info.class), ns.Now())
     local known = rares[key]
     if known then
         known[1] = known[1] + 1
@@ -149,7 +149,7 @@ local function Record(info, name, how)
         return
     end
     Log("rare", name, info.class, info.level, info.npc, how)
-    rares[key] = { 1, time(), name, info.npc, info.class }
+    rares[key] = { 1, ns.Now(), name, info.npc, info.class }
 end
 
 -- Inside an instance (no GUID), a rare corpse clicked has no name; if the
@@ -160,7 +160,7 @@ local function RecentKillName()
     local name, count = nil, 0
     local kills = ns.Journal:Kills()
     for k = #kills, 1, -1 do
-        if kills[k].t < time() - LOOKBACK then break end
+        if kills[k].t < ns.Now() - LOOKBACK then break end
         name, count = kills[k].name, count + 1
     end
     return count == 1 and name or nil
@@ -219,7 +219,7 @@ function Rares:Target()
     lastLook = ("%s, %s"):format(tostring(info and info.class), what)
     Trace(("target %s, dead %s"):format(info and tostring(info.class) or "none", tostring(info and info.dead)))
     if special and gone then
-        moments[#moments + 1] = { time(), special[1], special[2], special[3] }
+        moments[#moments + 1] = { ns.Now(), special[1], special[2], special[3] }
         if #moments > 10 then table.remove(moments, 1) end
     end
     special = nil
@@ -309,7 +309,7 @@ function Rares:Looted()
     local events = ns.char.events
     for i = #events, 1, -1 do
         local e = events[i]
-        if e[1] < time() - SAME_CORPSE then break end
+        if e[1] < ns.Now() - SAME_CORPSE then break end
         if e[2] == "rare" and not e[9] and e[7] == target.class and e[8] == target.level then
             e[9] = npc
             return

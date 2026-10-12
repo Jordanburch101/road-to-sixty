@@ -78,6 +78,7 @@ COMBATLOG_XPGAIN_FIRSTPERSON = "%s dies, you gain %d experience."
 LOOT_ITEM_SELF = "You receive loot: %s."
 LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
 
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 ns.view = ns.char

@@ -137,6 +137,10 @@ Verified in game; trust these over web guides, and re-check after patches.
   names the mob in plain text; it comes while the dying target still shows
   alive, and the target is cleared at the same moment (no `UNIT_HEALTH`
   death is seen first).
+- `GetServerTime()` exists and returns Unix seconds (1 second from `time()`
+  on a PC with a correct clock). Every saved time uses it through `ns.Now()`,
+  so journeys from PCs with different clocks line up; use `ns.Now()`, never
+  `time()`, outside developer tools.
 - SavedVariables are written only on logout, quit, disconnect or `/reload`.
   `ReloadUI()` needs a hardware event (a click or key), never a timer.
 - Some UI values are retail-style "secret values"; reading their rects or

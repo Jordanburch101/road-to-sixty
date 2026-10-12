@@ -36,7 +36,7 @@ local pendingPlayedLevel
 
 function Journal:Log(kind, ...)
     local c, x, y = ns.Recorder:Position()
-    local e = { time(), kind, c or -1, x or 0, y or 0, ... }
+    local e = { ns.Now(), kind, c or -1, x or 0, y or 0, ... }
     table.insert(ns.char.events, e)
     return e
 end
@@ -89,7 +89,7 @@ local function Snapshot(level, partial)
     local totals = ns.char.totals
     ns.char.levels[level] = {
         gear = ns.CaptureGear(),
-        t = time(),
+        t = ns.Now(),
         money = GetMoney(),
         kills = totals.kills,
         killXP = totals.killXP,
@@ -139,7 +139,7 @@ end
 local function StartRun(name, instanceType)
     local t = ns.char.totals
     ns.char.run = {
-        t = time(), name = name, type = instanceType, level = UnitLevel("player"),
+        t = ns.Now(), name = name, type = instanceType, level = UnitLevel("player"),
         kills = t.kills, xp = t.killXP + t.questXP, deaths = t.deaths, money = GetMoney(),
         items = {}, party = {},
     }
@@ -176,7 +176,7 @@ local function RunSummary(run)
     end
     return {
         name = run.name,
-        duration = time() - run.t,
+        duration = ns.Now() - run.t,
         kills = t.kills - run.kills,
         xp = t.killXP + t.questXP - run.xp,
         deaths = t.deaths - run.deaths,
@@ -207,7 +207,7 @@ local function LeaveRun(instanceID)
     end
     local c, x, y = ns.Recorder:Position()
     run.left = {
-        t = time(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run),
+        t = ns.Now(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run),
         group = ns.char.group and ns.char.group.t or false,
     }
     local left = run.left
@@ -222,7 +222,7 @@ local function CheckInstance()
     local char = ns.char
     local run = char.run
     -- A run left too long ago, or left before a logout, has ended.
-    if run and run.left and time() - run.left.t >= RUN_GAP then
+    if run and run.left and ns.Now() - run.left.t >= RUN_GAP then
         FinishRun()
         run = nil
     end
@@ -491,7 +491,7 @@ end
 local function OnlineBetween(a, b)
     local seconds = 0
     for _, s in ipairs(Sessions()) do
-        local from, to = math.max(s[1], a), math.min(s[2], b, time())
+        local from, to = math.max(s[1], a), math.min(s[2], b, ns.Now())
         if to > from then seconds = seconds + to - from end
     end
     return seconds
@@ -522,8 +522,8 @@ end
 local lastDeath
 
 ns.On("PLAYER_DEAD", function()
-    if time() == lastDeath then return end
-    lastDeath = time()
+    if ns.Now() == lastDeath then return end
+    lastDeath = ns.Now()
     ns.char.totals.deaths = ns.char.totals.deaths + 1
     Journal:Log("die")
 end)
@@ -623,7 +623,7 @@ local function AddKill(name, xp)
         kills.names[n] = name
         nameIndex[name] = n
     end
-    local t = time()
+    local t = ns.Now()
     killBuffer[#killBuffer + 1] = ("%d,%d,%d;"):format(t - kills.last, xp, n)
     kills.last = t
 end

@@ -905,7 +905,7 @@ local function CreateStatsPane(pane)
             local from = g[4] and "before tracking" or date("%d %b %Y", g[2])
             local to = g[3] and date("%d %b %Y", g[3]) or "now"
             GameTooltip:AddDoubleLine("<" .. g[1] .. ">", ("%s - %s, %s"):format(from, to,
-                FormatDuration((g[3] or time()) - g[2])), 1, 1, 1, 1, 1, 1)
+                FormatDuration((g[3] or ns.Now()) - g[2])), 1, 1, 1, 1, 1, 1)
         end
         if #list == 0 then
             GameTooltip:AddLine("None yet", 1, 1, 1)

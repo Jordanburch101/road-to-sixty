@@ -2366,7 +2366,7 @@ local function OnUpdate(_, elapsed)
         ApplyCursor()
         FollowHead()
         -- At the end, markerNow is math.huge: everything up to now has passed.
-        local now = state.markerNow == math.huge and time() or state.markerNow
+        local now = state.markerNow == math.huge and ns.Now() or state.markerNow
         ns.QuestPop:Passed(before, now)
         ns.GuildPop:Passed(before, now)
         ns.LevelPop:Passed(before, now)

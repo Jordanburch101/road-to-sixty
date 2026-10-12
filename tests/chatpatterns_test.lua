@@ -12,6 +12,7 @@ local function check(ok, message)
 end
 
 local ns = {}
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 
 local function same(format, msg, ...)

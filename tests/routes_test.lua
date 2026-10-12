@@ -10,6 +10,7 @@ local function check(ok, message)
 end
 
 local ns = {}
+ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Routes.lua"))("RoadToSixty", ns)
 
 -- Docks: the nearest pier by continent, nothing far from any.

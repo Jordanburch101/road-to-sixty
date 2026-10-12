@@ -158,7 +158,7 @@ end
 
 -- "5m ago", "3h ago", "2d ago".
 function ns.FormatAgo(t)
-    local seconds = time() - (t or 0)
+    local seconds = ns.Now() - (t or 0)
     if seconds < 3600 then return ("%dm ago"):format(math.max(1, math.floor(seconds / 60))) end
     if seconds < 86400 then return ("%dh ago"):format(math.floor(seconds / 3600)) end
     return ("%dd ago"):format(math.floor(seconds / 86400))

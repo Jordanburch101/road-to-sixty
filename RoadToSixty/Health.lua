@@ -62,7 +62,7 @@ ns.Command("check", "check that recording is working", function()
         Line("Last error: " .. tostring(ns.errors.last))
     end
 
-    Line(("Unsaved for %d min. Logging out or /reload saves it."):format(Minutes(time() - ns.loadedAt)))
+    Line(("Unsaved for %d min. Logging out or /reload saves it."):format(Minutes(ns.Now() - ns.loadedAt)))
 
     if ns.char.seeded then
         Line("|cffff8040This character has fake seeded data. /rts reset confirm clears it.|r")
