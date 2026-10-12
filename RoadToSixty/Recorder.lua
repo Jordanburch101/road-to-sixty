@@ -197,12 +197,7 @@ end
 local decoded = setmetatable({}, { __mode = "k" })
 
 local function Decode(seg, d)
-    local t, x, y = seg.t, seg.x, seg.y
-    local ts, xs, ys = { t }, { x }, { y }
-    for dt, dx, dy in d:gmatch("(-?%d+),(-?%d+),(-?%d+)") do
-        t, x, y = t + tonumber(dt), x + tonumber(dx), y + tonumber(dy)
-        ts[#ts + 1], xs[#xs + 1], ys[#ys + 1] = t, x, y
-    end
+    local ts, xs, ys = ns.Packed.DecodePath(seg, d)
     -- Up to 1.5.0 a death inside an instance was saved as leaving it; a
     -- ghost's segment after an instance is that death.
     local j = seg.j

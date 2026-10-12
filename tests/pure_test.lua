@@ -1,0 +1,28 @@
+-- The files the sync server runs must work with nothing but standard Lua
+-- 5.1: no game API. This loads each one in an environment holding only the
+-- standard library, then calls what it defines, so a game call anywhere in
+-- them fails here. Run with LuaJIT from the repo root: luajit tests/pure_test.lua
+
+local STANDARD = {
+    "assert", "error", "ipairs", "next", "pairs", "pcall", "select", "setmetatable",
+    "getmetatable", "tonumber", "tostring", "type", "unpack", "string", "table", "math",
+}
+
+local function Load(name, ns)
+    local env = {}
+    for _, key in ipairs(STANDARD) do env[key] = _G[key] end
+    local chunk = assert(loadfile("RoadToSixty/" .. name))
+    setfenv(chunk, env)
+    chunk("RoadToSixty", ns)
+end
+
+local ns = {}
+Load("Packed.lua", ns)
+
+local packed = ns.Packed.PackKills({ { t = 1, xp = 2, name = "A" } })
+local list = {}
+ns.Packed.DecodeKills(packed.d, packed.names, 0, list)
+assert(list[1].name == "A")
+assert(#ns.Packed.DecodePath({ t = 1, x = 0, y = 0, d = "1,1,1" }) == 2)
+
+print("Pure tests passed.")

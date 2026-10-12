@@ -51,6 +51,7 @@ GetInventorySlotInfo = function() return 1 end
 UnitXP, UnitXPMax = function() return 0 end, function() return 1 end
 
 ns.Now = function() return time() end
+assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 local Journal = ns.Journal

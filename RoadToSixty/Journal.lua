@@ -656,10 +656,7 @@ function Journal:Kills()
     end
     local saved, t = cache.list, cache.t
     if #kills.d > cache.length then
-        for dt, xp, n in kills.d:sub(cache.length + 1):gmatch("(-?%d+),(%d+),(%d+);") do
-            t = t + tonumber(dt)
-            saved[#saved + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
-        end
+        t = ns.Packed.DecodeKills(kills.d:sub(cache.length + 1), kills.names, t, saved)
         cache.length, cache.t = #kills.d, t
         cache.tail = kills.d:sub(-16)
     end
@@ -670,10 +667,7 @@ function Journal:Kills()
     for i = 1, #saved do
         list[i] = saved[i]
     end
-    for dt, xp, n in table.concat(killBuffer):gmatch("(-?%d+),(%d+),(%d+);") do
-        t = t + tonumber(dt)
-        list[#list + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
-    end
+    ns.Packed.DecodeKills(table.concat(killBuffer), kills.names, t, list)
     return list
 end
 

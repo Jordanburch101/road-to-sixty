@@ -59,6 +59,7 @@ time = function() return game.now end
 GetTime = function() return game.now end
 
 ns.Now = function() return time() end
+assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Recorder.lua"))("RoadToSixty", ns)
 local Recorder = ns.Recorder
 
