@@ -64,6 +64,7 @@ The app talks straight to the backend. Nothing large goes through Vercel, which 
 
 - `Merge.lua` holds the merge rules. Plain Lua 5.1 with no game calls, so the server and the offline tests run it unchanged.
 - `Parse.lua` reads saved-data text. It accepts data only (tables, strings, numbers, booleans) and refuses anything that looks like code, so a journey from outside can never run in game.
+- `Packed.lua` holds the packed kill and path formats (decode kills, pack kills, decode a path segment) as plain functions, used by the journal, the recorder and the merge.
 - `Tidy.lua` holds the login tidy-ups now inside `Journal.lua` (`TidyRuns`, `TidyEvents`) and `Guilds.lua` (`Guilds:Tidy`), moved into plain functions. The addon calls them at login as before, and the merge calls them on each input.
 - `Sync.lua` reads the sync folder at login and merges or replaces.
 
@@ -128,7 +129,7 @@ The merge refuses, with a reason, when a copy is a seeded test journey (`seeded`
 
 After merging, the server checks the result before accepting it: every session from both inputs is present, and no total or tally is lower than in either input.
 
-### Rules for writing `Merge.lua`, `Parse.lua` and `Tidy.lua`
+### Rules for writing `Merge.lua`, `Parse.lua`, `Tidy.lua` and `Packed.lua`
 
 These files run in WoW's Lua, in standard Lua 5.1 on the server and in LuaJIT in the tests, and must behave the same in all three:
 
@@ -139,7 +140,7 @@ These files run in WoW's Lua, in standard Lua 5.1 on the server and in LuaJIT in
 
 ## The backend
 
-One Bun service in `apps/server`, using Elysia. Dokploy builds it from a Dockerfile based on the official Bun image, which also installs the `lua5.1` package and copies `Merge.lua`, `Parse.lua` and `Tidy.lua` from `apps/addon/RoadToSixty/`.
+One Bun service in `apps/server`, using Elysia. Dokploy builds it from a Dockerfile based on the official Bun image, which also installs the `lua5.1` package and copies `Merge.lua`, `Parse.lua`, `Tidy.lua` and `Packed.lua` from `apps/addon/RoadToSixty/`.
 
 It holds:
 
@@ -318,7 +319,7 @@ road-to-sixty/
 │   ├── addon/
 │   │   ├── package.json      tasks: test, check, package
 │   │   ├── check.ps1, .luarc.json
-│   │   ├── RoadToSixty/      the addon; Merge.lua, Parse.lua, Tidy.lua, Sync.lua added
+│   │   ├── RoadToSixty/      the addon; Merge.lua, Parse.lua, Tidy.lua, Packed.lua, Sync.lua added
 │   │   ├── tests/            existing tests plus merge, parse, tidy and sync tests
 │   │   └── scripts/          package.ps1, sync-version.ps1, curseforge.sh, changelog.sh,
 │   │                         zone-overlays.py and the texture scripts
@@ -362,7 +363,7 @@ Vercel builds `apps/web` and Dokploy builds `apps/server`, each only when its ow
 Each step is usable on its own.
 
 1. #35: server clock, data version, size test. Ships before launch.
-2. `Merge.lua`, `Parse.lua` and `Tidy.lua` with their tests. Pure Lua, no servers.
+2. `Packed.lua`, `Tidy.lua`, `Parse.lua` and `Merge.lua` with their tests. Pure Lua, no servers.
 3. The addon reads a sync folder (`Sync.lua`), tested with a hand-made one.
 4. Workspace: move the addon to `apps/addon`, add Turborepo and Bun. Then the server: auth, upload, storage, merge jobs.
 5. The desktop app: install finding, linking, upload, delivery.
