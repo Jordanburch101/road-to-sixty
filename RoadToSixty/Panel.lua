@@ -502,12 +502,7 @@ local function BuildHistory()
                 Add({ kind = kind, title = "Discovered " .. ZoneName(e[6]) }, t, c, x, y, "First visit")
             end
         elseif kind == "qd" then
-            -- The name is saved from 1.1 on; older turn-ins ask the client.
-            local title = e[9]
-            if not title then
-                local ok, name = pcall(C_QuestLog.GetTitleForQuestID, e[6])
-                title = ok and name ~= "" and name or ("Quest " .. tostring(e[6]))
-            end
+            local title = ns.Journal:QuestName(e) or ("Quest " .. tostring(e[6]))
             local reward = e[7] and e[7] > 0 and ("+%s xp"):format(Commas(e[7])) or "Turned in"
             if e[8] and e[8] > 0 then
                 reward = reward .. ", " .. FormatMoney(e[8])

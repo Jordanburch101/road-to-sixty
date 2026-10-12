@@ -528,6 +528,12 @@ local function QuestTitle(questID)
     return questTitles[questID]
 end
 
+-- A turn-in's quest name: the one saved with it (from 1.1 on), else what
+-- the client knows now; nil if neither.
+function Journal:QuestName(e)
+    return e[9] or QuestTitle(e[6])
+end
+
 ns.On("QUEST_ACCEPTED", function(...)
     -- Classic passes (questLogIndex, questID); modern clients pass (questID).
     local questID = select(select("#", ...), ...)

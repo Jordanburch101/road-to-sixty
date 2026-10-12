@@ -773,12 +773,7 @@ local function BuildMarkers()
             zone = e[6]
         end
         if toContent and kind == "qd" then
-            -- The name is saved from 1.1 on; older turn-ins ask the client.
-            local name = e[9]
-            if not name then
-                local ok, title = pcall(C_QuestLog.GetTitleForQuestID, e[6])
-                name = ok and title ~= "" and title or ("Quest " .. tostring(e[6]))
-            end
+            local name = ns.Journal:QuestName(e) or ("Quest " .. tostring(e[6]))
             local near = visit and visit.c == c and t - visit.last <= QUEST_VISIT.seconds
                 and (x - visit.x) ^ 2 + (y - visit.y) ^ 2 <= QUEST_VISIT.yards ^ 2
             if not near then

@@ -197,7 +197,7 @@ function QuestPop:Rebuild()
     wipe(turnins)
     for _, e in ipairs(ns.view.events) do
         if e[2] == "qd" then
-            turnins[#turnins + 1] = { t = e[1], c = e[3], x = e[4], y = e[5], id = e[6], xp = e[7], title = e[9] }
+            turnins[#turnins + 1] = { t = e[1], c = e[3], x = e[4], y = e[5], id = e[6], xp = e[7], event = e }
         end
     end
 end
@@ -209,10 +209,7 @@ function QuestPop:Passed(from, to)
     for i = ns.LastIndex(turnins, from, "t") + 1, #turnins do
         local turnin = turnins[i]
         if turnin.t > to then break end
-        if not turnin.title then
-            local ok, title = pcall(C_QuestLog.GetTitleForQuestID, turnin.id)
-            turnin.title = ok and title ~= "" and title or nil
-        end
+        turnin.title = turnin.title or ns.Journal:QuestName(turnin.event)
         waiting[#waiting + 1] = turnin
     end
     while #waiting > MAX_WAITING do
