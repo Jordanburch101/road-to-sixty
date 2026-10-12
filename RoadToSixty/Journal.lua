@@ -624,14 +624,37 @@ end)
 
 -- Every recorded kill of the journey shown (ns.view), oldest first:
 -- { t, xp, name }. This session's are still buffered for this character.
+-- The list is shared by every caller and must not be changed. The packed
+-- string only grows, so a list made from it is extended, not made again;
+-- the buffered kills are added on top each call. tail is the end of the
+-- string as last read, to notice it was replaced (/rts reset, /rts seed).
+local decodedKills = { kills = nil, length = 0, tail = "", list = {}, t = 0 }
+
 function Journal:Kills()
-    local kills, list, t = ns.view.kills, {}, 0
-    local buffered = ns.view == ns.char and table.concat(killBuffer) or ""
-    for _, chunk in ipairs({ kills.d, buffered }) do
-        for dt, xp, n in chunk:gmatch("(-?%d+),(%d+),(%d+);") do
+    local kills, cache = ns.view.kills, decodedKills
+    if cache.kills ~= kills or #kills.d < cache.length
+        or kills.d:sub(math.max(1, cache.length - 15), cache.length) ~= cache.tail then
+        cache.kills, cache.length, cache.tail, cache.list, cache.t = kills, 0, "", {}, 0
+    end
+    local saved, t = cache.list, cache.t
+    if #kills.d > cache.length then
+        for dt, xp, n in kills.d:sub(cache.length + 1):gmatch("(-?%d+),(%d+),(%d+);") do
             t = t + tonumber(dt)
-            list[#list + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
+            saved[#saved + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
         end
+        cache.length, cache.t = #kills.d, t
+        cache.tail = kills.d:sub(-16)
+    end
+    if ns.view ~= ns.char or #killBuffer == 0 then
+        return saved
+    end
+    local list = {}
+    for i = 1, #saved do
+        list[i] = saved[i]
+    end
+    for dt, xp, n in table.concat(killBuffer):gmatch("(-?%d+),(%d+),(%d+);") do
+        t = t + tonumber(dt)
+        list[#list + 1] = { t = t, xp = tonumber(xp), name = kills.names[tonumber(n)] }
     end
     return list
 end

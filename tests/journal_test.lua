@@ -127,6 +127,12 @@ Fire("PLAYER_LOGOUT")
 local kills = Journal:Kills()
 check(#kills == 4 and kills[4].t == 1000045 and kills[4].name == "Grell",
     "a kill after a pack is appended with the right time")
+check(Journal:Kills() == kills, "with nothing buffered, the decoded list is reused")
+local savedKills = ns.char.kills.d
+ns.char.kills.d = "1000500,70,1;"
+check(#Journal:Kills() == 1 and Journal:Kills()[1].t == 1000500, "a replaced kill string is read afresh")
+ns.char.kills.d = savedKills
+check(#Journal:Kills() == 4, "and read afresh again when put back")
 
 -- 4. Loot: green or better from the real message, grey left out, stacks handled.
 Fire("CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2589::::::::5:::::|h[Linen Cloth]|h|rx3.")
