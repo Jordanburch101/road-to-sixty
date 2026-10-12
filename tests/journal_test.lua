@@ -21,7 +21,10 @@ local ns = {
         kills = { d = "", last = 0, names = {} },
         recipes = {},
     },
+    db = {},
     errors = { count = 0 },
+    Groups = { Current = function() return nil end, CountRun = function() end },
+    IsPlaceMap = function(mapID) return mapID ~= 1415 end,
     Recorder = { Position = function()
         if game.position then return 0, -8900, 500 end
     end },
@@ -67,14 +70,17 @@ GetInventoryItemID = function(_, slot) return ({ [1] = 100, [5] = 200 })[slot] e
 GetItemInfo = function(link) return nil end     -- never cached, so quality comes from the link colour
 C_Map = { GetBestMapForUnit = function() return game.map end }
 C_QuestLog = { GetTitleForQuestID = function(id) return "Quest " .. id end }
-C_Timer = { NewTicker = function(_, fn) tickers[#tickers + 1] = fn end }
+C_Timer = { NewTicker = function(_, fn) tickers[#tickers + 1] = fn end, After = function() end }
+UnitXP, UnitXPMax = function() return 0 end, function() return 1 end
 
 -- The client's real format strings, not the fallbacks.
 COMBATLOG_XPGAIN_FIRSTPERSON = "%s dies, you gain %d experience."
 LOOT_ITEM_SELF = "You receive loot: %s."
 LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
 
+assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
+ns.view = ns.char
 local Journal = ns.Journal
 
 Fire("PLAYER_LOGIN")
@@ -145,22 +151,14 @@ local qd
 for _, e in ipairs(ns.char.events) do if e[2] == "qd" then qd = e end end
 check(qd and qd[6] == 783 and qd[7] == 250 and qd[9] == "Quest 783", "turn-in logs id, xp and title")
 
--- 6. A dungeon run: in and out events, with a summary of what happened inside.
+-- 6. Entering a dungeon logs it. Leaving, and the run's summary, wait in
+-- case the player runs back in; tests/runs_test.lua covers those.
 game.instance = true
 Fire("PLAYER_ENTERING_WORLD")
 local inEvent = ns.char.events[#ns.char.events]
 check(inEvent[2] == "in" and inEvent[6] == 36 and inEvent[7] == "Deadmines", "entering logs the instance")
-Fire("CHAT_MSG_COMBAT_XP_GAIN", "Defias Pillager dies, you gain 90 experience.")
-Fire("CHAT_MSG_LOOT", "You receive loot: |cff0070dd|Hitem:5192::::::::5:::::|h[Cruel Barb]|h|r.")
-game.money = 2000
 game.instance = false
 Fire("PLAYER_ENTERING_WORLD")
-local out = ns.char.events[#ns.char.events]
-check(out[2] == "out" and out[6] == 36, "leaving logs the instance")
-local summary = out[7]
-check(summary and summary.kills == 1 and summary.money == 766 and #summary.items == 1,
-    "run summary counts kills, money and items inside")
-check(ns.char.totals.instances == 1, "instances counted")
 
 -- 7. Equipment changes log only real changes.
 local eqBefore = #ns.char.events
