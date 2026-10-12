@@ -270,7 +270,7 @@ end)
 ns.On("TRAINER_SHOW", function() trainerOpen = true end)
 ns.On("TRAINER_CLOSED", function() trainerOpen = false end)
 
-ns.recipeEventTracked = ns.On("NEW_RECIPE_LEARNED", function(spellID)
+ns.On("NEW_RECIPE_LEARNED", function(spellID)
     --@debug@
     ns.Print(("NEW_RECIPE_LEARNED %s (%s)"):format(tostring(spellID), tostring(SpellName(spellID))))
     --@end-debug@
@@ -326,21 +326,5 @@ ns.Command("craftprobe", "check the profession and recipe APIs (developer)", fun
     end
     ns.Print(("Known recipes: %s. Events: %d prof, %d rec."):format(
         #known > 0 and table.concat(known, ", ") or "none", logged.prof, logged.rec))
-end)
-
--- /rts craftfix: clears what an early version recorded wrongly on test
--- characters: recipe events from window scans (no spell ID and no trainer)
--- and recipe lists that mixed professions. The lists refill as windows open.
-ns.Command("craftfix", "remove wrongly recorded recipes (developer)", function()
-    local events, removed = ns.char.events, 0
-    for i = #events, 1, -1 do
-        local e = events[i]
-        if e[2] == "rec" and not e[7] and e[9] ~= "t" then
-            table.remove(events, i)
-            removed = removed + 1
-        end
-    end
-    wipe(ns.char.recipes)
-    ns.Print(("Removed %d recipe events and cleared the recipe lists. Open each profession window to refill them, then /reload to save."):format(removed))
 end)
 --@end-debug@

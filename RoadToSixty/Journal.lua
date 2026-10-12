@@ -583,7 +583,7 @@ local function ItemQuality(link)
     return color and LINK_QUALITY[color:lower()]
 end
 
-ns.lootTracked = ns.On("CHAT_MSG_LOOT", function(msg)
+ns.On("CHAT_MSG_LOOT", function(msg)
     local link
     for _, match in ipairs(lootMatchers) do
         link = match(msg)
