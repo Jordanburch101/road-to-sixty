@@ -2929,21 +2929,36 @@ function Map:Open()
     frame:SetTitle(ns.Roster:ViewEntry().name .. "'s Journey")
     Map:UpdateViewBanner()
 
-    local started = debugprofilestop()
-    local paths = ns.Roster:ViewPaths()
-    state.perf.decode = debugprofilestop() - started
+    -- The journey shown and how far it has grown. If nothing was recorded
+    -- since the last open, the points, markers and replay effects still
+    -- hold, and only the pops' animations are cleared.
+    local view = ns.view
+    local journey = table.concat({ tostring(view), #view.segments, ns.Recorder.stored,
+        #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0 }, ":")
+    if journey == state.journey then
+        state.perf.decode, state.perf.setup = 0, 0
+        ns.QuestPop:Clear()
+        ns.GuildPop:Clear()
+        ns.LevelPop:Clear()
+        ns.KillPop:Clear()
+    else
+        local started = debugprofilestop()
+        local paths = ns.Roster:ViewPaths()
+        state.perf.decode = debugprofilestop() - started
 
-    started = debugprofilestop()
-    BuildPoints(paths)
-    BuildMarkers()
-    ns.GearCard:Rebuild()
-    ns.QuestPop:Rebuild()
-    ns.GuildPop:Rebuild()
-    ns.LevelPop:Rebuild()
-    ns.KillPop:Rebuild()
-    ns.KillMarks:Rebuild()
-    StartWarmUp()
-    state.perf.setup = debugprofilestop() - started
+        started = debugprofilestop()
+        BuildPoints(paths)
+        BuildMarkers()
+        ns.GearCard:Rebuild()
+        ns.QuestPop:Rebuild()
+        ns.GuildPop:Rebuild()
+        ns.LevelPop:Rebuild()
+        ns.KillPop:Rebuild()
+        ns.KillMarks:Rebuild()
+        StartWarmUp()
+        state.perf.setup = debugprofilestop() - started
+        state.journey = journey
+    end
 
     SetPlaying(false)
     drag = nil
