@@ -621,7 +621,7 @@ local function BuildMarkers()
                 m.t, m.popping, m.level = t, nil, nil
                 m.x, m.y = toContent(x, y)
                 m.c = c
-                m.category = Style.MARKER_CATEGORY[kind]
+                m.category = Style.CATEGORY[kind]
                 m.minZoom = guild and MARKER_ZOOM.guild or kind == "rep" and MARKER_ZOOM.reputation
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
@@ -639,7 +639,7 @@ local function BuildMarkers()
             m.t, m.popping, m.level, m.group = t, nil, nil, e
             m.x, m.y = toContent(x, y)
             m.c = c
-            m.category = Style.MARKER_CATEGORY[kind]
+            m.category = Style.CATEGORY[kind]
             m.minZoom = MARKER_ZOOM.group
             m.title, m.detail = ns.Parties:Describe(e)
             if not m.stack then
@@ -657,7 +657,7 @@ local function BuildMarkers()
             local m = GetMarker(count)
             m.t, m.popping = t, nil
             m.x, m.y = toContent(x, y)
-            m.category = Style.MARKER_CATEGORY[kind]
+            m.category = Style.CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
             m:SetSize(size, size)

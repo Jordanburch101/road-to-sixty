@@ -338,23 +338,13 @@ local HISTORY_FILTERS = {
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
 local FILTER_SIZE, FILTER_ICON, FILTER_MARGIN = 28, 24, 4
-local KIND_CATEGORY = {
-    lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
-    hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
-    prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
-    grp = "groups", rep = "reps", ride = "mounts", mount = "mounts",
-    rare = "rares",
-}
 
 -- Shorter flight segments are left out: stray samples around take-off and landing.
 local MIN_FLIGHT_SECONDS = 15
 
--- Jump reasons (seg.j in Recorder.lua) listed as travel: { kind, title }.
-local TRAVEL_JUMPS = {
-    h = { "hearth", "Hearthstone" },
-    p = { "teleport", "Teleport" },
-    b = { "boat", "Boat or zeppelin" },
-}
+-- Jump reasons (seg.j in Recorder.lua) listed as travel, and their kind.
+-- The title is the jump's label in Style.lua.
+local TRAVEL_JUMPS = { h = "hearth", p = "teleport", b = "boat" }
 
 local historyItems = {}     -- every history item, before the filter
 
@@ -362,7 +352,7 @@ local function Category(item)
     if item.kind == "loot" then
         return item.quality >= 3 and "blues" or "greens"
     end
-    return KIND_CATEGORY[item.kind]
+    return ns.Style.CATEGORY[item.kind]
 end
 
 -- Shows the items the filter allows, with a header row starting each day.
@@ -440,7 +430,7 @@ local function BuildHistory()
                 route = ns.BoatRoute(previous.c, previous.x[last], previous.y[last],
                     path.c, path.x[1], path.y[1]) or route
             end
-            Add({ kind = jump[1], title = jump[2] }, startT, path.c, path.x[1], path.y[1], route)
+            Add({ kind = jump, title = ns.Style.Jump(path.j)[1] }, startT, path.c, path.x[1], path.y[1], route)
         end
         if path.m == "t" and endT - startT >= MIN_FLIGHT_SECONDS then
             local flight = Add({ kind = "flight", title = "Flight path" }, startT, path.c, path.x[1], path.y[1])

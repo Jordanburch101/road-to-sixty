@@ -136,13 +136,16 @@ function ns.ClassName(class)
     return LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class or "?"
 end
 
--- The History filter applies to the map too. Category of each jump reason
--- (seg.j); reasons without one are always shown.
+-- History filter categories, which the map follows too: of each jump
+-- reason (seg.j), and of each History item or map marker kind (event kinds,
+-- plus run, zone and the travel kinds Panel.lua makes). Reasons and kinds
+-- without one are always shown; loot is split by quality in Panel.lua.
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
-local MARKER_CATEGORY = {
-    lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
-    gj = "guilds", gl = "guilds", gr = "guilds", grp = "groups", rep = "reps",
-    ride = "mounts", mount = "mounts", rare = "rares",
+local CATEGORY = {
+    lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
+    hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
+    prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
+    grp = "groups", rep = "reps", ride = "mounts", mount = "mounts", rare = "rares",
 }
 
 -- False if the player has turned this History filter category off.
@@ -215,5 +218,5 @@ function Style.Jump(reason)
 end
 
 Style.LEVEL_COLORS = LEVEL_COLORS
-Style.JUMP_CATEGORY, Style.MARKER_CATEGORY = JUMP_CATEGORY, MARKER_CATEGORY
+Style.JUMP_CATEGORY, Style.CATEGORY = JUMP_CATEGORY, CATEGORY
 Style.LevelBand, Style.LineColor = LevelBand, LineColor
