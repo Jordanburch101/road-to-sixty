@@ -29,6 +29,7 @@ local REBUILD_ZOOM = math.log(math.sqrt(2))  -- rebuild the path after this much
 local PATH_MARGIN = 1           -- views of path built past each edge of the view
 local TERRAIN_MARGIN = 0.25     -- same for terrain tiles
 local MAX_TERRAIN_TILES = 1300  -- more tiles than this in range shows no terrain (one continent fits)
+local TILES_PER_FRAME = 150     -- terrain tiles drawn in one frame; the rest follow over the next frames
 local EDGE_FADE = 0.35          -- part of an edge tile that fades out where terrain ends
 local CHUNK = 64                -- points per culling box in each detail level
 local LOD_STEP = 2              -- merge distance grows by this much per detail level
@@ -1671,7 +1672,25 @@ local function ShowTile(index)
     activeTiles[index] = textures
 end
 
+-- Draws up to TILES_PER_FRAME of the tiles UpdateTerrain queued, nearest
+-- the view's centre first. Called again each frame until the queue is empty.
+local function ShowQueuedTiles()
+    local queue = state.tileQueue
+    for _ = 1, TILES_PER_FRAME do
+        local index = table.remove(queue)
+        if not index then break end
+        if not activeTiles[index] then
+            ShowTile(index)
+        end
+    end
+    if #queue == 0 then
+        state.tileQueue = nil
+    end
+end
+
 -- Loads terrain tiles around the view and lets go of ones out of range.
+-- Zooming in far enough for terrain can bring a thousand tiles into range
+-- at once, so they are queued and drawn over a few frames.
 local function UpdateTerrain()
     local want = ns.db.terrain and state.zoom >= TERRAIN_FADE[1]
     local built = state.terrainBuilt
@@ -1705,10 +1724,23 @@ local function UpdateTerrain()
             ReleaseTile(index)
         end
     end
+    local queue, cx, cy = {}, (x1 + x2) / 2, (y1 + y2) / 2
     for index in pairs(wanted) do
         if not activeTiles[index] then
-            ShowTile(index)
+            queue[#queue + 1] = index
         end
+    end
+    -- Farthest first, as the queue is taken from its end.
+    local tiles = state.tiles
+    local function Distance(index)
+        local tile = tiles[index]
+        local dx, dy = (tile[2] + tile[4]) / 2 - cx, (tile[3] + tile[5]) / 2 - cy
+        return dx * dx + dy * dy
+    end
+    table.sort(queue, function(a, b) return Distance(a) > Distance(b) end)
+    state.tileQueue = queue[1] and queue or nil
+    if state.tileQueue then
+        ShowQueuedTiles()
     end
     state.terrainBuilt = want and { x1, y1, x2, y2, zoom = state.zoom } or nil
     state.perf.terrain = debugprofilestop() - started
@@ -2511,6 +2543,9 @@ local function OnUpdate(_, elapsed)
     end
     if state.warm then
         StepWarmUp()
+    end
+    if state.tileQueue then
+        ShowQueuedTiles()
     end
     hoverElapsed = hoverElapsed + elapsed
     if hoverElapsed >= HOVER_INTERVAL then
