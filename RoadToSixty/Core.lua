@@ -18,7 +18,10 @@ local addonName, ns = ...
 --   rosterBuilt  layout version of the roster's journey copy last built
 --              from the full journey (Roster.lua)
 --   seeded     true for a fake journey from /rts seed (Seed.lua)
--- version is written but not yet read: nothing migrates old layouts.
+--   clockFrom  when a journey begun before layout 2 moved to the realm's
+--              clock (see DATA_VERSION)
+-- addon is the addon version that last loaded the file ("@project-version@"
+-- in a developer install), so whatever reads it knows what wrote it.
 
 local defaults = {
     greet = true,
@@ -38,9 +41,24 @@ local defaults = {
     killMarks = true,   -- faint marks on the map where kills happened
 }
 
--- Per-character journey data. Bump version when the layout changes.
+-- Layout of RoadToSixtyCharDB; bump it at every change to what is saved
+-- or what it means, and bring older files up in Upgrade.
+--   1  everything up to 1.8.0 (fields were only ever added)
+--   2  times are by the realm's clock (ns.Now). Times in a journey begun
+--      earlier are by that PC's clock before clockFrom.
+local DATA_VERSION = 2
+
+-- Brings a character file saved by an older layout up to DATA_VERSION.
+local function Upgrade(char)
+    if char.version < 2 then
+        char.clockFrom = ns.Now()
+    end
+    char.version = DATA_VERSION
+end
+
+-- Per-character journey data.
 local charDefaults = {
-    version = 1,
+    version = DATA_VERSION,
     segments = {},
     events = {},
     levels = {},
@@ -158,6 +176,9 @@ ns.On("ADDON_LOADED", function(name)
 
     RoadToSixtyCharDB = RoadToSixtyCharDB or {}
     ApplyDefaults(RoadToSixtyCharDB, charDefaults)
+    Upgrade(RoadToSixtyCharDB)
+    local metadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    RoadToSixtyCharDB.addon = metadata and metadata(addonName, "Version")
     ns.char = RoadToSixtyCharDB
     -- The journey the map shows; another character's with Roster:SetView.
     ns.view = ns.char
