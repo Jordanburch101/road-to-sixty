@@ -19,7 +19,7 @@ end
 
 local allowed = {}
 for _, key in ipairs(STANDARD) do allowed[key] = true end
-for _, name in ipairs({ "Packed.lua", "Tidy.lua" }) do
+for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua" }) do
     local listing = io.popen("luajit -bl RoadToSixty/" .. name):read("*a")
     for global in listing:gmatch('G[GS]ET%s+%d+%s+%d+%s+; "([^"]+)"') do
         assert(allowed[global], name .. " uses the global " .. global .. ", which the server does not have")
@@ -29,6 +29,7 @@ end
 local ns = {}
 Load("Packed.lua", ns)
 Load("Tidy.lua", ns)
+Load("Parse.lua", ns)
 
 local packed = ns.Packed.PackKills({ { t = 1, xp = 2, name = "A" } })
 local list = {}
@@ -47,5 +48,9 @@ assert(#char.events == 1 and char.totals.deaths == 1)
 local guilded = { guild = false, events = { { 1, "gj", 0, 0, 0, "G", "M", 1 }, { 2, "gr", 0, 0, 0, "G", "M", 1 } } }
 ns.Tidy.Guilds(guilded)
 assert(#guilded.events == 1)
+
+-- The environment has no loadstring, so this also shows Read never runs
+-- what it reads.
+assert(ns.Parse.Read(ns.Parse.Write({ 1, a = "b" })).a == "b")
 
 print("Pure tests passed.")
