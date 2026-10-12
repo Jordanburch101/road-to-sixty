@@ -122,3 +122,43 @@ function Tidy.Events(journey, isPlace)
         journey.totals.deaths = math.max(0, journey.totals.deaths - doubled)
     end
 end
+
+-- True if a guild tabard has what drawing it needs (see Guilds:ReadTabard).
+function Tidy.TabardComplete(tabard)
+    return tabard and tabard.bg and tabard.border and true or false
+end
+
+-- Repairs what earlier versions saved wrongly in guild events: rank
+-- changes logged when only the rank number flickered (the rank name the
+-- same as before), and joins saved with a tabard missing its colours,
+-- filled from the current guild's when it has them. char.guild is
+-- { name, rank, rankIndex, tabard }, false in no guild, or nil unread.
+function Tidy.Guilds(char)
+    local events, ranks = char.events, {}
+    local known = char.guild
+    local Complete = Tidy.TabardComplete
+    for i = #events, 1, -1 do
+        local e = events[i]
+        if e[2] == "gj" and known and e[6] == known[1] and not Complete(e[9]) and Complete(known[4]) then
+            e[9] = known[4]
+        end
+    end
+    local i = 1
+    while i <= #events do
+        local e = events[i]
+        if e[2] == "gj" then
+            ranks[e[6]] = e[7]
+        elseif e[2] == "gr" then
+            if ranks[e[6]] == e[7] then
+                table.remove(events, i)
+                i = i - 1
+            else
+                ranks[e[6]] = e[7]
+            end
+        end
+        i = i + 1
+    end
+    if known and not Complete(known[4]) then
+        known[4] = nil
+    end
+end

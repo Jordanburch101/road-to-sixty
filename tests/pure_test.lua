@@ -34,4 +34,8 @@ ns.Tidy.Runs(char)
 ns.Tidy.Events(char, function(mapID) return mapID ~= 1415 end)
 assert(#char.events == 1 and char.totals.deaths == 1)
 
+local guilded = { guild = false, events = { { 1, "gj", 0, 0, 0, "G", "M", 1 }, { 2, "gr", 0, 0, 0, "G", "M", 1 } } }
+ns.Tidy.Guilds(guilded)
+assert(#guilded.events == 1)
+
 print("Pure tests passed.")

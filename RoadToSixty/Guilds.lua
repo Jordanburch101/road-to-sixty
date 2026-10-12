@@ -70,10 +70,7 @@ function Guilds:ReadTabard()
     return tabard.bg and tabard.border and tabard or nil
 end
 
--- True if tabard has what drawing it needs (see ReadTabard).
-local function Complete(tabard)
-    return tabard and tabard.bg and tabard.border and true or false
-end
+local Complete = ns.Tidy.TabardComplete
 
 -- The guild now: { name, rank, rankIndex }, false when in none, or nil when
 -- the client has not loaded it yet.
@@ -164,39 +161,6 @@ function Guilds:Check()
                 break
             end
         end
-    end
-end
-
--- Repairs what earlier versions saved wrongly: rank changes logged when
--- only the rank number flickered (the rank name the same as before), and
--- joins saved with a tabard missing its colours, filled from the current
--- guild's when it has them.
-function Guilds:Tidy()
-    local events, ranks = ns.char.events, {}
-    local known = ns.char.guild
-    for i = #events, 1, -1 do
-        local e = events[i]
-        if e[2] == "gj" and known and e[6] == known[1] and not Complete(e[9]) and Complete(known[4]) then
-            e[9] = known[4]
-        end
-    end
-    local i = 1
-    while i <= #events do
-        local e = events[i]
-        if e[2] == "gj" then
-            ranks[e[6]] = e[7]
-        elseif e[2] == "gr" then
-            if ranks[e[6]] == e[7] then
-                table.remove(events, i)
-                i = i - 1
-            else
-                ranks[e[6]] = e[7]
-            end
-        end
-        i = i + 1
-    end
-    if known and not Complete(known[4]) then
-        known[4] = nil
     end
 end
 
@@ -349,7 +313,7 @@ ns.On("PLAYER_LOGIN", function()
     C_Timer.After(GUILD_READY, function()
         ready = true
         ns.SafeCall(function()
-            if not ns.char.seeded then Guilds:Tidy() end
+            if not ns.char.seeded then ns.Tidy.Guilds(ns.char) end
             Guilds:Check()
         end)
     end)
