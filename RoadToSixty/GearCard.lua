@@ -59,42 +59,24 @@ end
 local Card = {}
 Card.__index = Card
 
--- Card looks, switched with /rts gearstyle (developer) and saved in
--- ns.db.gearStyle. header: the dialog title banner; slotFrame: inventory
+-- The card's look. header: the dialog title banner; slotFrame: inventory
 -- button frames around the slots; raceBackground: the dressing room scene
 -- for the player's race behind the model.
-local STYLES = {
-    {
-        name = "Character sheet",
-        backdrop = {
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 24,
-            insets = { left = 6, right = 6, top = 6, bottom = 6 },
-        },
-        bgColor = { 1, 1, 1, 1 }, borderColor = { 1, 1, 1 },
-        pad = 14, header = true, slotFrame = true, raceBackground = true,
+local STYLE = {
+    backdrop = {
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 24,
+        insets = { left = 6, right = 6, top = 6, bottom = 6 },
     },
-    {
-        name = "Tooltip",
-        backdrop = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 },
-        },
-        bgColor = { 0.05, 0.05, 0.05, 0.95 }, borderColor = { 0.6, 0.6, 0.6 },
-        pad = 8, slotFrame = true, raceBackground = true,
-    },
+    bgColor = { 1, 1, 1, 1 }, borderColor = { 1, 1, 1 },
+    pad = 14, header = true, slotFrame = true, raceBackground = true,
 }
 local SLOT_FRAME = "Interface\\Buttons\\UI-Quickslot2"
 local SLOT_FRAME_SCALE = 64 / 36    -- the frame art is 64 px around a 36 px icon
 local HEADER = "Interface\\DialogFrame\\UI-DialogBox-Header"
 local RACE_BACKGROUND = "Interface\\DressUpFrame\\DressUpBackground-"
 local RACE_BACKGROUND_SHADE = 0.75
-
-local function Style()
-    return STYLES[ns.db.gearStyle or 1] or STYLES[1]
-end
 
 -- Item tooltip for a slot, or the slot's name when it is empty.
 local function ShowSlotTooltip(button)
@@ -197,7 +179,7 @@ end
 -- parent and strata: where the card lives; interactive: item tooltips on
 -- the slots.
 local function NewCard(parent, strata, interactive)
-    local style = Style()
+    local style = STYLE
     local self = setmetatable({ cells = {}, style = style }, Card)
     local pad = style.pad
     local titleH = style.header and 6 or TITLE_H
@@ -443,7 +425,6 @@ end
 local dockCard, dockParent
 local timeline          -- { t, level, gear } in time order, see Rebuild
 local shownIndex
-local lastFollowed      -- time last passed to Follow
 
 local function Copy(gear)
     local copy = {}
@@ -504,7 +485,6 @@ end
 -- gear at t differs from what it shows.
 function GearCard:Follow(t)
     if not dockParent then return end
-    lastFollowed = t
     if not timeline then self:Rebuild() end
     if not dockCard then
         dockCard = NewCard(dockParent, "HIGH", true)
@@ -529,15 +509,3 @@ function GearCard:Undock()
     if dockCard then dockCard.frame:Hide() end
 end
 
---@debug@
--- Cycles the card looks; cards are made again in the new style.
-ns.Command("gearstyle", "switch the gear card's look (developer)", function()
-    ns.db.gearStyle = (ns.db.gearStyle or 1) % #STYLES + 1
-    local docked = dockCard and dockCard.frame:IsShown()
-    if hoverCard then hoverCard.frame:Hide() end
-    if dockCard then dockCard.frame:Hide() end
-    hoverCard, dockCard, shownIndex = nil, nil, nil
-    if docked then GearCard:Follow(lastFollowed or math.huge) end
-    ns.Print("Gear card style: " .. Style().name)
-end)
---@end-debug@
