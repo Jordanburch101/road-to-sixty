@@ -13,6 +13,7 @@ local addonName, ns = ...
 
 local Map = {}
 ns.Map = Map
+local Style = ns.Style   -- colours, icons and categories (Style.lua)
 
 -- Replay pace in recorded points per second at 1x. Points are about 20
 -- yards apart, so the star moves at the same map speed whatever the length
@@ -51,62 +52,6 @@ local MOTES = 40                -- most at once
 local MOTE_SPEED = 30           -- screen pixels per second
 local MOTE_TEXTURE = "Interface\\Cooldown\\star4"
 
--- Path colour by level, after item quality: common, uncommon, rare, epic,
--- legendary, artifact. { first level of the next band, r, g, b }
-local LEVEL_COLORS = {
-    { 10, 1, 1, 1 },
-    { 20, 0.12, 1, 0 },
-    { 30, 0.25, 0.6, 1 },       -- lighter than item blue, so it shows on terrain
-    { 40, 0.64, 0.21, 0.93 },
-    { 50, 1, 0.5, 0 },
-    { math.huge, 0.9, 0.8, 0.5 },
-}
-local MODE_ALPHA = { w = 0.95, t = 0.5 }     -- on foot or mounted, flight path
-
-local FLIGHT_COLOR = { 0.35, 0.75, 1, 0.9 }  -- flight paths, whatever the level
-local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
-
--- Jumps between segments are drawn as arcs, styled by why the path jumped
--- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash",
--- "solid" or "ribbon", icon = atlas at the top of the arc, dot / spacing =
--- dot size and spacing in screen pixels, start / finish = texture at the
--- arc's start or end and its size, bend = how far the arc bends (JUMP_ARC
--- if unset), plain = a "solid" line as thin as the path with no outline }.
--- A ribbon is a band width pixels wide
--- in a deep shade of the colour, with effects flowing inside it: { texture
--- in Travel\ (scripts/lane-textures.py), its length over its height, speed
--- in repeats a second }. A "portal" jump has no line but a portal at each
--- end, which the replay's arrow dives through (Portals.lua); its pace times
--- the flight between. replay = seconds the replay's arrow takes along the
--- jump at normal speed (1 if unset); without, a jump would pass in a frame.
--- instant = the arrow does not travel the jump but appears at its end, for
--- jumps nobody travelled (logging out in one place and in at another).
--- With pace (map units a second; the world map is about 1000 wide) the time
--- follows the jump's length instead, replay being the least: a crossing by
--- sea takes a while, so the camera following it can load the terrain.
-local JUMP_STYLES = {
-    -- Portals in nature green for hearthstones and arcane blue for
-    -- teleports, like a mage's. They were ribbons (vines or wisps with
-    -- sparkles, { "vines", 8, 0.12 }, { "wisps", 8, 0.2 }, { "sparkles", 4, 0.3 })
-    -- and may be again, see issue #18.
-    h = { "Hearthstone", 0.4, 1, 0.45, 1, style = "portal", pace = 80 },
-    p = { "Teleport", 0.35, 0.65, 1, 1, style = "portal", pace = 80 },
-    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots", replay = 0.6 },
-    -- From the instance's door, where the path stopped, to the graveyard:
-    -- drawn like the ghost's run back that follows it.
-    di = { "Died in an instance - to the graveyard", GHOST_COLOR[1], GHOST_COLOR[2], GHOST_COLOR[3], GHOST_COLOR[4],
-        style = "solid", plain = true, bend = 0, replay = 0.6 },
-    i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
-    -- Sent out of an instance to a graveyard (left the group): portals, in grey.
-    it = { "Teleported out of an instance", 0.75, 0.75, 0.8, 1, style = "portal", pace = 80 },
-    -- Like a travel map in an adventure film: red dots from a target ring to
-    -- an X where it lands.
-    b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11, replay = 2.5, pace = 60,
-        start = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\ring", 18 },
-        finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
-    l = { "Logged in", 1, 1, 1, 0.7, style = "dots", instant = true },
-}
-local JUMP_UNKNOWN = { "Teleported", 1, 1, 1, 0.8, style = "dots" }
 -- Sizes in screen pixels.
 local JUMP_LINE, JUMP_OUTLINE = 2.5, 5
 local JUMP_DASH, JUMP_GAP = 7, 5
@@ -126,7 +71,6 @@ local HOVER_WIDTH = 5
 
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their path in class colour.
-local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local OTHER = {
     MAX_LINES = 1500,       -- most lines per other character's path in range of the view
     LINE_WIDTH = 1.5,
@@ -164,41 +108,6 @@ local MARKER_ZOOM = {
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
 local QUEST_VISIT = { yards = 30, seconds = 180 }
-
--- Event icons, shared with the side panel. { atlas, size }
--- { atlas = name } or { file = texture path }, and size. Spell and item icons
--- (file) are cropped to hide their border.
-local EVENT_ICONS = {
-    lvl = { atlas = "UI-HUD-UnitFrame-SmallCircle", size = 22 },
-    die = { atlas = "DungeonSkull", size = 16 },
-    ["in"] = { atlas = "Dungeon", size = 20 },
-    run = { atlas = "Dungeon", size = 20 },
-    zone = { atlas = "Waypoint-MapPin-Untracked", size = 16 },
-    flight = { atlas = "TaxiNode_Neutral", size = 18 },
-    hearth = { atlas = "Innkeeper", size = 18 },
-    teleport = { atlas = "MagePortalAlliance", size = 20 },
-    boat = { atlas = "poi-islands-table", size = 20 },
-    loot = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 },
-    qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
-    prof = { file = "Interface\\Icons\\INV_Misc_Book_11", size = 18 },
-    rec = { file = "Interface\\Icons\\INV_Scroll_03", size = 16 },
-    gj = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 20 },
-    gl = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
-    gr = { file = "Interface\\Icons\\INV_Shirt_GuildTabard_01", size = 18 },
-    rep = { file = "Interface\\Icons\\Achievement_Reputation_01", size = 18 },
-    ride = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
-    mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
-    rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
-    grp = { atlas = "socialqueuing-icon-group", size = 20 },
-}
-
-local INSTANCE_TYPES = {
-    party = "Dungeon",
-    raid = "Raid",
-    pvp = "Battleground",
-    arena = "Arena",
-}
-ns.InstanceTypes = INSTANCE_TYPES
 
 local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton, gearButton
 local continentLayer, terrainLayer, othersLayer, pathLayer
@@ -267,113 +176,6 @@ local state = {
 
 local function FormatTime(t)
     return tostring(date("%d %b %Y, %H:%M", t))
-end
-
-local function LevelBand(level)
-    for band, entry in ipairs(LEVEL_COLORS) do
-        if level < entry[1] then return band end
-    end
-    return #LEVEL_COLORS
-end
-
-function ns.LevelColor(level)
-    local entry = LEVEL_COLORS[LevelBand(level)]
-    return entry[2], entry[3], entry[4]
-end
-
-function ns.ClassColor(class)
-    local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if color then
-        return color.r, color.g, color.b
-    end
-    return 0.8, 0.8, 0.8
-end
-
-function ns.SetClassIcon(texture, class)
-    local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
-    if coords then
-        texture:SetTexture(CLASS_ICONS)
-        texture:SetTexCoord(unpack(coords))
-    else
-        texture:SetTexture(nil)
-    end
-end
-
-function ns.ClassName(class)
-    return LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class or "?"
-end
-
--- The History filter applies to the map too. Category of each jump reason
--- (seg.j); reasons without one are always shown.
-local JUMP_CATEGORY = { h = "hearths", p = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
-local MARKER_CATEGORY = {
-    lvl = "levels", die = "deaths", ["in"] = "dungeons", qd = "quests", prof = "professions", rec = "recipes",
-    gj = "guilds", gl = "guilds", gr = "guilds", grp = "groups", rep = "reps",
-    ride = "mounts", mount = "mounts", rare = "rares",
-}
-
--- False if the player has turned this History filter category off.
-function ns.FilterShown(category)
-    return not category or ns.db.historyFilter[category] ~= false
-end
-
--- "5m ago", "3h ago", "2d ago".
-function ns.FormatAgo(t)
-    local seconds = time() - (t or 0)
-    if seconds < 3600 then return ("%dm ago"):format(math.max(1, math.floor(seconds / 60))) end
-    if seconds < 86400 then return ("%dh ago"):format(math.floor(seconds / 3600)) end
-    return ("%dd ago"):format(math.floor(seconds / 86400))
-end
-
--- Quality borders over item icons, by item quality (2 green to 5 orange),
--- for looted items in the History list and the loot filters.
-local QUALITY_BORDERS = {
-    [2] = "loottoast-itemborder-green", [3] = "loottoast-itemborder-blue",
-    [4] = "loottoast-itemborder-purple", [5] = "loottoast-itemborder-orange",
-}
-
--- Shows overlay (a texture over an icon) as the quality's border, or hides
--- it when quality is nil or below green.
-function ns.SetQualityOverlay(overlay, quality)
-    local atlas = quality and QUALITY_BORDERS[math.min(quality, 5)]
-    if atlas then
-        overlay:SetAtlas(atlas)
-    end
-    overlay:SetShown(atlas ~= nil)
-end
-
--- Sets icon (a texture) and text (a font string on top of it) for an event
--- kind. file, if given, replaces the kind's own icon (an item's icon for
--- loot). Level icons are the player frame's level badge with the level
--- number in white on top. Returns the icon size.
-function ns.SetEventIcon(icon, text, kind, level, file)
-    local style = EVENT_ICONS[kind]
-    if file or style.file then
-        icon:SetTexture(file or style.file)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    elseif not icon:SetAtlas(style.atlas) and style.fallback then
-        icon:SetTexture(style.fallback)
-        icon:SetTexCoord(0, 1, 0, 1)
-    end
-    icon:SetVertexColor(1, 1, 1)
-    text:SetText("")
-    if kind == "lvl" then
-        text:SetText(level)
-        text:SetTextColor(1, 1, 1)
-        text:SetShadowOffset(1, -1)
-    end
-    return style.size
-end
-
--- Colour of a line for movement mode and level band: r, g, b, a.
-local function LineColor(mode, band)
-    if mode == "g" then
-        return unpack(GHOST_COLOR)
-    elseif mode == "t" then
-        return unpack(FLIGHT_COLOR)
-    end
-    local entry = LEVEL_COLORS[band]
-    return entry[2], entry[3], entry[4], MODE_ALPHA[mode]
 end
 
 -- 0 below range[1], 1 above range[2], smooth in between on a log scale.
@@ -610,7 +412,7 @@ local function BuildPoints(paths)
     end
     state.timelines = tl
     local nextChange = 1
-    local band = LevelBand(changes[1] and changes[1][6] or 1)
+    local band = Style.LevelBand(changes[1] and changes[1][6] or 1)
 
     local n = 0
     -- Jumps across the sea follow a line drawn in Routes.lua (seaTrips:
@@ -626,7 +428,7 @@ local function BuildPoints(paths)
             for i = 1, #path.x do
                 local t = path.t[i]
                 while changes[nextChange] and changes[nextChange][1] <= t do
-                    band = LevelBand(changes[nextChange][6])
+                    band = Style.LevelBand(changes[nextChange][6])
                     nextChange = nextChange + 1
                 end
                 n = n + 1
@@ -652,7 +454,7 @@ local function BuildPoints(paths)
                             seaTrips[n].trips, seaTrips[n].dupe = trips, #trips > 1
                         end
                     elseif previous and state.toContent[previous.c]
-                        and (JUMP_STYLES[path.j] or JUMP_UNKNOWN).style ~= "portal" then
+                        and Style.Jump(path.j).style ~= "portal" then
                         -- Hearthstones and teleports across the sea take their
                         -- lane, when drawn as a line rather than portals.
                         local last = #previous.x
@@ -819,7 +621,7 @@ local function BuildMarkers()
                 m.t, m.popping, m.level = t, nil, nil
                 m.x, m.y = toContent(x, y)
                 m.c = c
-                m.category = MARKER_CATEGORY[kind]
+                m.category = Style.MARKER_CATEGORY[kind]
                 m.minZoom = guild and MARKER_ZOOM.guild or kind == "rep" and MARKER_ZOOM.reputation
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
@@ -837,7 +639,7 @@ local function BuildMarkers()
             m.t, m.popping, m.level, m.group = t, nil, nil, e
             m.x, m.y = toContent(x, y)
             m.c = c
-            m.category = MARKER_CATEGORY[kind]
+            m.category = Style.MARKER_CATEGORY[kind]
             m.minZoom = MARKER_ZOOM.group
             m.title, m.detail = ns.Parties:Describe(e)
             if not m.stack then
@@ -855,7 +657,7 @@ local function BuildMarkers()
             local m = GetMarker(count)
             m.t, m.popping = t, nil
             m.x, m.y = toContent(x, y)
-            m.category = MARKER_CATEGORY[kind]
+            m.category = Style.MARKER_CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
             m:SetSize(size, size)
@@ -874,7 +676,7 @@ local function BuildMarkers()
                 m.minZoom = MARKER_ZOOM.dungeon
                 m.title = e[7] or "Instance"
                 m.detail = ("%s, level %d\n%s"):format(
-                    INSTANCE_TYPES[e[8]] or "Instance", level or ns.Roster:ViewLevel(), FormatTime(t))
+                    ns.InstanceTypes[e[8]] or "Instance", level or ns.Roster:ViewLevel(), FormatTime(t))
             end
         end
     end
@@ -1288,7 +1090,7 @@ local function BuildJumps(drawn, shown, z, area)
     end
     for i, spec in ipairs(drawn) do
         if spec[5] == "j" and not spec.hidden then
-            local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
+            local style = Style.Jump(state.pj[spec[6]])
             local ends = state.seaTrips[spec[6]]
             local curve = ends and (ends.curve or JumpCurve(ends[1], ends[2], ends[3], ends[4]))
                 or JumpCurve(spec[1], spec[2], spec[3], spec[4], style.bend)
@@ -1537,7 +1339,7 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
                 spec.track = track
                 if spec[5] == "j" and track.pj[spec[6]] then
                     local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
-                        (JUMP_STYLES[track.pj[spec[6]]] or JUMP_UNKNOWN).bend)
+                        Style.Jump(track.pj[spec[6]]).bend)
                     for p = 2, #curve do
                         local a, b = curve[p - 1], curve[p]
                         Add(track, { a[1], a[2], b[1], b[2], "j", spec[6], track = track, curve = curve }, "j")
@@ -1588,7 +1390,7 @@ local function BuildPath()
         -- repeats of a boat trip, which the route's first trip stands for.
         local boat = mode == "j" and state.seaTrips[spec[6]]
         spec.hidden = mode == "t" and not ns.FilterShown("flights")
-            or mode == "j" and not ns.FilterShown(JUMP_CATEGORY[state.pj[spec[6]]])
+            or mode == "j" and not ns.FilterShown(Style.JUMP_CATEGORY[state.pj[spec[6]]])
             or boat and boat.dupe or false
         -- A jump's own line stays invisible; BuildJumps draws its arc.
         local colorKey = (mode == "j" or spec.hidden) and "none"
@@ -1597,7 +1399,7 @@ local function BuildPath()
             if colorKey == "none" then
                 line:SetColorTexture(0, 0, 0, 0)
             else
-                line:SetColorTexture(LineColor(mode, band))
+                line:SetColorTexture(Style.LineColor(mode, band))
             end
             line.colorKey = colorKey
         end
@@ -1765,7 +1567,7 @@ local function PlaceHead()
     local x, y, rotation = px[seq], py[seq], HeadRotation(seq)
     local size = 1
     local i = seq + 1
-    local style = JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN
+    local style = Style.Jump(state.pj[i])
     local portal = false
     -- A segment break without moving (a reload in place) has no curve, and
     -- the arrow skips instant jumps.
@@ -1927,10 +1729,10 @@ end
 local function ColorMote(m)
     local spec = state.drawn[m.line]
     if spec[5] == "j" then
-        local style = JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN
+        local style = Style.Jump(state.pj[spec[6]])
         m.tex:SetVertexColor(style[2], style[3], style[4])
     else
-        local r, g, b = LineColor(spec[5], state.pb[spec[6]])
+        local r, g, b = Style.LineColor(spec[5], state.pb[spec[6]])
         m.tex:SetVertexColor(r, g, b)
     end
 end
@@ -2158,7 +1960,7 @@ local function BuildScrub()
             piece.bright:SetHeight(SCRUB.TRACK)
             scrub.pieces[k] = piece
         end
-        local _, r, g, b = unpack(LEVEL_COLORS[run.band])
+        local _, r, g, b = unpack(Style.LEVEL_COLORS[run.band])
         piece.dim:SetTexture(SCRUB.FILL)
         piece.dim:SetVertexColor(r * 0.35, g * 0.35, b * 0.35)
         piece.bright:SetTexture(SCRUB.FILL)
@@ -2369,7 +2171,7 @@ local function ShowLineTooltip(spec)
         GameTooltip:AddLine(e.name .. "'s journey", ns.ClassColor(e.class))
         local reason = spec[5] == "j" and spec.track.pj[spec[6]]
         if reason then
-            GameTooltip:AddLine((JUMP_STYLES[reason] or JUMP_UNKNOWN)[1], 1, 1, 1)
+            GameTooltip:AddLine(Style.Jump(reason)[1], 1, 1, 1)
         elseif spec[5] ~= "j" and spec[5] ~= "w" then
             GameTooltip:AddLine(MODE_NAMES[spec[5]], 1, 1, 1)
         end
@@ -2378,7 +2180,7 @@ local function ShowLineTooltip(spec)
         local i, pt = spec[6], state.pt
         if spec[5] == "j" then
             -- Point i starts the segment after the jump; i - 1 ends the one before.
-            local style = JUMP_STYLES[state.pj[i]] or JUMP_UNKNOWN
+            local style = Style.Jump(state.pj[i])
             GameTooltip:AddLine(style[1], style[2], style[3], style[4])
             GameTooltip:AddLine(state.boats[i] or ("%s to %s"):format(ZoneAt(pt[i - 1]), ZoneAt(pt[i])), 1, 1, 1)
             -- A route taken more than once, as far as the replay has reached.
@@ -2397,7 +2199,7 @@ local function ShowLineTooltip(spec)
                 return
             end
         else
-            local r, g, b = LineColor(spec[5], state.pb[i])
+            local r, g, b = Style.LineColor(spec[5], state.pb[i])
             GameTooltip:AddLine(MODE_NAMES[spec[5]] or "Path", r, g, b)
             GameTooltip:AddLine(ZoneAt(pt[i]), 1, 1, 1)
         end
@@ -2416,7 +2218,7 @@ local function UpdateHover()
     state.hover = spec
     ShowJumpIcons()
     if spec and spec.portal then
-        ns.Portals:Hover(spec[6], spec.curve, JUMP_STYLES[state.pj[spec[6]]] or JUMP_UNKNOWN)
+        ns.Portals:Hover(spec[6], spec.curve, Style.Jump(state.pj[spec[6]]))
     else
         ns.Portals:Hover()
     end
@@ -2536,7 +2338,7 @@ local function OnUpdate(_, elapsed)
         local seq = math.floor(state.cur)
         local rate = REPLAY_POINTS
         local style = seq >= 1 and seq < state.n and state.brk[seq + 1]
-            and (JUMP_STYLES[state.pj[seq + 1]] or JUMP_UNKNOWN)
+            and Style.Jump(state.pj[seq + 1])
         if style and not style.instant
             and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
             -- Its time follows its length, known once the arrow is on the

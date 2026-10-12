@@ -12,7 +12,7 @@ paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 ## Layout
 
 `RoadToSixty/` is the addon; files load in toc order and share the addon
-table `ns`. Each file starts with a comment describing what it does and,
+table `ns`. Handlers for one event run in the order their files load. Each file starts with a comment describing what it does and,
 for data, its exact format; read that before changing a module.
 
 | File | Role |
@@ -23,18 +23,21 @@ for data, its exact format; read that before changing a module.
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
 | LevelChat.lua | the summary in chat at each level up, with an Open map link |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
+| Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua | guilds, reputation, riding and mounts, rare mobs, groups: each records its own events, listed in its header |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
+| Style.lua | the journey's look: path colours, jump styles, event and class icons, History categories (`ns.Style`) |
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
 | PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
-| Panel.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
-| MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua | developer tools, left out of releases |
+| Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
+| MinimapButton.lua, Options.lua | minimap button and the settings panel |
+| MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo) |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua | developer tools, left out of releases |
 
 Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 (per character, `version` field; bump it when the layout changes).
@@ -48,8 +51,9 @@ Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
 ```
 
-Run `check.ps1` from the repo root. It currently reports two old type
-warnings (Probe.lua:52, Recorder.lua:281); anything new is ours to fix.
+Run `check.ps1` from the repo root. It currently reports three old
+warnings (Probe.lua:52, Probe.lua:830, Recorder.lua:333); anything new is
+ours to fix.
 
 ## Release
 
@@ -104,9 +108,9 @@ Treat them as the shared memory of what is planned, decided and done.
 - Developer-only code sits between `#@debug@` / `#@end-debug@` in the toc and
   `--@debug@` / `--@end-debug@` in Lua; release builds strip it and drop
   files the toc no longer lists.
-- Map.lua is at Lua's limit of 200 locals in one chunk. New map features go
-  in their own file (as ZoneArt.lua did) or into a table, not new top-level
-  locals in Map.lua.
+- Map.lua is near Lua's limit of 200 locals in one chunk (about 15 left
+  after Style.lua took the look out). New map features go in their own file
+  (as ZoneArt.lua did) or into a table, not new top-level locals in Map.lua.
 - Comments are plain sentences that explain why; match the density of the
   surrounding code. British spelling (colour, centre).
 - Commit subjects: `Area: what changed` (e.g. "Kills: record each one and pop

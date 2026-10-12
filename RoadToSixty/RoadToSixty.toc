@@ -29,6 +29,7 @@ Routes.lua
 Islands.lua
 Portals.lua
 PathCurve.lua
+Style.lua
 Map.lua
 Panel.lua
 GearCard.lua
