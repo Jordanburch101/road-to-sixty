@@ -995,7 +995,7 @@ local function SeedRealistic(items)
                 G.char.people[guid] = {
                     name = d[1], race = d[2], sex = d[3], class = d[4], level = G.level,
                     first = G.t, last = G.t, c = G.c, x = round(G.x), y = round(G.y),
-                    groups = 1, seconds = 0, dungeons = 0,
+                    groups = { [ns.pc] = 1 },
                 }
             end
             Log("grp", "party", members, true)
@@ -1016,7 +1016,7 @@ local function SeedRealistic(items)
         -- A rare killed in the third town, logged like Rares.lua does.
         if i == 3 then
             Log("rare", "Seeded Dreadmaw", "rareelite", G.level + 2)
-            G.char.rares = { ["Seeded Dreadmaw"] = { 1, G.t, "Seeded Dreadmaw", nil, "rareelite" } }
+            G.char.rares = { ["Seeded Dreadmaw"] = { { [ns.pc] = 1 }, G.t, "Seeded Dreadmaw", nil, "rareelite" } }
         end
         -- Riding and a mount in the fourth town, logged like Mounts.lua does:
         -- far below level 40, so the short seed shows them.
@@ -1031,7 +1031,7 @@ local function SeedRealistic(items)
         if i == 3 and G.party then
             local duration = G.t - G.party.t
             for _, p in pairs(G.char.people) do
-                p.seconds, p.last = duration, G.t
+                p.seconds, p.last = { [ns.pc] = duration }, G.t
             end
             Log("grpx", {
                 duration = duration, kills = G.char.totals.kills - G.party.kills, xp = 0,

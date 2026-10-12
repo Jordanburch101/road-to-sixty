@@ -926,8 +926,8 @@ local function CreateStatsPane(pane)
         for k = 1, math.min(#list, PEOPLE_LISTED) do
             local p = list[k][2]
             local r, g, b = ns.ClassColor(p.class)
-            GameTooltip:AddDoubleLine(p.name or "?", ("%d groups, %s"):format(p.groups, FormatDuration(p.seconds)),
-                r, g, b, 1, 1, 1)
+            GameTooltip:AddDoubleLine(p.name or "?", ("%d groups, %s"):format(ns.Tally.Total(p.groups),
+                FormatDuration(ns.Tally.Total(p.seconds))), r, g, b, 1, 1, 1)
         end
         if #list > PEOPLE_LISTED then
             GameTooltip:AddLine(("and %d more"):format(#list - PEOPLE_LISTED), 0.7, 0.7, 0.7)

@@ -4,9 +4,11 @@ local addonName, ns = ...
 -- bus), ns.Command (slash commands), ns.SafeCall and ns.Print.
 --
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
--- defaults below, plus roster (Roster.lua). RoadToSixtyCharDB (ns.char) is
--- one character's journey, with charDefaults below plus fields that start
--- nil on purpose and are set by the file that owns them:
+-- defaults below, plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
+-- which counts the merge can't rebuild are kept under (Tally.lua).
+-- RoadToSixtyCharDB (ns.char) is one character's journey, with charDefaults
+-- below plus fields that start nil on purpose and are set by the file that
+-- owns them:
 --   gear       slot -> item ID last seen, for logging real changes (Journal.lua)
 --   lastZone   uiMapID of the last zone event (Journal.lua)
 --   instance   instance ID while inside one; run holds that visit's totals
@@ -46,12 +48,18 @@ local defaults = {
 --   1  everything up to 1.8.0 (fields were only ever added)
 --   2  times are by the realm's clock (ns.Now). Times in a journey begun
 --      earlier are by that PC's clock before clockFrom.
-local DATA_VERSION = 2
+--   3  the counts the merge can't rebuild are tallies by PC (Tally.lua):
+--      people[guid] groups, seconds, raids, raidSeconds, dungeons and
+--      raidRuns, and rares[key][1]. Older counts become this PC's.
+local DATA_VERSION = 3
 
 -- Brings a character file saved by an older layout up to DATA_VERSION.
 local function Upgrade(char)
     if char.version < 2 then
         char.clockFrom = ns.Now()
+    end
+    if char.version < 3 then
+        ns.Tally.Upgrade(char, ns.pc)
     end
     char.version = DATA_VERSION
 end
@@ -173,6 +181,8 @@ ns.On("ADDON_LOADED", function(name)
     RoadToSixtyDB = RoadToSixtyDB or {}
     ApplyDefaults(RoadToSixtyDB, defaults)
     ns.db = RoadToSixtyDB
+    ns.db.pc = ns.db.pc or ("%06x%06x"):format(math.random(0, 0xffffff), math.random(0, 0xffffff))
+    ns.pc = ns.db.pc
 
     RoadToSixtyCharDB = RoadToSixtyCharDB or {}
     ApplyDefaults(RoadToSixtyCharDB, charDefaults)

@@ -12,6 +12,7 @@ Core.lua
 Packed.lua
 Tidy.lua
 Parse.lua
+Tally.lua
 ChatPatterns.lua
 MinimapTiles.lua
 ZoneOverlays.lua

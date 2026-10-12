@@ -20,7 +20,8 @@ for data, its exact format; read that before changing a module.
 | Core.lua | saved variable defaults, `ns.On` (event bus), `ns.Command` (slash commands), `ns.SafeCall`, `ns.Print` |
 | Packed.lua | the packed kill and path formats as plain functions (no game calls) |
 | Tidy.lua | the login repairs of saved journeys as plain functions (no game calls) |
-| Parse.lua | reads and writes saved data in the game's format, refusing anything that isn't data (no game calls); `tests/pure_test.lua` keeps Packed, Tidy and Parse pure |
+| Parse.lua | reads and writes saved data in the game's format, refusing anything that isn't data (no game calls) |
+| Tally.lua | counts kept per PC so journeys from two PCs can merge (no game calls); `tests/pure_test.lua` keeps Packed, Tidy, Parse and Tally pure |
 | ChatPatterns.lua | `ns.ChatMatcher`: matches messages against the client's format strings in any language (numbered `%1$s` arguments too) |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |

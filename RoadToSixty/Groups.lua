@@ -27,9 +27,10 @@ local _, ns = ...
 --
 -- ns.char.people is everyone grouped with: guid -> { name, race, sex,
 -- class, level, guild (last seen), first, last (times), c, x, y (where first
--- met), groups, seconds (party groups shared, time in them), raids,
--- raidSeconds (the same for raids), dungeons, raidRuns (dungeon and raid
--- instances run together, by the instance's type) }.
+-- met), and these tallies by PC (Tally.lua), nil for none: groups, seconds
+-- (party groups shared, time in them), raids, raidSeconds (the same for
+-- raids), dungeons, raidRuns (dungeon and raid instances run together, by
+-- the instance's type) }.
 -- Parties and raids are counted apart, so forty strangers in a raid do not
 -- crowd out the people actually played with.
 --
@@ -105,15 +106,13 @@ local function Meet(m, t, newGroup)
         p = { first = t, c = c, x = x, y = y }
         people[m[1]] = p
     end
-    p.groups, p.seconds, p.dungeons = p.groups or 0, p.seconds or 0, p.dungeons or 0
-    p.raids, p.raidSeconds, p.raidRuns = p.raids or 0, p.raidSeconds or 0, p.raidRuns or 0
     p.name, p.race, p.sex, p.class = m[2], m[3] or p.race, m[4] or p.sex, m[5] or p.class
     p.level, p.guild = m[6] or p.level, m[7] or p.guild
     p.last = t
     if newGroup == "raid" then
-        p.raids = p.raids + 1
+        ns.Tally.Add(p, "raids", ns.pc, 1)
     elseif newGroup then
-        p.groups = p.groups + 1
+        ns.Tally.Add(p, "groups", ns.pc, 1)
     end
 end
 
@@ -123,9 +122,9 @@ local function Part(guid, since, t, kind)
     if p and since then
         local seconds = math.max(0, t - since)
         if kind == "raid" then
-            p.raidSeconds = (p.raidSeconds or 0) + seconds
+            ns.Tally.Add(p, "raidSeconds", ns.pc, seconds)
         else
-            p.seconds = (p.seconds or 0) + seconds
+            ns.Tally.Add(p, "seconds", ns.pc, seconds)
         end
         p.last = t
     end
@@ -312,9 +311,9 @@ function Groups:CountRun(guids, raid)
         local p = ns.char.people[guid]
         if p then
             if raid then
-                p.raidRuns = (p.raidRuns or 0) + 1
+                ns.Tally.Add(p, "raidRuns", ns.pc, 1)
             else
-                p.dungeons = (p.dungeons or 0) + 1
+                ns.Tally.Add(p, "dungeons", ns.pc, 1)
             end
         end
     end
@@ -347,6 +346,7 @@ end)
 --@debug@
 -- /rts people: the group now and everyone met, to check the recording.
 ns.Command("people", "list the group and the players met (developer)", function()
+    local T = ns.Tally.Total
     local g = ns.char.group
     if g then
         local count = 0
@@ -360,8 +360,8 @@ ns.Command("people", "list the group and the players met (developer)", function(
         n = n + 1
         ns.Print(("%s <%s>: %s %s %s level %s; parties %d, %dm, %d dungeons; raids %d, %dm, %d runs; first %s"):format(
             tostring(p.name), tostring(p.guild), tostring(p.sex), tostring(p.race), tostring(p.class),
-            tostring(p.level), p.groups or 0, math.floor((p.seconds or 0) / 60), p.dungeons or 0,
-            p.raids or 0, math.floor((p.raidSeconds or 0) / 60), p.raidRuns or 0, date("%d %b %H:%M", p.first)))
+            tostring(p.level), T(p.groups), math.floor(T(p.seconds) / 60), T(p.dungeons),
+            T(p.raids), math.floor(T(p.raidSeconds) / 60), T(p.raidRuns), date("%d %b %H:%M", p.first)))
     end
     ns.Print(n .. " players met.")
 end)

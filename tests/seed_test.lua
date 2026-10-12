@@ -68,6 +68,7 @@ GetItemInfoInstant = function(id)
 end
 
 ns.Now = function() return time() end
+ns.pc = "seedpc"
 assert(loadfile("RoadToSixty/Seed.lua"))("RoadToSixty", ns)
 local started = os.clock()
 commands.seed("confirm")
