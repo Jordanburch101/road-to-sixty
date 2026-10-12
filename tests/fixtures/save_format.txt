@@ -1,0 +1,58 @@
+
+RoadToSixtyCharDB = {
+["version"] = 2,
+["addon"] = "1.9.0",
+["segments"] = {
+{
+["m"] = "w",
+["c"] = 0,
+["t"] = 1791712544,
+["x"] = -8913,
+["y"] = 856,
+["d"] = "5,12,-3;6,10,-4",
+},
+},
+["events"] = {
+{
+1791712544,
+"grp",
+-1,
+-8913.25,
+0.3333333333333333,
+"party",
+{
+"Player-0000-00000000",
+},
+nil,
+true,
+},
+},
+["people"] = {
+["Player-0000-00000000"] = {
+"Fakename",
+"Zoë \"the Brave\" \\ o/",
+},
+},
+["levels"] = {
+2,
+3,
+[60] = 1791777464,
+},
+["odd"] = {
+["inf"] = nil --[[ inf ]],
+["nan"] = nil --[[ nan ]],
+["fn"] = nil --[[ skipped inline function ]],
+["small"] = 1e-05,
+["huge"] = 9.223372036854776e+18,
+["negzero"] = -0,
+["text"] = "one\ntwo\r\000end",
+["tab"] = "a	b",
+["colour"] = "|cffff0000red|r",
+["a\"b"] = false,
+[true] = "boolean key",
+[1.5] = "float key",
+[-1] = "negative key",
+["empty"] = {
+},
+},
+}
