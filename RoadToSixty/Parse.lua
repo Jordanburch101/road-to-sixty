@@ -145,6 +145,9 @@ function Parse.File(s)
         vars[name], pos = ReadValue(s, Skip(s, e + 1), 0)
         pos = Skip(s, pos)
     end
+    -- An empty file is refused like a cut-short one: the app may read it
+    -- while the game is rewriting it.
+    if next(vars) == nil then Fail(s, pos, "no saved variables") end
     return vars
 end
 

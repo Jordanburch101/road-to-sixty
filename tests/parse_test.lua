@@ -71,9 +71,9 @@ check(Parse.Read('"\\0001"') == "\0" .. "1", "\\000 takes three digits and the n
 
 -- 3. A file cut short anywhere before its last } is refused, so a file read
 -- while the game is still writing it never reads as a shorter journey.
-local first, last = crlf:find("%S"), crlf:find("}%s*$")
+local last = crlf:find("}%s*$")
 local cut = 0
-for n = first, last - 1 do
+for n = 0, last - 1 do
     if pcall(Parse.File, crlf:sub(1, n)) then cut = cut + 1 end
 end
 check(cut == 0, cut .. " cut-short copies of the fixture were read")
