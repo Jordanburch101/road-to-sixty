@@ -18,11 +18,20 @@ end
 
 local ns = {}
 Load("Packed.lua", ns)
+Load("Tidy.lua", ns)
 
 local packed = ns.Packed.PackKills({ { t = 1, xp = 2, name = "A" } })
 local list = {}
 ns.Packed.DecodeKills(packed.d, packed.names, 0, list)
 assert(list[1].name == "A")
 assert(#ns.Packed.DecodePath({ t = 1, x = 0, y = 0, d = "1,1,1" }) == 2)
+
+local char = {
+    events = { { 1, "zone", 0, 0, 0, 1415 }, { 2, "die", 0, 0, 0 }, { 2, "die", 0, 0, 0 } },
+    totals = { deaths = 2, instances = 0 },
+}
+ns.Tidy.Runs(char)
+ns.Tidy.Events(char, function(mapID) return mapID ~= 1415 end)
+assert(#char.events == 1 and char.totals.deaths == 1)
 
 print("Pure tests passed.")

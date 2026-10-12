@@ -52,6 +52,7 @@ UnitXP, UnitXPMax = function() return 0 end, function() return 1 end
 
 ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/Tidy.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 local Journal = ns.Journal
@@ -134,7 +135,7 @@ ns.char.events = {
     { 5000, "in", 0, 0, 0, 36, "Deadmines", "party" },   -- a later, separate run
     { 5100, "out", 0, 0, 0, 36, Summary(100, 1, "c") },
 }
-Journal:TidyRuns()
+ns.Tidy.Runs(ns.char)
 check(Kinds() == "in@100 out@900 in@5000 out@5100", "split run joined, later run kept: " .. Kinds())
 local joined = ns.char.events[3] ---@type table
 check(joined[2] == "out" and joined[7].duration == 800, "joined duration covers both parts: " .. tostring(joined[7].duration))
@@ -156,7 +157,7 @@ ns.char.events = {
 }
 ns.char.instance = 36
 ns.char.run = { t = 500, name = "Deadmines", kills = 10, xp = 100, deaths = 1, money = 5, level = 20, items = { "b" } }
-Journal:TidyRuns()
+ns.Tidy.Runs(ns.char)
 check(Kinds() == "in@100 out@400 in@500", "runs of different groups stay apart: " .. Kinds())
 
 -- A split run still going on folds its first part into the run.
@@ -169,7 +170,7 @@ ns.char.events = {
 }
 ns.char.instance = 36
 ns.char.run = { t = 500, name = "Deadmines", kills = 10, xp = 100, deaths = 1, money = 5, level = 20, items = { "b" } }
-Journal:TidyRuns()
+ns.Tidy.Runs(ns.char)
 check(Kinds() == "in@100", "ongoing split run joined: " .. Kinds())
 check(ns.char.run.t == 100 and ns.char.run.kills == 0, "run starts at the first entry with its kills")
 check(table.concat(ns.char.run.items, ",") == "a,b", "run loot in order")
@@ -186,12 +187,22 @@ ns.char.events = {
     { 130, "zone", 0, 0, 0, 1436 },
     { 140, "die", 0, 0, 0 },
 }
-Journal:TidyEvents(ns.char)
+ns.Tidy.Events(ns.char, ns.IsPlaceMap)
 local kept = {}
 for _, e in ipairs(ns.char.events) do kept[#kept + 1] = e[2] .. "@" .. e[1] end
 local left = table.concat(kept, " ")
 check(left =="zone@100 die@120 zone@130 die@140", "continent zone and doubled death tidied: " .. left)
 check(ns.char.totals.deaths == 2, "doubled death taken off the totals, got " .. ns.char.totals.deaths)
+
+-- A roster copy may have no totals; tidying it still works.
+local copy = { events = { { 5, "die", 0, 0, 0 }, { 5, "die", 0, 0, 0 } } }
+ns.Tidy.Events(copy, ns.IsPlaceMap)
+check(#copy.events == 1, "a journey without totals is tidied too")
+
+-- The continent check comes from the caller, as the server has no map API.
+local journey = { events = { { 1, "zone", 0, 0, 0, 7 }, { 2, "zone", 0, 0, 0, 8 } }, totals = { deaths = 0 } }
+ns.Tidy.Events(journey, function(mapID) return mapID == 8 end)
+check(#journey.events == 1 and journey.events[1][6] == 8, "isPlace decides which zones stay")
 
 if failures > 0 then
     print(failures .. " failure(s)")

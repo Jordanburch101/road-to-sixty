@@ -80,6 +80,7 @@ LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
 
 ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/Tidy.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 ns.view = ns.char
