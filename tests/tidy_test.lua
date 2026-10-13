@@ -65,6 +65,16 @@ end
 check(Tidy.TabardComplete(FULL) == true and Tidy.TabardComplete({ bg = {} }) == false
     and Tidy.TabardComplete(nil) == false, "TabardComplete needs bg and border")
 
+-- 5. Runs looks ahead only from leaving an instance, so a long journey with
+-- no dungeons tidies at once. Looking ahead from every event took time
+-- growing with the square of the journey's length: seconds at every login.
+local long = { events = {} }
+for i = 1, 100000 do long.events[i] = { i, "loot", 0, 0, 0, i } end
+local started = os.clock()
+Tidy.Runs(long)
+local took = os.clock() - started
+check(took < 0.5 and #long.events == 100000, ("100,000 events without dungeons tidied in %.2f s"):format(took))
+
 if failures == 0 then
     print("Tidy tests passed.")
 else

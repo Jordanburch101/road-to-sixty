@@ -86,6 +86,20 @@ assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 ns.view = ns.char
 local Journal = ns.Journal
 
+-- 0. Nothing is logged before PLAYER_LOGIN: the sync folder is brought in
+-- then (Sync.lua), and an event logged earlier would make this PC's older
+-- copy look like the one played last. A profession raised on another PC
+-- and gear changed there are both seen again after login.
+assert(loadfile("RoadToSixty/Crafts.lua"))("RoadToSixty", ns)
+GetProfessions = function() return 1 end
+GetProfessionInfo = function() return "Cooking", 133971, 50, 150 end
+ns.char.skills = { Cooking = { 50, 75 } }
+ns.char.gear = { [1] = 99 }
+Fire("SKILL_LINES_CHANGED")
+Fire("CHAT_MSG_SKILL")
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+check(#ns.char.events == 0, "nothing logged before login, got " .. #ns.char.events)
+
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
 
@@ -184,6 +198,11 @@ local eq = ns.char.events[#ns.char.events]
 check(eq[2] == "eq" and eq[6] == 1 and eq[7] == 101, "a new item in a slot is logged")
 
 check(ns.errors.count == 0, "no errors while journaling")
+
+-- After login a raised profession is logged as before.
+Fire("SKILL_LINES_CHANGED")
+local last = ns.char.events[#ns.char.events]
+check(last[2] == "prof" and last[6] == "Cooking" and last[8] == 150, "a profession raised elsewhere is logged after login")
 
 if failures == 0 then
     print("Journal tests passed.")

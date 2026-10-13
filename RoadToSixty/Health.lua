@@ -57,6 +57,7 @@ ns.Command("check", "check that recording is working", function()
     end
     Line(("Journal: %d events since load. Kill counting %s."):format(
         sessionEvents, ns.killsTracked and "on" or "|cffff4040unavailable|r"))
+    Line(ns.Sync:Describe())
 
     if ns.errors.last then
         Line("Last error: " .. tostring(ns.errors.last))

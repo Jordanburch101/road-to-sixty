@@ -81,6 +81,27 @@ check(ns.char.clockFrom == nil, "a layout 2 file was already on the realm's cloc
 ns = Load({ version = 1, people = { g = { groups = 1 } } }, db)
 check(ns.char.clockFrom == 2000 and ns.char.people.g.groups[pc] == 1, "layout 1 gets clockFrom and tallies")
 
+-- 7. The app's sync folder names the PC, and that ID is kept even without it.
+RoadToSixtySync = { pc = "app-000000000001" }
+ns = Load({ version = 2, people = { g = { groups = 2 } } }, db)
+check(ns.pc == "app-000000000001" and ns.db.pc == ns.pc, "the sync folder's PC ID is used: " .. tostring(ns.pc))
+check(ns.char.people.g.groups["app-000000000001"] == 2, "and an upgrade counts under it")
+RoadToSixtySync = { pc = "not an ID!" }
+ns = Load(nil, db)
+check(ns.pc == "app-000000000001", "a PC ID with other characters is ignored")
+RoadToSixtySync = { pc = ("a"):rep(65) }
+ns = Load(nil, db)
+check(ns.pc == "app-000000000001", "a PC ID over 64 characters is ignored")
+RoadToSixtySync = nil
+ns = Load(nil, db)
+check(ns.pc == "app-000000000001", "the ID is kept without the folder")
+
+-- 8. CharDefaults fills in a journey's missing parts, keeping what it has.
+local bare = { version = 3, events = { { 1, "on" } } }
+ns.CharDefaults(bare)
+check(bare.totals.kills == 0 and bare.kills.d == "" and bare.people and #bare.events == 1 and bare.version == 3,
+    "CharDefaults fills in a journey")
+
 if failures == 0 then
     print("Core tests passed.")
 else
