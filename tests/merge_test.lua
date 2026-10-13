@@ -157,6 +157,18 @@ check(m.segments[2].m == "t" and m.segments[3].t == 300 and m.segments[3].c == 0
 check(Same(Merge.Merge(Journey({ segments = { Seg(100, "9,9,9") } }), Journey()).segments, { Seg(100, "9,9,9") }),
     "a copy with no segments")
 
+-- Two segments opened in one second with the same continent and mode (the
+-- clock stepping back at the switch to the realm's clock) are told apart by
+-- where they start, which never changes as a path grows.
+local function At(x, d) return { m = "w", c = 0, t = 100, x = x, y = x, d = d } end
+local staleSegs = Journey({ segments = { At(0, "1,5,5;1,5,5;1,5,5"), At(900, "") } })
+local newerSegs = Journey({ segments = { At(0, "1,5,5;1,5,5;1,5,5"), At(900, "1,1,1") } })
+m = Merge.Merge(Merge.Merge(staleSegs, newerSegs), staleSegs)
+check(Same(m.segments, { At(0, "1,5,5;1,5,5;1,5,5"), At(900, "1,1,1") }), "segments in one second are matched by where they start")
+local empties = Journey({ segments = { At(5, ""), At(1, ""), At(3, "") } })
+m = Merge.Merge(empties, empties)
+check(Same(Merge.Merge(m, m), m) and m.segments[1].x == 1, "and sorted by where they start")
+
 -- 7. Kills: decoded, the larger count of each kept, packed again.
 local Kills = ns.Packed.PackKills
 local function Decoded(kills)

@@ -223,18 +223,23 @@ local function Less(a, b)
     return a < b
 end
 
-local function SegmentKey(s) return tostring(s.t) .. "|" .. tostring(s.c) .. "|" .. tostring(s.m) end
+local function SegmentKey(s)
+    return tostring(s.t) .. "|" .. tostring(s.c) .. "|" .. tostring(s.m) .. "|" .. tostring(s.x) .. "|" .. tostring(s.y)
+end
 
 local function SegmentBefore(p, q)
     if p.t ~= q.t then return p.t < q.t end
     if p.c ~= q.c then return Less(p.c, q.c) end
     if p.m ~= q.m then return Less(p.m, q.m) end
+    if p.x ~= q.x then return Less(p.x, q.x) end
+    if p.y ~= q.y then return Less(p.y, q.y) end
     local dp, dq = p.d or "", q.d or ""
     if #dp ~= #dq then return #dp < #dq end
     return dp < dq
 end
 
--- Segments matched by start time, continent and mode. A stale copy's path
+-- Segments matched by start time, continent, mode and start point (two can
+-- open in one second when the clock steps back). A stale copy's path
 -- string is always the start of the newer one, so the longer wins. Sorted by
 -- start, since teleport detection compares each segment with the one before.
 local function MergeSegments(x, y)
