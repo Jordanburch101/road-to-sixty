@@ -227,6 +227,8 @@ fn ok(reply: Result<Reply, ureq::Error>) -> Result<Reply, ApiError> {
     match reply.status().as_u16() {
         200..=299 => Ok(reply),
         401 => Err(ApiError::Unauthorized),
+        // The server is down or failing: like no answer, try again later.
+        code @ 500..=599 => Err(ApiError::Network(format!("the server answered {code}"))),
         code => Err(ApiError::Status(code, reply.body_mut().read_to_string().unwrap_or_default())),
     }
 }

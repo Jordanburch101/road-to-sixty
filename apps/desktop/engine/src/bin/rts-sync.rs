@@ -76,6 +76,8 @@ fn main() -> ExitCode {
                     state.pc = Some(linked.pc);
                     state.battletag = Some(linked.battletag.clone());
                     state.uploaded.clear();
+                    // Another server's version ids mean other journeys.
+                    let _ = std::fs::remove_dir_all(&cache);
                     if let Err(e) = state.save(&state_path) {
                         return fail(&e.to_string());
                     }
@@ -100,6 +102,7 @@ fn main() -> ExitCode {
         }
         Some("unlink") => {
             let _ = tokens.clear();
+            let _ = std::fs::remove_dir_all(&cache);
             state = State {
                 picked: state.picked,
                 ..State::default()

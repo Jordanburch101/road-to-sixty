@@ -68,6 +68,14 @@ pub fn find_installs(picked: &[PathBuf]) -> Vec<PathBuf> {
     all.extend(picked.iter().cloned());
     let mut found: Vec<PathBuf> = Vec::new();
     for path in all {
+        // By its real path: file watching reports real paths, so an install
+        // reached through a link would never match. Not on Windows, where
+        // the real path gains a \\?\ prefix the game's process path lacks.
+        let path = if cfg!(windows) {
+            path
+        } else {
+            fs::canonicalize(&path).unwrap_or(path)
+        };
         if path.is_dir() && !found.contains(&path) {
             found.push(path);
         }
@@ -196,6 +204,20 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].game, "_classic_beta_");
         assert!(found[0].path.ends_with("70/Ann-Stormfist/SavedVariables/RoadToSixty.lua"));
+    }
+
+    // File watching reports real paths, so an install reached through a link
+    // (WoW moved to another drive) must be kept by its real path.
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_install_is_kept_by_its_real_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("Real WoW");
+        fs::create_dir_all(&real).unwrap();
+        let link = dir.path().join("Linked WoW");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let found = find_installs(&[link]);
+        assert_eq!(found.last(), Some(&fs::canonicalize(&real).unwrap()));
     }
 
     #[test]

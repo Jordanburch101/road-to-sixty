@@ -66,6 +66,12 @@ impl Schedule {
             .collect()
     }
 
+    /// Whether any file has waited out its settle time, so it's worth
+    /// looking for the game before deciding (that looks at every program).
+    pub fn settled(&self, now: Instant) -> bool {
+        self.changed.values().any(|at| now.duration_since(*at) >= SETTLE)
+    }
+
     pub fn sent(&mut self, paths: &[PathBuf], now: Instant) {
         for path in paths {
             self.changed.remove(path);
@@ -114,7 +120,11 @@ pub fn run(
         for path in rx.try_iter() {
             schedule.changed(path, now);
         }
-        let programs = running_programs(&mut system);
+        let programs = if schedule.settled(now) {
+            running_programs(&mut system)
+        } else {
+            Vec::new()
+        };
         let playing = |file: &Path| games.iter().any(|g| file.starts_with(&g.path) && game_running(&g.path, &programs));
         let due = schedule.due(now, playing);
         let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
@@ -163,6 +173,15 @@ mod tests {
         assert!(s.due(at(t0, 300), |_| true).is_empty());
         assert_eq!(s.due(at(t0, 910), |_| true), vec![a.clone()]);
         assert_eq!(s.due(at(t0, 300), |_| false), [a], "once the game closes, straight away");
+    }
+
+    #[test]
+    fn only_a_settled_file_is_worth_looking_for_the_game() {
+        let (t0, mut s) = (Instant::now(), Schedule::default());
+        assert!(!s.settled(t0));
+        s.changed(PathBuf::from("a"), t0);
+        assert!(!s.settled(at(t0, 5)));
+        assert!(s.settled(at(t0, 10)));
     }
 
     #[test]

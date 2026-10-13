@@ -69,7 +69,8 @@ fn key(name: &str, realm: &str) -> String {
 /// Uploads one saved file unless this exact file was uploaded before.
 /// Returns the character's `Name-Realm` when it was sent.
 pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Option<&str>) -> Result<Option<String>, ApiError> {
-    let bytes = fs::read(&file.path).map_err(|e| ApiError::Status(0, format!("couldn't read {}: {e}", file.path.display())))?;
+    // The game may hold the file while it writes it: try again later.
+    let bytes = fs::read(&file.path).map_err(|e| ApiError::Network(format!("couldn't read {}: {e}", file.path.display())))?;
     let print = fingerprint(&bytes);
     if state.uploaded.get(&file.path) == Some(&print) {
         return Ok(None);
@@ -100,27 +101,23 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
         if !games.iter().any(|g| g.name == entry.game) {
             continue;
         }
-        let path = cache.join(format!("{version}.lua"));
-        let journey = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(_) => {
-                let text = client.download(version)?;
-                fs::create_dir_all(cache)
-                    .and_then(|()| fs::write(&path, &text))
-                    .map_err(|e| ApiError::Status(0, e.to_string()))?;
-                text
+        let who = key(&entry.name, &entry.realm);
+        match journey(client, cache, version, &entry.fingerprint) {
+            Ok((path, journey)) => {
+                kept.insert(path);
+                by_game.entry(&entry.game).or_default().push(Delivery {
+                    key: who,
+                    version,
+                    replace: entry.replace,
+                    journey,
+                });
             }
-        };
-        kept.insert(path);
-        by_game.entry(&entry.game).or_default().push(Delivery {
-            key: key(&entry.name, &entry.realm),
-            version,
-            replace: entry.replace,
-            journey,
-        });
+            Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
+            Err(e) => report.problems.push(format!("{who}: {e}")),
+        }
     }
     for game in games {
-        let mut deliveries = by_game.remove(game.name.as_str()).unwrap_or_default();
+        let mut deliveries = by_game.get(game.name.as_str()).cloned().unwrap_or_default();
         deliveries.sort_by(|a, b| a.key.cmp(&b.key));
         match inbox::write(&game.path, pc, &deliveries) {
             Ok(true) => report.delivered.push(game.name.clone()),
@@ -136,6 +133,32 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
         }
     }
     Ok(())
+}
+
+/// One version's journey, from the cache when the cached copy is the one
+/// the server means: version ids differ between servers, and a cache file
+/// can be cut short. Otherwise downloaded, checked, and cached by writing a
+/// temporary file and renaming it.
+fn journey(client: &Client, cache: &Path, version: i64, print: &str) -> Result<(PathBuf, String), ApiError> {
+    let path = cache.join(format!("{version}.lua"));
+    if let Ok(text) = fs::read_to_string(&path)
+        && fingerprint(text.as_bytes()) == print
+    {
+        return Ok((path, text));
+    }
+    let text = client.download(version)?;
+    if fingerprint(text.as_bytes()) != print {
+        return Err(ApiError::Status(
+            200,
+            format!("version {version} doesn't match the server's fingerprint"),
+        ));
+    }
+    let temp = path.with_extension("tmp");
+    fs::create_dir_all(cache)
+        .and_then(|()| fs::write(&temp, &text))
+        .and_then(|()| fs::rename(&temp, &path))
+        .map_err(|e| ApiError::Status(0, format!("couldn't keep version {version}: {e}")))?;
+    Ok((path, text))
 }
 
 /// One whole pass. `ready` says which changed files to upload now (the
@@ -231,14 +254,16 @@ mod tests {
     #[test]
     fn a_pass_uploads_a_changed_file_once_and_delivers_each_version_once() {
         let (dir, game) = game();
-        let fake = fake::serve(|_, url| {
+        let ann = fingerprint(b"{[\"version\"]=3,}");
+        let fake = fake::serve(move |_, url| {
             if url.starts_with("/v1/upload") {
                 (200, br#"{"version":8,"status":"queued"}"#.to_vec())
             } else if url == "/v1/check" {
-                (200, br#"{"characters":[
-                    {"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":9,"fingerprint":"f","replace":false,"updateAddon":false},
+                (200, r#"{"characters":[
+                    {"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":9,"fingerprint":"ANN","replace":false,"updateAddon":false},
                     {"game":"_classic_era_","realm":"Other","name":"Elsewhere","version":4,"fingerprint":"g","replace":false,"updateAddon":false},
-                    {"game":"_classic_beta_","realm":"Test Realm","name":"Old","version":null,"fingerprint":"h","replace":false,"updateAddon":true}]}"#.to_vec())
+                    {"game":"_classic_beta_","realm":"Test Realm","name":"Old","version":null,"fingerprint":"h","replace":false,"updateAddon":true}]}"#
+                    .replace("ANN", &ann).into_bytes())
             } else {
                 (200, zstd::encode_all(&b"{[\"version\"]=3,}"[..], 3).unwrap())
             }
@@ -337,5 +362,112 @@ mod tests {
             |_| true,
         );
         assert_eq!(result, Err(ApiError::Unauthorized));
+    }
+
+    // A check that offers each journey in `served` (name, version, text)
+    // in the beta folder, with its real fingerprint; downloads answer from
+    // the same list, except versions in `broken`, which answer `bad`.
+    fn server(served: &'static [(&'static str, i64, &'static str)], bad: Option<(i64, Vec<u8>)>) -> fake::Fake {
+        fake::serve(move |_, url| {
+            if url == "/v1/check" {
+                let list: Vec<String> = served
+                    .iter()
+                    .map(|(name, v, text)| {
+                        format!(
+                            r#"{{"game":"_classic_beta_","realm":"Test Realm","name":"{name}","version":{v},"fingerprint":"{}","replace":false,"updateAddon":false}}"#,
+                            fingerprint(text.as_bytes())
+                        )
+                    })
+                    .collect();
+                return (200, format!(r#"{{"characters":[{}]}}"#, list.join(",")).into_bytes());
+            }
+            let version: i64 = url.trim_start_matches("/v1/versions/").parse().unwrap_or(-1);
+            if let Some((v, body)) = &bad
+                && *v == version
+            {
+                return (200, body.clone());
+            }
+            match served.iter().find(|(_, v, _)| *v == version) {
+                Some((_, _, text)) => (200, zstd::encode_all(text.as_bytes(), 3).unwrap()),
+                None => (404, b"no such version".to_vec()),
+            }
+        })
+    }
+
+    fn deliver_once(fake: &fake::Fake, games: &[GameFolder], cache: &Path) -> Report {
+        let mut report = Report::default();
+        deliver(&Client::new(&fake.url, Some("t".into())), "pc-1", games, cache, &mut report).unwrap();
+        report
+    }
+
+    #[test]
+    fn a_cached_journey_that_isnt_the_one_the_server_means_is_downloaded_again() {
+        let (dir, game) = game();
+        let cache = dir.path().join("journeys");
+        fs::create_dir_all(&cache).unwrap();
+        // From another server, or cut short by a full disk.
+        fs::write(cache.join("9.lua"), "{[\"someone\"]=\"else\",}").unwrap();
+        let fake = server(&[("Ann", 9, "{[\"ann\"]=true,}")], None);
+        deliver_once(&fake, std::slice::from_ref(&game), &cache);
+        let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
+        assert!(data.contains(r#"journey = "{[\"ann\"]=true,}""#), "{data}");
+        assert_eq!(fs::read_to_string(cache.join("9.lua")).unwrap(), "{[\"ann\"]=true,}");
+    }
+
+    #[test]
+    fn one_bad_journey_is_a_problem_and_the_others_are_still_delivered() {
+        let (dir, game) = game();
+        let fake = server(
+            &[("Ann", 9, "{[\"ann\"]=true,}"), ("Bob", 10, "{}")],
+            Some((10, zstd::encode_all(&[0xff, 0xfe][..], 3).unwrap())),
+        );
+        let report = deliver_once(&fake, std::slice::from_ref(&game), &dir.path().join("journeys"));
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
+        assert!(data.contains("Ann-Test Realm") && !data.contains("Bob-Test Realm"), "{data}");
+    }
+
+    #[test]
+    fn two_game_folders_with_one_name_both_get_the_journeys() {
+        let (dir, game) = game();
+        let other = tempfile::tempdir().unwrap();
+        let second = GameFolder {
+            path: other.path().join("_classic_beta_"),
+            name: game.name.clone(),
+        };
+        fs::create_dir_all(addon_toc(&second.path).parent().unwrap()).unwrap();
+        fs::write(addon_toc(&second.path), "## Interface: 16001\n").unwrap();
+        let fake = server(&[("Ann", 9, "{}")], None);
+        deliver_once(&fake, &[game.clone(), second.clone()], &dir.path().join("journeys"));
+        for folder in [&game, &second] {
+            let data = fs::read_to_string(sync_folder(&folder.path).join("data.lua")).unwrap();
+            assert!(data.contains("Ann-Test Realm"), "{}: {data}", folder.path.display());
+        }
+    }
+
+    #[test]
+    fn a_server_error_on_upload_stops_the_pass_so_the_file_is_tried_again() {
+        let (dir, game) = game();
+        let down = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (503, b"storage down".to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let result = pass(
+            &Client::new(&down.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| true,
+        );
+        assert!(matches!(result, Err(ApiError::Network(_))), "{result:?}");
+        assert!(state.uploaded.is_empty());
     }
 }
