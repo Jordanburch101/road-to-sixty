@@ -246,12 +246,18 @@ end
 -- "You have learned how to create a new item: %s."
 local matchRecipe = ns.ChatMatcher(ERR_LEARN_RECIPE_S or "You have learned how to create a new item: %s.")
 
+-- Skill events before login are left to the check after it: a "prof"
+-- logged before Sync.lua brings in the sync folder would make this PC's
+-- older copy look like the one played last.
+local loggedIn = false
+
 ns.On("PLAYER_LOGIN", function()
+    loggedIn = true
     -- Professions can be missing for a moment at login.
     C_Timer.After(5, function() ns.SafeCall(Crafts.CheckSkills, Crafts) end)
 end)
-ns.On("SKILL_LINES_CHANGED", function() Crafts:CheckSkills() end)
-ns.On("CHAT_MSG_SKILL", function() Crafts:CheckSkills() end)
+ns.On("SKILL_LINES_CHANGED", function() if loggedIn then Crafts:CheckSkills() end end)
+ns.On("CHAT_MSG_SKILL", function() if loggedIn then Crafts:CheckSkills() end end)
 
 ns.On("TRADE_SKILL_SHOW", function() Crafts:CheckRecipes() end)
 

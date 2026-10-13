@@ -74,10 +74,13 @@ end
 
 -- Logs real equipment changes, so a replay can show gear changing between
 -- level ups. ns.char.gear is the gear last seen (set at login), so swapping
--- an item for the same one logs nothing.
+-- an item for the same one logs nothing. Before login it is still the saved
+-- gear, which the sync folder may be about to replace (Sync.lua), and an
+-- "eq" logged then would make this PC's older copy look played last.
+local loggedIn = false
 ns.On("PLAYER_EQUIPMENT_CHANGED", function(slot)
     local gear = ns.char.gear
-    if not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
+    if not loggedIn or not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
     local itemID = GetInventoryItemID("player", slot) or 0
     if (gear[slot] or 0) ~= itemID then
         gear[slot] = itemID ~= 0 and itemID or nil
@@ -256,6 +259,7 @@ local function CheckInstance()
 end
 
 ns.On("PLAYER_LOGIN", function()
+    loggedIn = true
     if not ns.char.seeded then ns.SafeCall(ns.Tidy.Runs, ns.char) end
     ns.SafeCall(ns.Tidy.Events, ns.char, ns.IsPlaceMap)
     for _, e in pairs(ns.db.roster or {}) do
