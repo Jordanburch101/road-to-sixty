@@ -6,6 +6,9 @@ dist/
 node_modules/
 .turbo/
 
+# Rust build output (apps/desktop)
+target/
+
 # Local settings with secrets (apps/server/.env.example lists them)
 .env
 

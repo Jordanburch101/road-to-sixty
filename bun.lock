@@ -13,6 +13,9 @@
     "apps/addon": {
       "name": "@road-to-sixty/addon",
     },
+    "apps/desktop": {
+      "name": "@road-to-sixty/desktop",
+    },
     "apps/server": {
       "name": "@road-to-sixty/server",
       "dependencies": {
@@ -117,6 +120,8 @@
     "@road-to-sixty/addon": ["@road-to-sixty/addon@workspace:apps/addon"],
 
     "@road-to-sixty/api": ["@road-to-sixty/api@workspace:packages/api"],
+
+    "@road-to-sixty/desktop": ["@road-to-sixty/desktop@workspace:apps/desktop"],
 
     "@road-to-sixty/server": ["@road-to-sixty/server@workspace:apps/server"],
 

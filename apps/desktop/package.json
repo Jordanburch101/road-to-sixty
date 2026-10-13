@@ -1,0 +1,8 @@
+{
+  "name": "@road-to-sixty/desktop",
+  "private": true,
+  "scripts": {
+    "test": "cargo test",
+    "check": "cargo clippy --all-targets -- -D warnings && cargo fmt --check"
+  }
+}

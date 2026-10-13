@@ -51,6 +51,14 @@ calls, `src/auth.ts` is sign-in (Better Auth with Battle.net), `src/link.ts`
 and `src/link.html` link a PC, `src/worker.ts` runs the merge jobs, `src/runner.lua` merges under
 standard Lua 5.1 with the addon's pure files, and `src/schema.ts` holds the
 tables (migrations in `drizzle/`, made by `bun run db:generate`).
+`apps/desktop/` is the desktop app (#1). `engine/` is its sync engine in
+Rust, with no window: `installs.rs` finds WoW installs and saved journeys,
+`inbox.rs` writes the `RoadToSixty_Sync` folder, `api.rs` and `link.rs` talk
+to the server, `state.rs` keeps what it remembers (the PC token is in the
+Keychain or Credential Manager), `sync.rs` is one sync pass and `watch.rs`
+decides when to upload. `src/bin/rts-sync.rs` runs it from a terminal. A
+character is named by the `rosterKey` its saved file holds, never by the
+game's folder names, which don't give the realm the addon uses.
 `packages/api/` holds the request and response types the server, website
 and app share.
 
@@ -82,6 +90,10 @@ bun test                            # server tests; LUA51 names Lua 5.1 if lua5.
 bun run dev                         # the server on port 3000, with .env (copied from .env.example)
 bun scripts/link-pc.ts <server> [name]   # link this machine as the app will: approve the code on <server>/link
 bun scripts/try-upload.ts <server> <token>   # upload a made-up journey as that PC and wait for the merge
+
+# From apps/desktop (Rust from rustup; rust-toolchain.toml picks the version)
+cargo test                          # engine tests (one needs luajit on the path)
+cargo run --bin rts-sync -- status  # installs and characters found; also link, once, run, unlink
 ```
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old

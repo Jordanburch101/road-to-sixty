@@ -27,7 +27,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Checks
-        run: bun run check
+        run: bun run check --filter=@road-to-sixty/addon
 
       - name: Tests under LuaJIT and Lua 5.1
         run: bun run test --filter=@road-to-sixty/addon
@@ -82,3 +82,23 @@ jobs:
           -e BETTER_AUTH_URL=unused -e BETTER_AUTH_SECRET=unused -e ACCOUNT_HASH_KEY=unused
           -e BATTLENET_CLIENT_ID=unused -e BATTLENET_CLIENT_SECRET=unused
           rts-server bun apps/server/scripts/smoke.ts
+
+  # The desktop app's sync engine: its tests (one has LuaJIT read back the
+  # sync folder it writes), clippy and formatting. rust-toolchain.toml picks
+  # the Rust version.
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+
+      - name: Tests
+        run: cargo test
+
+      - name: Clippy and formatting
+        run: cargo clippy --all-targets -- -D warnings && cargo fmt --check
