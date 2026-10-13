@@ -30,7 +30,7 @@ jobs:
         run: bun run check
 
       - name: Tests under LuaJIT and Lua 5.1
-        run: bun run test
+        run: bun run test --filter=@road-to-sixty/addon
 
       - name: Release build
         id: package
@@ -44,3 +44,39 @@ jobs:
         with:
           name: RoadToSixty-${{ steps.package.outputs.version }}
           path: apps/addon/build/
+
+  # The sync server: its tests against Postgres and an S3 store, then the
+  # image Dokploy deploys, checked to merge with Lua 5.1 inside it.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Start Postgres and S3
+        run: docker compose -f apps/server/docker-compose.yml up -d --wait
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Server tests
+        working-directory: apps/server
+        run: bun test
+
+      - name: Image
+        run: docker build -f apps/server/Dockerfile -t rts-server .
+
+      - name: The image can merge
+        run: >
+          docker run --rm -e DATABASE_URL=unused -e S3_ENDPOINT=unused -e S3_BUCKET=unused
+          -e S3_ACCESS_KEY_ID=unused -e S3_SECRET_ACCESS_KEY=unused
+          rts-server bun apps/server/scripts/smoke.ts
