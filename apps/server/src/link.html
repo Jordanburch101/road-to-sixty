@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Link this PC · Road to Sixty</title>
+<!-- Until the website is built (step 6), this page links PCs. -->
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; background: #0a0a0a; color: #ededed; max-width: 28rem; margin: 4rem auto; padding: 0 1rem; }
+  input, button { font: inherit; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #333; background: #111; color: inherit; }
+  button { background: #2563eb; border: 0; cursor: pointer; }
+  .quiet { color: #a1a1a1; }
+</style>
+<h1>Link this PC</h1>
+<p id="who" class="quiet"></p>
+<button id="sign-in" hidden>Sign in with Battle.net</button>
+<form id="form" hidden>
+  <input id="code" placeholder="Code from the app" autocomplete="off" required />
+  <button>Link</button>
+</form>
+<p id="result"></p>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  const call = async (path, body) => {
+    const r = await fetch(`/api/auth${path}`, body
+      ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+      : {});
+    return { ok: r.ok, data: await r.json().catch(() => null) };
+  };
+  const signedIn = (await call("/get-session")).data;
+  if (!signedIn) {
+    $("sign-in").hidden = false;
+    $("sign-in").onclick = async () => {
+      const r = await call("/sign-in/social", { provider: "battlenet", callbackURL: location.pathname + location.search });
+      if (r.data?.url) location.href = r.data.url;
+    };
+  } else {
+    $("who").textContent = `Signed in as ${signedIn.user.name}`;
+    $("form").hidden = false;
+    $("code").value = new URLSearchParams(location.search).get("user_code") ?? "";
+    $("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const userCode = $("code").value.trim();
+      // Looking the code up ties it to this player; only then can they approve it.
+      const found = await call(`/device?user_code=${encodeURIComponent(userCode)}`);
+      const r = found.ok ? await call("/device/approve", { userCode }) : found;
+      $("result").textContent = r.ok
+        ? "Linked. You can close this page; the app takes it from here."
+        : `That didn't work: ${r.data?.message ?? "check the code and try again"}`;
+    };
+  }
+</script>
+</html>

@@ -7,8 +7,7 @@
     "start": "bun src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p .",
-    "db:generate": "drizzle-kit generate",
-    "device:new": "bun scripts/new-device.ts"
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@road-to-sixty/api": "workspace:*",

@@ -1,5 +1,8 @@
+import { APP_CLIENT_ID } from "@road-to-sixty/api";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { bearer } from "better-auth/plugins/bearer";
+import { deviceAuthorization } from "better-auth/plugins/device-authorization";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { config } from "./config";
 import { db } from "./db";
@@ -55,5 +58,10 @@ export const auth = betterAuth({
         },
       ],
     }),
+    deviceAuthorization({
+      verificationUri: "/link",
+      validateClient: (clientId) => clientId === APP_CLIENT_ID,
+    }),
+    bearer(),
   ],
 });
