@@ -16,7 +16,10 @@ Bun.serve({
       return Response.redirect(back.toString(), 302);
     }
     if (url.pathname === "/token") return Response.json({ access_token: `token-${player.id}`, token_type: "bearer", expires_in: 3600 });
-    if (url.pathname === "/userinfo") return Response.json({ sub: String(player.id), id: player.id, battletag: player.battletag });
+    if (url.pathname === "/userinfo") {
+      // An id of 0 stands for a reply that names no account at all.
+      return Response.json(player.id ? { sub: String(player.id), id: player.id, battletag: player.battletag } : { battletag: player.battletag });
+    }
     return new Response("not found", { status: 404 });
   },
 });
@@ -36,7 +39,11 @@ export async function signIn(as: Partial<typeof player> = {}): Promise<string> {
   );
   const { url } = (await start.json()) as { url: string };
   const authorize = await fetch(url, { redirect: "manual" });
-  const callback = await app.handle(new Request(authorize.headers.get("location")!, { headers: { cookie: cookies(start) } }));
+  const callback = await app.handle(
+    new Request(authorize.headers.get("location")!, {
+      headers: { cookie: cookies(start), "user-agent": "Test Browser", "x-forwarded-for": "203.0.113.9" },
+    }),
+  );
   if (callback.status !== 302) throw new Error(`sign-in failed: ${callback.status} ${await callback.text()}`);
   return cookies(callback);
 }

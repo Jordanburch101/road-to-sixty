@@ -29,6 +29,18 @@ test("signing in with Battle.net makes a player named by BattleTag, keyed by a h
   expect(JSON.stringify(await db.select().from(user))).not.toContain("1234@");
 });
 
+test("a Battle.net reply that names no account signs no one in", async () => {
+  await signIn({ id: 0, battletag: "Ann#1111" });
+  await signIn({ id: 0, battletag: "Bob#2222" });
+  expect(await db.select().from(user)).toEqual([]);
+});
+
+test("a sign-in keeps no IP address or browser details", async () => {
+  await signIn();
+  const [row] = await db.select().from(session);
+  expect(row).toMatchObject({ ipAddress: null, userAgent: null });
+});
+
 test("signing in again is the same player, with the BattleTag brought up to date", async () => {
   await signIn({ id: 1234, battletag: "Ann#1234" });
   await signIn({ id: 1234, battletag: "Annie#1234" });
@@ -64,7 +76,8 @@ test("a PC is linked by the code its app shows, approved by the signed-in player
   const linked = await app.handle(
     new Request("http://localhost:3000/v1/link?name=Desk&platform=windows", { method: "POST", headers: { authorization: `Bearer ${access_token}` } }),
   );
-  const { token, pc } = (await linked.json()) as LinkResponse;
+  const { token, pc, battletag } = (await linked.json()) as LinkResponse;
+  expect(battletag).toBe("Ann#1234"); // the app shows who it is linked to
   const [device] = await db.select().from(devices).where(eq(devices.id, pc));
   expect(device).toMatchObject({ name: "Desk", platform: "windows" });
   expect((await get("/v1/check", { authorization: `Bearer ${token}` })).status).toBe(200);
@@ -94,5 +107,7 @@ test("only the app may ask for a device code", async () => {
 test("the link page is served", async () => {
   const page = await get("/link");
   expect(page.headers.get("content-type")).toContain("text/html");
-  expect(await page.text()).toContain("Link this PC");
+  const text = await page.text();
+  expect(text).toContain("Link this PC");
+  expect(text).toContain("Only continue if the Road to Sixty app on this computer opened this page");
 });

@@ -11,6 +11,7 @@ export const APP_CLIENT_ID = "road-to-sixty-app";
 export type LinkResponse = {
   token: string; // the PC token, for Authorization: Bearer on every /v1 call
   pc: string; // this PC's ID, which the addon keeps its counts under
+  battletag: string; // who the PC is now linked to, for the app to show
 };
 
 // POST /v1/upload?game=&realm=&name=&addon=&received=, body: the character's

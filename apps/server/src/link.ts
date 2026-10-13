@@ -27,5 +27,5 @@ export const link = new Elysia()
     const platform = query.platform?.slice(0, 20);
     const { device, token } = await newDevice(signedIn.user.id, name, platform);
     await db.delete(session).where(eq(session.id, signedIn.session.id));
-    return { token, pc: device.id };
+    return { token, pc: device.id, battletag: signedIn.user.name };
   });
