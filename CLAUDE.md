@@ -45,6 +45,14 @@ for data, its exact format; read that before changing a module.
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo) |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua | developer tools, left out of releases |
 
+`apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
+Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app
+calls, `src/worker.ts` runs the merge jobs, `src/runner.lua` merges under
+standard Lua 5.1 with the addon's pure files, and `src/schema.ts` holds the
+tables (migrations in `drizzle/`, made by `bun run db:generate`).
+`packages/api/` holds the request and response types the server, website
+and app share.
+
 Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 (per character). Its `version` is `DATA_VERSION` in Core.lua: bump it at
 every change to what is saved or what it means, list the change there, and
@@ -58,6 +66,7 @@ last loaded the file.
 bun install                         # once, for turbo
 bun run test                        # every addon test under LuaJIT, and under Lua 5.1 if installed
 bun run check                       # check.ps1 through turbo (needs PowerShell)
+bun run typecheck                   # TypeScript in the server and packages
 
 # From apps/addon
 ./check.ps1                         # LuaJIT syntax check, LuaLS diagnostics, offline tests (tests/*_test.lua)
@@ -65,6 +74,12 @@ bun run check                       # check.ps1 through turbo (needs PowerShell)
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
+
+# From apps/server (Docker running)
+docker compose up -d                # Postgres and an S3 store, for the tests and a local server
+bun test                            # server tests; LUA51 names Lua 5.1 if lua5.1 isn't on the path
+bun run dev                         # the server on port 3000, with .env (copied from .env.example)
+bun run device:new <user> <PC name> # link a PC by hand until sign-in exists; prints its token once
 ```
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old

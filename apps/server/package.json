@@ -1,0 +1,21 @@
+{
+  "name": "@road-to-sixty/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p .",
+    "db:generate": "drizzle-kit generate",
+    "device:new": "bun scripts/new-device.ts"
+  },
+  "dependencies": {
+    "@road-to-sixty/api": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "elysia": "1.4.30"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.11"
+  }
+}

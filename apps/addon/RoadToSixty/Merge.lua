@@ -479,14 +479,35 @@ end
 
 -- For the server -------------------------------------------------------------
 
+-- The parts the addon adds to or indexes. A journey with one of the wrong
+-- shape would stop the recording once the addon took it in, and the server
+-- would hand it to every PC.
+local TABLES = { "segments", "events", "levels", "kills", "recipes", "people", "totals" }
+
+local function Misshapen(j)
+    for _, k in ipairs(TABLES) do
+        if j[k] ~= nil and type(j[k]) ~= "table" then return k .. " isn't a table" end
+    end
+    for _, e in ipairs(j.events or {}) do
+        if type(e) ~= "table" or type(e[1]) ~= "number" then return "an event has no time" end
+    end
+    for k, v in pairs(j.totals or {}) do
+        if type(v) ~= "number" then return "totals." .. tostring(k) .. " isn't a number" end
+    end
+    if j.kills and j.kills.d ~= nil and type(j.kills.d) ~= "string" then return "the kills aren't packed text" end
+end
+
 -- Brings a journey saved by an older addon up to Merge.VERSION before it is
--- merged, its counts counted as pc's, the PC it came from. Changes the
--- journey in place. Returns it, or nil and why it can't be merged.
+-- merged, its counts counted as pc's, the PC it came from, and refuses one
+-- that is damaged. Changes the journey in place. Returns it, or nil and why
+-- it can't be merged.
 function Merge.Prepare(char, pc)
     if type(char) ~= "table" then return nil, "not a journey" end
     local version = tonumber(char.version) or 0
     if version > Merge.VERSION then return nil, "a newer layout than this merge knows" end
     if version < 2 then return nil, "a layout from before journeys used the realm's clock" end
+    local damaged = Misshapen(char)
+    if damaged then return nil, "a damaged journey: " .. damaged end
     if version < 3 then
         ns.Tally.Upgrade(char, pc)
         char.version = 3

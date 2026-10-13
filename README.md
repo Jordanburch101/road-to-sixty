@@ -13,8 +13,9 @@ Needs [LuaJIT](https://luajit.org/) on the path. [Lua Language Server](https://l
 is optional; when installed, `check.ps1` also reports its diagnostics.
 
 The repo is a Bun and Turborepo workspace: `bun install`, then `bun run test` at
-the root runs every addon test. The addon's own commands below run from
-`apps/addon/`.
+the root runs every test. The addon's own commands below run from
+`apps/addon/`. The sync server in `apps/server/` needs Docker for its tests
+(`docker compose up -d` there first) and standard Lua 5.1.
 
 ```powershell
 ./check.ps1                      # syntax check, diagnostics, offline tests

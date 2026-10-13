@@ -6,6 +6,9 @@ dist/
 node_modules/
 .turbo/
 
+# Local settings with secrets (apps/server/.env.example lists them)
+.env
+
 # Generated from branding/header.src.html by branding/build-header.ps1
 branding/header.html
 

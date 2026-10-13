@@ -31,24 +31,6 @@ local function TidyUp(char)
     if not char.seeded then ns.Tidy.Guilds(char) end
 end
 
--- The parts the addon adds to or indexes once the journey is copied in. A
--- journey with one of the wrong shape would stop the recording, and at the
--- next logout that is what would be saved.
-local TABLES = { "segments", "events", "levels", "kills", "recipes", "people", "totals" }
-
-local function Misshapen(j)
-    for _, k in ipairs(TABLES) do
-        if j[k] ~= nil and type(j[k]) ~= "table" then return k .. " isn't a table" end
-    end
-    for _, e in ipairs(j.events or {}) do
-        if type(e) ~= "table" or type(e[1]) ~= "number" then return "an event has no time" end
-    end
-    for k, v in pairs(j.totals or {}) do
-        if type(v) ~= "number" then return "totals." .. tostring(k) .. " isn't a number" end
-    end
-    if j.kills and j.kills.d ~= nil and type(j.kills.d) ~= "string" then return "the kills aren't packed text" end
-end
-
 -- What a sync folder entry does to char, the journey this PC saved: "same"
 -- when that version was already brought in; "merged" or "replaced" with
 -- the journey to keep; "problem" with why it can't be used. Tidies char in
@@ -65,9 +47,8 @@ function Sync.Apply(char, entry)
     if (tonumber(journey.version) or 0) > ns.Merge.VERSION then
         return "problem", "it was saved by a newer Road to Sixty. Update the addon on this PC"
     end
-    local why = Misshapen(journey)
-    if why then return "problem", "the synced journey is damaged: " .. why end
     if char.seeded or journey.seeded then return "problem", "a seeded test journey is never merged or restored" end
+    local why
     journey, why = ns.Merge.Prepare(journey, ns.pc)
     if not journey then return "problem", why end
     TidyUp(char)
