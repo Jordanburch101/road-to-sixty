@@ -405,6 +405,54 @@ local function Recount(out, a, b)
     out.levels = levels
 end
 
+-- Riding, mounts, people and rares ---------------------------------------------
+
+-- riding (spellID -> { name, time, level, base }) and mounts (mountID ->
+-- { time, c, x, y, level, base }, plus logged): the earliest note of each
+-- wins, at being the index of its time. A mount logged in either copy
+-- stays logged, so it is never logged again.
+local function FirstNoted(at)
+    return function(x, y)
+        return MergeMap(x, y, function(p, q)
+            local tp, tq = p[at] or 0, q[at] or 0
+            local note = tp == tq and Join(p, q) or (tp < tq and p or q)
+            if (p.logged or q.logged) and not note.logged then note = Join(note, { logged = true }) end
+            return note
+        end)
+    end
+end
+RULES.riding = FirstNoted(2)
+RULES.mounts = FirstNoted(1)
+
+-- A player met, in both copies (Groups.lua): the tallies keep the higher
+-- part per PC; where and when they were first met comes from the copy that
+-- met them first, and the rest from the copy that saw them last.
+local FIRST_MET = { "first", "c", "x", "y" }
+local LAST_SEEN = { "last", "name", "race", "sex", "class", "level", "guild" }
+
+local function MergePerson(p, q)
+    local out = Join(p, q)
+    if p.first ~= q.first then
+        local first = (p.first or 0) < (q.first or 0) and p or q
+        for _, f in ipairs(FIRST_MET) do out[f] = first[f] end
+    end
+    if p.last ~= q.last then
+        local last = (p.last or 0) > (q.last or 0) and p or q
+        for _, f in ipairs(LAST_SEEN) do out[f] = last[f] end
+    end
+    return out
+end
+RULES.people = function(x, y) return MergeMap(x, y, MergePerson) end
+
+-- A rare (Rares.lua): kills tallied per PC, the higher part each; the first
+-- kill the earliest.
+local function MergeRare(p, q)
+    local out = Join(p, q)
+    if p[2] and q[2] then out[2] = math.min(p[2], q[2]) end
+    return out
+end
+RULES.rares = function(x, y) return MergeMap(x, y, MergeRare) end
+
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end

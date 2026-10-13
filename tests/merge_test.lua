@@ -226,6 +226,54 @@ check(m.levels[8].money == 2, "of two later-login snapshots, the earlier")
 check(A.levels[5].kills == 1 and B.levels[6].kills == 1, "the inputs' snapshots are not changed")
 check(Same(Merge.Merge(m, m), m) and Same(Merge.Merge(B, A), m), "snapshots come out the same every way")
 
+-- 10. Riding and mounts: the earliest note of each wins; a mount logged in
+-- either copy stays logged.
+local horse = { 650, 0, 3, 4, 40 }
+horse.logged = true
+m = Merge.Merge(
+    Journey({ riding = { [33388] = { "Apprentice Riding", 500, 40 } }, mounts = { [6] = { 600, 0, 1, 2, 40, true } } }),
+    Journey({ riding = { [33388] = { "Apprentice Riding", 450, 40 } }, mounts = { [6] = horse, [7] = { 700, 0, 0, 0, 41 } } }))
+check(m.riding[33388][2] == 450, "riding: the earliest note")
+check(m.mounts[6][1] == 600 and m.mounts[6][6] == true and m.mounts[6].logged == true, "mounts: the earliest note, logged from either")
+check(m.mounts[7][1] == 700, "a mount in one copy only")
+check(Merge.Merge(Journey({ mounts = { [6] = { 600 } } }), Journey()).mounts[6][1] == 600, "a copy with no mounts at all")
+
+-- 11. People: tallies keep the higher part per PC; where and when first
+-- met from the copy that met them first, the rest from the one that saw
+-- them last.
+local pa = { name = "Ann", level = 10, guild = "Old", first = 100, last = 150, c = 0, x = 1, y = 1,
+    groups = { pca = 2 }, seconds = { pca = 600 } }
+local pb = { name = "Ann", level = 14, guild = "New", first = 200, last = 300, c = 1, x = 5, y = 5,
+    groups = { pca = 1, pcb = 3 } }
+m = Merge.Merge(Journey({ people = { g = pa } }), Journey({ people = { g = pb, h = { name = "Bob", first = 5, last = 5 } } }))
+local p = m.people.g
+check(p.groups.pca == 2 and p.groups.pcb == 3 and p.seconds.pca == 600 and ns.Tally.Total(p.groups) == 5,
+    "tallies: the higher part per PC")
+check(p.first == 100 and p.c == 0 and p.x == 1 and p.last == 300 and p.level == 14 and p.guild == "New",
+    "first met from the earlier copy, the rest from the later")
+check(m.people.h.name == "Bob", "people in one copy only are kept")
+
+-- 12. Rares: kills tallied per PC, the first kill the earliest.
+m = Merge.Merge(Journey({ rares = { [522] = { { pca = 2 }, 500, "Mor'Ladim", 522, "rareelite" } } }),
+    Journey({ rares = { [522] = { { pca = 1, pcb = 1 }, 450, "Mor'Ladim", 522, "rareelite" },
+        Foulmane = { { pcb = 1 }, 900, "Foulmane" } } }))
+local r = m.rares[522]
+check(ns.Tally.Total(r[1]) == 3 and r[2] == 450 and r[3] == "Mor'Ladim", "a rare's kills per PC, its first kill the earliest")
+check(m.rares.Foulmane[2] == 900, "rares in one copy only are kept")
+check(Merge.Merge(Journey(), Journey()).rares == nil, "no rares in either stays none")
+
+-- A rare killed for the first time on two PCs before they were linked logs
+-- a first kill on each. Both events stay (the merge keeps events, it can't
+-- tell which first kill the player cares about); the rare's entry has the
+-- earliest. A known limit, listed in the plan's notes.
+m = Merge.Merge(
+    Journey({ events = { { 450, "rare", 0, 0, 0, "Mor'Ladim", "rareelite", 35, 522, "x" } },
+        rares = { [522] = { { pca = 1 }, 450, "Mor'Ladim", 522, "rareelite" } } }),
+    Journey({ events = { { 500, "rare", 0, 0, 0, "Mor'Ladim", "rareelite", 35, 522, "x" } },
+        rares = { [522] = { { pcb = 1 }, 500, "Mor'Ladim", 522, "rareelite" } } }))
+check(#m.events == 2 and m.rares[522][2] == 450 and ns.Tally.Total(m.rares[522][1]) == 2,
+    "two first kills of one rare from two unlinked PCs both stay")
+
 if failures == 0 then
     print("Merge tests passed.")
 else
