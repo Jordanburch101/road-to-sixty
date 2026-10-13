@@ -274,6 +274,36 @@ m = Merge.Merge(
 check(#m.events == 2 and m.rares[522][2] == 450 and ns.Tally.Total(m.rares[522][1]) == 2,
     "two first kills of one rare from two unlinked PCs both stay")
 
+-- 13. Prepare brings a layout 2 upload up, its counts as the PC it came from.
+local old = Journey({ version = 2, people = { g = { groups = 3 } }, rares = { [1] = { 2, 10 } } })
+check(Merge.Prepare(old, "pcz") == old and old.version == 3 and old.people.g.groups.pcz == 3 and old.rares[1][1].pcz == 2,
+    "a layout 2 upload is prepared")
+local none, reason = Merge.Prepare(Journey({ version = 1 }), "pcz")
+check(none == nil and reason, "layout 1 is refused")
+none, reason = Merge.Prepare(Journey({ version = 4 }), "pcz")
+check(none == nil and tostring(reason):find("newer"), "a newer layout is refused")
+check(Merge.Prepare(Journey(), "pcz").version == 3, "layout 3 is left as it is")
+
+-- 14. Check: a result holds every session and no count went down.
+local function Copy(t) return ns.Parse.Read(Write(t)) end
+m = Merge.Merge(A, B)
+check(Merge.Check(A, B, m), "a merge passes its own check")
+local bad = Copy(m)
+for i = #bad.events, 1, -1 do
+    if bad.events[i][2] == "on" and bad.events[i][1] == 200 then table.remove(bad.events, i) end
+end
+local passed, failed = Merge.Check(A, B, bad)
+check(not passed and tostring(failed):find("session"), "a lost session fails: " .. tostring(failed))
+bad = Copy(m)
+bad.totals.kills = 1
+passed, failed = Merge.Check(A, B, bad)
+check(not passed and tostring(failed):find("kills"), "a lower total fails: " .. tostring(failed))
+local P1, P2 = Journey({ people = { g = { groups = { pca = 2 } } } }), Journey({ people = { g = { groups = { pcb = 1 } } } })
+bad = Merge.Merge(P1, P2)
+bad.people.g.groups.pca = 1
+passed, failed = Merge.Check(P1, P2, bad)
+check(not passed and tostring(failed):find("tally"), "a lower tally fails: " .. tostring(failed))
+
 if failures == 0 then
     print("Merge tests passed.")
 else

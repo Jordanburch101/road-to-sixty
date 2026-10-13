@@ -471,3 +471,66 @@ function Merge.Merge(a, b)
     Recount(out, a, b)
     return out
 end
+
+-- For the server -------------------------------------------------------------
+
+-- Brings a journey saved by an older addon up to Merge.VERSION before it is
+-- merged, its counts counted as pc's, the PC it came from. Changes the
+-- journey in place. Returns it, or nil and why it can't be merged.
+function Merge.Prepare(char, pc)
+    if type(char) ~= "table" then return nil, "not a journey" end
+    local version = tonumber(char.version) or 0
+    if version > Merge.VERSION then return nil, "a newer layout than this merge knows" end
+    if version < 2 then return nil, "a layout from before journeys used the realm's clock" end
+    if version < 3 then
+        ns.Tally.Upgrade(char, pc)
+        char.version = 3
+    end
+    return char
+end
+
+local function Sessions(char)
+    local on = {}
+    for _, e in ipairs(char.events or {}) do
+        if e[2] == "on" then on[e[1]] = (on[e[1]] or 0) + 1 end
+    end
+    return on
+end
+
+-- Every PC's part of every tally a journey holds, by a name for it.
+local function Parts(char)
+    local parts = {}
+    for guid, p in pairs(char.people or {}) do
+        for _, f in ipairs(ns.Tally.PEOPLE) do
+            if type(p[f]) == "table" then
+                for pc, n in pairs(p[f]) do parts["people " .. guid .. " " .. f .. " " .. pc] = n end
+            end
+        end
+    end
+    for key, r in pairs(char.rares or {}) do
+        if type(r[1]) == "table" then
+            for pc, n in pairs(r[1]) do parts["rares " .. tostring(key) .. " " .. pc] = n end
+        end
+    end
+    return parts
+end
+
+-- The server's check of a merge result against its two inputs: every
+-- session in either is there, and no total or tally went down (distance and
+-- flown may lose an input's decimals). Returns true, or false and why.
+function Merge.Check(a, b, out)
+    local sessions, parts = Sessions(out), Parts(out)
+    for _, copy in ipairs({ a, b }) do
+        for t, n in pairs(Sessions(copy)) do
+            if (sessions[t] or 0) < n then return false, "the session at " .. t .. " is missing" end
+        end
+        for _, f in ipairs(COUNTED) do
+            local was = math.floor(tonumber(copy.totals and copy.totals[f]) or 0)
+            if (tonumber(out.totals and out.totals[f]) or 0) < was then return false, "totals." .. f .. " went down" end
+        end
+        for name, n in pairs(Parts(copy)) do
+            if (parts[name] or 0) < n then return false, "the tally " .. name .. " went down" end
+        end
+    end
+    return true
+end
