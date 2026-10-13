@@ -247,6 +247,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 ### While running
 
 - Watch each `WTF` folder. When a character's `RoadToSixty.lua` changes, wait until it has been unchanged for about ten seconds, then upload it. Reading while the game runs is safe.
+- Name each character by the `rosterKey` in its saved file (`Name-Realm`, which the addon writes at every login), never by folder names: Forever saves characters under `WTF/Account/<account>/70/<Name>-<other>/`, and the folders don't give the realm the addon uses (seen 2026-10-14). The upload's `realm` and `name` come from it, and so does the sync folder's key.
 - While the game runs, upload each character at most once every 15 minutes, so repeated `/reload`s don't flood the server. When the game closes, upload straight away.
 - Upload the account file at most once a day. Fingerprint WTF account folder names before they leave the PC.
 - Remember the fingerprint of everything uploaded and received. Queue uploads while offline.
@@ -339,7 +340,9 @@ road-to-sixty/
 │   │   └── lib/              auth-client.ts, api.ts
 │   └── desktop/
 │       ├── src/              the window (Vite and React, from packages/ui)
-│       └── src-tauri/src/    main.rs, installs.rs, watch.rs, link.rs, sync.rs, inbox.rs, state.rs
+│       ├── engine/           the sync engine, a Rust library with no window: installs.rs, watch.rs,
+│       │                     link.rs, sync.rs, inbox.rs, state.rs, api.rs, and the rts-sync CLI
+│       └── src-tauri/src/    main.rs, the window and tray around the engine
 ├── packages/
 │   ├── ui/                   shadcn components, colours, Geist, the icon
 │   └── api/                  request and response types for server, web and the app's window

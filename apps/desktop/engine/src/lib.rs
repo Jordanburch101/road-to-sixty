@@ -10,3 +10,4 @@ pub mod installs;
 pub mod link;
 pub mod state;
 pub mod sync;
+pub mod watch;
