@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "agentGuidance": false,
+  "tasks": {
+    "test": {},
+    "check": {},
+    "package": { "cache": false, "outputs": ["build/**", "dist/**"] }
+  }
+}
