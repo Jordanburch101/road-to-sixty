@@ -214,6 +214,77 @@ local function MergeEvents(x, y)
 end
 RULES.events = MergeEvents
 
+-- Path segments and kills ------------------------------------------------------
+
+-- Orders values of one type: numbers and strings by value, booleans false first.
+local function Less(a, b)
+    if type(a) ~= type(b) then return RANK[type(a)] < RANK[type(b)] end
+    if type(a) == "boolean" then return not a and b end
+    return a < b
+end
+
+local function SegmentKey(s) return tostring(s.t) .. "|" .. tostring(s.c) .. "|" .. tostring(s.m) end
+
+local function SegmentBefore(p, q)
+    if p.t ~= q.t then return p.t < q.t end
+    if p.c ~= q.c then return Less(p.c, q.c) end
+    if p.m ~= q.m then return Less(p.m, q.m) end
+    local dp, dq = p.d or "", q.d or ""
+    if #dp ~= #dq then return #dp < #dq end
+    return dp < dq
+end
+
+-- Segments matched by start time, continent and mode. A stale copy's path
+-- string is always the start of the newer one, so the longer wins. Sorted by
+-- start, since teleport detection compares each segment with the one before.
+local function MergeSegments(x, y)
+    local gx, kx = Group(x, SegmentKey)
+    local gy, ky = Group(y, SegmentKey)
+    local out = {}
+    for _, key in ipairs(Union(kx, ky)) do
+        local px, py = gx[key] or {}, gy[key] or {}
+        for i = 1, math.max(#px, #py) do
+            local p, q = px[i], py[i]
+            local seg = p and q and Join(p, q) or p or q
+            if p and q and #(p.d or "") ~= #(q.d or "") then
+                seg.d = #(p.d or "") > #(q.d or "") and p.d or q.d
+            end
+            out[#out + 1] = seg
+        end
+    end
+    table.sort(out, SegmentBefore)
+    return out
+end
+RULES.segments = MergeSegments
+
+-- A packed kills table as a list of { t, xp, name }, oldest first.
+local function KillList(kills)
+    local list = {}
+    if kills and kills.d then ns.Packed.DecodeKills(kills.d, kills.names or {}, 0, list) end
+    return list
+end
+
+local function KillKey(k) return k.t .. "|" .. k.xp .. "|" .. (k.name or "?") end
+
+-- Both copies' kills: of each kill (time, XP, mob) the larger count is kept,
+-- then all are packed again with a fresh name list and last.
+local function MergeKills(x, y)
+    local gx, kx = Group(KillList(x), KillKey)
+    local gy, ky = Group(KillList(y), KillKey)
+    local list = {}
+    for _, key in ipairs(Union(kx, ky)) do
+        local px, py = gx[key] or {}, gy[key] or {}
+        for _, kill in ipairs(#px >= #py and px or py) do list[#list + 1] = kill end
+    end
+    table.sort(list, function(p, q)
+        if p.t ~= q.t then return p.t < q.t end
+        if p.xp ~= q.xp then return p.xp < q.xp end
+        return (p.name or "?") < (q.name or "?")
+    end)
+    return ns.Packed.PackKills(list)
+end
+RULES.kills = MergeKills
+
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end

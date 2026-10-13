@@ -146,6 +146,37 @@ m = Merge.Merge(unsorted, unsorted)
 check(m.events[1][1] == 400 and Same(Merge.Merge(m, m), m), "events come out in time order, and stay so")
 check(unsorted.events[1][1] == 500, "the input's order is not changed")
 
+-- 6. Path segments: matched by start, continent and mode. A stale copy's
+-- path is the start of the newer one, so the longer wins.
+local function Seg(t, d, mode, c) return { m = mode or "w", c = c or 0, t = t, x = 10, y = 20, d = d } end
+m = Merge.Merge(Journey({ segments = { Seg(100, "5,1,1"), Seg(300, "1,1,1") } }),
+    Journey({ segments = { Seg(100, "5,1,1;5,2,2"), Seg(200, "", "t"), Seg(300, "1,1,1", "w", 1) } }))
+check(#m.segments == 4 and m.segments[1].d == "5,1,1;5,2,2", "the longer path wins")
+check(m.segments[2].m == "t" and m.segments[3].t == 300 and m.segments[3].c == 0 and m.segments[4].c == 1,
+    "segments from both, sorted by start, then continent")
+check(Same(Merge.Merge(Journey({ segments = { Seg(100, "9,9,9") } }), Journey()).segments, { Seg(100, "9,9,9") }),
+    "a copy with no segments")
+
+-- 7. Kills: decoded, the larger count of each kept, packed again.
+local Kills = ns.Packed.PackKills
+local function Decoded(kills)
+    local list = {}
+    ns.Packed.DecodeKills(kills.d, kills.names, 0, list)
+    return list
+end
+local k1 = Kills({ { t = 100, xp = 50, name = "Kobold" }, { t = 110, xp = 50, name = "Kobold" } })
+local k2 = Kills({ { t = 100, xp = 50, name = "Kobold" }, { t = 110, xp = 50, name = "Kobold" }, { t = 120, xp = 60, name = "Hogger" } })
+local k3 = Kills({ { t = 50, xp = 10, name = "Wolf" } })
+check(Same(Merge.Merge(Journey({ kills = k1 }), Journey({ kills = k2 })).kills, k2), "a stale copy's kills are the start of the newer one's")
+m = Merge.Merge(Journey({ kills = k2 }), Journey({ kills = k3 }))
+local list = Decoded(m.kills)
+check(#list == 4 and list[1].name == "Wolf" and list[4].name == "Hogger" and m.kills.last == 120,
+    "kills from both, in time order, last recomputed")
+local twice = Kills({ { t = 100, xp = 50, name = "Kobold" }, { t = 100, xp = 50, name = "Kobold" } })
+check(#Decoded(Merge.Merge(Journey({ kills = twice }), Journey({ kills = k1 })).kills) == 3,
+    "two kills of one kind in one second stay two")
+check(Same(Merge.Merge(Journey({ kills = k3 }), Journey()).kills, k3), "a copy with no kills")
+
 if failures == 0 then
     print("Merge tests passed.")
 else
