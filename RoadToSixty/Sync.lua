@@ -60,3 +60,44 @@ function Sync.Apply(char, entry)
     if not passed then return "problem", failed end
     return "merged", out
 end
+
+-- At login, first after Core: before the tidy, the roster and the recorder
+-- read the journey, and while the loading screen still hides any wait.
+ns.On("PLAYER_LOGIN", function()
+    local data = RoadToSixtySync
+    RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
+    Sync.found = type(data) == "table"
+    local entry = Sync.found and type(data.chars) == "table" and data.chars[ns.Roster:Key()]
+    if not entry then return end
+    local started = debugprofilestop()
+    local ok, what, value = pcall(Sync.Apply, ns.char, entry)
+    if not ok then what, value = "problem", value end
+    local status = { what = what, version = type(entry) == "table" and entry.version or nil }
+    if what == "merged" or what == "replaced" then
+        local char, addon = ns.char, ns.char.addon
+        wipe(char)
+        for k, v in pairs(value) do char[k] = v end
+        ns.CharDefaults(char)
+        char.addon, char.syncedVersion, char.rosterBuilt = addon, entry.version, nil
+        ns.Print(what == "merged" and "Brought in your journey from your other PCs."
+            or "Restored this character's journey to the version picked on the website.")
+    elseif what == "problem" then
+        status.why = tostring(value)
+        ns.Print("|cffff4040Could not bring in the synced journey: " .. status.why .. ". Type /rts check.|r")
+    end
+    status.ms = debugprofilestop() - started
+    Sync.status = status
+end)
+
+-- One line for /rts check.
+function Sync:Describe()
+    local s = self.status
+    if not self.found then return "Sync: no sync folder. The Road to Sixty app makes one." end
+    if not s then return "Sync: nothing for this character in the sync folder." end
+    if s.what == "same" then return ("Sync: version %s was already brought in."):format(tostring(s.version)) end
+    if s.what == "problem" then
+        return ("|cffff4040Sync: could not bring in version %s: %s.|r"):format(tostring(s.version), s.why)
+    end
+    return ("Sync: %s version %s at login in %d ms."):format(
+        s.what == "merged" and "merged" or "restored", tostring(s.version), s.ms)
+end

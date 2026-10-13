@@ -7,6 +7,7 @@
 ## Version: @project-version@
 ## SavedVariables: RoadToSixtyDB
 ## SavedVariablesPerCharacter: RoadToSixtyCharDB
+## OptionalDeps: RoadToSixty_Sync
 
 Core.lua
 Packed.lua

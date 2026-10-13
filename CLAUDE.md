@@ -23,6 +23,7 @@ for data, its exact format; read that before changing a module.
 | Parse.lua | reads and writes saved data in the game's format, refusing anything that isn't data (no game calls) |
 | Tally.lua | counts kept per PC so journeys from two PCs can merge (no game calls) |
 | Merge.lua | merges two copies of one character's journey, for the sync (no game calls); its rules are in its header and the sync spec; `tests/pure_test.lua` keeps Packed, Tidy, Parse, Tally and Merge pure |
+| Sync.lua | at login, brings in the journey the app left in `RoadToSixty_Sync`: merged, or replaced for a restore; the sync folder's format is in its header |
 | ChatPatterns.lua | `ns.ChatMatcher`: matches messages against the client's format strings in any language (numbered `%1$s` arguments too) |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |

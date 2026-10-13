@@ -130,6 +130,65 @@ what, out = Sync.Apply(Journey({ events = Session(1000) }), { version = 9, journ
     people = { g = { groups = 2 } } }) })
 check(what == "merged" and out.people.g.groups[ns.pc] == 2, "a layout 2 journey is prepared")
 
+-- 7. At login: the entry for this character is applied into the same
+-- table, so everything holding ns.char keeps seeing it.
+local function Login() script(nil, "PLAYER_LOGIN") end
+local function Folder(entry, key) return { chars = { [key or "Ann-Test Realm"] = entry } } end
+
+local saved = Journey({ events = Session(1000), totals = { deaths = 1 }, rosterBuilt = 3 })
+local folder = Folder({ version = 5, journey = Write(Journey({ events = Session(5000), totals = { deaths = 1 }, addon = "1.0.0" })) })
+ns = Load(saved, folder)
+said = {}
+Login()
+check(ns.char == saved and RoadToSixtyCharDB == saved and ns.view == saved, "the result goes into the same table")
+check(Same(saved.events, Both(here, there)) and saved.totals.deaths == 2, "this PC's play and the other PC's, merged")
+check(saved.syncedVersion == 5 and saved.rosterBuilt == nil and saved.addon == "9.9.9",
+    "syncedVersion set, the roster copy to be rebuilt, this addon's version kept")
+check(RoadToSixtySync == nil, "the folder's data is let go once read")
+check(said[1] and said[1]:find("other PCs"), "the player is told: " .. tostring(said[1]))
+check(ns.Sync:Describe():find("merged version 5") and ns.Sync:Describe():find("7 ms"), "/rts check says what happened: " .. ns.Sync:Describe())
+
+-- 8. A /reload with the same folder changes nothing, even after a restore.
+local after = Write(saved)
+ns = Load(saved, folder)
+Login()
+check(Write(saved) == after and ns.Sync:Describe():find("already brought in"), "the same version again changes nothing")
+saved.lastZone = 1429
+local restore = Folder({ version = 6, replace = true, journey = Write({ version = 3, events = Session(1000) }) })
+ns = Load(saved, restore)
+Login()
+check(ns.char == saved and Same(saved.events, here) and saved.syncedVersion == 6, "a restore replaces, in the same table")
+check(saved.lastZone == nil and saved.totals.kills == 0 and saved.recipes, "nothing kept from before it, and the defaults filled in")
+table.insert(saved.events, { 9000, "on", 0, 0, 0, 10 })
+ns = Load(saved, restore)
+Login()
+check(#saved.events == 4, "play after a restore survives a /reload with the restore still in the folder")
+
+-- 9. Nothing to do: no folder, or nothing for this character.
+local untouched = Journey({ events = Session(1000), addon = "9.9.9" })   -- as the load leaves it
+local before = Write(untouched)
+ns = Load(untouched, nil)
+Login()
+check(Write(untouched) == before and ns.Sync:Describe():find("no sync folder"), "no sync folder")
+ns = Load(untouched, Folder({ version = 5, journey = Write(Journey()) }, "Bob-Test Realm"))
+Login()
+check(Write(untouched) == before and ns.Sync:Describe():find("nothing for this character"), "a folder for other characters only")
+ns = Load(untouched, { pc = "abc" })
+Login()
+check(Write(untouched) == before and ns.Sync:Describe():find("nothing for this character"), "a folder with no characters")
+
+-- 10. A problem leaves the journey exactly as it was, says so once, and
+-- raises nothing into the game's error frame.
+-- The second reads fine but crashes the tidy.
+for _, broken in ipairs({ '{ ["x"] = os.exit() }', Write({ version = 3, events = 5 }) }) do
+    raised, said = {}, {}
+    ns = Load(untouched, Folder({ version = 7, journey = broken }))
+    Login()
+    check(Write(untouched) == before and untouched.syncedVersion == nil, "a broken journey leaves the data alone: " .. broken)
+    check(#said == 1 and said[1]:find("Could not bring in"), "and the player is told: " .. tostring(said[1]))
+    check(#raised == 0 and ns.Sync:Describe():find("could not bring in version 7"), "and /rts check shows why: " .. ns.Sync:Describe())
+end
+
 if failures == 0 then
     io.write("Sync tests passed.\n")
 else
