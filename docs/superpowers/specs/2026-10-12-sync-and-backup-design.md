@@ -395,8 +395,8 @@ Sync stays free: Blizzard's addon policy forbids charging for addon services.
 - `GetServerTime()` on Forever is unverified. #35 checks it first.
 - Journeys recorded before #35 ships use each PC's own clock. Sessions from two machines with skewed clocks may look as if they overlap. The merge keeps both such sessions rather than guessing, and the `played` values in level snapshots, which come from the game server, can show which came first. Expect this only for beta journeys.
 - The game's limit of about 262k distinct constants per file. #35 tests a huge seeded journey. If the recorder hits it, the save format changes before launch regardless of sync.
-- Better Auth's generic OAuth plugin with Battle.net, and its device authorization plugin, are expected to work but unverified. Check on day one of step 4.
-- Battle.net's userinfo is reported to return a numeric ID and the BattleTag. Libraries disagree on which one `sub` holds. Check with a real sign-in.
+- Better Auth's generic OAuth plugin with Battle.net, and its device authorization plugin: verified 2026-10-14 with a real sign-in and a linked PC on the test server (Better Auth 1.7.7, PKCE on, the client secret sent in the request body).
+- Battle.net's userinfo returns the account ID and the BattleTag. Accounts are keyed by `id`, falling back to `sub`, and the server logs a warning if the two ever differ. A reply with neither is refused.
 - macOS is not expected to ask permission to read `/Applications/World of Warcraft/`, because WTF sits beside the game app rather than inside it. Verify on current macOS.
 - Login merge time for a full journey in the game's Lua. Measure in step 3.
 - Forever's game folder name at launch is unknown. The app scans every `_*_` folder, so it doesn't matter, but check wago.tools on launch day.
