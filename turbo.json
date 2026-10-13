@@ -2,7 +2,7 @@
   "$schema": "https://turborepo.com/schema.json",
   "agentGuidance": false,
   "tasks": {
-    "test": {},
+    "test": { "env": ["LUA51"] },
     "check": {},
     "package": { "cache": false, "outputs": ["build/**", "dist/**"] }
   }
