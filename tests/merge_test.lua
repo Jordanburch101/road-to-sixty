@@ -304,6 +304,166 @@ bad.people.g.groups.pca = 1
 passed, failed = Merge.Check(P1, P2, bad)
 check(not passed and tostring(failed):find("tally"), "a lower tally fails: " .. tostring(failed))
 
+-- 15. Made-up play: twelve sessions, each on one PC, never overlapping. A
+-- copy is built by playing its sessions the way the addon records them:
+-- snapshot counts from that copy's own totals, tallies under its PC.
+-- Merging the copies must give the journey that played every session.
+math.randomseed(5)
+local GUIDS = { "Player-1-0001", "Player-1-0002", "Player-1-0003", "Player-1-0004" }
+local MOBS = { "Kobold Vermin", "Young Wolf", "Defias Thug" }
+local COUNTS = { "kills", "killXP", "quests", "questXP", "deaths", "instances", "distance", "flown" }
+local SESSIONS, startLevel = {}, 1
+for n = 1, 12 do
+    local t0 = n * 10000
+    local s = { level = startLevel, levelUp = n % 2 == 0, die = n % 4 == 0, instance = n % 5 == 0,
+        meet = GUIDS[n % 4 + 1], rare = n % 3 == 1 and 1000 + n or nil, zone = 1429 + n % 3, kills = {}, paths = {} }
+    for i = 1, 4 do s.kills[i] = { t0 + 10 * i, math.random(20, 80), MOBS[math.random(1, 3)] } end
+    local walk = { m = "w", t = t0 + 50, x = math.random(-500, 500), y = math.random(-500, 500), steps = {} }
+    for i = 1, 3 do walk.steps[i] = { 5, math.random(-30, 30), math.random(-30, 30) } end
+    s.paths[1] = walk
+    if n % 3 == 0 then s.paths[2] = { m = "t", t = t0 + 100, x = 0, y = 0, steps = { { 5, 300, 40 }, { 5, 250, -60 } } } end
+    if s.levelUp then startLevel = startLevel + 1 end
+    SESSIONS[n] = s
+end
+
+local function Play(copy, n, pc)
+    local s, t0, totals = SESSIONS[n], n * 10000, copy.totals
+    local function Log(t, kind, ...) copy.events[#copy.events + 1] = { t, kind, 0, 0, 0, ... } end
+    local function Snapshot(level, t, partial)
+        local snap = { t = t, partial = partial or nil, money = level * 100, gear = { [1] = level } }
+        for _, f in ipairs(COUNTS) do snap[f] = math.floor(totals[f]) end
+        copy.levels[level] = snap
+    end
+    Log(t0, "on", s.level)
+    if not copy.levels[s.level] then Snapshot(s.level, t0, s.level > 1) end
+    local kills = {}
+    ns.Packed.DecodeKills(copy.kills.d, copy.kills.names, 0, kills)
+    for _, k in ipairs(s.kills) do
+        kills[#kills + 1] = { t = k[1], xp = k[2], name = k[3] }
+        totals.kills, totals.killXP = totals.kills + 1, totals.killXP + k[2]
+    end
+    copy.kills = ns.Packed.PackKills(kills)
+    for _, path in ipairs(s.paths) do
+        local parts, field = {}, path.m == "t" and "flown" or "distance"
+        for i, step in ipairs(path.steps) do
+            parts[i] = table.concat(step, ",")
+            totals[field] = totals[field] + math.sqrt(step[2] * step[2] + step[3] * step[3])
+        end
+        copy.segments[#copy.segments + 1] = { m = path.m, c = 0, t = path.t, x = path.x, y = path.y, d = table.concat(parts, ";") }
+    end
+    Log(t0 + 150, "qa", n)
+    Log(t0 + 160, "qd", n, 300)
+    totals.quests, totals.questXP = totals.quests + 1, totals.questXP + 300
+    if s.levelUp then
+        Snapshot(s.level + 1, t0 + 160)
+        Log(t0 + 160, "lvl", s.level + 1)
+    end
+    if s.die then
+        Log(t0 + 170, "die")
+        totals.deaths = totals.deaths + 1
+    end
+    if s.instance then
+        Log(t0 + 180, "in", 36, "The Deadmines", "party")
+        totals.instances = totals.instances + 1
+        Log(t0 + 190, "out", 36)
+    end
+    local met = copy.people[s.meet] or { first = t0 + 200, c = 0, x = n, y = n }
+    copy.people[s.meet] = met
+    met.name, met.level, met.last = "Name " .. s.meet, s.level, t0 + 200
+    ns.Tally.Add(met, "groups", pc, 1)
+    ns.Tally.Add(met, "seconds", pc, 300)
+    if s.rare then
+        copy.rares = copy.rares or {}
+        copy.rares[s.rare] = { { [pc] = 1 }, t0 + 210, "Rare " .. s.rare, s.rare, "rare" }
+        Log(t0 + 210, "rare", "Rare " .. s.rare, "rare", s.level, s.rare, "x")
+    end
+    Log(t0 + 220, "zone", s.zone)
+    copy.lastZone, copy.guild, copy.played = s.zone, { "Guild " .. n, "Member", 3 }, n * 300
+    Log(t0 + 300, "off")
+end
+
+-- A copy that played these { session, pc } in order.
+local function Played(list)
+    local copy = Journey()
+    for _, step in ipairs(list) do Play(copy, step[1], step[2]) end
+    return copy
+end
+
+local function With(list, more)
+    local all = {}
+    for _, x in ipairs(list) do all[#all + 1] = x end
+    for _, x in ipairs(more) do all[#all + 1] = x end
+    return all
+end
+
+-- Whether a merge result is the journey that played everything: exact,
+-- except distance and flown, which the merge gives in whole yards.
+local function Matches(m, truth)
+    local want = Copy(truth)
+    for _, f in ipairs({ "distance", "flown" }) do
+        if math.abs(m.totals[f] - want.totals[f]) > 1 then return false end
+        want.totals[f] = m.totals[f]
+        for level, s in pairs(want.levels) do
+            local got = m.levels[level]
+            if not got or math.abs(got[f] - s[f]) > 1 then return false end
+            s[f] = got[f]
+        end
+    end
+    return Same(m, want)
+end
+
+-- The spec's four cases.
+local truth = Played({ { 1, "pca" }, { 2, "pca" }, { 3, "pca" }, { 4, "pcb" }, { 5, "pcb" } })
+check(Matches(Merge.Merge(Played({ { 1, "pca" }, { 2, "pca" }, { 3, "pca" } }), Played({ { 4, "pcb" }, { 5, "pcb" } })), truth),
+    "a new PC with no data")
+
+local base = { { 1, "pca" }, { 2, "pca" } }
+local onA = Played(With(base, { { 3, "pca" }, { 5, "pca" } }))
+local onB = Played(With(base, { { 4, "pcb" }, { 6, "pcb" } }))
+local both = Merge.Merge(onA, onB)
+check(Matches(both, Played(With(base, { { 3, "pca" }, { 4, "pcb" }, { 5, "pca" }, { 6, "pcb" } }))),
+    "shared history, then new play on both PCs")
+check(Merge.Check(onA, onB, both), "which passes the server's check")
+check(Same(Merge.Merge(Played(base), both), both), "an old pre-sync copy against the newer merged one changes nothing")
+
+-- A WTF folder copied by hand keeps the PC ID, so both PCs add to one part
+-- and the merge keeps the higher part, not both: one meeting goes
+-- uncounted. Events and totals still add up. A known limit, listed in the
+-- plan's notes.
+local original = Played(base)
+local copied = Copy(original)
+Play(original, 3, "pca")
+Play(copied, 7, "pca")
+local handled = Merge.Merge(original, copied)
+truth = Played(With(base, { { 3, "pca" }, { 7, "pca" } }))
+check(Same(handled.events, truth.events) and handled.totals.kills == truth.totals.kills, "a hand-copied WTF folder: events and totals add up")
+check(ns.Tally.Total(handled.people[GUIDS[4]].groups) == ns.Tally.Total(truth.people[GUIDS[4]].groups) - 1,
+    "a hand-copied WTF folder: one meeting goes uncounted")
+
+-- 16. The three properties, on made-up copies: a shared start played
+-- everywhere, then each session on one of three PCs.
+local broken = {}
+for seed = 1, 12 do
+    math.randomseed(seed)
+    local shared, plays, all = math.random(0, 3), { pca = {}, pcb = {}, pcc = {} }, {}
+    for n = 1, 12 do
+        local pc = n <= shared and "pca" or ({ "pca", "pcb", "pcc" })[math.random(1, 3)]
+        all[#all + 1] = { n, pc }
+        for name, list in pairs(plays) do
+            if n <= shared or name == pc then list[#list + 1] = { n, pc } end
+        end
+    end
+    local a, b, c = Played(plays.pca), Played(plays.pcb), Played(plays.pcc)
+    local ab = Merge.Merge(a, b)
+    if not Same(ab, Merge.Merge(b, a)) then broken[#broken + 1] = seed .. " either order" end
+    if not Same(Merge.Merge(ab, ab), ab) then broken[#broken + 1] = seed .. " twice" end
+    local left = Merge.Merge(ab, c)
+    if not Same(left, Merge.Merge(a, Merge.Merge(b, c))) then broken[#broken + 1] = seed .. " grouping" end
+    if not Matches(left, Played(all)) then broken[#broken + 1] = seed .. " every session" end
+    if not Merge.Check(a, b, ab) then broken[#broken + 1] = seed .. " check" end
+end
+check(#broken == 0, "properties broken (seed, which): " .. table.concat(broken, ", "))
+
 if failures == 0 then
     print("Merge tests passed.")
 else
