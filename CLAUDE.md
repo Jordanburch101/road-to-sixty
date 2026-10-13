@@ -6,8 +6,8 @@ Zelda's Hero's Path. Forever launches 2026-11-04 (cap 60); until then it is in
 beta (client folder `_classic_beta_`, interface 16001). The recorder matters
 most: journey data lost at launch cannot be recreated.
 
-Public repo, all rights reserved (LICENSE). Never commit secrets, personal
-paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
+Private repo, all rights reserved (LICENSE). It may go public again, so
+never commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 
 ## Layout
 
@@ -64,7 +64,7 @@ last loaded the file.
 ```powershell
 # From the repo root
 bun install                         # once, for turbo
-bun run test                        # every addon test under LuaJIT, and under Lua 5.1 if installed
+bun run test                        # every test: the addon's under LuaJIT and Lua 5.1 if installed, the server's (needs Docker, see below)
 bun run check                       # check.ps1 through turbo (needs PowerShell)
 bun run typecheck                   # TypeScript in the server and packages
 
@@ -132,7 +132,7 @@ Treat them as the shared memory of what is planned, decided and done.
   Issues without commits in the release stay open.
 - Anything that can only be checked once Forever is live goes on the
   launch day checklist, issue #23, with a link to its own issue.
-- Issues are public: no secrets, personal paths or email addresses.
+- Issues go public with the repo: no secrets, personal paths or email addresses.
 
 ## Conventions
 
