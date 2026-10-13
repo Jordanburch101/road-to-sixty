@@ -14,6 +14,7 @@ Tidy.lua
 Parse.lua
 Tally.lua
 Merge.lua
+Sync.lua
 ChatPatterns.lua
 MinimapTiles.lua
 ZoneOverlays.lua
