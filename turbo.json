@@ -3,7 +3,9 @@
   "agentGuidance": false,
   "tasks": {
     "test": { "env": ["LUA51"] },
+    "@road-to-sixty/server#test": { "cache": false, "env": ["LUA51"] },
     "check": {},
+    "typecheck": {},
     "package": { "cache": false, "outputs": ["build/**", "dist/**"] }
   }
 }

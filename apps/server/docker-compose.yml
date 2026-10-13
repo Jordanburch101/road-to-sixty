@@ -1,0 +1,21 @@
+# Postgres and an S3 store for running the server and its tests locally and
+# in CI. SeaweedFS stands in for R2: it speaks the same S3 API, and with no
+# keys configured it accepts any. Ports are off the defaults so they don't
+# clash with anything else running.
+name: rts-server
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: rts
+      POSTGRES_PASSWORD: rts
+      POSTGRES_DB: rts
+    ports: ["55432:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "rts"]
+      interval: 2s
+      retries: 30
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: server -s3
+    ports: ["58333:8333"]

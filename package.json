@@ -2,13 +2,16 @@
   "name": "road-to-sixty",
   "private": true,
   "packageManager": "bun@1.4.2",
-  "workspaces": ["apps/*"],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "test": "turbo run test",
     "check": "turbo run check",
-    "package": "turbo run package"
+    "package": "turbo run package",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "turbo": "^2.11.7"
+    "@types/bun": "^1.4.3",
+    "turbo": "^2.11.7",
+    "typescript": "^7.0.2"
   }
 }
