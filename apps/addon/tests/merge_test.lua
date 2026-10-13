@@ -295,6 +295,13 @@ check(none == nil and reason, "layout 1 is refused")
 none, reason = Merge.Prepare(Journey({ version = 4 }), "pcz")
 check(none == nil and tostring(reason):find("newer"), "a newer layout is refused")
 check(Merge.Prepare(Journey(), "pcz").version == 3, "layout 3 is left as it is")
+for _, bad in ipairs({ { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1 } }, { events = { { "t", "on" } } },
+    { totals = { kills = "many" } }, { kills = { d = 5 } } }) do
+    local damaged = Journey()
+    for k, v in pairs(bad) do damaged[k] = v end
+    none, reason = Merge.Prepare(damaged, "pcz")
+    check(none == nil and tostring(reason):find("damaged"), "a damaged journey is refused: " .. Write(bad) .. " " .. tostring(reason))
+end
 
 -- 14. Check: a result holds every session and no count went down.
 local function Copy(t) return ns.Parse.Read(Write(t)) end
