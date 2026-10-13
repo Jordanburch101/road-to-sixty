@@ -99,6 +99,7 @@ Fire("PLAYER_LOGIN")
 local e = ns.db.roster["Eagin-Test"]
 check(e.class == "MAGE" and e.level == 12 and e.zone == 1436, "entry has class, level and zone")
 check(ns.char.rosterBuilt == 3, "journey copied on first login")
+check(ns.char.rosterKey == "Eagin-Test", "the journey records its roster key, for the app")
 check(e.path == nil and e.journey ~= nil, "old coarse path replaced by the journey copy")
 check(e.journey.events == ns.char.events and e.journey.kills == ns.char.kills, "copy shares the journey's tables")
 check(e.journey.rosterBuilt == nil, "copy leaves out the roster's own flag")

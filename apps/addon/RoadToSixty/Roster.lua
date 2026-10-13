@@ -135,6 +135,7 @@ ns.On("PLAYER_LOGIN", function()
     local key = Roster:Key()
     entry = ns.db.roster[key] or {}
     ns.db.roster[key] = entry
+    ns.char.rosterKey = key
     entry.name, entry.realm = UnitName("player"), GetRealmName()
     entry.class = select(2, UnitClass("player"))
     entry.level = UnitLevel("player")

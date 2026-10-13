@@ -24,6 +24,9 @@ local addonName, ns = ...
 --   clockFrom  when a journey begun before layout 2 moved to the realm's
 --              clock (see DATA_VERSION)
 --   syncedVersion  the sync folder version last brought in (Sync.lua)
+--   rosterKey  Name-Realm, set at each login after the sync (Roster.lua): the
+--              app reads it, since the game's folder names don't give the
+--              realm the addon uses
 -- addon is the addon version that last loaded the file (the toc's version
 -- placeholder, unfilled, in a developer install), so whatever reads it
 -- knows what wrote it. Never write the placeholder itself in a .lua file:
