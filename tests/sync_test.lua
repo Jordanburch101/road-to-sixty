@@ -116,6 +116,28 @@ check(Problem({ version = 7, journey = Write(Journey({ events = Session(5000) })
     "a merge that fails its check is not used")
 ns.Merge.Check = realCheck
 
+-- A journey whose parts have the wrong shape would break recording once
+-- copied in (the recorder adds to totals, the journal indexes levels), so
+-- it is refused, restore or not.
+for _, bad in ipairs({
+    { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1, 2 } }, { events = { { "t", "on" } } },
+    { totals = { kills = "many" } }, { kills = { d = 5 } },
+}) do
+    local journey = { version = 3, events = Session(5000) }
+    for k, v in pairs(bad) do journey[k] = v end
+    local why = Problem({ version = 7, replace = true, journey = Write(journey) })
+    check(why, "a restore with the wrong shape is refused: " .. Write(bad))
+    check(Problem({ version = 7, journey = Write(journey) }), "and so is a merge: " .. Write(bad))
+end
+
+-- Seeded journeys stay out of a restore too, either way round.
+seeded = Journey({ events = Session(1000), seeded = true })
+check(Problem({ version = 7, replace = true, journey = Write(Journey({ events = Session(5000) })) }, seeded),
+    "a restore onto a seeded character is refused")
+check(#seeded.events == 3 and seeded.seeded, "which keeps its fake journey")
+check(Problem({ version = 7, replace = true, journey = Write(Journey({ events = Session(5000), seeded = true })) }),
+    "a seeded journey is never restored")
+
 -- 5. Both copies are tidied as a login would before merging: a continent
 -- logged as a zone goes, and a death logged twice in one second counts once.
 char = Journey({ events = { { 1000, "on", 0, 0, 0, 10 }, { 1010, "zone", 0, 0, 0, 1415 } } })
