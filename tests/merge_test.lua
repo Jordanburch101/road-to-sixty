@@ -177,6 +177,55 @@ check(#Decoded(Merge.Merge(Journey({ kills = twice }), Journey({ kills = k1 })).
     "two kills of one kind in one second stay two")
 check(Same(Merge.Merge(Journey({ kills = k3 }), Journey()).kills, k3), "a copy with no kills")
 
+-- 8. Totals are recounted from the merged data. What a copy's totals hold
+-- beyond what its data recounts to (counted before the data was kept)
+-- carries over, the larger of the two.
+local function Totals(t)
+    local totals = Journey().totals
+    for k, v in pairs(t) do totals[k] = v end
+    return totals
+end
+local A = Journey({
+    events = { On(100), { 110, "qd", 0, 0, 0, 1, 300 }, { 120, "die", 0, 0, 0 } },
+    kills = Kills({ { t = 105, xp = 40, name = "Kobold" } }),
+    segments = { { m = "w", c = 0, t = 100, x = 0, y = 0, d = "1,3,4" }, { m = "t", c = 0, t = 130, x = 0, y = 0, d = "1,6,8" } },
+    totals = Totals({ kills = 8, killXP = 40, quests = 1, questXP = 300, deaths = 1, distance = 5.4, flown = 10 }),
+})
+local B = Journey({
+    events = { On(200), { 210, "in", 0, 0, 0, 36, "The Deadmines", "party" } },
+    kills = Kills({ { t = 205, xp = 60, name = "Defias Thug" } }),
+    totals = Totals({ kills = 1, killXP = 60, instances = 1 }),
+})
+m = Merge.Merge(A, B)
+local tot = m.totals
+check(tot.kills == 9 and tot.killXP == 100, "kills recounted, and the 7 counted before kills were kept carried over: " .. tot.kills)
+check(tot.quests == 1 and tot.questXP == 300 and tot.deaths == 1 and tot.instances == 1, "quests, deaths and instances recounted")
+check(tot.distance == 5 and tot.flown == 10, "distance from walked steps, flown from taxi steps, in whole yards")
+check(Same(Merge.Merge(m, m), m) and Same(Merge.Merge(B, A), m), "totals come out the same every way")
+
+-- 9. Level snapshots: a full one over one taken at a later login, then the
+-- earliest; counts recounted at its time plus its copy's carry-over.
+A.levels = { [5] = { t = 115, kills = 1, killXP = 40, quests = 1, questXP = 300, deaths = 0, instances = 0,
+    distance = 5, flown = 0, money = 100, gear = { [1] = 5 } } }
+A.levels[8] = { t = 300, partial = true, money = 1 }
+B.levels = {
+    [5] = { t = 200, partial = true, kills = 1, killXP = 60, quests = 0, questXP = 0, deaths = 0, instances = 0,
+        distance = 0, flown = 0, money = 900 },
+    [6] = { t = 220, kills = 1, killXP = 60, quests = 0, questXP = 0, deaths = 0, instances = 1, distance = 0, flown = 0 },
+    [7] = { t = 230, kills = 1 },
+    [8] = { t = 250, partial = true, money = 2 },
+}
+m = Merge.Merge(A, B)
+local s5, s6 = m.levels[5], m.levels[6]
+check(s5.money == 100 and not s5.partial and s5.kills == 1 and s5.distance == 5, "the full snapshot wins, its counts as they were")
+check(s6.kills == 2 and s6.killXP == 100 and s6.quests == 1 and s6.questXP == 300 and s6.deaths == 1 and s6.instances == 1,
+    "a snapshot in one copy only, recounted at its time with the other copy's play: " .. s6.kills)
+check(s6.distance == 5 and s6.flown == 10, "and its distance")
+check(m.levels[7].kills == 2 and m.levels[7].distance == nil, "a count a snapshot didn't have stays out")
+check(m.levels[8].money == 2, "of two later-login snapshots, the earlier")
+check(A.levels[5].kills == 1 and B.levels[6].kills == 1, "the inputs' snapshots are not changed")
+check(Same(Merge.Merge(m, m), m) and Same(Merge.Merge(B, A), m), "snapshots come out the same every way")
+
 if failures == 0 then
     print("Merge tests passed.")
 else

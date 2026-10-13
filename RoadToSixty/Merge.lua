@@ -285,6 +285,126 @@ local function MergeKills(x, y)
 end
 RULES.kills = MergeKills
 
+-- Totals and level snapshots ----------------------------------------------------
+
+local COUNTED = { "kills", "killXP", "quests", "questXP", "deaths", "instances", "distance", "flown" }
+
+local function Round(x) return math.floor(x + 0.5) end
+
+-- Every count in a journey's totals as { time, field, amount }, sorted so
+-- the sums come out the same whatever order the data was in.
+local function Marks(char)
+    local marks = {}
+    local function Mark(t, field, n) marks[#marks + 1] = { t, field, n } end
+    for _, k in ipairs(KillList(char.kills)) do
+        Mark(k.t, "kills", 1)
+        Mark(k.t, "killXP", k.xp)
+    end
+    for _, e in ipairs(char.events or {}) do
+        if e[2] == "qd" then
+            Mark(e[1], "quests", 1)
+            Mark(e[1], "questXP", tonumber(e[7]) or 0)
+        elseif e[2] == "die" then
+            Mark(e[1], "deaths", 1)
+        elseif e[2] == "in" then
+            Mark(e[1], "instances", 1)
+        end
+    end
+    for _, seg in ipairs(char.segments or {}) do
+        local ts, xs, ys = ns.Packed.DecodePath(seg)
+        local field = seg.m == "t" and "flown" or "distance"   -- t: a taxi flight, as Recorder.lua counts it
+        for i = 2, #ts do
+            local dx, dy = xs[i] - xs[i - 1], ys[i] - ys[i - 1]
+            Mark(ts[i], field, math.sqrt(dx * dx + dy * dy))
+        end
+    end
+    table.sort(marks, function(p, q)
+        if p[1] ~= q[1] then return p[1] < q[1] end
+        if p[2] ~= q[2] then return p[2] < q[2] end
+        return p[3] < q[3]
+    end)
+    return marks
+end
+
+-- A journey's counts up to and including each of its snapshots' times, and
+-- at math.huge for its totals: counts[time][field], distance and flown in
+-- whole yards. One pass over the sorted marks, however many snapshots.
+local function Counts(char)
+    local times = { math.huge }
+    for _, s in pairs(char.levels or {}) do
+        if s.t then times[#times + 1] = s.t end
+    end
+    table.sort(times)
+    local marks, sums, counts, i = Marks(char), {}, {}, 1
+    for _, f in ipairs(COUNTED) do sums[f] = 0 end
+    for _, t in ipairs(times) do
+        while marks[i] and marks[i][1] <= t do
+            sums[marks[i][2]] = sums[marks[i][2]] + marks[i][3]
+            i = i + 1
+        end
+        local at = {}
+        for _, f in ipairs(COUNTED) do at[f] = sums[f] end
+        at.distance, at.flown = Round(at.distance), Round(at.flown)
+        counts[t] = at
+    end
+    return counts
+end
+
+-- How far what was recorded (a copy's totals, or one of its snapshots) is
+-- above what its data recounts to: counts kept before the data was.
+local function Leftover(recorded, counted)
+    local left = {}
+    for _, f in ipairs(COUNTED) do left[f] = Round(tonumber(recorded[f]) or 0) - counted[f] end
+    return left
+end
+
+local function Higher(x, y)
+    if not x then return y end
+    local out = {}
+    for _, f in ipairs(COUNTED) do out[f] = math.max(x[f], y[f]) end
+    return out
+end
+
+-- Which of two snapshots of one level to keep: a full one over one taken at
+-- a later login, then the earlier. The same snapshot in both joins, since
+-- played is filled in after it is taken.
+local function PickSnapshot(p, q)
+    if not p.partial ~= not q.partial then return p.partial and q or p end
+    if p.t ~= q.t then return (p.t or 0) < (q.t or 0) and p or q end
+    return Join(p, q)
+end
+RULES.levels = function(x, y) return MergeMap(x, y, PickSnapshot) end
+RULES.totals = Join     -- the counts are redone by Recount; this keeps any other field
+
+-- Recounts the merged journey's totals and each snapshot's counts from its
+-- data, adding the larger leftover of the copies they came from. A snapshot
+-- only gets back the counts it had.
+local function Recount(out, a, b)
+    local counts, ca, cb = Counts(out), Counts(a), Counts(b)
+    local totals = {}
+    for k, v in pairs(out.totals or {}) do totals[k] = v end
+    local left = Higher(Leftover(a.totals or {}, ca[math.huge]), Leftover(b.totals or {}, cb[math.huge]))
+    for _, f in ipairs(COUNTED) do totals[f] = counts[math.huge][f] + left[f] end
+    out.totals = totals
+    if not out.levels then return end
+    local levels = {}
+    for level, s in pairs(out.levels) do
+        local snap, kept = {}, nil
+        for k, v in pairs(s) do snap[k] = v end
+        for _, side in ipairs({ { a, ca }, { b, cb } }) do
+            local mine = side[1].levels and side[1].levels[level]
+            if s.t and mine and mine.t == s.t then kept = Higher(kept, Leftover(mine, side[2][s.t])) end
+        end
+        if kept then
+            for _, f in ipairs(COUNTED) do
+                if snap[f] ~= nil then snap[f] = counts[s.t][f] + kept[f] end
+            end
+        end
+        levels[level] = snap
+    end
+    out.levels = levels
+end
+
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end
@@ -300,5 +420,6 @@ function Merge.Merge(a, b)
         end
     end)
     out.version, out.rosterBuilt = Merge.VERSION, nil
+    Recount(out, a, b)
     return out
 end
