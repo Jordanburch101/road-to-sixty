@@ -1,13 +1,17 @@
 import { bigint, bigserial, integer, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
+
+export * from "./auth-schema";
 
 // A linked PC. Its id is also the PC ID the addon keeps counts under, so a
-// journey uploaded from an older addon is prepared with it. tokenHash
-// stands in for Better Auth's device tokens until sign-in is built.
+// journey uploaded from an older addon is prepared with it. tokenHash is
+// the hash of the token /v1/link gave the app; the token itself is never
+// stored.
 // dataLayout is the newest journey layout its addon has written, from its
 // uploads, so check never offers it a version it can't read.
 export const devices = pgTable("devices", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => user.id),
   name: text("name").notNull(),
   platform: text("platform"),
   appVersion: text("app_version"),
@@ -24,7 +28,7 @@ export const characters = pgTable(
   "characters",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
-    userId: text("user_id").notNull(),
+    userId: text("user_id").notNull().references(() => user.id),
     game: text("game").notNull(),
     realm: text("realm").notNull(),
     name: text("name").notNull(),

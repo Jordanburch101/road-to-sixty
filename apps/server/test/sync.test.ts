@@ -4,12 +4,14 @@ import { eq } from "drizzle-orm";
 import { app } from "../src/app";
 import { config } from "../src/config";
 import { client, db } from "../src/db";
-import { newDevice } from "../src/devices";
+import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
 import { work } from "../src/worker";
 import { journey, savedFile, session, sessions } from "./helpers";
-import { reset } from "./helpers";
+import { addUser, reset } from "./helpers";
+
+const newDevice = async (userId: string, name: string) => linkDevice(await addUser(userId), name);
 
 beforeEach(reset);
 
