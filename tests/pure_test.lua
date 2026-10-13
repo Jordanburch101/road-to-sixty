@@ -19,7 +19,7 @@ end
 
 local allowed = {}
 for _, key in ipairs(STANDARD) do allowed[key] = true end
-for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua" }) do
+for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Merge.lua" }) do
     local listing = io.popen("luajit -bl RoadToSixty/" .. name):read("*a")
     for global in listing:gmatch('G[GS]ET%s+%d+%s+%d+%s+; "([^"]+)"') do
         assert(allowed[global], name .. " uses the global " .. global .. ", which the server does not have")
@@ -31,6 +31,7 @@ Load("Packed.lua", ns)
 Load("Tidy.lua", ns)
 Load("Parse.lua", ns)
 Load("Tally.lua", ns)
+Load("Merge.lua", ns)
 
 local packed = ns.Packed.PackKills({ { t = 1, xp = 2, name = "A" } })
 local list = {}
@@ -57,4 +58,6 @@ local counted = { people = { g = { groups = 2 } } }
 ns.Tally.Upgrade(counted, "a")
 assert(ns.Tally.Total(counted.people.g.groups) == 2)
 
+local merged = ns.Merge.Merge({ version = 3, events = { { 1, "on", 0, 0, 0, 1 } } }, { version = 3, events = {} })
+assert(#merged.events == 1 and merged.totals.kills == 0)
 print("Pure tests passed.")
