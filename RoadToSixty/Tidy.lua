@@ -35,7 +35,8 @@ function Tidy.Runs(char)
     local i = 1
     while i <= #events do
         local out = events[i]
-        local back = events[i + 1]
+        -- Only leaving an instance can start a split run.
+        local back = out[2] == "out" and events[i + 1] or nil
         local k = i + 1
         local regrouped = false
         while back and back[2] ~= "in" and back[2] ~= "out" do
