@@ -24,8 +24,10 @@ local addonName, ns = ...
 --   clockFrom  when a journey begun before layout 2 moved to the realm's
 --              clock (see DATA_VERSION)
 --   syncedVersion  the sync folder version last brought in (Sync.lua)
--- addon is the addon version that last loaded the file ("@project-version@"
--- in a developer install), so whatever reads it knows what wrote it.
+-- addon is the addon version that last loaded the file (the toc's version
+-- placeholder, unfilled, in a developer install), so whatever reads it
+-- knows what wrote it. Never write the placeholder itself in a .lua file:
+-- the release build fails on any left after packaging.
 
 local defaults = {
     greet = true,
