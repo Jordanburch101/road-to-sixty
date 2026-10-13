@@ -112,6 +112,108 @@ local RULES = {
     recipes = Join,
 }
 
+-- The items of list grouped by keyOf(item): groups[key] holds them in list
+-- order; keys lists each key once, in order of first appearance.
+local function Group(list, keyOf)
+    local groups, keys = {}, {}
+    for _, item in ipairs(list or {}) do
+        local key = keyOf(item)
+        local group = groups[key]
+        if not group then
+            group = {}
+            groups[key], keys[#keys + 1] = group, key
+        end
+        group[#group + 1] = item
+    end
+    return groups, keys
+end
+
+-- The keys in either list, once each.
+local function Union(x, y)
+    local seen, out = {}, {}
+    for _, list in ipairs({ x, y }) do
+        for _, key in ipairs(list) do
+            if not seen[key] then
+                seen[key], out[#out + 1] = true, key
+            end
+        end
+    end
+    return out
+end
+
+-- Events ------------------------------------------------------------------
+
+-- What an event is about besides its time and kind, per the spec. Kinds not
+-- listed (on, off, die, grp, grpk, grpx, and kinds from a newer addon)
+-- match on time and kind alone.
+local function Field6(e) return e[6] end
+local ABOUT = {
+    qa = Field6, qd = Field6, eq = Field6, loot = Field6, ["in"] = Field6, out = Field6,
+    rep = Field6, prof = Field6, rec = Field6, mount = Field6, ride = Field6,
+    gj = Field6, gl = Field6, gr = Field6, lvl = Field6, zone = Field6, grpl = Field6, grps = Field6,
+    grpa = function(e) return type(e[6]) == "table" and e[6][1] or nil end,
+    rare = function(e) return e[9] or e[6] end,     -- the rares key: NPC ID, else name
+}
+
+local function EventKey(e)
+    local about = ABOUT[e[2]]
+    return tostring(e[2]) .. "|" .. tostring(about and about(e))
+end
+
+local function EventTime(e) return e[1] end
+
+local function KeysBefore(x, y)
+    for i = 1, #x do
+        local kx, ky = EventKey(x[i]), EventKey(y[i])
+        if kx ~= ky then return kx < ky end
+    end
+    return false
+end
+
+-- One second's events from both copies. They come from one PC, so the copy
+-- with more of them leads and its order is kept; the other's are matched to
+-- them by key, the nth with the nth, and any left over follow in their
+-- order. Two of one event in a copy (two of the same green drop) stay two:
+-- the larger count, never the sum.
+local function MergeSecond(x, y)
+    if #y > #x or (#y == #x and KeysBefore(y, x)) then x, y = y, x end
+    local waiting, used, out = {}, {}, {}
+    for i, e in ipairs(y) do
+        local key = EventKey(e)
+        waiting[key] = waiting[key] or {}
+        table.insert(waiting[key], i)
+    end
+    for _, e in ipairs(x) do
+        local queue = waiting[EventKey(e)]
+        local i = queue and table.remove(queue, 1)
+        if i then
+            used[i] = true
+            out[#out + 1] = Join(e, y[i])
+        else
+            out[#out + 1] = e
+        end
+    end
+    for i, e in ipairs(y) do
+        if not used[i] then out[#out + 1] = e end
+    end
+    return out
+end
+
+-- Both copies' events, second by second in time order. A session found in
+-- one copy only is kept; one in both becomes one.
+local function MergeEvents(x, y)
+    local gx, kx = Group(x, EventTime)
+    local gy, ky = Group(y, EventTime)
+    local times = Union(kx, ky)
+    table.sort(times)
+    local out = {}
+    for _, t in ipairs(times) do
+        for _, e in ipairs(MergeSecond(gx[t] or {}, gy[t] or {})) do out[#out + 1] = e end
+    end
+    return out
+end
+RULES.events = MergeEvents
+
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end

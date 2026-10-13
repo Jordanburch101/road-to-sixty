@@ -90,6 +90,62 @@ check(m.version == 3 and m.rosterBuilt == nil, "layout 3, and the roster copy to
 check(m.played == 70 and m.clockFrom == 20 and m.recipes.Cooking.Bread, "played, clockFrom and recipes keep the most")
 check(older.instance == 36 and #older.events == 1 and older.guild[1] == "Old Guild", "the inputs are not changed")
 
+-- 5. Events: matched by time, kind and what they're about; a matched pair
+-- keeps what either has.
+local e1 = Journey({ events = { On(100), { 105, "qa", 0, 1, 2, 7 }, { 110, "qd", 0, 1, 2, 7, 450 } } })
+local e2 = Journey({ events = {
+    On(100), { 105, "qa", 0, 1, 2, 7 }, { 110, "qd", 0, 1, 2, 7, 450, nil, "The Title" }, { 120, "off", 0, 1, 2 },
+} })
+m = Merge.Merge(e1, e2)
+check(#m.events == 4 and m.events[3][9] == "The Title" and m.events[4][2] == "off",
+    "a session in both becomes one, the fuller copy's, details from either")
+local e3 = Journey({ events = { On(300), { 310, "die", 0, 5, 5 }, { 320, "off", 0, 5, 5 } } })
+m = Merge.Merge(e2, e3)
+check(#m.events == 7 and m.events[5][1] == 300 and m.events[6][2] == "die", "sessions in one copy only are kept, in time order")
+check(Same(Merge.Merge(e2, e3), Merge.Merge(e3, e2)), "events merge the same either way round")
+
+local loot = { 130, "loot", 0, 1, 2, "|cff1eff00|Hitem:2:0|h[Sword]|h|r", 2 }
+m = Merge.Merge(Journey({ events = { loot, loot } }), Journey({ events = { loot } }))
+check(#m.events == 2, "two identical events in one second stay two, never three")
+
+m = Merge.Merge(Journey({ events = { { 140, "qd", 0, 0, 0, 1, 10 }, { 140, "lvl", 0, 0, 0, 5 } } }),
+    Journey({ events = { { 140, "qd", 0, 0, 0, 1, 10 } } }))
+check(#m.events == 2 and m.events[2][2] == "lvl", "within a second, the fuller copy's order")
+
+m = Merge.Merge(Journey({ events = { { 150, "zone", 0, 0, 0, 1429 } } }), Journey({ events = { { 150, "zone", 0, 0, 0, 1436 } } }))
+check(#m.events == 2, "events about different things don't match")
+check(Same(m, Merge.Merge(Journey({ events = { { 150, "zone", 0, 0, 0, 1436 } } }), Journey({ events = { { 150, "zone", 0, 0, 0, 1429 } } }))),
+    "and they come out in the same order either way round")
+
+m = Merge.Merge(
+    Journey({ events = {
+        { 160, "grpa", 0, 0, 0, { "Player-1", "Ann" } },
+        { 161, "rare", 0, 0, 0, "Mor'Ladim", "rareelite", 35, 522, "x" },
+        { 162, "mount", 0, 0, 0, nil, "Brown Horse", 458, "n" },
+        { 163, "grps", 0, 0, 0, false, 2 },
+    } }),
+    Journey({ events = {
+        { 160, "grpa", 0, 0, 0, { "Player-1", "Ann", "Human" } },
+        { 161, "rare", 0, 0, 0, "Mor'Ladim", "rareelite", 35, 522, "l" },
+        { 162, "mount", 0, 0, 0, nil, "Brown Horse", 458, "n" },
+        { 163, "grps", 0, 0, 0, false, 2 },
+    } }))
+check(#m.events == 4 and m.events[1][6][3] == "Human", "grpa, rare, a mount with no ID and the player's grps each match once")
+
+m = Merge.Merge(Journey({ events = { { 170, "newkind", 0, 0, 0, "a" } } }), Journey({ events = { { 170, "newkind", 0, 0, 0, "b" } } }))
+check(#m.events == 1 and m.events[1][6] == "b", "a kind this merge doesn't know matches on time and kind alone")
+
+-- Journeys from before #35, by two PCs' own clocks, can seem to overlap:
+-- both sessions stay.
+m = Merge.Merge(Journey({ events = { On(1000), { 1100, "die", 0, 0, 0 }, { 1200, "off", 0, 0, 0 } } }),
+    Journey({ events = { On(1050), { 1150, "off", 0, 0, 0 } } }))
+check(#m.events == 5 and m.events[2][1] == 1050 and m.events[4][1] == 1150, "overlapping sessions both kept, in time order")
+
+local unsorted = Journey({ events = { On(500), { 400, "die", 0, 0, 0 } } })
+m = Merge.Merge(unsorted, unsorted)
+check(m.events[1][1] == 400 and Same(Merge.Merge(m, m), m), "events come out in time order, and stay so")
+check(unsorted.events[1][1] == 500, "the input's order is not changed")
+
 if failures == 0 then
     print("Merge tests passed.")
 else
