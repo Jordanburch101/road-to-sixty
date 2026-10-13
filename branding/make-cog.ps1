@@ -7,7 +7,7 @@ Add-Type -AssemblyName System.Drawing
 
 $size = 64
 $png = Join-Path $PSScriptRoot "cog-64.png"
-$tga = Join-Path (Split-Path $PSScriptRoot -Parent) "RoadToSixty/cog.tga"
+$tga = Join-Path (Split-Path $PSScriptRoot -Parent) "apps/addon/RoadToSixty/cog.tga"
 
 # Cog outline: 8 teeth, each a flat-topped trapezoid on a round body.
 $teeth, $outer, $inner = 8, 29.0, 22.0

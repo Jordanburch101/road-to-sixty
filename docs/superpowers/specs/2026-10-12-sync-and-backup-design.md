@@ -305,7 +305,7 @@ The domains contain no Blizzard trademarks, as the API terms require.
 
 ## Repo layout
 
-The repo becomes a Turborepo workspace with Bun. The addon moves into `apps/addon/` as the first commit of the workspace step, after #35 has shipped. Its folder keeps the name `RoadToSixty`, because WoW loads an addon only from a folder named like its `.toc`.
+The repo becomes a Turborepo workspace with Bun. The addon moves into `apps/addon/` as the first commit of the workspace step, on `dev` (decided 2026-10-13: `main` keeps the old layout and keeps releasing, and fixes on `main` are merged into `dev` across the move). Its folder keeps the name `RoadToSixty`, because WoW loads an addon only from a folder named like its `.toc`.
 
 ```
 road-to-sixty/

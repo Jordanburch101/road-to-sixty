@@ -4,7 +4,7 @@ A World of Warcraft addon for WoW Forever that records your road from level 1
 to 60 and replays it on a zoomable world map: level-coloured paths, hearths,
 teleports, boats, deaths, dungeons, loot, and a History and Stats panel.
 
-The addon folder is `RoadToSixty/`, its saved variables are `RoadToSixtyDB`
+The addon folder is `apps/addon/RoadToSixty/`, its saved variables are `RoadToSixtyDB`
 and `RoadToSixtyCharDB`, and the slash command is `/rts` (or `/roadtosixty`).
 
 ## Development
@@ -12,18 +12,22 @@ and `RoadToSixtyCharDB`, and the slash command is `/rts` (or `/roadtosixty`).
 Needs [LuaJIT](https://luajit.org/) on the path. [Lua Language Server](https://luals.github.io/)
 is optional; when installed, `check.ps1` also reports its diagnostics.
 
+The repo is a Bun and Turborepo workspace: `bun install`, then `bun run test` at
+the root runs every addon test. The addon's own commands below run from
+`apps/addon/`.
+
 ```powershell
 ./check.ps1                      # syntax check, diagnostics, offline tests
 ```
 
-To play with the source in game, link or copy `RoadToSixty/` into
+To play with the source in game, link or copy `apps/addon/RoadToSixty/` into
 `World of Warcraft/_classic_beta_/Interface/AddOns/`. The source includes the
 developer tools (`/rts seed`, `/rts swatch`, `/rts icons`, `/rts probe`,
 `/rts terrain`, `/rts zoneprobe`, `/rts levelart`, `/rts tiles`, `/rts perf`).
 
 Zone map data (`ZoneOverlays.lua`, `ZoneMasks/`) is generated from the
 client's tables on wago.tools; after a patch that changes map art, rerun
-`python scripts/zone-overlays.py <build>` (needs Pillow).
+`python apps/addon/scripts/zone-overlays.py <build>` (needs Pillow).
 
 ### Developer-only code
 
@@ -46,13 +50,13 @@ Files the stripped toc no longer lists are dropped from the build.
 ./scripts/package.ps1 -Version 0.9.0-beta   # or explicit
 ```
 
-This writes `build/RoadToSixty/` and `dist/RoadToSixty-<version>.zip`, after
+This writes `apps/addon/build/RoadToSixty/` and `apps/addon/dist/RoadToSixty-<version>.zip`, after
 checking that every toc file exists, no debug markers remain, every file
 compiles, and the build loads in toc order (`tests/release_load.lua`).
 
 ### CI
 
-- **CI** (`.github/workflows/ci.yml`): every push to `main` and every pull
+- **CI** (`.github/workflows/ci.yml`): every push to `main` or `dev` and every pull
   request runs the checks and uploads the release build as an artifact.
 - **Release** (`.github/workflows/release.yml`): pushing a tag such as
   `v0.9.0-beta` builds the zip and creates a GitHub release (tags with
@@ -68,7 +72,7 @@ git push origin v0.9.0-beta
 ### After a WoW patch
 
 ```powershell
-./scripts/sync-version.ps1    # sets ## Interface in the toc from your installed client
+./apps/addon/scripts/sync-version.ps1    # sets ## Interface in the toc from your installed client
 ```
 
 Commit and tag as above. The CurseForge upload works out its game version

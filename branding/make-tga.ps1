@@ -6,7 +6,7 @@
 
 param(
     [string]$Source = (Join-Path $PSScriptRoot "road-to-sixty-64.png"),
-    [string]$Target = (Join-Path (Split-Path $PSScriptRoot -Parent) "RoadToSixty/icon.tga")
+    [string]$Target = (Join-Path (Split-Path $PSScriptRoot -Parent) "apps/addon/RoadToSixty/icon.tga")
 )
 
 Add-Type -AssemblyName System.Drawing
