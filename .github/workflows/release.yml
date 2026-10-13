@@ -1,14 +1,14 @@
 # On a version tag (v0.9.0-beta, v1.0.0, ...): checks, tests, release build,
 # then a GitHub release with the zip. Tags with "alpha" or "beta" are marked
 # as pre-releases. The release notes are the version's section of
-# CHANGELOG.md (scripts/changelog.sh); the run fails if it has none.
+# CHANGELOG.md (apps/addon/scripts/changelog.sh); the run fails if it has none.
 #
 # Optional CurseForge upload, skipped until these are set in the repo
 # settings (Settings > Secrets and variables > Actions):
 #   secret   CF_API_TOKEN      from https://legacy.curseforge.com/account/api-tokens
 #   variable CF_PROJECT_ID     the project ID shown on the CurseForge project page
 # The game version comes from "## Interface" in the toc (run
-# scripts/sync-version.ps1 after a patch). A CF_GAME_VERSIONS variable, if
+# apps/addon/scripts/sync-version.ps1 after a patch). A CF_GAME_VERSIONS variable, if
 # set, overrides it. Run the "CurseForge check" workflow to test without
 # uploading.
 name: Release
@@ -30,18 +30,20 @@ jobs:
 
       # Before anything else, so a tag without notes fails at once.
       - name: Release notes
-        run: bash scripts/changelog.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+        run: bash apps/addon/scripts/changelog.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
 
       - name: Install LuaJIT
         run: sudo apt-get update && sudo apt-get install -y luajit
 
       - name: Checks and tests
         shell: pwsh
+        working-directory: apps/addon
         run: ./check.ps1
 
       - name: Release build
         id: package
         shell: pwsh
+        working-directory: apps/addon
         run: ./scripts/package.ps1
 
       - name: Release type
@@ -73,6 +75,6 @@ jobs:
             echo "CurseForge upload not configured, skipping."
             exit 0
           fi
-          bash scripts/curseforge.sh upload "${{ steps.package.outputs.zip }}" \
+          bash apps/addon/scripts/curseforge.sh upload "${{ steps.package.outputs.zip }}" \
             "Road to Sixty ${{ steps.package.outputs.version }}" "${{ steps.type.outputs.type }}" \
             "$(cat "$RUNNER_TEMP/notes.md")"

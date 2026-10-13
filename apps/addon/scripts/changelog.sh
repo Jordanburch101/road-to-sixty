@@ -9,7 +9,7 @@ set -euo pipefail
 
 version="${1:?usage: $0 <version>}"
 version="${version#v}"
-file="$(dirname "$0")/../CHANGELOG.md"
+file="$(dirname "$0")/../../../CHANGELOG.md"
 
 notes=$(awk -v v="$version" '
     /^## / { if (found) exit; found = ($2 == v); next }

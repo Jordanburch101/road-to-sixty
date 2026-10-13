@@ -1,0 +1,14 @@
+{
+  "name": "road-to-sixty",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "test": "turbo run test",
+    "check": "turbo run check",
+    "package": "turbo run package"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.7"
+  }
+}

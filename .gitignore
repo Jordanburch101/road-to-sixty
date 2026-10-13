@@ -1,6 +1,10 @@
-# Release builds (scripts/package.ps1)
+# Release builds (apps/addon/scripts/package.ps1)
 build/
 dist/
+
+# Bun and Turborepo
+node_modules/
+.turbo/
 
 # Generated from branding/header.src.html by branding/build-header.ps1
 branding/header.html
@@ -9,7 +13,7 @@ branding/header.html
 branding/mock/
 
 # Test images for /rts shots
-RoadToSixty/shots/
+apps/addon/RoadToSixty/shots/
 
 # Video branding output (branding/make-video.ps1)
 branding/video/

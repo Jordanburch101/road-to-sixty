@@ -11,7 +11,7 @@ paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 
 ## Layout
 
-`RoadToSixty/` is the addon; files load in toc order and share the addon
+`apps/addon/RoadToSixty/` is the addon (the repo is a Bun and Turborepo workspace; every part lives under `apps/`); files load in toc order and share the addon
 table `ns`. Handlers for one event run in the order their files load. Each file starts with a comment describing what it does and,
 for data, its exact format; read that before changing a module.
 
@@ -54,6 +54,12 @@ last loaded the file.
 ## Commands
 
 ```powershell
+# From the repo root
+bun install                         # once, for turbo
+bun run test                        # every addon test under LuaJIT, and under Lua 5.1 if installed
+bun run check                       # check.ps1 through turbo (needs PowerShell)
+
+# From apps/addon
 ./check.ps1                         # LuaJIT syntax check, LuaLS diagnostics, offline tests (tests/*_test.lua)
 ./scripts/package.ps1               # release build to build/ and dist/, plus a load test in toc order
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
@@ -61,7 +67,7 @@ python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and Zone
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
 ```
 
-Run `check.ps1` from the repo root. It currently reports three old
+Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old
 warnings (Probe.lua:52, Probe.lua:830, Recorder.lua:349); anything new is
 ours to fix.
 
@@ -69,8 +75,8 @@ ours to fix.
 
 1. Add the version's section to CHANGELOG.md as features land: `## X.Y.Z`
    with `### New` and `### Fixed`, non-technical, written for players.
-   `bash scripts/changelog.sh X.Y.Z` prints what the release will use.
-2. Run `check.ps1` and `scripts/package.ps1`, commit, and push `main`.
+   `bash apps/addon/scripts/changelog.sh X.Y.Z` prints what the release will use.
+2. Run `check.ps1` and `scripts/package.ps1` in `apps/addon/`, commit, and push `main`.
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "Road to Sixty X.Y.Z"`, then
    `git push origin vX.Y.Z`. The version comes from the tag; tags containing
    `beta` or `alpha` become pre-releases.
@@ -192,7 +198,7 @@ Verified in game; trust these over web guides, and re-check after patches.
 ## Testing in game
 
 The dev install is a junction from the client's `Interface/AddOns/RoadToSixty`
-to this repo's `RoadToSixty/` (the CurseForge app may replace it with a
+to this repo's `apps/addon/RoadToSixty/` (the CurseForge app may replace it with a
 release; check it is still a link before testing). `/reload` picks up
 changes. Developer tools: `/rts probe`, `/rts zoneprobe`, `/rts terrain`,
 `/rts swatch`, `/rts icons`, `/rts seed`, `/rts perf`, `/rts tiles`.

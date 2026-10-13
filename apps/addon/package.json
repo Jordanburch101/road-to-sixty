@@ -1,0 +1,9 @@
+{
+  "name": "@road-to-sixty/addon",
+  "private": true,
+  "scripts": {
+    "test": "bun scripts/test.ts",
+    "check": "pwsh -NoProfile -File check.ps1",
+    "package": "pwsh -NoProfile -File scripts/package.ps1"
+  }
+}
