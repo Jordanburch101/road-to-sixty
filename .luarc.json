@@ -9,6 +9,7 @@
     "diagnostics.globals": [
         "RoadToSixtyDB",
         "RoadToSixtyCharDB",
+        "RoadToSixtySync",
         "SLASH_ROADTOSIXTY1",
         "SLASH_ROADTOSIXTY2",
         "RoadToSixty_OnAddonCompartmentClick",

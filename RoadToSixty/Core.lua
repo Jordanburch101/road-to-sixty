@@ -5,7 +5,8 @@ local addonName, ns = ...
 --
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
 -- defaults below, plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
--- which counts the merge can't rebuild are kept under (Tally.lua).
+-- which counts the merge can't rebuild are kept under (Tally.lua). The
+-- app's sync folder gives the ID; without the app the addon makes one.
 -- RoadToSixtyCharDB (ns.char) is one character's journey, with charDefaults
 -- below plus fields that start nil on purpose and are set by the file that
 -- owns them:
@@ -22,6 +23,7 @@ local addonName, ns = ...
 --   seeded     true for a fake journey from /rts seed (Seed.lua)
 --   clockFrom  when a journey begun before layout 2 moved to the realm's
 --              clock (see DATA_VERSION)
+--   syncedVersion  the sync folder version last brought in (Sync.lua)
 -- addon is the addon version that last loaded the file ("@project-version@"
 -- in a developer install), so whatever reads it knows what wrote it.
 
@@ -181,6 +183,10 @@ ns.On("ADDON_LOADED", function(name)
     RoadToSixtyDB = RoadToSixtyDB or {}
     ApplyDefaults(RoadToSixtyDB, defaults)
     ns.db = RoadToSixtyDB
+    local synced = type(RoadToSixtySync) == "table" and RoadToSixtySync.pc
+    if type(synced) == "string" and #synced <= 64 and synced:match("^[%w%-]+$") then
+        ns.db.pc = synced
+    end
     ns.db.pc = ns.db.pc or ("%06x%06x"):format(math.random(0, 0xffffff), math.random(0, 0xffffff))
     ns.pc = ns.db.pc
 
@@ -197,6 +203,12 @@ ns.On("ADDON_LOADED", function(name)
     -- is as of this load.
     ns.loadedAt = ns.Now()
 end)
+
+-- Fills in what a journey is missing as a new character's would have, for
+-- a journey that came from the sync folder.
+function ns.CharDefaults(char)
+    ApplyDefaults(char, charDefaults)
+end
 
 ns.On("PLAYER_LOGIN", function()
     if ns.db.greet then
