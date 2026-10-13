@@ -1,10 +1,11 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, max } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { db } from "./db";
 import { deviceFor } from "./devices";
 import { characters, devices, jobs, versions } from "./schema";
 import { fingerprint, getPacked, put, unpack } from "./storage";
+import { SERVER_FAILED } from "./worker";
 
 // The sync API the app calls with its PC token (spec, "Sync API").
 export const sync = new Elysia({ prefix: "/v1" })
@@ -51,10 +52,14 @@ export const sync = new Elysia({ prefix: "/v1" })
         .from(characters)
         .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)));
       const fp = fingerprint(raw);
-      const [known] = await db
-        .select({ id: versions.id })
-        .from(versions)
-        .where(and(eq(versions.characterId, character!.id), eq(versions.fingerprint, fp)));
+      // A file the server failed to merge (storage down, say) gets another
+      // try; one the merge refused stays refused.
+      const known = (
+        await db
+          .select({ id: versions.id, status: versions.status, rejectReason: versions.rejectReason })
+          .from(versions)
+          .where(and(eq(versions.characterId, character!.id), eq(versions.fingerprint, fp)))
+      ).find((v) => !(v.status === "rejected" && v.rejectReason === SERVER_FAILED));
       if (known) return { version: known.id, status: "known" };
 
       const [last] = received
@@ -94,6 +99,28 @@ export const sync = new Elysia({ prefix: "/v1" })
       .innerJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
+    // A restore replaces until this PC shows, by an upload's received, that
+    // its addon took in the restore or a version after it. Merging instead
+    // would bring back what the restore took out.
+    const lastRestore = new Map(
+      (
+        await db
+          .select({ characterId: versions.characterId, id: max(versions.id) })
+          .from(versions)
+          .innerJoin(characters, eq(characters.id, versions.characterId))
+          .where(and(eq(characters.userId, device!.userId), eq(versions.kind, "restore")))
+          .groupBy(versions.characterId)
+      ).map((r) => [r.characterId, r.id ?? 0]),
+    );
+    const applied = new Map(
+      (
+        await db
+          .select({ characterId: versions.characterId, id: max(versions.receivedId) })
+          .from(versions)
+          .where(and(eq(versions.deviceId, device!.id), eq(versions.kind, "upload")))
+          .groupBy(versions.characterId)
+      ).map((r) => [r.characterId, r.id ?? 0]),
+    );
     return {
       characters: rows.map(({ c, head }) => {
         // Never a layout newer than this PC's addon writes (spec, "Mismatched
@@ -106,7 +133,7 @@ export const sync = new Elysia({ prefix: "/v1" })
           name: c.name,
           version: updateAddon ? null : head.id,
           fingerprint: head.fingerprint,
-          replace: head.kind === "restore",
+          replace: (applied.get(c.id) ?? 0) < (lastRestore.get(c.id) ?? 0),
           updateAddon,
         };
       }),

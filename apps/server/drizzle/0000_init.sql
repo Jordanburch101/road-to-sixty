@@ -33,6 +33,7 @@ CREATE TABLE "jobs" (
 	"version_id" bigint NOT NULL,
 	"state" text DEFAULT 'queued' NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
+	"run_after" timestamp with time zone DEFAULT now() NOT NULL,
 	"error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"finished_at" timestamp with time zone

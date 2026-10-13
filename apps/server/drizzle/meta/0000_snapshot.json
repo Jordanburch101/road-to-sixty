@@ -1,5 +1,5 @@
 {
-  "id": "f6c3bbdf-e03c-4c2c-9458-7bb9d4251254",
+  "id": "563145c0-b859-41c1-946b-4d0320fb0a92",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -211,6 +211,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "run_after": {
+          "name": "run_after",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "error": {
           "name": "error",

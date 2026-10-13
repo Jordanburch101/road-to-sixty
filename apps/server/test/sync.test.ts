@@ -2,9 +2,10 @@ import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { app } from "../src/app";
-import { db } from "../src/db";
+import { config } from "../src/config";
+import { client, db } from "../src/db";
 import { newDevice } from "../src/devices";
-import { characters, devices, versions } from "../src/schema";
+import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
 import { work } from "../src/worker";
 import { journey, savedFile, session, sessions } from "./helpers";
@@ -128,4 +129,131 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
   const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
   expect(superseded?.deviceId).toBe(device.id);
   expect((await check(token)).characters[0]!.version).toBe(restore!.id);
+});
+
+// What the website's restore (a later step) does: a new head holding the
+// current head's text.
+async function restoreHead() {
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  const [restore] = await db
+    .insert(versions)
+    .values({ characterId: c!.id, kind: "restore", fingerprint: head!.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
+    .returning();
+  await db.update(characters).set({ headVersionId: restore!.id });
+  return restore!.id;
+}
+
+test("a PC that hasn't applied a restore gets a replace, even once new play is merged on top of it", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const restore = await restoreHead();
+  await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(restore) });
+  await workAll();
+
+  const onTop = (await check(desk.token)).characters[0]!;
+  expect(onTop.version).toBeGreaterThan(restore);
+  expect(onTop.replace).toBe(false);
+  expect((await check(laptop.token)).characters[0]).toMatchObject({ version: onTop.version, replace: true });
+
+  await upload(laptop.token, savedFile(journey({ events: [...session(1000), ...session(5000), ...session(9000)] })), {
+    received: String(onTop.version),
+  });
+  expect((await check(laptop.token)).characters[0]!.replace).toBe(false);
+});
+
+test("an upload from a PC that never received anything is set aside once there is a restore", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const restore = await restoreHead();
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(3000)] })));
+  await workAll();
+  const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
+  expect(superseded?.deviceId).toBe(copied.device.id);
+  expect((await check(desk.token)).characters[0]!.version).toBe(restore);
+});
+
+const s3 = new Bun.S3Client(config.s3);
+
+test("a job that throws waits before its next try, and a file the server failed to merge can be sent again", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const file = savedFile(journey({ events: session(1000) }));
+  await upload(token, file);
+  const [pending] = await db.select().from(versions);
+  await s3.delete(`user-1/${pending!.fingerprint}.zst`); // storage lost it
+
+  for (let tries = 1; tries <= 3; tries++) {
+    expect(await work()).toBe(true);
+    const [job] = await db.select().from(jobs);
+    expect(job!.attempts).toBe(tries);
+    if (tries < 3) {
+      expect(job!.state).toBe("queued");
+      expect(job!.runAfter.getTime()).toBeGreaterThan(Date.now());
+      expect(await work()).toBe(false); // not yet due
+      await db.update(jobs).set({ runAfter: new Date(0) });
+    }
+  }
+  const [failed] = await db.select().from(versions);
+  expect(failed!.status).toBe("rejected");
+
+  expect(((await (await upload(token, file)).json()) as UploadResponse).status).toBe("queued");
+  await workAll();
+  expect((await check(token)).characters).toHaveLength(1);
+});
+
+test("a merge-refused file sent again is known, not merged again", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const seeded = savedFile(journey({ events: session(1000), seeded: true }));
+  await upload(token, seeded);
+  await workAll();
+  expect(((await (await upload(token, seeded)).json()) as UploadResponse).status).toBe("known");
+});
+
+test("a stale or unreadable file doesn't make a PC look out of date", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await upload(token, savedFile(journey({ version: 2, events: session(2000) })), { name: "Alt" });
+  await upload(token, new TextEncoder().encode('RoadToSixtyCharDB = {["version"] = 99}'), { name: "Odd" });
+  await workAll();
+  expect((await check(token)).characters.find((c) => c.name === "Ann")).toMatchObject({ updateAddon: false });
+  const [d] = await db.select().from(devices).where(eq(devices.id, device.id));
+  expect(d!.dataLayout).toBe(3);
+});
+
+test("a merge never overwrites a head that moved while it ran", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  const [moved] = await db
+    .insert(versions)
+    .values({ characterId: c!.id, kind: "merged", fingerprint: head!.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
+    .returning();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(head!.id) });
+
+  // Another worker moves the head while this one merges: hold the row so
+  // the merge waits at its head update, then move the head and let go.
+  let working: Promise<boolean> | undefined;
+  await client.begin(async (tx) => {
+    await tx`SELECT id FROM characters WHERE id = ${c!.id} FOR NO KEY UPDATE`;
+    working = work();
+    for (let i = 0; ; i++) {
+      const [w] = await client`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'`;
+      if (w.n > 0) break;
+      if (i === 200) throw new Error("the merge never reached the head update");
+      await Bun.sleep(25);
+    }
+    await tx`UPDATE characters SET head_version_id = ${moved!.id} WHERE id = ${c!.id}`;
+  });
+  await working;
+
+  const [after] = await db.select().from(characters);
+  expect(after!.headVersionId).toBe(moved!.id);
+  const [job] = await db.select().from(jobs).where(eq(jobs.state, "queued"));
+  expect(job).toBeDefined();
 });

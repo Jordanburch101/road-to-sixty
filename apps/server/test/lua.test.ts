@@ -58,3 +58,11 @@ test("a runner that never ends is killed", async () => {
   expect(r).toMatchObject({ ok: false, reason: "the merge didn't finish in time and was stopped" });
   expect(Date.now() - started).toBeLessThan(10_000);
 });
+
+test("an upload merges into a current journey saved in an older layout", async () => {
+  const current = text(journey({ version: 2, events: session(1000), totals: { ...journey().totals, deaths: 1 } }));
+  const r = await runMerge(savedFile(journey({ events: session(5000) })), current, "pc-2");
+  if (!r.ok) throw new Error(r.reason);
+  expect(r.layout).toBe(3);
+  expect(sessions(r.journey)).toBe(2);
+});

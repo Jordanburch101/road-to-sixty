@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
 import { runMerge } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
@@ -8,6 +8,11 @@ type Job = typeof jobs.$inferSelect;
 type Version = typeof versions.$inferSelect;
 
 const MAX_ATTEMPTS = 3;
+const RETRY_SECONDS = 30;
+
+// Why an upload was rejected when the server, not the merge, failed: the
+// same file sent again gets another try.
+export const SERVER_FAILED = "the server couldn't merge it";
 
 // The oldest queued job's id, now marked running, or null.
 // ponytail: one worker taking one job at a time, which also keeps two
@@ -16,7 +21,7 @@ const MAX_ATTEMPTS = 3;
 async function claim(): Promise<number | null> {
   const [row] = await client`
     UPDATE jobs SET state = 'running', attempts = attempts + 1
-    WHERE id = (SELECT id FROM jobs WHERE state = 'queued' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+    WHERE id = (SELECT id FROM jobs WHERE state = 'queued' AND run_after <= now() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
     RETURNING id`;
   return row ? Number(row.id) : null;
 }
@@ -37,15 +42,16 @@ async function runJob(job: Job) {
   const [character] = await db.select().from(characters).where(eq(characters.id, job.characterId));
   if (!upload || !character) throw new Error(`job ${job.id} has no upload or character`);
 
-  // An upload from a PC that hadn't yet received the latest restore still
-  // holds what the restore took out; merging it would undo the restore.
+  // An upload from a PC that hadn't yet applied the latest restore still
+  // holds what the restore took out; merging it would undo the restore. A
+  // PC that never received anything (a copied WTF folder, say) counts too.
   const [restore] = await db
     .select({ id: versions.id })
     .from(versions)
     .where(and(eq(versions.characterId, character.id), eq(versions.kind, "restore")))
     .orderBy(desc(versions.id))
     .limit(1);
-  if (restore && upload.receivedId !== null && upload.receivedId < restore.id) {
+  if (restore && (upload.receivedId ?? 0) < restore.id) {
     return settle(job, upload, "superseded", "made before the restore reached this PC");
   }
 
@@ -57,10 +63,15 @@ async function runJob(job: Job) {
     head ? await get(character.userId, head.fingerprint) : null,
     upload.deviceId ?? "server",
   );
-  if (result.from !== null && upload.deviceId) {
-    await db.update(devices).set({ dataLayout: result.from }).where(eq(devices.id, upload.deviceId));
-  }
   if (!result.ok) return settle(job, upload, "rejected", result.reason);
+  // Never lowered: an alt's file untouched since an older addon is still
+  // in its old layout.
+  if (result.from !== null && upload.deviceId) {
+    await db
+      .update(devices)
+      .set({ dataLayout: sql`GREATEST(coalesce(${devices.dataLayout}, 0), ${result.from})` })
+      .where(eq(devices.id, upload.deviceId));
+  }
 
   const fp = fingerprint(result.journey);
   if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
@@ -80,7 +91,7 @@ async function runJob(job: Job) {
     await tx
       .insert(versionParents)
       .values([upload.id, ...(head ? [head.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
-    await tx
+    const updated = await tx
       .update(characters)
       .set({
         headVersionId: merged!.id,
@@ -89,7 +100,11 @@ async function runJob(job: Job) {
         lastPlayedAt: result.lastSeen === null ? null : new Date(result.lastSeen * 1000),
         updatedAt: new Date(),
       })
-      .where(eq(characters.id, character.id));
+      // Unless the head moved meanwhile (a restore, or a second worker during
+      // a deploy): writing over it would drop that version from the journey.
+      .where(and(eq(characters.id, character.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${head?.id ?? null}::bigint`))
+      .returning({ id: characters.id });
+    if (updated.length === 0) throw new Error("the head moved during the merge");
     await tx.update(versions).set({ status: "accepted", dataVersion: result.from }).where(eq(versions.id, upload.id));
     await tx.update(jobs).set({ state: "done", finishedAt: new Date() }).where(eq(jobs.id, job.id));
   });
@@ -109,10 +124,11 @@ export async function work(): Promise<boolean> {
       await db.update(jobs).set({ state: "failed", error, finishedAt: new Date() }).where(eq(jobs.id, id));
       await db
         .update(versions)
-        .set({ status: "rejected", rejectReason: "the server couldn't merge it" })
+        .set({ status: "rejected", rejectReason: SERVER_FAILED })
         .where(eq(versions.id, job!.versionId));
     } else {
-      await db.update(jobs).set({ state: "queued", error }).where(eq(jobs.id, id));
+      const runAfter = new Date(Date.now() + job!.attempts * RETRY_SECONDS * 1000);
+      await db.update(jobs).set({ state: "queued", error, runAfter }).where(eq(jobs.id, id));
     }
   }
   return true;

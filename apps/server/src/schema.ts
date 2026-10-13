@@ -3,8 +3,8 @@ import { bigint, bigserial, integer, pgTable, primaryKey, text, timestamp, uniqu
 // A linked PC. Its id is also the PC ID the addon keeps counts under, so a
 // journey uploaded from an older addon is prepared with it. tokenHash
 // stands in for Better Auth's device tokens until sign-in is built.
-// dataLayout is the journey layout its addon writes, from its last upload,
-// so check never offers it a version it can't read.
+// dataLayout is the newest journey layout its addon has written, from its
+// uploads, so check never offers it a version it can't read.
 export const devices = pgTable("devices", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -72,6 +72,9 @@ export const jobs = pgTable("jobs", {
   versionId: bigint("version_id", { mode: "number" }).notNull().references(() => versions.id),
   state: text("state", { enum: ["queued", "running", "done", "failed"] }).notNull().default("queued"),
   attempts: integer("attempts").notNull().default(0),
+  // A job that threw waits before its next try, so a short storage outage
+  // doesn't use up its attempts at once.
+  runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),

@@ -24,7 +24,7 @@
 
 - **Merged versions are stored as `Parse.Write` text of one journey**, which is exactly what the app puts in `data.lua`'s `journey` string. Download returns it unchanged, still zstd-compressed. Uploads are stored as sent: the zstd of the SavedVariables file.
 - **The upload says which version the PC last received by its id, not its fingerprint.** A restore holds the same text, and so has the same fingerprint, as the version it restores. `UploadQuery.received` is that id.
-- **An upload made before a restore reached its PC is `superseded`, not merged.** It still holds what the restore took out. The rule: the character has a restore R, and the upload's `received` is below R. A PC that never received anything (no `received`) merges as usual, since it holds only its own play.
+- **An upload made before a restore reached its PC is `superseded`, not merged.** It still holds what the restore took out. The rule: the character has a restore R, and the upload's `received` is below R or missing. A PC that never received anything may be a copied WTF folder holding the pre-restore journey. Check keeps delivering the head as a replace to a PC until one of its uploads shows a `received` at or past R (changed by the final review: the replace flag on the head alone was lost once new play merged on top of the restore).
 - **A merge that changes nothing makes no new version.** The upload is accepted and the head stays.
 - **`Merge.Prepare` refuses damaged journeys.** This is the shape check that was in `Sync.lua`. The server and the addon both need it, so it moves into the shared file (Task 1).
 - **The identity check** the Merge header leaves to the caller is the character row: `(user, game, realm, name)` from the upload's query. The runner never sees names.
@@ -1802,5 +1802,4 @@ Expected: `build` and `server` both pass, and `server`'s log shows `14 pass` and
 - **The account API** (website): list characters and versions, restore (creates a `restore` version whose fingerprint is the restored one's), unlink PCs, download everything, delete. The worker already handles restores.
 - **Deploying:** Dokploy builds `apps/server/Dockerfile` from the repo root with `DATABASE_URL`, `S3_*` and `PORT` set. R2's bucket is made once by hand.
 - **The daily cleanup** (keep 30 days, then weekly) and account backups are separate later pieces.
-- **`NOT_PLACES`** should be checked against wago.tools' `UiMap` if Task 4 couldn't.
 

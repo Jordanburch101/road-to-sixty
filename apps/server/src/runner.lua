@@ -61,7 +61,9 @@ local function Run()
     TidyUp(upload)
     local out = upload
     if currentPath ~= "" then
-        local current = ns.Parse.Read(Read(currentPath))
+        -- Saved by an older server when the layout has moved on since. Its
+        -- counts are every PC's, so none is named as theirs.
+        local current = assert(ns.Merge.Prepare(ns.Parse.Read(Read(currentPath)), "server"))
         TidyUp(current)
         out, why = ns.Merge.Merge(current, upload)
         if not out then error(why, 0) end
