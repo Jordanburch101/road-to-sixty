@@ -47,7 +47,8 @@ for data, its exact format; read that before changing a module.
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app
-calls, `src/worker.ts` runs the merge jobs, `src/runner.lua` merges under
+calls, `src/auth.ts` is sign-in (Better Auth with Battle.net), `src/link.ts`
+and `src/link.html` link a PC, `src/worker.ts` runs the merge jobs, `src/runner.lua` merges under
 standard Lua 5.1 with the addon's pure files, and `src/schema.ts` holds the
 tables (migrations in `drizzle/`, made by `bun run db:generate`).
 `packages/api/` holds the request and response types the server, website
@@ -79,7 +80,8 @@ luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]
 docker compose up -d                # Postgres and an S3 store, for the tests and a local server
 bun test                            # server tests; LUA51 names Lua 5.1 if lua5.1 isn't on the path
 bun run dev                         # the server on port 3000, with .env (copied from .env.example)
-bun run device:new <user> <PC name> # link a PC by hand until sign-in exists; prints its token once
+bun scripts/link-pc.ts <server> [name]   # link this machine as the app will: approve the code on <server>/link
+bun scripts/try-upload.ts <server> <token>   # upload a made-up journey as that PC and wait for the merge
 ```
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old
