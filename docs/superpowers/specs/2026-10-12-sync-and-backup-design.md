@@ -8,7 +8,7 @@ A player who plays one character on two computers, say a Windows PC and a Mac, e
 
 This design adds a free service with three parts:
 
-- a website where players sign in with Battle.net and download a desktop app,
+- a website where players download the desktop app for their platform,
 - a desktop app that backs up each character's journey after every session and brings back the merged journey from the other machine,
 - a server that merges recordings of the same character, keeps the merged journey and a history of versions, and lets players restore an older one.
 
@@ -23,7 +23,7 @@ There is no deadline. The service should be solid before it ships. The only time
 | Area | Decision |
 |---|---|
 | Sign-in | Battle.net, through Better Auth running in the backend |
-| Linking the app | Better Auth device sign-in: the app shows a code, the player confirms it on the website |
+| Linking the app | Better Auth device sign-in: the app opens the server's link page with its code, the player signs in with Battle.net there and confirms |
 | Where the merge runs | One `Merge.lua` in plain Lua 5.1. The server runs it to keep the merged journey. The addon runs the same file at login to fold the server's copy into anything played since |
 | Delivery to the PC | The app writes its own addon folder, `RoadToSixty_Sync`. It never writes the game's SavedVariables |
 | Backend | Elysia on Bun, deployed by Dokploy on our own server, with Postgres beside it |
@@ -147,7 +147,7 @@ It holds:
 
 - Better Auth, with Battle.net through its generic OAuth plugin (Battle.net publishes its OpenID settings at `https://oauth.battle.net/.well-known/openid-configuration`) and its device authorization plugin for linking the app,
 - the sync API for the app,
-- the account API for the website,
+- the account API for the app's window,
 - the merge worker,
 - the daily cleanup job.
 
@@ -161,7 +161,7 @@ Postgres is reachable only from the backend.
 
 The upload format leaves room for sending only the difference from a previous version later. Version one sends whole files: about 400 KB compressed for a level 60 journey.
 
-### Account API, called by the website as the signed-in user
+### Account API, called by the app's window with its PC token
 
 List characters, list a character's versions, restore a version, list and unlink PCs, download all my data as a zip, delete everything.
 
@@ -175,13 +175,13 @@ An upload is stored straight away and a job goes into a `jobs` table. The worker
 4. stores the result in R2 as a new `merged` version with two `version_parents` rows,
 5. moves the character's current version to it.
 
-A failed check, a crash or a timeout marks the job and the upload rejected with the reason. The character keeps its old merged version. The website shows the problem.
+A failed check, a crash or a timeout marks the job and the upload rejected with the reason. The character keeps its old merged version. The app shows the problem.
 
 The first upload of a character becomes its first merged version with no merge needed.
 
 ### Mismatched addon versions
 
-Every request from the app carries the PC's addon version. The server never sends a version in a data layout newer than that addon understands. The app and the website show "update the addon on this PC" instead.
+Every request from the app carries the PC's addon version. The server never sends a version in a data layout newer than that addon understands. The app shows "update the addon on this PC" instead.
 
 ### Restore
 
@@ -206,7 +206,7 @@ account_backups  id, user_id, device_id, game, account_hash, fingerprint, create
 
 Device tokens are Better Auth's. The server stores only their hashes. The Battle.net account ID is stored as a hash, and the BattleTag is refreshed at each sign-in, as Blizzard's API terms require.
 
-The server fills in `level`, `class`, `played` and `last_played_at` when it accepts an upload, so the website lists characters without opening any file.
+The server fills in `level`, `class`, `played` and `last_played_at` when it accepts an upload, so the app lists characters without opening any file.
 
 The account-wide file is backed up at most once a day and never merged.
 
@@ -236,7 +236,7 @@ Stored personal data: a hash of the Battle.net account ID, the BattleTag, charac
 
 ## The desktop app
 
-Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window (about 360 px wide) for first-run setup and status. The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Link this PC, Game folders, Open website, Pause syncing, Quit.
+Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window for first-run setup, status and the account screens (see The website). The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Link this PC, Game folders, Open website, Pause syncing, Quit.
 
 ### First run
 
@@ -267,18 +267,23 @@ GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Wi
 
 ## The website
 
-Next.js on Vercel in `apps/web`. It talks only to the backend, as the signed-in user, through Better Auth's client and its shared cookie.
+Next.js on Vercel in `apps/web`. It offers the app and has no sign-in: sign-up, sign-in and every account screen happen through the app (Jordan, 2026-10-14).
 
 | Page | Contents |
 |---|---|
-| Home | What sync does, Mac and Windows downloads from the latest GitHub release, the "Open Anyway" and "Run anyway" steps, and a note that the addon works without the app |
-| Sign in | Battle.net only |
-| Link | Shows the code from the app, "Link this PC" |
+| Home | What sync does, the download for the visitor's platform (Mac or Windows, and Linux once the app supports it), picked from the browser with the others one click away, from the latest GitHub release, the "Open Anyway" and "Run anyway" steps, and a note that the addon works without the app |
+| Privacy, Terms | Required by Blizzard's API terms and privacy law |
+
+The account screens live in the app's window, called through the account API with the PC token:
+
+| Screen | Contents |
+|---|---|
 | Characters | Each character with level, class, time played, last sync and which PC. Problems flagged: a rejected merge, a PC whose addon needs updating |
 | Character history | Versions over time (upload, merged, restore, which PC), "Restore this version" with a confirmation that says the current version stays in history |
 | PCs | Linked PCs with name, platform, app and addon versions, last seen, "Unlink" |
 | Account | "Download all my data" (a zip of each character's latest merged file), "Delete everything" with confirmation |
-| Privacy, Terms | Required by Blizzard's API terms and privacy law |
+
+Signing in and linking happen on one plain page the server itself serves (`/link`), which the app opens in the browser with its code filled in.
 
 Viewing journeys on a map in the browser is left out. Storing journeys as whole files keeps it possible.
 
@@ -296,8 +301,8 @@ Before any screen is built, mock the key ones (home, characters, character histo
 
 During testing, the site and backend sit on a subdomain of `everhold.online`, for example `rts.everhold.online` and `api.rts.everhold.online`. At release they move to `roadtosixty.online` and `api.roadtosixty.online`.
 
-- The sign-in cookie is scoped to the site's own domain (`rts.everhold.online` during testing), never to all of `everhold.online`.
-- Every address (backend URL, site URL, cookie domain, allowed origins) comes from environment variables in Dokploy and Vercel, never from code.
+- The sign-in cookie belongs to the backend's own address and lives only for the link page. The website has no sign-in and shares no cookie.
+- Every address (backend URL, site URL) comes from environment variables in Dokploy and Vercel, never from code.
 - The Battle.net developer client lists the return address for each domain, or testing uses its own client.
 - Each app build has the backend address built in. Everhold builds are for testers only. The first public build points at `api.roadtosixty.online`. During the switch Dokploy serves the backend on both domains. Players sign in again on the new site. PC links keep working.
 
