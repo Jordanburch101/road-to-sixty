@@ -2,11 +2,12 @@
 // journeys in the game's saved format. Never a real save: those hold other
 // players' names.
 import { config } from "../src/config";
-import { client, migrateDb } from "../src/db";
+import { client, db, migrateDb } from "../src/db";
+import { user } from "../src/schema";
 
 export async function reset() {
   await migrateDb();
-  await client`TRUNCATE jobs, version_parents, versions, characters, devices RESTART IDENTITY CASCADE`;
+  await client`TRUNCATE jobs, version_parents, versions, characters, devices, "user", session, account, verification, device_code RESTART IDENTITY CASCADE`;
   // SeaweedFS makes a bucket on an unsigned PUT (409 once it exists); it
   // takes a few seconds to start in CI. R2's bucket is made once by hand.
   for (let tries = 0; ; tries++) {
@@ -16,6 +17,12 @@ export async function reset() {
     if (tries === 40) throw new Error(`no S3 store at ${config.s3.endpoint}: run docker compose up -d in apps/server`);
     await Bun.sleep(500);
   }
+}
+
+// A player, as signing in would make one.
+export async function addUser(id: string) {
+  await db.insert(user).values({ id, name: `${id}#1234`, email: `${id}@battlenet.invalid` }).onConflictDoNothing();
+  return id;
 }
 
 // A value as Lua table text the addon's Parse.lua reads. Arrays become the
