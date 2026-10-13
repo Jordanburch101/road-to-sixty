@@ -58,6 +58,7 @@ last loaded the file.
 ./scripts/package.ps1               # release build to build/ and dist/, plus a load test in toc order
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
+luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
 ```
 
 Run `check.ps1` from the repo root. It currently reports three old
