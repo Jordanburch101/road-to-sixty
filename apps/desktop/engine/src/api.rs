@@ -15,6 +15,9 @@ pub const TEST_SERVER: &str = "https://api.rts.everhold.online";
 /// The most a merged journey may unpack to; the server refuses more.
 const MAX_JOURNEY: u64 = 32 * 1024 * 1024;
 
+/// The most an export may be: every character's journey in one zip.
+const MAX_EXPORT: u64 = 1024 * 1024 * 1024;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct UploadResponse {
     pub version: i64,
@@ -105,6 +108,8 @@ pub struct Client {
     agent: ureq::Agent,
     server: String,
     token: Option<String>,
+    /// The app's version, which the server shows in the player's PC list.
+    app: Option<String>,
 }
 
 type Reply = ureq::http::Response<ureq::Body>;
@@ -125,7 +130,13 @@ impl Client {
             agent,
             server: server.trim_end_matches('/').to_string(),
             token,
+            app: None,
         }
+    }
+
+    pub fn app(mut self, version: &str) -> Self {
+        self.app = Some(version.to_string());
+        self
     }
 
     fn url(&self, path: &str) -> String {
@@ -165,7 +176,11 @@ impl Client {
     }
 
     pub fn check(&self) -> Result<CheckResponse, ApiError> {
-        json(self.agent.get(self.url("/v1/check")).header("authorization", self.bearer()).call())
+        let mut request = self.agent.get(self.url("/v1/check")).header("authorization", self.bearer());
+        if let Some(app) = &self.app {
+            request = request.query("app", app);
+        }
+        json(request.call())
     }
 
     /// One merged or restored version, as Parse.Write text.
@@ -189,6 +204,32 @@ impl Client {
             return Err(ApiError::Status(200, "the journey is over 32 MB".into()));
         }
         String::from_utf8(text).map_err(|_| ApiError::Status(200, "the journey isn't text".into()))
+    }
+
+    /// One account API call from the app's window (spec, "Account API").
+    /// The answer passes through as it came; the window reads it with
+    /// packages/api's types.
+    pub fn account(&self, method: &str, path: &str, body: Option<serde_json::Value>) -> Result<serde_json::Value, ApiError> {
+        let (url, auth) = (self.url(path), self.bearer());
+        let body = body.unwrap_or_else(|| serde_json::json!({}));
+        let reply = match method {
+            "GET" => self.agent.get(&url).header("authorization", &auth).call(),
+            "DELETE" => self.agent.delete(&url).header("authorization", &auth).call(),
+            "POST" => self.agent.post(&url).header("authorization", &auth).send_json(body),
+            "PATCH" => self.agent.patch(&url).header("authorization", &auth).send_json(body),
+            _ => return Err(ApiError::Status(0, format!("the app can't make a {method} call"))),
+        };
+        json(reply)
+    }
+
+    /// Every character's current journey as one zip.
+    pub fn export(&self) -> Result<Vec<u8>, ApiError> {
+        ok(self.agent.get(self.url("/v1/export")).header("authorization", self.bearer()).call())?
+            .body_mut()
+            .with_config()
+            .limit(MAX_EXPORT)
+            .read_to_vec()
+            .map_err(|e| ApiError::Network(e.to_string()))
     }
 
     /// Asks for a code to link with. The PC's name rides in `scope`, which
@@ -384,6 +425,50 @@ mod tests {
         assert_eq!(client.device_token("dc").unwrap(), DevicePoll::Approved("session-1".into()));
         let body: serde_json::Value = serde_json::from_slice(&fake.seen.lock().unwrap()[0].body).unwrap();
         assert_eq!(body["client_id"], APP_CLIENT_ID);
+    }
+
+    #[test]
+    fn check_tells_the_server_the_app_version() {
+        let fake = fake::serve(|_, _| (200, br#"{"characters":[]}"#.to_vec()));
+        Client::new(&fake.url, Some("t".into())).app("0.1.2").check().unwrap();
+        Client::new(&fake.url, Some("t".into())).check().unwrap();
+        let seen = fake.seen.lock().unwrap();
+        assert_eq!(seen[0].url, "/v1/check?app=0.1.2");
+        assert_eq!(seen[1].url, "/v1/check", "the terminal tool has no app version");
+    }
+
+    #[test]
+    fn account_calls_pass_the_answer_through_with_the_pc_token() {
+        let fake = fake::serve(|method, _| match method {
+            "GET" => (200, br#"[{"id":1,"name":"Ann"}]"#.to_vec()),
+            "DELETE" => (404, br#"{"error":"no such PC"}"#.to_vec()),
+            _ => (200, br#"{"ok":true}"#.to_vec()),
+        });
+        let client = Client::new(&fake.url, Some("pc-token".into()));
+        assert_eq!(client.account("GET", "/v1/characters", None).unwrap()[0]["name"], "Ann");
+        client
+            .account("PATCH", "/v1/devices/pc-2", Some(serde_json::json!({ "name": "Desk" })))
+            .unwrap();
+        assert_eq!(
+            client.account("DELETE", "/v1/devices/pc-9", None),
+            Err(ApiError::Status(404, r#"{"error":"no such PC"}"#.into()))
+        );
+        assert!(client.account("PUT", "/v1/x", None).is_err());
+        let seen = fake.seen.lock().unwrap();
+        assert_eq!(
+            (seen[0].method.as_str(), seen[0].authorization.as_str()),
+            ("GET", "Bearer pc-token")
+        );
+        assert_eq!((seen[1].method.as_str(), seen[1].url.as_str()), ("PATCH", "/v1/devices/pc-2"));
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&seen[1].body).unwrap()["name"], "Desk");
+        assert_eq!(seen.len(), 3, "an unknown method never reaches the server");
+    }
+
+    #[test]
+    fn export_brings_back_the_zip() {
+        let fake = fake::serve(|_, _| (200, b"PK\x03\x04zip".to_vec()));
+        assert_eq!(Client::new(&fake.url, Some("t".into())).export().unwrap(), b"PK\x03\x04zip");
+        assert_eq!(fake.seen.lock().unwrap()[0].url, "/v1/export");
     }
 
     #[test]
