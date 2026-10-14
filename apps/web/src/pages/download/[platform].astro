@@ -24,6 +24,7 @@ const steps = mac
 ---
 <Layout title={`Download for ${mac ? "macOS" : "Windows"} · Road to Sixty`}>
   <meta slot="head" http-equiv="refresh" content={`1; url=${file}`} />
+  <meta slot="head" name="robots" content="noindex" />
   <main class="mx-auto flex max-w-xl flex-col gap-8 px-4 py-20">
     <div class="flex flex-col gap-3">
       <h1 class="text-4xl font-medium tracking-tight">Your download has started</h1>
@@ -37,9 +38,9 @@ const steps = mac
       </ol>
     </section>
     <p class="text-[15px] leading-relaxed text-muted">Then give this PC a name, link it with Battle.net, and restart WoW once. The app does the rest.</p>
-    <p class="text-sm text-faint">
-      On {mac ? "Windows" : "a Mac"}? <a href={mac ? "/download/windows" : "/download/mac"} class="text-muted hover:text-text">Get it for {mac ? "Windows" : "macOS"}</a>.
-      Just the addon? <a href={addonUrl()} class="text-muted hover:text-text">It works on its own</a>.
+    <p class="text-sm text-muted">
+      On {mac ? "Windows" : "a Mac"}? <a href={mac ? "/download/windows" : "/download/mac"} class="text-text hover:underline">Get it for {mac ? "Windows" : "macOS"}</a>.
+      Just the addon? <a href={addonUrl()} class="text-text hover:underline">It works on its own</a>.
     </p>
   </main>
 </Layout>

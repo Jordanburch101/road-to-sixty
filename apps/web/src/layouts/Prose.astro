@@ -7,7 +7,7 @@ const { title } = Astro.props as { title: string };
 <Layout title={`${title} · Road to Sixty`}>
   <main class="prose-rts mx-auto max-w-[640px] px-4 pb-24 pt-[72px]">
     <h1 class="text-[40px] font-medium tracking-[-0.03em]">{title}</h1>
-    <div class="mt-2.5 text-sm text-faint">Last changed 15 October 2026</div>
+    <div class="mt-2.5 text-sm text-muted">Last changed 15 October 2026</div>
     <slot />
   </main>
 </Layout>
