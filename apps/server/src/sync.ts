@@ -1,28 +1,13 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
-import { Elysia } from "elysia";
 import { db } from "./db";
-import { deviceFor } from "./devices";
+import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
 import { fingerprint, getPacked, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
 
 // The sync API the app calls with its PC token (spec, "Sync API").
-export const sync = new Elysia({ prefix: "/v1" })
-  .resolve(async ({ headers }) => ({ device: await deviceFor(headers.authorization) }))
-  .onBeforeHandle(({ device, set }) => {
-    if (!device) {
-      set.status = 401;
-      return { error: "unknown or unlinked PC" };
-    }
-  })
-  .onBeforeHandle(async ({ device, query }) => {
-    await db
-      .update(devices)
-      .set({ lastSeenAt: new Date(), ...(query.addon ? { addonVersion: query.addon } : {}) })
-      .where(eq(devices.id, device!.id));
-  })
-
+export const sync = pcRoutes()
   // A character's SavedVariables file, zstd-compressed. Stored at once; a
   // job merges it.
   .post(

@@ -57,3 +57,30 @@ export type CheckResponse = { characters: CheckEntry[] };
 
 // GET /v1/versions/:id returns the journey as zstd-compressed Parse.Write
 // text: what the app puts in data.lua's journey string, after decompressing.
+
+// The account API: the app's window, with the PC token. Times are ISO 8601.
+
+// GET /v1/characters: each character with a merged journey.
+export type CharacterInfo = {
+  id: number;
+  game: string;
+  realm: string;
+  name: string;
+  class: string | null; // the class file name, such as WARRIOR
+  level: number | null;
+  played: number | null; // seconds
+  lastPlayedAt: string | null;
+  syncedAt: string; // when its current version was made
+  syncedFrom: string | null; // the PC whose upload made it; null for a restore
+};
+
+// GET /v1/characters/:id/versions: newest first, at most 100.
+export type VersionInfo = {
+  id: number;
+  kind: "merged" | "restore";
+  createdAt: string;
+  level: number | null;
+  from: string | null; // the PC whose upload made a merged version
+  restoredFrom: { id: number; createdAt: string } | null;
+  current: boolean;
+};

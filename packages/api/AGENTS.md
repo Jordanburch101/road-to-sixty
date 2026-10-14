@@ -1,6 +1,6 @@
 # API types (packages/api)
 
-The request and response shapes of the sync API, shared by the server, the
+The request and response shapes of the sync API and the account API, shared by the server, the
 website and the desktop app's window. `src/index.ts` is the whole package,
 TypeScript types and a few constants, with no runtime code.
 

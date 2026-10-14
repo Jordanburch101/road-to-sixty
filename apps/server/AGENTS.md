@@ -12,7 +12,9 @@ push to `dev` that touches it. The design is
   the routes together; `src/config.ts` reads the settings `.env.example`
   lists.
 - `src/sync.ts` is the API the desktop app calls with its PC token:
-  upload, check, download.
+  upload, check, download. `src/account.ts` is the account API the app's
+  window calls (characters, history, restore, PCs, export, delete
+  everything). Both start from `src/pc.ts`, the PC token check.
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
 - `src/link.ts` and `src/link.html` link a PC: the app's device code is

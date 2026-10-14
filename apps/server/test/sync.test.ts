@@ -8,31 +8,9 @@ import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
-import { journey, savedFile, session, sessions } from "./helpers";
-import { addUser, reset } from "./helpers";
-
-const newDevice = async (userId: string, name: string) => linkDevice(await addUser(userId), name);
+import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
-
-const CHAR = { game: "_classic_beta_", realm: "Test Realm", name: "Ann" };
-
-function call(token: string, path: string, init: RequestInit = {}) {
-  return app.handle(
-    new Request(`http://local${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } }),
-  );
-}
-
-async function upload(token: string, file: Uint8Array, extra: Record<string, string> = {}) {
-  const query = new URLSearchParams({ ...CHAR, addon: "1.9.0", ...extra });
-  return call(token, `/v1/upload?${query}`, { method: "POST", body: pack(file) });
-}
-
-const check = async (token: string) => (await (await call(token, "/v1/check")).json()) as CheckResponse;
-
-async function workAll() {
-  while (await work()) {}
-}
 
 test("a PC needs a token that is known and not revoked", async () => {
   expect((await app.handle(new Request("http://local/v1/check"))).status).toBe(401);
