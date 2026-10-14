@@ -35,3 +35,15 @@ export async function getPacked(userId: string, fp: string): Promise<Uint8Array>
 export async function get(userId: string, fp: string): Promise<Uint8Array> {
   return unpack(await getPacked(userId, fp));
 }
+
+// Every journey file of a player. Listing again after each page works
+// because the page just listed is gone.
+// ponytail: one request per file; a bulk delete if players hold thousands.
+export async function removeAll(userId: string): Promise<void> {
+  for (;;) {
+    const page = await s3.list({ prefix: `${userId}/` });
+    const keys = (page.contents ?? []).map((o) => o.key);
+    for (const k of keys) await s3.delete(k);
+    if (!page.isTruncated || keys.length === 0) return;
+  }
+}

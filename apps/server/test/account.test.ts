@@ -3,6 +3,10 @@ import { beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { config } from "../src/config";
+import { db } from "../src/db";
+import { characters, devices, jobs, user, versions } from "../src/schema";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -167,4 +171,25 @@ test("the export is a zip of each character's journey that unzip accepts, accent
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("delete everything removes the player's rows, files and PCs, even with a merge waiting, and no one else's", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const other = await newDevice("user-2", "Elsewhere");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await upload(other.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(desk.token, savedFile(journey({ events: session(5000) }))); // still queued
+  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+
+  expect((await call(desk.token, "/v1/check")).status).toBe(401);
+  expect(await db.select().from(user).where(eq(user.id, "user-1"))).toEqual([]);
+  expect(await db.select().from(devices).where(eq(devices.userId, "user-1"))).toEqual([]);
+  expect(await db.select().from(characters).where(eq(characters.userId, "user-1"))).toEqual([]);
+  expect((await db.select().from(jobs)).length).toBe(1); // only user-2's finished job is left
+  const s3 = new Bun.S3Client(config.s3);
+  expect((await s3.list({ prefix: "user-1/" })).contents ?? []).toEqual([]);
+  expect(((await s3.list({ prefix: "user-2/" })).contents ?? []).length).toBeGreaterThan(0);
+  expect((await call(other.token, "/v1/check")).status).toBe(200);
+  expect((await db.select().from(versions)).length).toBeGreaterThan(0);
 });

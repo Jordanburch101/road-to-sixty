@@ -4,8 +4,8 @@ import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
 import { pcRoutes } from "./pc";
-import { characters, devices, versionParents, versions } from "./schema";
-import { get } from "./storage";
+import { characters, devices, jobs, user, versionParents, versions } from "./schema";
+import { get, removeAll } from "./storage";
 import { zip } from "./zip";
 
 const HISTORY = 100;
@@ -220,5 +220,26 @@ export const account = pcRoutes()
       set.status = 404;
       return { error: "no such PC" };
     }
+    return { ok: true };
+  })
+
+  // Spec, "Deleting an account". The PCs are unlinked first so nothing new
+  // arrives, and the files go before the rows, so if anything fails part
+  // way the player can try again and no file is left with no owner.
+  .delete("/account", async ({ device }) => {
+    const userId = device!.userId;
+    await db.update(devices).set({ revokedAt: new Date() }).where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+    const theirs = db.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId));
+    await db.delete(jobs).where(inArray(jobs.characterId, theirs));
+    await removeAll(userId);
+    await db.transaction(async (tx) => {
+      const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
+      await tx.delete(versionParents).where(inArray(versionParents.versionId, theirVersions));
+      await tx.delete(versions).where(inArray(versions.characterId, theirs));
+      await tx.delete(characters).where(eq(characters.userId, userId));
+      await tx.delete(devices).where(eq(devices.userId, userId));
+      // Sessions, Battle.net accounts and device codes go with the user.
+      await tx.delete(user).where(eq(user.id, userId));
+    });
     return { ok: true };
   });
