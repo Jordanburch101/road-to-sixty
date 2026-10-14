@@ -1,0 +1,13 @@
+---
+// Take this section out after Forever launches on 2026-11-04.
+import { addonUrl } from "../config";
+import DownloadButton from "./DownloadButton.astro";
+---
+<section class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-4 px-4 text-center md:mt-[150px]">
+  <h2 class="text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Ready for launch day.</h2>
+  <p class="max-w-[520px] text-base leading-relaxed text-muted">WoW Forever launches on 4 November. Install the addon now so the road starts at level 1.</p>
+  <div class="mt-2.5 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+    <DownloadButton />
+    <a href={addonUrl()} class="inline-flex h-11 items-center justify-center rounded-[10px] border border-outline bg-panel px-[18px] text-[15px] font-medium text-text">Get the addon</a>
+  </div>
+</section>

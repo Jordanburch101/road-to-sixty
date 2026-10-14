@@ -1,0 +1,15 @@
+---
+const facts = [
+  { title: "Every version kept", text: "Go back to an earlier road. The newer one stays, so you can switch back." },
+  { title: "Works without the app", text: "The addon records and replays on its own. The app is for keeping it safe and on every PC." },
+  { title: "Yours", text: "Download it all, or delete it all, from the app. Nothing public, nothing sold." },
+];
+---
+<section class="mt-28 grid w-full max-w-[1040px] grid-cols-1 gap-8 px-4 md:mt-[140px] md:grid-cols-3 md:gap-10 md:px-0">
+  {facts.map((f) => (
+    <div class="flex flex-col gap-2 border-t border-[#24212c] pt-5">
+      <span class="text-[17px] font-medium">{f.title}</span>
+      <p class="text-[15px] leading-relaxed text-muted">{f.text}</p>
+    </div>
+  ))}
+</section>

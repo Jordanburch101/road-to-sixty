@@ -1,0 +1,33 @@
+---
+// Jordan's own screenshots of the addon's journey map. They take turns
+// (site.css); under reduced motion only the first shows.
+const shots = [
+  { src: "/journey/map-1.jpg", alt: "The addon's journey map: a road across Kalimdor and the Eastern Kingdoms from level 1 to 30, with the day-by-day history beside it", caption: "Two continents, levels 1 to 30" },
+  { src: "/journey/map-2.jpg", alt: "Zoomed in on Westfall at level 18: walked paths, flights and level markers", caption: "Westfall, level 18" },
+  { src: "/journey/map-3.jpg", alt: "The Wetlands at level 23, mid-replay, with portals and gear in the history", caption: "The Wetlands, level 23" },
+];
+---
+<section class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-3.5 px-4 text-center md:mt-[140px]">
+  <span class="text-[13px] text-faint">The addon</span>
+  <h2 class="max-w-[760px] text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Every step from 1 to 60, replayed on the world map.</h2>
+  <p class="max-w-[580px] text-base leading-relaxed text-muted">Where you walked, flew and sailed, every quest, kill, death and level, the gear you wore. The app makes sure none of it is lost.</p>
+</section>
+
+<figure class="mt-11 flex w-full max-w-[1040px] flex-col gap-[18px] px-4 md:px-0">
+  <div class="relative aspect-[2000/1196] w-full overflow-hidden rounded-[14px] border border-[#24212c] shadow-[0_30px_100px_rgba(0,0,0,0.6),0_0_120px_rgba(58,160,255,0.07)]">
+    {shots.map((s, i) => (
+      <img
+        src={s.src}
+        alt={s.alt}
+        width="2000"
+        height="1196"
+        loading="lazy"
+        decoding="async"
+        class={`absolute inset-0 size-full object-cover ${i > 0 ? `shot-${i + 1}` : ""}`}
+      />
+    ))}
+  </div>
+  <figcaption class="flex flex-wrap justify-center gap-x-7 gap-y-1 text-[13px]">
+    {shots.map((s, i) => <span class={`cap-${i + 1}`}>{s.caption}</span>)}
+  </figcaption>
+</figure>

@@ -1,0 +1,26 @@
+---
+import { Fog } from "@road-to-sixty/ui/Fog";
+import { addonUrl } from "../config";
+import { HERO, HERO_MARKS, HERO_ROADS } from "../roads";
+import DownloadButton from "./DownloadButton.astro";
+---
+<div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-[900px] overflow-hidden [mask-image:linear-gradient(to_bottom,#000_0%,#000_55%,transparent_90%)]">
+  <div class="absolute left-1/2 top-0 -translate-x-1/2" style={`width:${HERO.width}px;height:${HERO.height}px`}>
+    <Fog width={HERO.width} height={HERO.height} step={18} roads={HERO_ROADS} marks={HERO_MARKS} animate={22} />
+  </div>
+  <div class="absolute inset-0 bg-[radial-gradient(ellipse_620px_300px_at_50%_300px,rgba(7,6,10,0.94)_0%,rgba(7,6,10,0.6)_55%,transparent_100%)]"></div>
+</div>
+
+<section class="relative flex flex-col items-center px-4 pt-12 text-center md:px-16 md:pt-[72px]">
+  <span class="rounded-full border border-outline bg-panel/85 px-3.5 py-1.5 text-xs text-[#c9c4d6] md:text-[13px]">The companion app for the Road to Sixty addon</span>
+  <h1 class="mt-6 max-w-[760px] text-4xl font-medium leading-[1.06] tracking-[-0.035em] md:text-[54px]">Your road to sixty, on every PC you play.</h1>
+  <p class="mt-[18px] max-w-[580px] text-base leading-[1.55] text-muted md:text-lg">
+    The addon records each character's journey from level 1 to 60. The app backs it up and keeps it the same on every computer you play on.
+  </p>
+  <div class="mt-[30px] flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+    <DownloadButton />
+    <a href={addonUrl()} class="inline-flex h-11 items-center justify-center rounded-[10px] border border-outline bg-panel/85 px-[18px] text-[15px] font-medium text-text">Get the addon</a>
+  </div>
+  <p data-also hidden class="mt-3.5 text-[13px] text-faint">Free · also for <a href="/download" class="text-muted hover:text-text">Windows</a></p>
+  <p class="mt-3 max-w-sm text-[13px] leading-normal text-faint md:hidden">The app runs on your computer, not your phone. Open this page there, or send yourself the link.</p>
+</section>

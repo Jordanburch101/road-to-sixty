@@ -1,0 +1,37 @@
+---
+import { Fog } from "@road-to-sixty/ui/Fog";
+import { BAND, BAND_COLOURS, BAND_MARKS, BAND_ROADS, BAND_TIMING } from "../roads";
+
+const labels = [
+  { text: "Monday on Desk · levels 18 to 20", dot: "#3aa0ff", at: "left-[230px] top-[74px]" },
+  { text: "Tuesday on Laptop · levels 20 to 22", dot: "#f7f4ee", at: "left-[230px] bottom-[74px]" },
+  { text: "Joined", dot: null, at: "left-[580px] top-[244px]" },
+  { text: "Wednesday, on either PC: the whole road", dot: null, at: "left-[960px] top-[172px]" },
+];
+const pill = "inline-flex h-7 items-center gap-[7px] rounded-full border border-outline bg-ground/85 px-3 text-[13px] text-[#c9c4d6]";
+---
+<section id="one-road" class="mt-28 flex w-full max-w-[1040px] scroll-mt-8 flex-col items-center gap-3.5 px-4 text-center md:mt-[110px]">
+  <span class="text-[13px] text-faint">Merged, not overwritten</span>
+  <h2 class="max-w-[720px] text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">One road, whichever PC you played on.</h2>
+  <p class="max-w-[560px] text-base leading-relaxed text-muted">Each PC sends up what it played. The sessions are joined into one journey per character, and every PC gets it back.</p>
+</section>
+
+<div class="relative mt-12 h-[460px] w-full max-w-[1280px] overflow-hidden [mask-image:linear-gradient(to_right,transparent_0%,#000_12%,#000_88%,transparent_100%)]">
+  <div class="absolute left-1/2 top-0 -translate-x-1/2" style={`width:${BAND.width}px;height:${BAND.height}px`}>
+    <Fog width={BAND.width} height={BAND.height} step={18} roads={BAND_ROADS} colours={BAND_COLOURS} timing={BAND_TIMING} marks={BAND_MARKS} animate={9} />
+    {labels.map((l) => (
+      <span class={`${pill} absolute hidden md:inline-flex ${l.at}`}>
+        {l.dot && <span class="size-[7px] rounded-full" style={`background:${l.dot}`}></span>}
+        {l.text}
+      </span>
+    ))}
+  </div>
+</div>
+<ul class="-mt-6 flex flex-col items-center gap-2 px-4 md:hidden">
+  {labels.map((l) => (
+    <li class={pill}>
+      {l.dot && <span class="size-[7px] rounded-full" style={`background:${l.dot}`}></span>}
+      {l.text}
+    </li>
+  ))}
+</ul>
