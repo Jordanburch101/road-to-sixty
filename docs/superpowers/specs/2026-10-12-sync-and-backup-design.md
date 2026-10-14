@@ -27,7 +27,7 @@ There is no deadline. The service should be solid before it ships. The only time
 | Where the merge runs | One `Merge.lua` in plain Lua 5.1. The server runs it to keep the merged journey. The addon runs the same file at login to fold the server's copy into anything played since |
 | Delivery to the PC | The app writes its own addon folder, `RoadToSixty_Sync`. It never writes the game's SavedVariables |
 | Backend | Elysia on Bun, deployed by Dokploy on our own server, with Postgres beside it |
-| Website | Next.js on Vercel |
+| Website | Astro on Vercel |
 | File storage | Cloudflare R2: one bucket for journeys, the existing Dokploy R2 connection for Postgres backups |
 | Desktop app | Tauri v2 with Rust, Windows and macOS. Linux and Steam Deck later |
 | Signing | Mac unsigned at first. Windows unsigned at first, then the free Microsoft Store listing |
@@ -45,7 +45,7 @@ Approaches considered for the merge and turned down:
 ```
  PC (Mac or Windows)                         Our server (Dokploy)              Vercel
  ┌──────────────────────────────┐           ┌──────────────────────┐          ┌──────────────┐
- │ WoW                          │           │ Elysia on Bun        │          │ Next.js site │
+ │ WoW                          │           │ Elysia on Bun        │          │ Astro site   │
  │  SavedVariables/RoadToSixty  │──read──┐  │  Better Auth         │◀─cookie──│              │
  │  AddOns/RoadToSixty_Sync ◀───┼──write─┤  │  sync API            │          └──────────────┘
  │                              │        │  │  merge worker ─ lua5.1│
@@ -280,7 +280,7 @@ GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Wi
 
 ## The website
 
-Next.js on Vercel in `apps/web`. It offers the app and has no sign-in: sign-up, sign-in and every account screen happen through the app (Jordan, 2026-10-14).
+Astro on Vercel in `apps/web` (Jordan, 2026-10-15: a static site needs nothing from Next.js). Its design is `2026-10-15-website-design.md`, which replaces this section where they differ. It offers the app and has no sign-in: sign-up, sign-in and every account screen happen through the app (Jordan, 2026-10-14).
 
 | Page | Contents |
 |---|---|
