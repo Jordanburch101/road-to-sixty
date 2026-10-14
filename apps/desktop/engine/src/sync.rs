@@ -31,6 +31,8 @@ pub struct Report {
     pub characters: Vec<String>,
     /// The game folders this pass looked at, for the app to show.
     pub games: Vec<GameFolder>,
+    /// Saved files that couldn't be read, to try again later.
+    pub unread: Vec<PathBuf>,
 }
 
 /// Something the player should know: `who` names the character (empty when
@@ -151,14 +153,18 @@ pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Optio
     match client.upload(&file.game, &realm, &name, addon, synced_version(&bytes), &bytes) {
         Ok(_) => {}
         Err(ApiError::Status(413, _)) => return refuse(state, key(&name, &realm), "Too big to back up".into()),
-        // Asked to wait: not a refusal of this file.
-        Err(ApiError::Status(408 | 429, body)) => return Err(ApiError::Network(body)),
-        Err(ApiError::Status(code, body)) if code != 0 => {
+        // Only the server saying no to this file is kept as a refusal. Any
+        // other answer (a 404 from the proxy during a deploy, a 429) is
+        // tried again later.
+        Err(ApiError::Status(code @ (400 | 422), body)) => {
             let why = match body.trim() {
                 "" => format!("The server refused it ({code})"),
                 body => format!("The server refused it: {body}"),
             };
             return refuse(state, key(&name, &realm), why);
+        }
+        Err(ApiError::Status(code, body)) if code != 0 => {
+            return Err(ApiError::Network(format!("the server answered {code}: {body}")));
         }
         Err(e) => return Err(e),
     }
@@ -276,7 +282,10 @@ pub fn pass(
                 Ok(Sent::Refused) if state.refused.get(&file.path) != before.as_ref() => {
                     state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
                 }
-                Ok(Sent::Unreadable(problem)) => report.problems.push(problem),
+                Ok(Sent::Unreadable(problem)) => {
+                    report.problems.push(problem);
+                    report.unread.push(file.path.clone());
+                }
                 Ok(Sent::Unchanged | Sent::Refused) => {}
                 Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
                 Err(e) => report.problems.push(Problem::general(e.to_string())),
@@ -593,6 +602,58 @@ mod tests {
             "Beagen"
         );
         assert_eq!(folder_name(Path::new("RoadToSixty.lua")), "A character");
+    }
+
+    #[test]
+    fn a_stray_answer_like_a_404_during_a_deploy_is_tried_again_not_refused() {
+        let (dir, game) = game();
+        let lost = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (404, b"Not Found".to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let result = pass(
+            &Client::new(&lost.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| true,
+        );
+        assert!(matches!(result, Err(ApiError::Network(_))), "{result:?}");
+        assert!(state.refused.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_cant_be_read_is_listed_to_try_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0);
+        fs::set_permissions(&file.path, fs::Permissions::from_mode(0o000)).unwrap();
+        let fake = fake::serve(|_, _| (200, br#"{"characters":[]}"#.to_vec()));
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&fake.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| true,
+        )
+        .unwrap();
+        fs::set_permissions(&file.path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(report.unread, [file.path]);
+        assert_eq!(report.problems.len(), 1);
     }
 
     // A check that offers each journey in `served` (name, version, text)

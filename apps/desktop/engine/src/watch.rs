@@ -200,8 +200,13 @@ pub fn run(
                 r
             });
             match &result {
-                Ok(_) => {
+                Ok(r) => {
                     schedule.sent(&due, now);
+                    // The game may hold a file while it writes it: try again
+                    // after a minute instead of waiting for the next change.
+                    for path in &r.unread {
+                        schedule.changed(path.clone(), now + RETRY - SETTLE);
+                    }
                     last_pass = Some(now);
                 }
                 Err(_) => wait_until = now + RETRY,
