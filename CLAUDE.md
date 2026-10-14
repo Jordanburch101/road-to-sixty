@@ -54,8 +54,8 @@ tables (migrations in `drizzle/`, made by `bun run db:generate`).
 `apps/desktop/` is the desktop app (#1). `engine/` is its sync engine in
 Rust, with no window: `installs.rs` finds WoW installs and saved journeys,
 `inbox.rs` writes the `RoadToSixty_Sync` folder, `api.rs` and `link.rs` talk
-to the server, `state.rs` keeps what it remembers (the PC token is in the
-Keychain or Credential Manager), `sync.rs` is one sync pass and `watch.rs`
+to the server, `state.rs` keeps what it remembers (the PC token is in a file of its
+own that only the player can read, not the Keychain), `sync.rs` is one sync pass and `watch.rs`
 decides when to upload. `src/bin/rts-sync.rs` runs it from a terminal. A
 character is named by the `rosterKey` its saved file holds, never by the
 game's folder names, which don't give the realm the addon uses.

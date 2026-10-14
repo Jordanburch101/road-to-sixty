@@ -105,8 +105,7 @@ jobs:
         run: cargo clippy -p rts-sync --all-targets -- -D warnings && cargo fmt --check
 
   # The app on the systems it ships for: the window builds, every Rust test
-  # passes (LuaJIT's is left to the Linux job), and on Windows the token
-  # really goes into Credential Manager.
+  # passes (LuaJIT's is left to the Linux job).
   desktop-app:
     strategy:
       fail-fast: false
@@ -134,11 +133,6 @@ jobs:
       - name: Clippy
         working-directory: apps/desktop
         run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Credential Manager
-        if: runner.os == 'Windows'
-        working-directory: apps/desktop
-        run: cargo test -p rts-sync -- --ignored the_system_store_keeps_a_token
 
       - name: Script and UI tests
         run: cd apps/desktop && bun test scripts && cd ../../packages/ui && bun test

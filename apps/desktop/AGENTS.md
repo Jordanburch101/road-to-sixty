@@ -14,8 +14,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   - `installs.rs` finds WoW installs, game folders and saved journeys.
   - `inbox.rs` writes the `RoadToSixty_Sync` folder.
   - `api.rs` is the server client; `link.rs` links a PC.
-  - `state.rs` is what the app remembers (the PC token lives in the
-    Keychain or Credential Manager, never in the state file).
+  - `state.rs` is what the app remembers. The PC token is in `token`
+    beside `state.json`, readable only by the player, and never in
+    `state.json` itself, so that can be shared when asking for help.
+    Not the Keychain: an unsigned Mac app gets asked for it after every
+    update, which players wouldn't understand.
   - `sync.rs` is one sync pass; `watch.rs` decides when to upload.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
 - `src-tauri/` is the app around the engine (package `road-to-sixty-app`):
@@ -49,7 +52,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 ```
 bun run test                        # every Rust test (one needs luajit; build the window first) and the script tests
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
-bunx tauri dev                      # the app, using this PC's real link, Keychain and WoW
+bunx tauri dev                      # the app, using this PC's real link and WoW
 bun run build                       # the window into dist/
 bun run typecheck
 ```
@@ -64,8 +67,8 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   hand the engine made-up game folders instead (`watch::run` takes
   `games`), so they never touch a real install or a real character.
 - Tests that need a server use `api::fake`, which the `fake` feature lends
-  to other crates' tests. The runner's tests pass a made-up `find` and
-  `MemoryTokens`, so they never touch a real install or the real Keychain.
+  to other crates' tests. The runner's tests pass a made-up `find` and a
+  temporary data folder, so they never touch a real install or link.
 - The request and response shapes mirror `packages/api`; change them
   together with the server.
 - Updates are signed: the private key is only in GitHub secrets

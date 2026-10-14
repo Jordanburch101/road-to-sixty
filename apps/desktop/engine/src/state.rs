@@ -1,10 +1,9 @@
 //! What the app remembers between runs, in a JSON file in its data folder,
-//! and the PC token, which lives in the Mac Keychain or Windows Credential
-//! Manager instead (spec, "First run").
+//! and the PC token, in a file of its own beside it (spec, "First run").
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -49,56 +48,45 @@ pub fn data_dir() -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Road to Sixty")
 }
 
-/// Where the PC token is kept. Tests use `MemoryTokens`, so they never touch
-/// the real Keychain.
-pub trait Tokens {
-    fn get(&self) -> Option<String>;
-    fn set(&self, token: &str) -> Result<(), String>;
-    fn clear(&self) -> Result<(), String>;
-}
+/// The PC token, in a file only this user can read. Not in the Mac
+/// Keychain: an app without a paid Apple signature would be asked for it
+/// after every update, and players wouldn't know why. Kept apart from
+/// state.json, so that file can be shared when asking for help.
+pub struct TokenFile(PathBuf);
 
-/// The system's secure store: the Mac Keychain, Windows Credential Manager,
-/// or the Secret Service on Linux.
-pub struct Keychain;
-
-const SERVICE: &str = "Road to Sixty";
-const ACCOUNT: &str = "PC token";
-
-impl Tokens for Keychain {
-    fn get(&self) -> Option<String> {
-        keyring::Entry::new(SERVICE, ACCOUNT).ok()?.get_password().ok()
+impl TokenFile {
+    pub fn new(path: PathBuf) -> TokenFile {
+        TokenFile(path)
     }
 
-    fn set(&self, token: &str) -> Result<(), String> {
-        keyring::Entry::new(SERVICE, ACCOUNT)
-            .and_then(|e| e.set_password(token))
-            .map_err(|e| e.to_string())
+    pub fn get(&self) -> Option<String> {
+        let token = fs::read_to_string(&self.0).ok()?.trim().to_string();
+        (!token.is_empty()).then_some(token)
     }
 
-    fn clear(&self) -> Result<(), String> {
-        match keyring::Entry::new(SERVICE, ACCOUNT).and_then(|e| e.delete_credential()) {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
+    /// Written beside the old file and renamed over it. On Windows the data
+    /// folder is already private to this user.
+    pub fn set(&self, token: &str) -> Result<(), String> {
+        let write = || -> io::Result<()> {
+            fs::create_dir_all(self.0.parent().unwrap_or(Path::new(".")))?;
+            let temp = self.0.with_extension("tmp");
+            // The mode only applies to a new file, so never reuse an old one.
+            let _ = fs::remove_file(&temp);
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            options.open(&temp)?.write_all(token.as_bytes())?;
+            fs::rename(&temp, &self.0)
+        };
+        write().map_err(|e| e.to_string())
+    }
+
+    pub fn clear(&self) -> Result<(), String> {
+        match fs::remove_file(&self.0) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
         }
-    }
-}
-
-#[derive(Default)]
-pub struct MemoryTokens(pub std::sync::Mutex<Option<String>>);
-
-impl Tokens for MemoryTokens {
-    fn get(&self) -> Option<String> {
-        self.0.lock().unwrap().clone()
-    }
-
-    fn set(&self, token: &str) -> Result<(), String> {
-        *self.0.lock().unwrap() = Some(token.to_string());
-        Ok(())
-    }
-
-    fn clear(&self) -> Result<(), String> {
-        *self.0.lock().unwrap() = None;
-        Ok(())
     }
 }
 
@@ -130,12 +118,21 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "uses the real Keychain or Credential Manager; CI runs it on Windows"]
-    fn the_system_store_keeps_a_token() {
-        let entry = || keyring::Entry::new("Road to Sixty test", "PC token").unwrap();
-        entry().set_password("t-123").unwrap();
-        assert_eq!(entry().get_password().unwrap(), "t-123");
-        entry().delete_credential().unwrap();
-        assert!(entry().get_password().is_err());
+    fn the_token_file_keeps_the_token_for_this_user_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data").join("token");
+        let tokens = TokenFile::new(path.clone());
+        assert_eq!(tokens.get(), None);
+        tokens.set("t-123").unwrap();
+        tokens.set("t-456").unwrap();
+        assert_eq!(tokens.get().as_deref(), Some("t-456"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        tokens.clear().unwrap();
+        assert_eq!(tokens.get(), None);
+        tokens.clear().unwrap();
     }
 }

@@ -15,7 +15,7 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
 use rts_sync::api::{ApiError, Client};
-use rts_sync::state::{self, Keychain, State, Tokens};
+use rts_sync::state::{self, State, TokenFile};
 use rts_sync::sync::Report;
 use rts_sync::{installs, link, sync, watch};
 
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
         Ok(state) => state,
         Err(e) => return fail(&format!("couldn't read {}: {e}", state_path.display())),
     };
-    let tokens = Keychain;
+    let tokens = TokenFile::new(data.join("token"));
     let client = Client::new(&server, tokens.get());
 
     match std::env::args().nth(1).as_deref() {
