@@ -62,7 +62,12 @@ async function runJob(job: Job) {
     .where(and(eq(versions.characterId, character.id), eq(versions.kind, "restore")))
     .orderBy(desc(versions.id));
   const stale = restores.length > 0 && (upload.receivedId ?? 0) < restores[0]!.id;
-  const windows: Window[] = stale ? restores.flatMap((r) => (r.removed ? (JSON.parse(r.removed) as Window[]) : [])) : [];
+  // A restore made before windows were kept can't be stripped, so such an
+  // upload is set aside, as it was then.
+  if (stale && restores.some((r) => r.removed === null)) {
+    return settle(job, upload, "superseded", "made before the restore reached this PC");
+  }
+  const windows: Window[] = stale ? restores.flatMap((r) => JSON.parse(r.removed!) as Window[]) : [];
 
   const [head] = character.headVersionId
     ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))

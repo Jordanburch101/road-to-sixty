@@ -573,16 +573,17 @@ end
 
 -- Takes out of char (an upload made before a restore reached its PC) its
 -- play inside windows, the sessions the restore removed, so merging it
--- can't bring them back. A window whose "on" head (the current journey)
--- has is skipped: head holds that session again. The totals and later
+-- can't bring them back. Only windows whose session char holds count: one
+-- whose "on" head (the current journey) has is skipped, as head holds that
+-- session again, and so is one char never had, so its tallies stay. The totals and later
 -- snapshots come down by what was taken out, or the recount would put it
 -- back as counts kept before the data. Tallies carry no times, so parts
 -- under a PC head knows are held to head's; a new PC's parts stay. Changes
 -- char in place and returns it.
 function Merge.Strip(char, windows, head)
-    local has, live = OnTimes(head), {}
+    local has, mine, live = OnTimes(head), OnTimes(char), {}
     for _, w in ipairs(windows) do
-        if not has[w[1]] then live[#live + 1] = w end
+        if mine[w[1]] and not has[w[1]] then live[#live + 1] = w end
     end
     if #live == 0 then return char end
     local function Inside(t)
@@ -610,6 +611,10 @@ function Merge.Strip(char, windows, head)
     gone.kills = ns.Packed.PackKills(goneKills)
     for level, s in pairs(char.levels or {}) do
         if Inside(s.t) then char.levels[level] = nil end
+    end
+    -- Its end was in the removed session too, so the merge would keep it open.
+    for _, k in ipairs({ "run", "group" }) do
+        if type(char[k]) == "table" and Inside(char[k].t) then char[k] = nil end
     end
     -- What was taken out, counted up to each snapshot that stays and to the end.
     for level, s in pairs(char.levels or {}) do gone.levels[level] = { t = s.t } end

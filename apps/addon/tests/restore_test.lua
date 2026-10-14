@@ -120,6 +120,28 @@ local same = Upload()
 Merge.Strip(same, {}, head)
 check(Times(same, "on") == "1000,5000,9000" and same.totals.kills == 3, "no windows, nothing stripped")
 
+-- 7. A run or group opened in the removed session goes with it, or the
+-- merge would keep it open for good.
+local open = Upload()
+open.run = { t = 5030, name = "The Deadmines", pc = "pcA" }
+open.group = { t = 5040, kind = "party", pc = "pcA" }
+Merge.Strip(open, { { 5000, 5120 } }, head)
+check(open.run == nil and open.group == nil, "a run or group opened in the removed session goes")
+local later = Upload()
+later.run = { t = 9030, name = "The Deadmines", pc = "pcA" }
+Merge.Strip(later, { { 5000, 5120 } }, head)
+check(later.run ~= nil, "a run opened after it stays")
+
+-- 8. An upload that never had the removed session has nothing to strip, so
+-- its tallies stay, even for a PC the journey knows.
+local laptop = Journey({
+    events = Events(Session(1000), Session(9000)),
+    people = { ["Player-1-01"] = { groups = { pcA = 4 } }, ["Player-1-03"] = { groups = { pcA = 1 } } },
+})
+Merge.Strip(laptop, { { 5000, 5120 } }, headTallies)
+check(laptop.people["Player-1-01"].groups.pcA == 4 and laptop.people["Player-1-03"].groups.pcA == 1,
+    "an upload without the removed session keeps its tallies")
+
 if failures == 0 then
     print("Restore tests passed.")
 else

@@ -173,6 +173,20 @@ test("a PC that never received anything after a restore: what the restore took o
   expect(await db.select().from(versions).where(eq(versions.status, "superseded"))).toEqual([]);
 });
 
+test("a stale upload is still set aside when a restore has no windows, as one made before they were kept", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const restore = await restoreHead(desk.token);
+  await db.update(versions).set({ removed: null }).where(eq(versions.id, restore));
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(20000), ...session(30000)] })));
+  await workAll();
+  const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
+  expect(superseded?.deviceId).toBe(copied.device.id);
+  expect((await check(desk.token)).characters[0]!.version).toBe(restore);
+});
+
 test("a copy taken after its PC applied the restore merges cleanly", async () => {
   const desk = await newDevice("user-1", "Desk");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
