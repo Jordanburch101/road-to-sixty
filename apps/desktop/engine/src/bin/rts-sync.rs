@@ -129,7 +129,10 @@ fn show(result: &Result<Report, ApiError>) {
                 println!("{key}: update the addon on this PC");
             }
             for problem in &r.problems {
-                println!("problem: {problem}");
+                match problem.who.as_str() {
+                    "" => println!("problem: {}", problem.why),
+                    who => println!("problem: {who}: {}", problem.why),
+                }
             }
         }
         Err(ApiError::Unauthorized) => println!("This PC isn't linked: run rts-sync link."),

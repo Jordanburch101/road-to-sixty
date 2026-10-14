@@ -19,7 +19,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     `state.json` itself, so that can be shared when asking for help.
     Not the Keychain: an unsigned Mac app gets asked for it after every
     update, which players wouldn't understand.
-  - `sync.rs` is one sync pass; `watch.rs` decides when to upload.
+    `state.json` also remembers refused files (`refused`), so a refusal
+    stays shown, without sending the file again, until the file changes.
+  - `sync.rs` is one sync pass; `watch.rs` decides when to upload. A
+    pass's `problems` name the character (`who`) and say what's wrong in
+    words a player can read, with no codes or file paths.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
 - `src-tauri/` is the app around the engine (package `road-to-sixty-app`):
   `tauri.conf.json` sets the window, bundles and icons (made from

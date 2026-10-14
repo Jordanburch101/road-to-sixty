@@ -89,6 +89,7 @@ impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ApiError::Unauthorized => write!(f, "this PC isn't linked"),
+            ApiError::Status(0, why) => write!(f, "{why}"),
             ApiError::Status(code, body) => write!(f, "the server answered {code}: {body}"),
             ApiError::Network(why) => write!(f, "couldn't reach the server: {why}"),
         }
@@ -371,5 +372,17 @@ mod tests {
         assert_eq!(client.device_token("dc").unwrap(), DevicePoll::Approved("session-1".into()));
         let body: serde_json::Value = serde_json::from_slice(&fake.seen.lock().unwrap()[0].body).unwrap();
         assert_eq!(body["client_id"], APP_CLIENT_ID);
+    }
+
+    #[test]
+    fn a_status_without_a_code_reads_as_plain_words() {
+        assert_eq!(
+            ApiError::Status(0, "couldn't keep version 7".into()).to_string(),
+            "couldn't keep version 7"
+        );
+        assert_eq!(
+            ApiError::Status(413, "too big".into()).to_string(),
+            "the server answered 413: too big"
+        );
     }
 }
