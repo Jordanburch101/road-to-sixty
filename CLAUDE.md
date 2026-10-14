@@ -62,6 +62,11 @@ game's folder names, which don't give the realm the addon uses.
 `packages/api/` holds the request and response types the server, website
 and app share.
 
+Each app and package has an `AGENTS.md` with its layout, commands and the
+rules that bite there (its `CLAUDE.md` just imports it). Keep it current in
+the same commit as the change it describes, and give a new app or package
+one when it is created.
+
 Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 (per character). Its `version` is `DATA_VERSION` in Core.lua: bump it at
 every change to what is saved or what it means, list the change there, and
