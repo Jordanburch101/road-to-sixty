@@ -23,7 +23,7 @@ There is no deadline. The service should be solid before it ships. The only time
 | Area | Decision |
 |---|---|
 | Sign-in | Battle.net, through Better Auth running in the backend |
-| Linking the app | Better Auth device sign-in: the app opens the server's link page, the player signs in with Battle.net there, types the code the app shows and confirms the PC by its name |
+| Linking the app | Better Auth device sign-in: the app opens the server's link page, the player signs in with Battle.net there, checks the code (filled in from the app's link) matches the app's and confirms the PC by its name |
 | Where the merge runs | One `Merge.lua` in plain Lua 5.1. The server runs it to keep the merged journey. The addon runs the same file at login to fold the server's copy into anything played since |
 | Delivery to the PC | The app writes its own addon folder, `RoadToSixty_Sync`. It never writes the game's SavedVariables |
 | Backend | Elysia on Bun, deployed by Dokploy on our own server, with Postgres beside it |
@@ -251,7 +251,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 ### First run
 
 1. Find WoW installs: Battle.net's own install list (`C:\ProgramData\Battle.net\Agent\product.db` on Windows, `/Users/Shared/Battle.net/Agent/product.db` on Mac), the default locations (`C:\Program Files (x86)\World of Warcraft`, `/Applications/World of Warcraft`), then a folder picker. Inside each install, check every game folder matching `_*_` that has the addon, so the folder name Forever launches with doesn't matter. Each game folder's `.build.info` names its product.
-2. Link the PC through Better Auth's device sign-in. The player names the PC (filled in with the computer's own name), and the name goes with the code request in its `scope`, so the link page can show which PC the code belongs to. The player types the code on the link page; it is never filled in from the address, which is what stops a phishing link from linking someone else's PC. The token goes into a file of its own in the app's data folder, readable only by the player (Jordan, 2026-10-14). Not the Keychain or Credential Manager: an app without a paid Apple signature is asked for Keychain access after every update, players wouldn't know why, and Linux has no common store. The token can only sync this player's journeys and unlinking revokes it.
+2. Link the PC through Better Auth's device sign-in. The player names the PC (filled in with the computer's own name), and the name goes with the code request in its `scope`, so the link page can show which PC the code belongs to. The link page fills the code in from the app's link and shows the PC's name, and the player checks the code matches the app's before linking. A link with someone else's code would still work, so this relies on that check (Jordan, 2026-10-14, choosing ease over typing the code). The token goes into a file of its own in the app's data folder, readable only by the player (Jordan, 2026-10-14). Not the Keychain or Credential Manager: an app without a paid Apple signature is asked for Keychain access after every update, players wouldn't know why, and Linux has no common store. The token can only sync this player's journeys and unlinking revokes it.
 3. Create `RoadToSixty_Sync` in every game folder with the addon, and ask the player to restart WoW once.
 
 ### While running
@@ -296,7 +296,7 @@ The account screens live in the app's window, called through the account API wit
 | PCs | Linked PCs with name, platform, app and addon versions, last seen, "Unlink" |
 | Account | "Download all my data" (a zip of each character's latest merged file), "Delete everything" with confirmation |
 
-Signing in and linking happen on one page the server itself serves (`/link`), in look A with the moving fog, which the app opens in the browser. The player types the code there and sees the PC's name before linking.
+Signing in and linking happen on one page the server itself serves (`/link`), in look A with the moving fog, which the app opens in the browser. The code comes filled in, and the player sees the PC's name before linking.
 
 Viewing journeys on a map in the browser is left out. Storing journeys as whole files keeps it possible.
 

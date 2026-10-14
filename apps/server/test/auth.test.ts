@@ -115,18 +115,18 @@ test("only the app may ask for a device code", async () => {
   expect((await deviceCode("something-else")).status).toBe(400);
 });
 
-test("the link page, its script and its pictures are served, and the code is typed, never filled in", async () => {
+test("the link page, its script and its pictures are served, and the code comes filled in from the app's link", async () => {
   const page = await get("/link?user_code=ABCD1234");
   expect(page.headers.get("content-type")).toContain("text/html");
   const text = await page.text();
   expect(text).toContain("Link a PC");
-  expect(text).toContain("If someone sent you here with a code, don't type it.");
+  expect(text).toContain("check the code matches the one Road to Sixty shows on your PC");
   expect(text).toContain("[hidden] { display: none !important; }"); // or the form shows before sign-in
   const script = await get("/link.js");
   expect(script.headers.get("content-type")).toContain("javascript");
   const js = await script.text();
   expect(js).toContain("rts-fog-road");
-  expect(js).not.toContain("URLSearchParams"); // the code is never read from the address
+  expect(js).toContain("URLSearchParams"); // the app's link fills the code in
   expect((await get("/link/compass.png")).headers.get("content-type")).toBe("image/png");
   expect((await get("/link/geist.woff2")).status).toBe(200);
 });

@@ -1,7 +1,8 @@
 // The link page's script, built for the browser by link.ts and typechecked
-// with the browser's types by tsconfig.page.json. The code is
-// always typed by the player, never read from the address: a link with
-// someone else's code filled in is how a PC gets phished onto an account.
+// with the browser's types by tsconfig.page.json. The app's link fills the
+// code in (Jordan's call, 2026-10-14): easier, but a link with someone
+// else's code works too, so the page shows whose PC it is and asks the
+// player to check the code against their app.
 import { fogAnimation, fogDelay, fogDots, type Point } from "@road-to-sixty/ui/dots";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -69,7 +70,7 @@ const signedIn = (await call("/get-session")).data as { user: { name: string } }
 if (!signedIn) {
   $("sign-in").hidden = false;
   $("sign-in").onclick = async () => {
-    const r = await call("/sign-in/social", { provider: "battlenet", callbackURL: location.pathname });
+    const r = await call("/sign-in/social", { provider: "battlenet", callbackURL: location.pathname + location.search });
     if (r.data?.url) location.href = r.data.url;
   };
 } else {
@@ -88,6 +89,11 @@ if (!signedIn) {
     $("pc-name").textContent = name ?? "a PC";
     $("link").textContent = name ? `Link ${name.split(" · ")[0]}` : "Link";
   };
+  const given = new URLSearchParams(location.search).get("user_code");
+  if (given) {
+    ($("code") as HTMLInputElement).value = given;
+    void ($("code").oninput as () => Promise<void>)();
+  }
   $("form").onsubmit = async (e) => {
     e.preventDefault();
     const userCode = typed();
