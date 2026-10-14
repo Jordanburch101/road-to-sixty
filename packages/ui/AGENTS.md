@@ -22,6 +22,9 @@ button, blue only for status, fog of war background).
   inline, so two fogs on one page keep their own speeds); the server's link page draws it from
   `dots.ts` without React, and the website will use it with `animate`.
   `src/Button.tsx` is the cream and outline button.
+- `classes/` holds the class icons (cut from the game's UI-Classes-Circles
+  by `apps/desktop/scripts/class-icons.py`), and `src/classes.ts` maps class
+  file names to them, for the app and the website.
 - `compass.png` is Jordan's compass icon (256 px, used as is). If Blizzard
   ever objects to it, this is the one file to swap.
 

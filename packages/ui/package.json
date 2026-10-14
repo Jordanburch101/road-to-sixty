@@ -7,7 +7,9 @@
     "./dots": "./src/dots.ts",
     "./Fog": "./src/Fog.tsx",
     "./Button": "./src/Button.tsx",
-    "./compass.png": "./compass.png"
+    "./compass.png": "./compass.png",
+    "./classes": "./src/classes.ts",
+    "./classes/*": "./classes/*"
   },
   "scripts": {
     "test": "bun test",
