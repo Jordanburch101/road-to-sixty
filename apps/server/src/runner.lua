@@ -3,17 +3,31 @@
 -- Prepare, tidy, Merge and Check the addon runs at login. src/lua.ts runs
 -- it as a process of its own, given only the two files.
 --
---   lua5.1 runner.lua <lua dir> <upload> <current or ""> <out> <pc> <max MB> <max seconds>
+--   lua5.1 runner.lua <lua dir> merge <upload> <current or ""> <out> <pc> <windows or ""> <max MB> <max seconds>
+--   lua5.1 runner.lua <lua dir> windows <old> <kept> <max MB> <max seconds>
 --
--- <upload> is the SavedVariables file a PC uploaded, <current> the
+-- merge: <upload> is the SavedVariables file a PC uploaded, <current> the
 -- character's merged journey as Parse.Write text (none for a first
--- upload), <pc> the uploading device's ID. Writes the result to <out> as
--- Parse.Write text and prints one line, - for anything unknown:
+-- upload), <pc> the uploading device's ID, <windows> a file of "from to"
+-- lines: stretches of time a restore took out, stripped from the upload
+-- before it is merged (Merge.Strip). Writes the result to <out> and prints
+-- one line, - for anything unknown:
 --   ok <layout uploaded> <layout> <level> <played> <last seen> <class>
 --   rejected <layout uploaded> <reason>
 --   failed <why>        the server's fault; lua.ts throws and the job is tried again
+-- windows: <old> and <kept> are stored journeys; prints the sessions a
+-- restore from old to kept takes out (Merge.Windows):
+--   windows <from> <to> <from> <to> ...
 
-local dir, uploadPath, currentPath, outPath, pc, maxMB, maxSeconds = ...
+local args = { ... }
+local dir, mode = args[1], args[2]
+local uploadPath, currentPath, outPath, pc, windowsPath, maxMB, maxSeconds
+local oldPath, keptPath
+if mode == "windows" then
+    oldPath, keptPath, maxMB, maxSeconds = args[3], args[4], args[5], args[6]
+else
+    uploadPath, currentPath, outPath, pc, windowsPath, maxMB, maxSeconds = args[3], args[4], args[5], args[6], args[7], args[8], args[9]
+end
 
 -- Data can't hold code, so only a fault in the merge could run away, but a
 -- stuck merge must never hold up the worker: checked every 10,000
@@ -75,15 +89,25 @@ local function Run()
     local why
     upload, why = ns.Merge.Prepare(upload, pc)
     if not upload then error(why, 0) end
-    TidyUp(upload)
-    local out = upload
+    local current
     if currentPath ~= "" then
         -- Saved by an older server when the layout has moved on since. Its
         -- counts are every PC's, so none is named as theirs.
-        local read, current = Try(ns.Parse.Read, Read(currentPath))
-        local bad
+        local read, bad
+        read, current = Try(ns.Parse.Read, Read(currentPath))
         if read then current, bad = ns.Merge.Prepare(current, "server") else current, bad = nil, current end
         if not current then Fault("the stored journey can't be merged: " .. tostring(bad)) end
+    end
+    if windowsPath ~= "" then
+        local windows = {}
+        for from, to in Read(windowsPath):gmatch("(%-?%d+) (%-?%d+)") do
+            windows[#windows + 1] = { tonumber(from), tonumber(to) }
+        end
+        ns.Merge.Strip(upload, windows, current or {})
+    end
+    TidyUp(upload)
+    local out = upload
+    if current then
         TidyUp(current)
         out, why = ns.Merge.Merge(current, upload)
         if not out then error(why, 0) end
@@ -113,7 +137,22 @@ local function Run()
         tostring(tonumber(out.played) or "-"), tostring(last or "-"), class or "-")
 end
 
-local ok, result = pcall(Run)
+local function Windows()
+    local function Stored(path)
+        local read, journey = Try(ns.Parse.Read, Read(path))
+        if not read then Fault("a stored journey can't be read: " .. tostring(journey)) end
+        local prepared, why = ns.Merge.Prepare(journey, "server")
+        if not prepared then Fault("a stored journey can't be used: " .. tostring(why)) end
+        return prepared
+    end
+    local parts = {}
+    for _, w in ipairs(ns.Merge.Windows(Stored(oldPath), Stored(keptPath))) do
+        parts[#parts + 1] = w[1] .. " " .. w[2]
+    end
+    return ("windows %s"):format(table.concat(parts, " "))
+end
+
+local ok, result = pcall(mode == "windows" and Windows or Run)
 debug.sethook()
 if ok then
     io.write(result, "\n")
