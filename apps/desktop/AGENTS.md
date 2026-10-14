@@ -19,7 +19,14 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     `state.json` itself, so that can be shared when asking for help.
     Not the Keychain: an unsigned Mac app gets asked for it after every
     update, which players wouldn't understand.
-  - `sync.rs` is one sync pass; `watch.rs` decides when to upload.
+    `state.json` also remembers refused files (`refused`), so a refusal
+    stays shown, without sending the file again, until the file changes.
+  - `sync.rs` is one sync pass; `watch.rs` decides when to upload. It
+    looks for game folders and changed files again whenever a game or
+    install folder changes and every five minutes, so WoW making its WTF
+    folder after the app started is noticed. A
+    pass's `problems` name the character (`who`) and say what's wrong in
+    words a player can read, with no codes or file paths.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
 - `src-tauri/` is the app around the engine (package `road-to-sixty-app`):
   `tauri.conf.json` sets the window, bundles and icons (made from
@@ -27,7 +34,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the window may call. `src/runner.rs` runs the engine on a thread of its
   own; linking, pausing, unlinking and adding a folder stop it, change the
   saved state and start it again, and every change to the status goes
-  through its `Notifier`. `src/status.rs` words the tray line and each
+  through its `Notifier`. While nothing syncs (not linked, no WoW yet, the
+  thread stopped) the 30-second ticker calls `rescan`, which starts it
+  again; a damaged `state.json` is moved aside to `state.json.damaged` and
+  the app starts over unlinked, saying so, so the player can link again. Problems that name a character show on its row and
+  count in the tray line ("2 characters not backed up"). `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
   `src/tray.rs` is the menu bar or tray icon, `src/commands.rs` is what the
   window can ask (anything that restarts the sync thread runs on a thread
@@ -64,8 +75,9 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
 - A character is named by the `rosterKey` in its saved file, never by the
   game's folder names, which don't give the realm the addon uses.
 - `installs::find_installs` scans this machine's real WoW installs. Tests
-  hand the engine made-up game folders instead (`watch::run` takes
-  `games`), so they never touch a real install or a real character.
+  hand the engine made-up game folders instead (`watch::run` takes a
+  `find` that returns them), so they never touch a real install or a real
+  character.
 - Tests that need a server use `api::fake`, which the `fake` feature lends
   to other crates' tests. The runner's tests pass a made-up `find` and a
   temporary data folder, so they never touch a real install or link.

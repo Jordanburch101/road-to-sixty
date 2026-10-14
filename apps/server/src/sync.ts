@@ -1,5 +1,5 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, eq, inArray, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { db } from "./db";
 import { deviceFor } from "./devices";
@@ -91,12 +91,13 @@ export const sync = new Elysia({ prefix: "/v1" })
     { parse: "none" },
   )
 
-  // The newest version of every character of this user, from any PC.
+  // The newest version of every character of this user, from any PC, and
+  // whether this PC's latest upload of each was refused.
   .get("/check", async ({ device }): Promise<CheckResponse> => {
     const rows = await db
       .select({ c: characters, head: versions })
       .from(characters)
-      .innerJoin(versions, eq(versions.id, characters.headVersionId))
+      .leftJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
     // A restore replaces until this PC shows, by an upload's received, that
@@ -121,22 +122,42 @@ export const sync = new Elysia({ prefix: "/v1" })
           .groupBy(versions.characterId)
       ).map((r) => [r.characterId, r.id ?? 0]),
     );
+    // This PC's newest upload of each character: if the merge refused it,
+    // the app says so until a newer one goes in.
+    const newest = new Map(
+      (
+        await db
+          .selectDistinctOn([versions.characterId], {
+            characterId: versions.characterId,
+            status: versions.status,
+            reason: versions.rejectReason,
+          })
+          .from(versions)
+          .where(and(eq(versions.deviceId, device!.id), eq(versions.kind, "upload")))
+          .orderBy(versions.characterId, desc(versions.id))
+      ).map((r) => [r.characterId, r]),
+    );
     return {
-      characters: rows.map(({ c, head }) => {
-        // Never a layout newer than this PC's addon writes (spec, "Mismatched
-        // addon versions"). A PC that hasn't uploaded yet is unknown; its
-        // addon refuses a newer layout itself.
-        const updateAddon = device!.dataLayout !== null && (head.dataVersion ?? 0) > device!.dataLayout;
-        return {
-          game: c.game,
-          realm: c.realm,
-          name: c.name,
-          version: updateAddon ? null : head.id,
-          fingerprint: head.fingerprint,
-          replace: (applied.get(c.id) ?? 0) < (lastRestore.get(c.id) ?? 0),
-          updateAddon,
-        };
-      }),
+      characters: rows
+        // One with nothing merged yet is listed only to say why it was refused.
+        .filter(({ c, head }) => head !== null || newest.get(c.id)?.status === "rejected")
+        .map(({ c, head }) => {
+          // Never a layout newer than this PC's addon writes (spec, "Mismatched
+          // addon versions"). A PC that hasn't uploaded yet is unknown; its
+          // addon refuses a newer layout itself.
+          const updateAddon = head !== null && device!.dataLayout !== null && (head.dataVersion ?? 0) > device!.dataLayout;
+          const last = newest.get(c.id);
+          return {
+            game: c.game,
+            realm: c.realm,
+            name: c.name,
+            version: head === null || updateAddon ? null : head.id,
+            fingerprint: head?.fingerprint ?? "",
+            replace: head !== null && (applied.get(c.id) ?? 0) < (lastRestore.get(c.id) ?? 0),
+            updateAddon,
+            rejected: last?.status === "rejected" ? (last.reason ?? "refused") : null,
+          };
+        }),
     };
   })
 

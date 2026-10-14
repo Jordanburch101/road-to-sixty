@@ -123,6 +123,7 @@ Before merging, each input goes through `Tidy.lua`, so both look the way the gam
 | Level snapshots | A full snapshot beats one taken at a later login, then the earliest wins. Gear, money, skills and `played` are kept as recorded. The counts in each snapshot are recounted at the snapshot's time |
 | Growing sets | Recipes and mounts combine. Riding and profession ranks keep the higher value. `played` keeps the higher value. Rares keep the earliest first kill |
 | Current state | Guild, reputation, the group in progress, the dungeon in progress, `lastZone`: taken from the copy whose last session ended latest |
+| Open runs and groups | A dungeon run or group still open at logout (`run`, `group`) is kept from whichever copy has it until the merged events hold its end (the run's `out`, the group's `grpx`), so a copy played on later without it doesn't drop it. It counts under the PC that started it (`pc`), so two PCs finishing it count it once |
 | Per-PC tallies | Higher tally per PC ID |
 | Never merged | Settings, which stay per machine, and the roster's copy of the journey, which the addon rebuilds. The merge clears `rosterBuilt` so the next login rebuilds it |
 
@@ -175,7 +176,7 @@ An upload is stored straight away and a job goes into a `jobs` table. The worker
 4. stores the result in R2 as a new `merged` version with two `version_parents` rows,
 5. moves the character's current version to it.
 
-A failed check, a crash or a timeout marks the job and the upload rejected with the reason. The character keeps its old merged version. The app shows the problem.
+A refusal by the merge rules marks the upload rejected with the reason. A fault (a crash, a timeout, a bug, storage down) is retried with a doubling wait for about a day before the upload is marked as the server's failure. A job left running past the time limit, as after a crash or a deploy, is taken back. Either way the character keeps its old merged version, and the PC hears why on its next check and shows it against the character.
 
 The first upload of a character becomes its first merged version with no merge needed.
 
@@ -246,7 +247,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 
 ### While running
 
-- Watch each `WTF` folder. When a character's `RoadToSixty.lua` changes, wait until it has been unchanged for about ten seconds, then upload it. Reading while the game runs is safe.
+- Watch each `WTF` folder. Look for game folders and changed files again every few minutes, and whenever a game or install folder changes, so a `WTF` folder WoW makes after the app started is watched too. When a character's `RoadToSixty.lua` changes, wait until it has been unchanged for about ten seconds, then upload it. Reading while the game runs is safe.
 - Name each character by the `rosterKey` in its saved file (`Name-Realm`, which the addon writes at every login), never by folder names: Forever saves characters under `WTF/Account/<account>/70/<Name>-<other>/`, and the folders don't give the realm the addon uses (seen 2026-10-14). The upload's `realm` and `name` come from it, and so does the sync folder's key.
 - While the game runs, upload each character at most once every 15 minutes, so repeated `/reload`s don't flood the server. When the game closes, upload straight away.
 - Upload the account file at most once a day. Fingerprint WTF account folder names before they leave the PC.

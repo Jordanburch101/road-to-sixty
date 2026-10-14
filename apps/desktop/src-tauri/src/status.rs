@@ -19,6 +19,7 @@ pub struct Status {
     pub paused: bool,
     /// The last pass couldn't reach the server; the engine tries again.
     pub offline: bool,
+    /// Problems that aren't one character's, for the window.
     pub problems: Vec<String>,
     /// While linking, the code the link page shows, to compare.
     pub link_code: Option<String>,
@@ -43,6 +44,8 @@ pub struct Character {
     pub update_addon: bool,
     /// When this run of the app last uploaded it, in Unix seconds.
     pub uploaded: Option<u64>,
+    /// Why it isn't backed up, if it isn't.
+    pub problem: Option<String>,
     /// The line under the name.
     pub note: String,
 }
@@ -64,15 +67,25 @@ pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[St
         Ok(report) => {
             status.offline = false;
             status.last_synced = Some(now);
-            status.problems = report.problems.clone();
-            let mut keys: Vec<String> = report.characters.iter().chain(local).cloned().collect();
+            status.problems = report.problems.iter().filter(|p| p.who.is_empty()).map(|p| p.why.clone()).collect();
+            let problem = |key: &str| report.problems.iter().find(|p| p.who == key).map(|p| p.why.clone());
+            // A character only named by a problem has a file here the server
+            // doesn't know yet (one without a rosterKey, say).
+            let only_named: Vec<String> = report
+                .problems
+                .iter()
+                .filter(|p| !p.who.is_empty() && !report.characters.contains(&p.who))
+                .map(|p| p.who.clone())
+                .collect();
+            let mut keys: Vec<String> = report.characters.iter().chain(local).chain(&only_named).cloned().collect();
             keys.sort();
             keys.dedup();
             let before = std::mem::take(&mut status.characters);
             status.characters = keys
                 .into_iter()
                 .map(|key| Character {
-                    here: local.contains(&key),
+                    here: local.contains(&key) || only_named.contains(&key),
+                    problem: problem(&key),
                     update_addon: report.update_addon.contains(&key),
                     uploaded: if report.uploaded.contains(&key) {
                         Some(now)
@@ -94,7 +107,9 @@ pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[St
 /// character's note. Runs after every change and every half minute.
 pub fn refresh(status: &mut Status, now: u64) {
     for c in &mut status.characters {
-        c.note = if c.update_addon {
+        c.note = if let Some(why) = &c.problem {
+            why.clone()
+        } else if c.update_addon {
             "Update the addon on this PC to get the newest journey".into()
         } else if !c.here {
             "Only on your other PCs so far".into()
@@ -114,6 +129,14 @@ pub fn refresh(status: &mut Status, now: u64) {
         "Update the addon on this PC".into()
     } else if status.offline {
         "Can't reach the server, trying again".into()
+    } else if let n @ 1.. = status.characters.iter().filter(|c| c.problem.is_some()).count() {
+        if n == 1 {
+            "1 character not backed up".into()
+        } else {
+            format!("{n} characters not backed up")
+        }
+    } else if !status.problems.is_empty() {
+        "Needs a look: open Road to Sixty".into()
     } else if let Some(t) = status.last_synced {
         format!("Synced {}", ago(now.saturating_sub(t)))
     } else {
@@ -125,7 +148,7 @@ pub fn refresh(status: &mut Status, now: u64) {
 mod tests {
     use super::*;
     use rts_sync::api::ApiError;
-    use rts_sync::sync::Report;
+    use rts_sync::sync::{Problem, Report};
 
     fn linked() -> Status {
         Status {
@@ -228,6 +251,50 @@ mod tests {
         refresh(&mut s, 100);
         assert_eq!(s.linked_to, None);
         assert_eq!(s.line, "Not linked");
+    }
+
+    #[test]
+    fn a_character_that_isnt_backed_up_says_why_and_the_tray_counts_it() {
+        let mut s = linked();
+        let r = Report {
+            characters: vec!["Ann-Test".into()],
+            problems: vec![
+                Problem {
+                    who: "Ann-Test".into(),
+                    why: "Too big to back up".into(),
+                },
+                Problem {
+                    who: "Beagen".into(),
+                    why: "Log in once with the updated addon".into(),
+                },
+                Problem::general("Couldn't write the sync folder in _classic_beta_"),
+            ],
+            ..Report::default()
+        };
+        apply(&mut s, &Ok(r), &["Ann-Test".into()], 100);
+        refresh(&mut s, 100);
+        let rows: Vec<_> = s.characters.iter().map(|c| (c.key.as_str(), c.here, c.note.as_str())).collect();
+        assert_eq!(
+            rows,
+            [
+                ("Ann-Test", true, "Too big to back up"),
+                ("Beagen", true, "Log in once with the updated addon")
+            ]
+        );
+        assert_eq!(s.problems, ["Couldn't write the sync folder in _classic_beta_"]);
+        assert_eq!(s.line, "2 characters not backed up");
+    }
+
+    #[test]
+    fn a_problem_that_isnt_a_characters_is_still_in_the_tray() {
+        let mut s = linked();
+        let r = Report {
+            problems: vec![Problem::general("Couldn't watch for saved games")],
+            ..Report::default()
+        };
+        apply(&mut s, &Ok(r), &[], 100);
+        refresh(&mut s, 100);
+        assert_eq!(s.line, "Needs a look: open Road to Sixty");
     }
 
     #[test]

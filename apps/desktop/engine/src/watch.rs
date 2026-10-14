@@ -7,15 +7,15 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant, SystemTime};
 
-use notify::{RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::api::{ApiError, Client};
 use crate::installs::{self, GameFolder};
 use crate::state::State;
-use crate::sync::{self, Report};
+use crate::sync::{self, Problem, Report};
 
 pub const SETTLE: Duration = Duration::from_secs(10);
 pub const WHILE_PLAYING: Duration = Duration::from_secs(15 * 60);
@@ -80,43 +80,110 @@ impl Schedule {
     }
 }
 
-/// Watches the WTF folder of each of `games` and syncs until `stop` is set, calling
-/// `report` after each pass. Every saved journey counts as changed at the
-/// start, so anything new since the app last ran goes up first (an
-/// unchanged file is skipped by its fingerprint).
+/// Size and change time of each saved file, to notice changes the watcher missed.
+fn stamps(games: &[GameFolder]) -> BTreeMap<PathBuf, (u64, Option<SystemTime>)> {
+    games
+        .iter()
+        .flat_map(installs::saved_files)
+        .map(|f| {
+            let meta = std::fs::metadata(&f.path).ok();
+            let stamp = (meta.as_ref().map_or(0, |m| m.len()), meta.and_then(|m| m.modified().ok()));
+            (f.path, stamp)
+        })
+        .collect()
+}
+
+/// Watches each game folder's WTF for saved files, and each game folder and
+/// install folder for new folders (WoW making WTF, a new game folder), which
+/// set `lost` so the loop looks again. A folder that can't be watched is a
+/// problem; the others are still watched.
+fn watcher(games: &[GameFolder], tx: mpsc::Sender<PathBuf>, lost: Arc<AtomicBool>) -> (Option<RecommendedWatcher>, Vec<Problem>) {
+    let handler = move |event: notify::Result<notify::Event>| match event {
+        Ok(event) if event.need_rescan() => lost.store(true, Ordering::Relaxed),
+        Ok(event) => {
+            for path in event.paths {
+                if path.file_name().is_some_and(|n| n == "RoadToSixty.lua") {
+                    let _ = tx.send(path);
+                } else if path.file_name().is_some_and(|n| n == "WTF") || !path.components().any(|c| c.as_os_str() == "WTF") {
+                    lost.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+        // A watcher error may mean missed events: look again.
+        Err(_) => lost.store(true, Ordering::Relaxed),
+    };
+    let mut watcher = match notify::recommended_watcher(handler) {
+        Ok(w) => w,
+        Err(e) => return (None, vec![Problem::general(format!("Couldn't watch for saved games: {e}"))]),
+    };
+    let mut problems = Vec::new();
+    for wtf in sync::watched(games) {
+        if let Err(e) = watcher.watch(&wtf, RecursiveMode::Recursive) {
+            problems.push(Problem::general(format!("Couldn't watch {}: {e}", wtf.display())));
+        }
+    }
+    let mut folders: Vec<PathBuf> = games
+        .iter()
+        .flat_map(|g| [Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)])
+        .flatten()
+        .collect();
+    folders.sort();
+    folders.dedup();
+    for folder in folders {
+        // Only for noticing new folders; the regular look again covers a miss.
+        let _ = watcher.watch(&folder, RecursiveMode::NonRecursive);
+    }
+    (Some(watcher), problems)
+}
+
+/// Watches the WTF folders of the game folders `find` returns and syncs
+/// until `stop` is set, calling `report` after each pass. It looks for game
+/// folders and changed files again every few minutes and whenever a folder
+/// appears or the watcher may have missed something, so WoW making its WTF
+/// folder after the app started is noticed. Every saved journey counts as
+/// changed at the start (an unchanged file is skipped by its fingerprint).
 pub fn run(
     client: &Client,
     state: &mut State,
     state_path: &Path,
     cache: &Path,
-    games: &[GameFolder],
+    find: &dyn Fn() -> Vec<GameFolder>,
     stop: &AtomicBool,
     mut report: impl FnMut(&Result<Report, ApiError>),
 ) -> notify::Result<()> {
     let (tx, rx) = mpsc::channel();
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if let Ok(event) = event {
-            for path in event.paths {
-                if path.file_name().is_some_and(|n| n == "RoadToSixty.lua") {
-                    let _ = tx.send(path);
-                }
-            }
-        }
-    })?;
-    for wtf in sync::watched(games) {
-        watcher.watch(&wtf, RecursiveMode::Recursive)?;
-    }
+    let lost = Arc::new(AtomicBool::new(false));
+    let mut games = find();
+    let mut wtfs = sync::watched(&games);
+    let (mut _watching, mut watch_problems) = watcher(&games, tx.clone(), lost.clone());
+    let mut seen = stamps(&games);
 
     let mut schedule = Schedule::default();
     let start = Instant::now();
-    for file in games.iter().flat_map(installs::saved_files) {
-        schedule.changed(file.path, start.checked_sub(SETTLE).unwrap_or(start));
+    for path in seen.keys() {
+        schedule.changed(path.clone(), start.checked_sub(SETTLE).unwrap_or(start));
     }
     let mut system = sysinfo::System::new();
     let mut last_pass: Option<Instant> = None;
     let mut wait_until = start;
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
+        let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
+        if lost.swap(false, Ordering::Relaxed) || (check_due && last_pass.is_some()) {
+            let found = find();
+            let found_wtfs = sync::watched(&found);
+            if found != games || found_wtfs != wtfs {
+                (games, wtfs) = (found, found_wtfs);
+                (_watching, watch_problems) = watcher(&games, tx.clone(), lost.clone());
+            }
+            let now_seen = stamps(&games);
+            for (path, stamp) in &now_seen {
+                if seen.get(path) != Some(stamp) {
+                    schedule.changed(path.clone(), now);
+                }
+            }
+            seen = now_seen;
+        }
         for path in rx.try_iter() {
             schedule.changed(path, now);
         }
@@ -127,12 +194,19 @@ pub fn run(
         };
         let playing = |file: &Path| games.iter().any(|g| file.starts_with(&g.path) && game_running(&g.path, &programs));
         let due = schedule.due(now, playing);
-        let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
         if now >= wait_until && (!due.is_empty() || check_due) {
-            let result = sync::pass(client, state, state_path, games, cache, |f| due.contains(&f.path));
+            let result = sync::pass(client, state, state_path, &games, cache, |f| due.contains(&f.path)).map(|mut r| {
+                r.problems.extend(watch_problems.iter().cloned());
+                r
+            });
             match &result {
-                Ok(_) => {
+                Ok(r) => {
                     schedule.sent(&due, now);
+                    // The game may hold a file while it writes it: try again
+                    // after a minute instead of waiting for the next change.
+                    for path in &r.unread {
+                        schedule.changed(path.clone(), now + RETRY - SETTLE);
+                    }
                     last_pass = Some(now);
                 }
                 Err(_) => wait_until = now + RETRY,
@@ -195,5 +269,63 @@ mod tests {
             game,
             &[PathBuf::from("/Applications/World of Warcraft/_retail_/Wow.app/Contents/MacOS/Wow")]
         ));
+    }
+
+    #[test]
+    fn a_wtf_folder_made_after_the_start_is_watched_and_its_file_goes_up() {
+        use crate::api::fake;
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("wow/_classic_beta_");
+        let toc = installs::addon_toc(&game);
+        std::fs::create_dir_all(toc.parent().unwrap()).unwrap();
+        std::fs::write(&toc, "## Interface: 16001\n## Version: 1.9.0\n").unwrap();
+        // The watcher reports real paths (on a Mac /var is /private/var).
+        let game = std::fs::canonicalize(&game).unwrap();
+        let fake = fake::serve(|_, url| match url {
+            "/v1/check" => (200, br#"{"characters":[]}"#.to_vec()),
+            _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
+        });
+        let seen = fake.seen.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = {
+            let (stop, url, data, game) = (stop.clone(), fake.url.clone(), dir.path().join("data"), game.clone());
+            std::thread::spawn(move || {
+                let mut state = State {
+                    pc: Some("pc-1".into()),
+                    ..State::default()
+                };
+                let find = || {
+                    vec![GameFolder {
+                        path: game.clone(),
+                        name: "_classic_beta_".into(),
+                    }]
+                };
+                run(
+                    &Client::new(&url, Some("t".into())),
+                    &mut state,
+                    &data.join("s.json"),
+                    &data.join("j"),
+                    &find,
+                    &stop,
+                    |_| {},
+                )
+            })
+        };
+        std::thread::sleep(Duration::from_secs(2)); // started, with no WTF to watch
+        let saved = game.join("WTF/Account/A1/70/Ann-Stormfist/SavedVariables");
+        std::fs::create_dir_all(&saved).unwrap();
+        std::fs::write(
+            saved.join("RoadToSixty.lua"),
+            "RoadToSixtyCharDB = {\r\n[\"rosterKey\"] = \"Ann-Test Realm\",\r\n}\r\n",
+        )
+        .unwrap();
+        let until = Instant::now() + Duration::from_secs(30);
+        let uploaded = || seen.lock().unwrap().iter().any(|s| s.url.starts_with("/v1/upload"));
+        while !uploaded() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        stop.store(true, Ordering::Relaxed);
+        thread.join().unwrap().unwrap();
+        assert!(uploaded(), "the file in the new WTF folder went up");
     }
 }

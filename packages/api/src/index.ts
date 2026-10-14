@@ -38,11 +38,15 @@ export type CheckEntry = {
   game: string;
   realm: string;
   name: string;
-  // The version to deliver, or null when it needs a newer addon than this PC has.
+  // The version to deliver, or null when it needs a newer addon than this PC
+  // has, or when the character has no merged version yet.
   version: number | null;
   fingerprint: string;
   replace: boolean; // a restore: the addon replaces instead of merging
   updateAddon: boolean;
+  // Why the server refused this PC's newest upload of this character, or
+  // null. The app shows it against the character until a newer upload goes in.
+  rejected: string | null;
 };
 
 export type CheckResponse = { characters: CheckEntry[] };

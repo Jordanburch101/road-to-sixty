@@ -16,6 +16,8 @@ export type MergeResult =
       lastSeen: number | null; // Unix seconds of the last event
       journey: Uint8Array; // Parse.Write text
     }
+  // The merge rules refused the upload. Faults (a crash, a limit, a bug)
+  // throw instead, so the job is tried again.
   | { ok: false; from: number | null; reason: string };
 
 const num = (s: string | undefined) => (s === undefined || s === "-" ? null : Number(s));
@@ -46,8 +48,9 @@ export async function runMerge(
     });
     const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
     await proc.exited;
-    // Bun sets proc.killed after any exit; a signal means it was stopped.
-    if (proc.signalCode) return { ok: false, from: null, reason: "the merge didn't finish in time and was stopped" };
+    // Bun sets proc.killed after any exit; a signal means it was stopped
+    // for running too long: the server's fault.
+    if (proc.signalCode) throw new Error("the merge didn't finish in time and was stopped");
     const [word, from, ...rest] = (stdout.trim().split("\n").pop() ?? "").split(" ");
     if (word === "ok") {
       const [layout, level, played, lastSeen] = rest;
@@ -62,8 +65,9 @@ export async function runMerge(
       };
     }
     if (word === "rejected") return { ok: false, from: num(from), reason: rest.join(" ") };
-    const first = (stderr || stdout).trim().split("\n")[0];
-    return { ok: false, from: null, reason: `the merge failed: ${first || `exit code ${proc.exitCode}`}` };
+    // "failed", or no result at all: the server's fault, tried again later.
+    const why = word === "failed" ? [from, ...rest].join(" ") : (stderr || stdout).trim().split("\n")[0];
+    throw new Error(`the merge failed: ${why || `exit code ${proc.exitCode}`}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

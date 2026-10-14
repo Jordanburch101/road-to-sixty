@@ -32,7 +32,8 @@ push to `dev` that touches it. The design is
 
 ```
 docker compose up -d      # Postgres and an S3 store for the tests and a local server
-bun test                  # needs Lua 5.1 on the path, or LUA51 naming it
+bun test                  # needs Lua 5.1 on the path, or LUA51 naming it (not LuaJIT:
+                          # its count hook doesn't fire, so the limit tests fail)
 bun run typecheck
 bun run dev               # port 3000, with .env copied from .env.example
 ```
@@ -45,6 +46,11 @@ bun run dev               # port 3000, with .env copied from .env.example
   would come back as a new account.
 - Uploads are untrusted. Keep the size cap and the bytecode refusal, and
   never run a journey anywhere but inside the runner's process limits.
+- The runner tells a refusal from a fault. Only an `error(why, 0)` from the
+  merge rules rejects an upload. Anything else (a limit, a crash, a bug with
+  a file and line, storage down) makes `runMerge` throw, and the worker
+  tries again for about a day with a doubling wait. A job left running past
+  `STALE_SECONDS` is taken back by the next claim.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in

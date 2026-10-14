@@ -11,6 +11,7 @@
 -- Parse.Write text and prints one line, - for anything unknown:
 --   ok <layout uploaded> <layout> <level> <played> <last seen>
 --   rejected <layout uploaded> <reason>
+--   failed <why>        the server's fault; lua.ts throws and the job is tried again
 
 local dir, uploadPath, currentPath, outPath, pc, maxMB, maxSeconds = ...
 
@@ -19,10 +20,22 @@ local dir, uploadPath, currentPath, outPath, pc, maxMB, maxSeconds = ...
 -- instructions, and lua.ts kills the process if even this fails.
 -- ponytail: one huge string operation between checks can pass the memory
 -- limit; the 32 MB upload limit bounds how far.
+-- A fault is the server's problem, not the upload's: raised as a table so
+-- it can't be mistaken for a refusal, which the merge raises as text with
+-- error(why, 0). lua.ts retries faults and rejects only refusals.
+local function Fault(why) error({ fault = why }) end
+
+-- pcall that lets a fault through, so the limits still stop the run.
+local function Try(fn, ...)
+    local ok, result = pcall(fn, ...)
+    if not ok and type(result) == "table" then error(result, 0) end
+    return ok, result
+end
+
 local started, limitKB, limitSeconds = os.clock(), tonumber(maxMB) * 1024, tonumber(maxSeconds)
 debug.sethook(function()
-    if collectgarbage("count") > limitKB then error("over the memory limit", 0) end
-    if os.clock() - started > limitSeconds then error("over the time limit", 0) end
+    if collectgarbage("count") > limitKB then Fault("over the memory limit") end
+    if os.clock() - started > limitSeconds then Fault("over the time limit") end
 end, "", 10000)
 
 -- Maps that aren't places: Azeroth and the continents, the UiMap rows of
@@ -32,7 +45,8 @@ local NOT_PLACES = { [947] = true, [1414] = true, [1415] = true, [1463] = true, 
 local function IsPlace(mapID) return mapID ~= nil and not NOT_PLACES[mapID] end
 
 local function Read(path)
-    local f = assert(io.open(path, "rb"))
+    local f = io.open(path, "rb")
+    if not f then Fault("couldn't open " .. path) end
     local s = f:read("*a")
     f:close()
     return s
@@ -40,11 +54,14 @@ end
 
 local from = "-"
 
+-- Outside the pcall: a missing or broken addon file stops the runner with
+-- no result line, which lua.ts takes as a fault.
+local ns = {}
+for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Merge.lua" }) do
+    assert(loadfile(dir .. "/" .. name))("RoadToSixty", ns)
+end
+
 local function Run()
-    local ns = {}
-    for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Merge.lua" }) do
-        assert(loadfile(dir .. "/" .. name))("RoadToSixty", ns)
-    end
     local function TidyUp(char)
         if not char.seeded then ns.Tidy.Runs(char) end
         ns.Tidy.Events(char, IsPlace)
@@ -63,15 +80,23 @@ local function Run()
     if currentPath ~= "" then
         -- Saved by an older server when the layout has moved on since. Its
         -- counts are every PC's, so none is named as theirs.
-        local current = assert(ns.Merge.Prepare(ns.Parse.Read(Read(currentPath)), "server"))
+        local read, current = Try(ns.Parse.Read, Read(currentPath))
+        local bad
+        if read then current, bad = ns.Merge.Prepare(current, "server") else current, bad = nil, current end
+        if not current then Fault("the stored journey can't be merged: " .. tostring(bad)) end
         TidyUp(current)
         out, why = ns.Merge.Merge(current, upload)
         if not out then error(why, 0) end
         local passed, failed = ns.Merge.Check(current, upload, out)
-        if not passed then error(failed, 0) end
+        -- Check fails only when the merge lost something: a bug in the
+        -- merge, not in the upload, so a fixed server tries it again.
+        if not passed then Fault(failed) end
     end
-    local file = assert(io.open(outPath, "wb"))
-    file:write(ns.Parse.Write(out))
+    local written, text = Try(ns.Parse.Write, out)
+    if not written then Fault("couldn't write the result: " .. tostring(text)) end
+    local file = io.open(outPath, "wb")
+    if not file then Fault("couldn't write the result") end
+    file:write(text)
     file:close()
 
     local level, last
@@ -89,6 +114,11 @@ local ok, result = pcall(Run)
 debug.sethook()
 if ok then
     io.write(result, "\n")
+elseif type(result) == "string" and not result:find("^[^\n]-%.lua:%d+: ") then
+    -- Raised on purpose with error(why, 0): the merge refuses this upload.
+    io.write("rejected ", from, " ", (result:gsub("\n", " ")), "\n")
 else
-    io.write("rejected ", from, " ", (tostring(result):gsub("\n", " ")), "\n")
+    -- A fault, or a bug (an error with a file and line): try again later.
+    local why = type(result) == "table" and tostring(result.fault) or tostring(result)
+    io.write("failed ", (why:gsub("\n", " ")), "\n")
 end

@@ -1,7 +1,7 @@
 import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import type { ReactNode } from "react";
-import { setPaused, type Status } from "./api";
+import { isMac, setPaused, type Status } from "./api";
 
 export type Tab = "characters" | "account";
 
@@ -15,12 +15,12 @@ export function Characters({ status, onTab }: { status: Status; onTab: (t: Tab) 
         {status.characters.map((c) => {
           const [name, ...realm] = c.key.split("-");
           return (
-            <li key={c.key} className={`flex flex-col gap-1.5 rounded-[10px] border px-3.5 py-3 ${c.updateAddon ? "border-warn-line bg-[#0f0d0a]" : "border-line bg-panel"}`}>
+            <li key={c.key} className={`flex flex-col gap-1.5 rounded-[10px] border px-3.5 py-3 ${c.updateAddon || c.problem ? "border-warn-line bg-[#0f0d0a]" : "border-line bg-panel"}`}>
               <div className="flex items-baseline gap-2">
                 <span className="text-[15px] font-medium">{name}</span>
                 <span className="text-[13px] text-muted">{realm.join("-")}</span>
               </div>
-              <div className={`text-xs ${c.updateAddon ? "text-warn" : "text-faint"}`}>{c.note}</div>
+              <div className={`text-xs ${c.updateAddon || c.problem ? "text-warn" : "text-faint"}`}>{c.note}</div>
             </li>
           );
         })}
@@ -35,10 +35,11 @@ export function Characters({ status, onTab }: { status: Status; onTab: (t: Tab) 
 
 // The header, status pill and tabs both main screens share.
 export function Shell({ status, tab, onTab, children }: { status: Status; tab: Tab; onTab: (t: Tab) => void; children: ReactNode }) {
-  const good = !status.paused && !status.offline && status.problems.length === 0;
+  const good =
+    !status.paused && !status.offline && status.problems.length === 0 && !status.characters.some((c) => c.problem);
   return (
     <main className="flex h-full flex-col">
-      <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />
+      {isMac && <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />}
       <div className="flex items-center gap-2.5 px-5 py-3.5">
         <img src={compass} alt="" className="size-7 rounded-md" />
         <div className="flex flex-1 flex-col">

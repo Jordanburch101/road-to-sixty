@@ -118,7 +118,8 @@ end
 
 -- A run is one visit to an instance. ns.char.run holds the totals at entry,
 -- so leaving can log what happened inside. It is saved, so a run survives a
--- logout inside the instance.
+-- logout inside the instance; run.pc is the PC that started it, and the run
+-- counts under it so two PCs finishing it count it once.
 --
 -- Dungeons have no run ID, only the instance's map ID, and dying means
 -- coming back to life at a graveyard outside. So leaving does not end a
@@ -144,7 +145,7 @@ local function StartRun(name, instanceType)
     ns.char.run = {
         t = ns.Now(), name = name, type = instanceType, level = UnitLevel("player"),
         kills = t.kills, xp = t.killXP + t.questXP, deaths = t.deaths, money = GetMoney(),
-        items = {}, party = {},
+        items = {}, party = {}, pc = ns.pc,
     }
     for _, guid in ipairs(ns.Groups:Current() or {}) do
         ns.char.run.party[guid] = true
@@ -197,7 +198,7 @@ local function FinishRun()
     ns.char.run = nil
     local left = run and run.left
     if not left then return end
-    ns.Groups:CountRun(left.summary.party, run.type == "raid")
+    ns.Groups:CountRun(left.summary.party, run.type == "raid", run.pc)
     Insert({ left.t, "out", left.c, left.x, left.y, left.id, left.summary })
 end
 

@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::api::{ApiError, Client};
 use crate::inbox::{self, Delivery};
 use crate::installs::{self, GameFolder, SavedFile};
-use crate::state::State;
+use crate::state::{Refused, State};
 
 /// What a pass did, for the app to show.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -23,11 +23,59 @@ pub struct Report {
     pub delivered: Vec<String>,
     /// Characters whose newest version needs a newer addon on this PC.
     pub update_addon: Vec<String>,
-    /// Files the server refused, with why. The rest of the pass goes on.
-    pub problems: Vec<String>,
+    /// What kept a character, or the whole pass when `who` is empty, from
+    /// being backed up. The rest of the pass goes on.
+    pub problems: Vec<Problem>,
     /// Every character the server has, as `Name-Realm`, including ones only
     /// played on other PCs.
     pub characters: Vec<String>,
+    /// The game folders this pass looked at, for the app to show.
+    pub games: Vec<GameFolder>,
+    /// Saved files that couldn't be read, to try again later.
+    pub unread: Vec<PathBuf>,
+}
+
+/// Something the player should know: `who` names the character (empty when
+/// it isn't one character's), `why` says what's wrong in plain words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    pub who: String,
+    pub why: String,
+}
+
+impl Problem {
+    pub fn general(why: impl Into<String>) -> Problem {
+        Problem {
+            who: String::new(),
+            why: why.into(),
+        }
+    }
+}
+
+/// A character's name from its folder (`.../70/Beagen-Ironhewer/SavedVariables/RoadToSixty.lua`),
+/// for a file that doesn't name its character yet.
+pub fn folder_name(path: &Path) -> String {
+    path.parent()
+        .and_then(Path::parent)
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.split('-').next())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("A character")
+        .to_string()
+}
+
+/// What happened to one saved file in a pass.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Sent {
+    /// Uploaded, as `Name-Realm`.
+    Uploaded(String),
+    /// The same file went up before.
+    Unchanged,
+    /// Refused now or before; it's in `State::refused`.
+    Refused,
+    /// Couldn't be read (the game may be writing it); tried again when it changes.
+    Unreadable(Problem),
 }
 
 /// The version the addon last brought in from the sync folder, which the
@@ -69,24 +117,60 @@ fn key(name: &str, realm: &str) -> String {
     format!("{name}-{realm}")
 }
 
-/// Uploads one saved file unless this exact file was uploaded before.
-/// Returns the character's `Name-Realm` when it was sent.
-pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Option<&str>) -> Result<Option<String>, ApiError> {
-    // The game may hold the file while it writes it: try again later.
-    let bytes = fs::read(&file.path).map_err(|e| ApiError::Network(format!("couldn't read {}: {e}", file.path.display())))?;
+/// Uploads one saved file unless this exact file went up, or was refused, before.
+pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Option<&str>) -> Result<Sent, ApiError> {
+    let Ok(bytes) = fs::read(&file.path) else {
+        return Ok(Sent::Unreadable(Problem {
+            who: folder_name(&file.path),
+            why: "Couldn't read the saved file; trying again when it changes".into(),
+        }));
+    };
     let print = fingerprint(&bytes);
     if state.uploaded.get(&file.path) == Some(&print) {
-        return Ok(None);
+        return Ok(Sent::Unchanged);
     }
-    let Some((name, realm)) = roster_key(&bytes) else {
-        return Err(ApiError::Status(
-            0,
-            format!("{} has no rosterKey: log in once with the updated addon", file.path.display()),
-        ));
+    if state.refused.get(&file.path).is_some_and(|r| r.fingerprint == print) {
+        return Ok(Sent::Refused);
+    }
+    let refuse = |state: &mut State, who: String, why: String| {
+        state.refused.insert(
+            file.path.clone(),
+            Refused {
+                fingerprint: print.clone(),
+                who,
+                why,
+            },
+        );
+        Ok(Sent::Refused)
     };
-    client.upload(&file.game, &realm, &name, addon, synced_version(&bytes), &bytes)?;
+    let Some((name, realm)) = roster_key(&bytes) else {
+        return refuse(
+            state,
+            folder_name(&file.path),
+            "Log in once with the updated addon, then log out, so this character can be backed up".into(),
+        );
+    };
+    match client.upload(&file.game, &realm, &name, addon, synced_version(&bytes), &bytes) {
+        Ok(_) => {}
+        Err(ApiError::Status(413, _)) => return refuse(state, key(&name, &realm), "Too big to back up".into()),
+        // Only the server saying no to this file is kept as a refusal. Any
+        // other answer (a 404 from the proxy during a deploy, a 429) is
+        // tried again later.
+        Err(ApiError::Status(code @ (400 | 422), body)) => {
+            let why = match body.trim() {
+                "" => format!("The server refused it ({code})"),
+                body => format!("The server refused it: {body}"),
+            };
+            return refuse(state, key(&name, &realm), why);
+        }
+        Err(ApiError::Status(code, body)) if code != 0 => {
+            return Err(ApiError::Network(format!("the server answered {code}: {body}")));
+        }
+        Err(e) => return Err(e),
+    }
     state.uploaded.insert(file.path.clone(), print);
-    Ok(Some(key(&name, &realm)))
+    state.refused.remove(&file.path);
+    Ok(Sent::Uploaded(key(&name, &realm)))
 }
 
 /// Asks for every character's newest version and writes it into the sync
@@ -98,6 +182,12 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
     let mut kept = BTreeSet::new();
     for entry in &check.characters {
         report.characters.push(key(&entry.name, &entry.realm));
+        if let Some(why) = &entry.rejected {
+            report.problems.push(Problem {
+                who: key(&entry.name, &entry.realm),
+                why: format!("Your last session here isn't backed up: the server couldn't take it ({why})"),
+            });
+        }
         if entry.update_addon {
             report.update_addon.push(key(&entry.name, &entry.realm));
         }
@@ -117,7 +207,7 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
                 });
             }
             Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
-            Err(e) => report.problems.push(format!("{who}: {e}")),
+            Err(e) => report.problems.push(Problem { who, why: e.to_string() }),
         }
     }
     for game in games {
@@ -128,7 +218,7 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
             Ok(false) => {}
             Err(e) => report
                 .problems
-                .push(format!("couldn't write the sync folder in {}: {e}", game.path.display())),
+                .push(Problem::general(format!("Couldn't write the sync folder in {}: {e}", game.name))),
         }
     }
     for old in fs::read_dir(cache).into_iter().flatten().flatten().map(|e| e.path()) {
@@ -176,21 +266,43 @@ pub fn pass(
     cache: &Path,
     ready: impl Fn(&SavedFile) -> bool,
 ) -> Result<Report, ApiError> {
-    let mut report = Report::default();
+    let mut report = Report {
+        games: games.to_vec(),
+        ..Report::default()
+    };
     for game in games {
         let addon = installs::addon_version(&game.path);
         for file in installs::saved_files(game).iter().filter(|f| ready(f)) {
+            let before = state.refused.get(&file.path).cloned();
             match upload(client, state, file, addon.as_deref()) {
-                Ok(Some(sent)) => {
+                Ok(Sent::Uploaded(sent)) => {
                     report.uploaded.push(sent);
                     state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
                 }
-                Ok(None) => {}
+                Ok(Sent::Refused) if state.refused.get(&file.path) != before.as_ref() => {
+                    state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
+                }
+                Ok(Sent::Unreadable(problem)) => {
+                    report.problems.push(problem);
+                    report.unread.push(file.path.clone());
+                }
+                Ok(Sent::Unchanged | Sent::Refused) => {}
                 Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
-                Err(e) => report.problems.push(e.to_string()),
+                Err(e) => report.problems.push(Problem::general(e.to_string())),
             }
         }
     }
+    // Refusals stay shown until their file changes and goes up; a file
+    // that's gone takes its refusal with it.
+    let count = state.refused.len();
+    state.refused.retain(|path, _| path.exists());
+    if state.refused.len() != count {
+        state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
+    }
+    report.problems.extend(state.refused.values().map(|r| Problem {
+        who: r.who.clone(),
+        why: r.why.clone(),
+    }));
     let pc = state.pc.clone().ok_or(ApiError::Unauthorized)?;
     deliver(client, &pc, games, cache, &mut report)?;
     Ok(report)
@@ -350,10 +462,12 @@ mod tests {
             |_| true,
         )
         .unwrap();
-        assert!(
-            report.problems[0].contains("log in once with the updated addon"),
-            "{:?}",
-            report.problems
+        assert_eq!(
+            report.problems,
+            [Problem {
+                who: "Ann".into(),
+                why: "Log in once with the updated addon, then log out, so this character can be backed up".into()
+            }]
         );
         assert!(fake.seen.lock().unwrap().iter().all(|s| !s.url.starts_with("/v1/upload")));
     }
@@ -381,7 +495,13 @@ mod tests {
             |_| true,
         )
         .unwrap();
-        assert_eq!(report.problems.len(), 1);
+        assert_eq!(
+            report.problems,
+            [Problem {
+                who: "Ann-Test Realm".into(),
+                why: "Too big to back up".into()
+            }]
+        );
         assert!(state.uploaded.is_empty());
 
         let unlinked = fake::serve(|_, _| (401, b"{}".to_vec()));
@@ -394,6 +514,146 @@ mod tests {
             |_| true,
         );
         assert_eq!(result, Err(ApiError::Unauthorized));
+    }
+
+    #[test]
+    fn a_refused_file_stays_a_problem_without_asking_again_until_it_changes() {
+        let (dir, game) = game();
+        let refused = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (400, b"the server refuses this".to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let client = Client::new(&refused.url, Some("t".into()));
+        let (s, j) = (dir.path().join("s.json"), dir.path().join("j"));
+        pass(&client, &mut state, &s, std::slice::from_ref(&game), &j, |_| true).unwrap();
+        let again = pass(&client, &mut state, &s, std::slice::from_ref(&game), &j, |_| false).unwrap();
+        assert_eq!(again.problems.len(), 1, "still shown on a pass that sends nothing");
+        assert_eq!(again.problems[0].why, "The server refused it: the server refuses this");
+        let uploads = || {
+            refused
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.url.starts_with("/v1/upload"))
+                .count()
+        };
+        pass(&client, &mut state, &s, std::slice::from_ref(&game), &j, |_| true).unwrap();
+        assert_eq!(uploads(), 1, "the same file isn't sent again");
+        assert_eq!(State::load(&s).unwrap().refused.len(), 1, "remembered across restarts");
+
+        let file = installs::saved_files(&game).remove(0);
+        fs::write(&file.path, FILE.replace("[\"version\"] = 3", "[\"version\"] = 3, [\"x\"] = 1")).unwrap();
+        let fixed = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (200, br#"{"version":9,"status":"queued"}"#.to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let report = pass(&Client::new(&fixed.url, Some("t".into())), &mut state, &s, &[game], &j, |_| true).unwrap();
+        assert!(report.problems.is_empty(), "{:?}", report.problems);
+        assert!(state.refused.is_empty());
+    }
+
+    #[test]
+    fn a_refusal_by_the_server_after_upload_is_a_problem_for_that_character() {
+        let (dir, game) = game();
+        let fake = fake::serve(|_, url| {
+            if url == "/v1/check" {
+                (200, br#"{"characters":[{"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":null,"fingerprint":"","replace":false,"updateAddon":false,"rejected":"a seeded test journey"}]}"#.to_vec())
+            } else {
+                (200, br#"{"version":8,"status":"queued"}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&fake.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| false,
+        )
+        .unwrap();
+        assert_eq!(
+            report.problems,
+            [Problem {
+                who: "Ann-Test Realm".into(),
+                why: "Your last session here isn't backed up: the server couldn't take it (a seeded test journey)".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_character_without_a_roster_key_is_named_by_its_folder() {
+        assert_eq!(
+            folder_name(Path::new("/wow/WTF/Account/A1/70/Beagen-Ironhewer/SavedVariables/RoadToSixty.lua")),
+            "Beagen"
+        );
+        assert_eq!(folder_name(Path::new("RoadToSixty.lua")), "A character");
+    }
+
+    #[test]
+    fn a_stray_answer_like_a_404_during_a_deploy_is_tried_again_not_refused() {
+        let (dir, game) = game();
+        let lost = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (404, b"Not Found".to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let result = pass(
+            &Client::new(&lost.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| true,
+        );
+        assert!(matches!(result, Err(ApiError::Network(_))), "{result:?}");
+        assert!(state.refused.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_cant_be_read_is_listed_to_try_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0);
+        fs::set_permissions(&file.path, fs::Permissions::from_mode(0o000)).unwrap();
+        let fake = fake::serve(|_, _| (200, br#"{"characters":[]}"#.to_vec()));
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&fake.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| true,
+        )
+        .unwrap();
+        fs::set_permissions(&file.path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(report.unread, [file.path]);
+        assert_eq!(report.problems.len(), 1);
     }
 
     // A check that offers each journey in `served` (name, version, text)

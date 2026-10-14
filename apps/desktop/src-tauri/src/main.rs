@@ -54,11 +54,15 @@ fn main() {
             app.manage(runner::Links::default());
             app.manage(Mutex::new(runner));
 
-            // "Synced 2 min ago" has to keep counting between passes.
+            // "Synced 2 min ago" has to keep counting between passes, and
+            // while nothing syncs (not linked, or no WoW yet) the app looks
+            // for WoW again.
+            let ticker = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_secs(30));
                     notifier.update(|_| {});
+                    commands::with_runner(ticker.clone(), |r| r.rescan());
                 }
             });
 

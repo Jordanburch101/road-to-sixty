@@ -21,6 +21,19 @@ pub struct State {
     /// unchanged file isn't sent again.
     #[serde(default)]
     pub uploaded: BTreeMap<PathBuf, String>,
+    /// Saved files that were refused, by path. Each stays a problem, without
+    /// being sent again, until the file changes and goes up.
+    #[serde(default)]
+    pub refused: BTreeMap<PathBuf, Refused>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Refused {
+    pub fingerprint: String,
+    /// The character, as the app shows it.
+    pub who: String,
+    /// Why, in words for the player.
+    pub why: String,
 }
 
 impl State {
@@ -43,9 +56,11 @@ impl State {
     }
 }
 
-/// The app's own folder for its state and downloaded journeys.
+/// The app's own folder for its state and downloaded journeys. On Windows
+/// the local folder, not the roaming one: a roaming profile would copy the
+/// token and the PC's identity to other PCs.
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Road to Sixty")
+    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("Road to Sixty")
 }
 
 /// The PC token, in a file only this user can read. Not in the Mac

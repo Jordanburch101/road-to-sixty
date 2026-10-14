@@ -1,27 +1,37 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
-import { runMerge } from "./lua";
+import { LIMITS, runMerge } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { fingerprint, get, pack, put } from "./storage";
 
 type Job = typeof jobs.$inferSelect;
 type Version = typeof versions.$inferSelect;
 
-const MAX_ATTEMPTS = 3;
-const RETRY_SECONDS = 30;
+// Tries for about a day, waiting twice as long each time up to six hours,
+// so an outage or a server bug fixed by the next deploy doesn't cost uploads.
+export const MAX_ATTEMPTS = 12;
+export const RETRY_SECONDS = 30;
+const MAX_WAIT_SECONDS = 6 * 3600;
+// A running job older than this was abandoned: the merge's own limit plus margin.
+const STALE_SECONDS = LIMITS.seconds + 240;
 
 // Why an upload was rejected when the server, not the merge, failed: the
 // same file sent again gets another try.
 export const SERVER_FAILED = "the server couldn't merge it";
 
-// The oldest queued job's id, now marked running, or null.
+// The oldest due job's id, now marked running, or null. A job left running
+// longer than STALE_SECONDS counts as due again.
 // ponytail: one worker taking one job at a time, which also keeps two
 // uploads of one character from merging at once; take a lock per
 // character if more workers ever run.
 async function claim(): Promise<number | null> {
   const [row] = await client`
-    UPDATE jobs SET state = 'running', attempts = attempts + 1
-    WHERE id = (SELECT id FROM jobs WHERE state = 'queued' AND run_after <= now() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+    UPDATE jobs SET state = 'running', attempts = attempts + 1, claimed_at = now()
+    WHERE id = (
+      SELECT id FROM jobs
+      WHERE (state = 'queued' AND run_after <= now())
+         OR (state = 'running' AND (claimed_at IS NULL OR claimed_at < now() - ${STALE_SECONDS} * interval '1 second'))
+      ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
     RETURNING id`;
   return row ? Number(row.id) : null;
 }
@@ -110,26 +120,35 @@ async function runJob(job: Job) {
   });
 }
 
-// Runs the oldest queued job. False when there was none. A job that throws
-// (storage down, say) goes back in the queue, up to MAX_ATTEMPTS.
+// Runs the oldest due job. False when there was none. A job that throws
+// goes back in the queue with a longer wait, up to MAX_ATTEMPTS. If the
+// database fails even for that, the job stays running and is taken back
+// once it is stale.
 export async function work(): Promise<boolean> {
   const id = await claim();
   if (id === null) return false;
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
   try {
-    await runJob(job!);
-  } catch (e) {
-    const error = String(e);
-    if (job!.attempts >= MAX_ATTEMPTS) {
-      await db.update(jobs).set({ state: "failed", error, finishedAt: new Date() }).where(eq(jobs.id, id));
-      await db
-        .update(versions)
-        .set({ status: "rejected", rejectReason: SERVER_FAILED })
-        .where(eq(versions.id, job!.versionId));
-    } else {
-      const runAfter = new Date(Date.now() + job!.attempts * RETRY_SECONDS * 1000);
-      await db.update(jobs).set({ state: "queued", error, runAfter }).where(eq(jobs.id, id));
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    try {
+      await runJob(job!);
+    } catch (e) {
+      const error = String(e);
+      if (job!.attempts >= MAX_ATTEMPTS) {
+        await db.update(jobs).set({ state: "failed", error, finishedAt: new Date() }).where(eq(jobs.id, id));
+        await db
+          .update(versions)
+          .set({ status: "rejected", rejectReason: SERVER_FAILED })
+          .where(eq(versions.id, job!.versionId));
+      } else {
+        const wait = Math.min(RETRY_SECONDS * 2 ** (job!.attempts - 1), MAX_WAIT_SECONDS);
+        await db
+          .update(jobs)
+          .set({ state: "queued", error, runAfter: new Date(Date.now() + wait * 1000) })
+          .where(eq(jobs.id, id));
+      }
     }
+  } catch (e) {
+    console.error(`worker: job ${id}:`, e);
   }
   return true;
 }
@@ -138,8 +157,6 @@ export async function work(): Promise<boolean> {
 export function startWorker(): () => void {
   let stopped = false;
   void (async () => {
-    // A job left running by a crash or restart goes back in the queue.
-    await db.update(jobs).set({ state: "queued" }).where(eq(jobs.state, "running"));
     while (!stopped) {
       const worked = await work().catch((e) => {
         console.error("worker:", e);

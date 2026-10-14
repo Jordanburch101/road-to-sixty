@@ -34,6 +34,9 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   `tests/pure_test.lua` fails if one does.
 - Any change to what is saved, or what it means, bumps `DATA_VERSION` in
   Core.lua, gets listed there, and brings older files up in `Upgrade`.
+- Counts kept per PC (Tally.lua) go under the PC that started the thing:
+  an open dungeon run and group carry `pc`, so two PCs finishing the same
+  one from their copies count it once after the merge.
 - Saved times use `ns.Now()`, never `time()` (a test fails on `time()` in
   shipped files).
 - Map.lua is near Lua's 200-local limit: new map features go in their own file.

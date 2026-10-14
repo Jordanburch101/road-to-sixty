@@ -12,7 +12,8 @@ local _, ns = ...
 -- What it relies on:
 -- - One character is online on one PC at a time, so the events of any one
 --   second come from one PC, and a copy that is behind holds the start of
---   what the other holds.
+--   what the other holds. Open runs and groups are the exception: they are
+--   kept until the events show them ended.
 -- - Both copies are at layout 3 (Prepare brings a layout 2 upload up) and
 --   tidied as a login would (Tidy.lua). The caller does both.
 -- - Both are copies of the same character. The data doesn't say whose it
@@ -458,6 +459,23 @@ local function MergeRare(p, q)
 end
 RULES.rares = function(x, y) return MergeMap(x, y, MergeRare) end
 
+-- Whether events hold one of kind at time t.
+local function Logged(events, kind, t)
+    for _, e in ipairs(events or {}) do
+        if e[1] == t and e[2] == kind then return true end
+    end
+    return false
+end
+
+-- Whether events hold the end of the group that began at t: its "grpx",
+-- whose summary says how long it lasted.
+local function GroupEnded(events, t)
+    for _, e in ipairs(events or {}) do
+        if e[2] == "grpx" and type(e[6]) == "table" and e[1] - (tonumber(e[6].duration) or 0) == t then return true end
+    end
+    return false
+end
+
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end
@@ -472,6 +490,14 @@ function Merge.Merge(a, b)
             out[k] = Join(a[k], b[k])
         end
     end)
+    -- A run or group still open at logout is work for whichever PC logs in
+    -- next, so a copy that never saw it doesn't drop it; once the merged
+    -- events show it ended, it's done.
+    for _, k in ipairs({ "run", "group" }) do
+        if out[k] == nil then out[k] = a[k] or b[k] end
+    end
+    if out.run and out.run.left and Logged(out.events, "out", out.run.left.t) then out.run = nil end
+    if out.group and GroupEnded(out.events, out.group.t) then out.group = nil end
     out.version, out.rosterBuilt = Merge.VERSION, nil
     Recount(out, a, b)
     return out

@@ -27,12 +27,16 @@ pub struct CheckEntry {
     pub game: String,
     pub realm: String,
     pub name: String,
-    /// None when it needs a newer addon than this PC has.
+    /// None when it needs a newer addon than this PC has, or has no merged
+    /// version yet.
     pub version: Option<i64>,
     pub fingerprint: String,
     pub replace: bool,
     #[serde(rename = "updateAddon")]
     pub update_addon: bool,
+    /// Why the server refused this PC's newest upload of this character.
+    #[serde(default)]
+    pub rejected: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -85,6 +89,7 @@ impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ApiError::Unauthorized => write!(f, "this PC isn't linked"),
+            ApiError::Status(0, why) => write!(f, "{why}"),
             ApiError::Status(code, body) => write!(f, "the server answered {code}: {body}"),
             ApiError::Network(why) => write!(f, "couldn't reach the server: {why}"),
         }
@@ -105,7 +110,12 @@ impl Client {
     pub fn new(server: &str, token: Option<String>) -> Self {
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(120)))
+            // Each step has its own limit, so a slow connection can still send
+            // a large journey, and a server that stops answering still times out.
+            .timeout_connect(Some(Duration::from_secs(30)))
+            .timeout_recv_response(Some(Duration::from_secs(120)))
+            .timeout_send_body(Some(Duration::from_secs(30 * 60)))
+            .timeout_recv_body(Some(Duration::from_secs(30 * 60)))
             .build()
             .into();
         Client {
@@ -367,5 +377,17 @@ mod tests {
         assert_eq!(client.device_token("dc").unwrap(), DevicePoll::Approved("session-1".into()));
         let body: serde_json::Value = serde_json::from_slice(&fake.seen.lock().unwrap()[0].body).unwrap();
         assert_eq!(body["client_id"], APP_CLIENT_ID);
+    }
+
+    #[test]
+    fn a_status_without_a_code_reads_as_plain_words() {
+        assert_eq!(
+            ApiError::Status(0, "couldn't keep version 7".into()).to_string(),
+            "couldn't keep version 7"
+        );
+        assert_eq!(
+            ApiError::Status(413, "too big".into()).to_string(),
+            "the server answered 413: too big"
+        );
     }
 }

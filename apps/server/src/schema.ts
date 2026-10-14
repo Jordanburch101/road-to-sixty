@@ -80,6 +80,9 @@ export const jobs = pgTable("jobs", {
   // doesn't use up its attempts at once.
   runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
   error: text("error"),
+  // When the worker took it. A job left running past the time limit (the
+  // worker died, or the database failed under it) is taken back.
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 });

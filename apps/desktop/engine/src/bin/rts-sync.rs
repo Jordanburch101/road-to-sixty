@@ -94,8 +94,14 @@ fn main() -> ExitCode {
         }
         Some("run") => {
             let stop = AtomicBool::new(false);
-            let games = sync::games(&state);
-            match watch::run(&client, &mut state, &state_path, &cache, &games, &stop, show) {
+            let picked = state.picked.clone();
+            let find = || {
+                sync::games(&State {
+                    picked: picked.clone(),
+                    ..State::default()
+                })
+            };
+            match watch::run(&client, &mut state, &state_path, &cache, &find, &stop, show) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => fail(&e.to_string()),
             }
@@ -129,7 +135,10 @@ fn show(result: &Result<Report, ApiError>) {
                 println!("{key}: update the addon on this PC");
             }
             for problem in &r.problems {
-                println!("problem: {problem}");
+                match problem.who.as_str() {
+                    "" => println!("problem: {}", problem.why),
+                    who => println!("problem: {who}: {}", problem.why),
+                }
             }
         }
         Err(ApiError::Unauthorized) => println!("This PC isn't linked: run rts-sync link."),
