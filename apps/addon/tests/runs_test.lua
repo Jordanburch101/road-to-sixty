@@ -24,7 +24,8 @@ end
 local ns = { char = NewChar() }
 ns.view = ns.char
 ns.Recorder = { Position = function() return 0, 10, 20 end }
-ns.Groups = { Current = function() return nil end, CountRun = function() end }
+local countedFor
+ns.Groups = { Current = function() return nil end, CountRun = function(_, _, _, pc) countedFor = pc end }
 ns.IsPlaceMap = function(mapID) return mapID ~= 1415 end   -- as Core.lua: Eastern Kingdoms is a continent
 function ns.On(event, fn)
     handlers[event] = handlers[event] or {}
@@ -203,6 +204,20 @@ check(#copy.events == 1, "a journey without totals is tidied too")
 local journey = { events = { { 1, "zone", 0, 0, 0, 7 }, { 2, "zone", 0, 0, 0, 8 } }, totals = { deaths = 0 } }
 ns.Tidy.Events(journey, function(mapID) return mapID == 8 end)
 check(#journey.events == 1 and journey.events[1][6] == 8, "isPlace decides which zones stay")
+
+-- A run is counted under the PC that started it, so two PCs finishing the
+-- same run from their copies count it once (the merge keeps the higher part).
+ns.char = NewChar()
+ns.view = ns.char
+ns.pc = "pcA"
+now, inside, instanceID = 9000, true, 36
+Fire("PLAYER_ENTERING_WORLD")
+now, inside = 9100, false
+Fire("PLAYER_ENTERING_WORLD")
+ns.pc = "pcB"                       -- the copy carried on on another PC
+now = 9100 + 31 * 60
+Fire("PLAYER_ENTERING_WORLD")
+check(countedFor == "pcA", "a run counts under the PC that started it: " .. tostring(countedFor))
 
 if failures > 0 then
     print(failures .. " failure(s)")

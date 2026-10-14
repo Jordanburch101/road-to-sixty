@@ -483,6 +483,36 @@ for seed = 1, 12 do
 end
 check(#broken == 0, "properties broken (seed, which): " .. table.concat(broken, ", "))
 
+-- 17. A run or group still open at logout is work for whichever PC logs in
+-- next. A copy that never saw it (played on a stale copy) doesn't drop it,
+-- and once the merged events show it ended, it isn't brought back.
+do
+    local run = { t = 900, name = "Deadmines", type = "party", pc = "pcA",
+        left = { t = 1000, c = 0, x = 0, y = 0, id = 36, summary = { duration = 100 } } }
+    local group = { t = 950, kind = "party", pc = "pcA", members = {}, everMet = {}, levels = {}, subs = {},
+        seen = 1100, met = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0 }
+    local a = Journey({ events = { On(800) }, run = run, group = group })
+    local b = Journey({ events = { On(2000) } })   -- played later on a copy from before the run
+    local m = Merge.Merge(a, b)
+    check(m.run and m.run.t == 900, "an open run survives a later copy that never saw it")
+    check(m.group and m.group.t == 950, "an open group survives a later copy that never saw it")
+    check(Same(m, Merge.Merge(b, a)), "keeping an open run or group works either way round")
+
+    local ended = Journey({ events = { On(800), { 1000, "out", 0, 0, 0, 36, { duration = 100 } },
+        { 1100, "grpx", 0, 0, 0, { duration = 150 } }, On(2000) } })
+    local done = Merge.Merge(a, ended)
+    check(done.run == nil, "a run whose out event is in the merged events is not brought back")
+    check(done.group == nil, "a group whose grpx event is in the merged events is not brought back")
+    check(Same(done, Merge.Merge(ended, a)), "dropping an ended run works either way round")
+end
+
+-- DATA_VERSION in Core.lua and Merge.VERSION must move together: one
+-- without the other refuses every journey.
+do
+    local core = assert(io.open("RoadToSixty/Core.lua")):read("*a")
+    check(tonumber(core:match("local DATA_VERSION = (%d+)")) == Merge.VERSION, "Merge.VERSION matches DATA_VERSION")
+end
+
 if failures == 0 then
     print("Merge tests passed.")
 else

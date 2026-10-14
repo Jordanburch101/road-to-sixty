@@ -39,7 +39,8 @@ local _, ns = ...
 -- it now), everMet = guid -> true (all who were ever in it), met = their
 -- count, levels and subs = guid -> level and subgroup last seen, mySub =
 -- the player's subgroup, seen =
--- last time it was known to still exist }.
+-- last time it was known to still exist, pc = the PC that started it (its
+-- time counts under it) }.
 --
 -- Groups inside battlegrounds and other instance groups are left out: only
 -- the player's own (home) group counts.
@@ -116,15 +117,17 @@ local function Meet(m, t, newGroup)
     end
 end
 
--- Adds the time a member spent in a group of kind up to t to their total.
-local function Part(guid, since, t, kind)
+-- Adds the time a member spent in a group of kind up to t to their total,
+-- under pc: the PC that started the group, so two PCs ending it count once.
+local function Part(guid, since, t, kind, pc)
     local p = ns.char.people[guid]
     if p and since then
         local seconds = math.max(0, t - since)
+        pc = pc or ns.pc
         if kind == "raid" then
-            ns.Tally.Add(p, "raidSeconds", ns.pc, seconds)
+            ns.Tally.Add(p, "raidSeconds", pc, seconds)
         else
-            ns.Tally.Add(p, "seconds", ns.pc, seconds)
+            ns.Tally.Add(p, "seconds", pc, seconds)
         end
         p.last = t
     end
@@ -140,7 +143,7 @@ local function Start(roster, kind, mySub, t)
         Meet(m, t, kind)
     end
     ns.char.group = {
-        t = t, kind = kind, members = members, everMet = everMet, levels = levels, subs = subs,
+        t = t, kind = kind, pc = ns.pc, members = members, everMet = everMet, levels = levels, subs = subs,
         seen = t, met = #list, mySub = mySub,
         kills = totals.kills, xp = totals.killXP + totals.questXP, quests = totals.quests,
         deaths = totals.deaths, instances = totals.instances,
@@ -153,7 +156,7 @@ local function End(t)
     local g, totals = ns.char.group, ns.char.totals
     local levels = {}
     for guid, since in pairs(g.members) do
-        Part(guid, since, t, g.kind)
+        Part(guid, since, t, g.kind, g.pc)
         levels[guid] = g.levels[guid]
     end
     local summary = {
@@ -226,7 +229,7 @@ function Groups:Check()
     -- A party becoming a raid (or back): time so far counts as the old kind.
     if kind ~= g.kind then
         for guid, since in pairs(g.members) do
-            Part(guid, since, t, g.kind)
+            Part(guid, since, t, g.kind, g.pc)
             g.members[guid] = t
         end
         g.kind = kind
@@ -239,7 +242,7 @@ function Groups:Check()
 
     for guid, since in pairs(g.members) do
         if not roster[guid] then
-            Part(guid, since, t, g.kind)
+            Part(guid, since, t, g.kind, g.pc)
             g.members[guid] = nil
             ns.Journal:Log("grpl", guid, g.levels[guid])
         end
@@ -284,7 +287,7 @@ function Groups:Resume()
     if InGroup() then
         local t = ns.Now()
         for guid, since in pairs(g.members) do
-            Part(guid, since, g.seen, g.kind)
+            Part(guid, since, g.seen, g.kind, g.pc)
             g.members[guid] = t
         end
         g.seen = t
@@ -304,16 +307,17 @@ function Groups:Current()
     return #list > 0 and list or nil
 end
 
--- Counts a dungeon or raid run (raid true) for everyone in it (called
--- when the run ends).
-function Groups:CountRun(guids, raid)
+-- Counts a dungeon or raid run (raid true) for everyone in it, under pc
+-- (the PC that started the run; this PC when not given).
+function Groups:CountRun(guids, raid, pc)
+    pc = pc or ns.pc
     for _, guid in ipairs(guids or {}) do
         local p = ns.char.people[guid]
         if p then
             if raid then
-                ns.Tally.Add(p, "raidRuns", ns.pc, 1)
+                ns.Tally.Add(p, "raidRuns", pc, 1)
             else
-                ns.Tally.Add(p, "dungeons", ns.pc, 1)
+                ns.Tally.Add(p, "dungeons", pc, 1)
             end
         end
     end
