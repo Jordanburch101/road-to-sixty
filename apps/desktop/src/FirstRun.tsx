@@ -2,13 +2,15 @@ import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
-import type { ReactNode } from "react";
-import { pickFolder, link, setStartsAtLogin, type Status } from "./api";
+import { useEffect, useState, type ReactNode } from "react";
+import { hostName, link, pickFolder, setStartsAtLogin, type Status } from "./api";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
 
 export function FirstRun({ status, onDone }: { status: Status; onDone: () => void }) {
+  const [name, setName] = useState("");
+  useEffect(() => void hostName().then((n) => setName((typed) => typed || n)), []);
   const found = status.games.length > 0;
   const linked = status.linkedTo !== null;
   return (
@@ -34,10 +36,22 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         </Step>
 
         <Step n={2} done={linked} current={found && !linked} title="Link this PC">
-          <p className="text-[13px] leading-snug text-muted">Sign in with Battle.net in your browser, check the code matches, and click Link.</p>
+          <p className="text-[13px] leading-snug text-muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</p>
           {found && !linked && (
             <>
-              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={() => link("")}>
+              {!status.linkCode && (
+                <label className="flex flex-col gap-1.5 text-xs text-muted">
+                  This PC's name
+                  <input
+                    value={name}
+                    maxLength={40}
+                    autoComplete="off"
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-9 rounded-lg border border-outline bg-ground px-2.5 text-sm text-text outline-none focus:border-accent"
+                  />
+                </label>
+              )}
+              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={() => link(name)}>
                 {status.linkCode ? "Start over" : "Link this PC"}
               </Button>
               {status.linkCode && (
@@ -53,7 +67,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         <Step n={3} current={linked} title="Restart WoW once">
           <p className="text-[13px] leading-snug text-muted">So the game loads the sync folder. Your journeys stay where they are.</p>
           {linked && (
-            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).finally(onDone)}>
+            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).catch(() => {}).then(onDone)}>
               Done
             </Button>
           )}

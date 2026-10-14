@@ -246,7 +246,7 @@ Stored personal data: a hash of the Battle.net account ID, the BattleTag, charac
 
 ## The desktop app
 
-Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window for first-run setup, status and the account screens (see The website). The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Open Road to Sixty, Pause syncing, Check for updates, Quit; linking and game folders are in the window.
+Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window for first-run setup, status and the account screens (see The website). The window opens under the menu bar icon (Mac) or beside the tray icon (Windows), like a menu bar app's popover: a left click on the icon opens it, a click elsewhere hides it, and a right click shows the menu. Questions (restore, unlink, delete everything) are asked inside the window, since a dialog would take its focus and hide it. The account screens call the server through the app, which holds the PC token; the window never sees it (#39). The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Open Road to Sixty, Pause syncing, Check for updates, Quit; linking and game folders are in the window.
 
 ### First run
 
@@ -261,7 +261,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 - While the game runs, upload each character at most once every 15 minutes, so repeated `/reload`s don't flood the server. When the game closes, upload straight away.
 - Upload the account file at most once a day. Fingerprint WTF account folder names before they leave the PC.
 - Remember the fingerprint of everything uploaded and received. Queue uploads while offline.
-- Check for new merged versions after each upload and every few minutes. Write a new version into `RoadToSixty_Sync/data.lua` by writing a temporary file in the same folder and renaming it over the old one, so the game never reads half a file.
+- Check for new merged versions after each upload, every few minutes, and as soon as a game starts, so other PCs' play is in the sync folder before the player logs in. Write a new version into `RoadToSixty_Sync/data.lua` by writing a temporary file in the same folder and renaming it over the old one, so the game never reads half a file.
 - Never write the game's SavedVariables, not even for a restore.
 
 Detecting whether the game is running (to apply the 15-minute limit) matches the running process's file path against the game folder, since process names differ by version and processor (`WowClassic.exe`, `WowClassicB.exe`, `WowClassic-arm64.exe`, the binary inside `World of Warcraft Classic.app`).

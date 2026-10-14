@@ -61,8 +61,10 @@ character is named by the `rosterKey` its saved file holds, never by the
 game's folder names, which don't give the realm the addon uses.
 `src-tauri/` is the app around the engine: `runner.rs` runs the engine on
 its own thread and keeps the status, `status.rs` words the tray line and the
-window's notes, `tray.rs` is the menu bar or tray icon, `commands.rs` is what
-the window can ask, `update.rs` is self-update. `src/` is the window (Vite
+window's notes, `tray.rs` is the menu bar or tray icon, `commands.rs` and
+`account.rs` are what the window can ask (the account screens' server calls
+go through `account.rs`, so the window never holds the token), `window.rs`
+opens the window under the icon, `update.rs` is self-update. `src/` is the window (Vite
 and React), styled from `packages/ui`, the look the website shares. App
 releases come from `app-v*` tags: CI uploads them to the public R2 bucket
 `road-to-sixty-downloads` (`https://dl.rts.everhold.online/app/`), with

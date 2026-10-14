@@ -65,8 +65,13 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the per-user Run key on Windows), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
-  `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
-  the screens, after the mockups' "A · First run" and "A · Characters".
+  `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
+  `History.tsx` and `Account.tsx` are the screens, after the mockups'
+  A-Characters-2, A-History and A-Account (#39). `format.ts` works out
+  every word and number they show and is tested (`bun test src`);
+  `classes.ts` holds the class icons, cut from the game's art by
+  `scripts/class-icons.py`. `packages/ui/theme.css` gives every scrolling
+  list a thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
   tags), which uploads the builds to the public R2 bucket
