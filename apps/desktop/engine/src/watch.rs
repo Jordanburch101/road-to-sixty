@@ -163,6 +163,7 @@ fn watcher(games: &[GameFolder], tx: mpsc::Sender<PathBuf>, lost: Arc<AtomicBool
 /// changed at the start (an unchanged file is skipped by its fingerprint).
 /// `busy` is true while a pass runs, so the app never restarts in the middle
 /// of one.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     client: &Client,
     state: &mut State,
