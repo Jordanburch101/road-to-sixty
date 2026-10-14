@@ -25,6 +25,9 @@ pub struct Report {
     pub update_addon: Vec<String>,
     /// Files the server refused, with why. The rest of the pass goes on.
     pub problems: Vec<String>,
+    /// Every character the server has, as `Name-Realm`, including ones only
+    /// played on other PCs.
+    pub characters: Vec<String>,
 }
 
 /// The version the addon last brought in from the sync folder, which the
@@ -94,6 +97,7 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
     let mut by_game: BTreeMap<&str, Vec<Delivery>> = BTreeMap::new();
     let mut kept = BTreeSet::new();
     for entry in &check.characters {
+        report.characters.push(key(&entry.name, &entry.realm));
         if entry.update_addon {
             report.update_addon.push(key(&entry.name, &entry.realm));
         }
@@ -249,6 +253,34 @@ mod tests {
     fn synced_version_reads_the_number_the_addon_saved() {
         assert_eq!(synced_version(FILE.as_bytes()), Some(7));
         assert_eq!(synced_version(b"RoadToSixtyCharDB = {}"), None);
+    }
+
+    #[test]
+    fn a_pass_lists_every_character_the_server_has() {
+        let (dir, game) = game();
+        let fake = fake::serve(|_, url| {
+            if url == "/v1/check" {
+                (200, br#"{"characters":[
+                    {"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":null,"fingerprint":"a","replace":false,"updateAddon":false},
+                    {"game":"_classic_era_","realm":"Other","name":"Elsewhere","version":null,"fingerprint":"b","replace":false,"updateAddon":false}]}"#.to_vec())
+            } else {
+                (200, br#"{"version":8,"status":"queued"}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&fake.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            &[game],
+            &dir.path().join("j"),
+            |_| false,
+        )
+        .unwrap();
+        assert_eq!(report.characters, ["Ann-Test Realm", "Elsewhere-Other"]);
     }
 
     #[test]
