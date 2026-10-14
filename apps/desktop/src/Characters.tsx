@@ -14,7 +14,7 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
   const info = new Map((server.data ?? []).map((c) => [`${c.name}-${c.realm}`, c]));
   return (
     <Shell status={status} tab="characters" onTab={onTab}>
-      <ul className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3.5">
+      <ul className="flex flex-1 flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3.5">
         {status.characters.length === 0 && (
           <li className="px-1 text-[13px] text-muted">No characters yet. Log in to a character with the addon, then log out or type /reload.</li>
         )}

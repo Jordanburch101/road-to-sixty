@@ -22,3 +22,10 @@
   --font-sans: "Geist Variable", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 }
+
+/* A thin, dark scroll bar: Windows otherwise draws a light grey one with
+   arrow buttons that clashes with the dark look (#41). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-outline) transparent;
+}

@@ -48,7 +48,7 @@ export function History({ status, character, onBack }: { status: Status; charact
       </div>
       <h2 className="mx-5 mt-3.5 text-xs font-medium text-faint">History</h2>
       {(error || list.error) && <p className="mx-5 mt-2 text-xs text-warn">{error ?? `Couldn't load the history: ${list.error}`}</p>}
-      <ol className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4 pt-2">
+      <ol className="flex flex-1 flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] px-4 pb-4 pt-2">
         {list.data?.map((v) =>
           v.current ? (
             <li key={v.id} className="flex flex-col gap-1 rounded-[10px] border border-outline bg-panel px-3.5 py-3">
