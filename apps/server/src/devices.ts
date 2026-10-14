@@ -24,3 +24,13 @@ export async function deviceFor(authorization: string | undefined): Promise<Devi
   const [device] = await db.select().from(devices).where(and(eq(devices.tokenHash, hash(token)), isNull(devices.revokedAt)));
   return device ?? null;
 }
+
+export const PC_NAME_MAX = 40;
+
+// A PC's name as the player typed it, on one line and at most PC_NAME_MAX
+// characters; null when nothing is left.
+export function pcName(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const name = v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, PC_NAME_MAX).trim();
+  return name || null;
+}

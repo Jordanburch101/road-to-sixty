@@ -1,8 +1,8 @@
-import type { CharacterInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
-import type { Device } from "./devices";
+import { type Device, pcName } from "./devices";
 import { pcRoutes } from "./pc";
 import { characters, devices, versionParents, versions } from "./schema";
 
@@ -44,6 +44,17 @@ async function restoredFrom(ids: number[]): Promise<Map<number, { id: number; cr
     .where(inArray(versionParents.versionId, ids));
   return new Map(rows.map((r) => [r.id, { id: r.sourceId, createdAt: r.createdAt.toISOString() }]));
 }
+
+const info = (d: typeof devices.$inferSelect): DeviceInfo => ({
+  id: d.id,
+  name: d.name,
+  platform: d.platform,
+  appVersion: d.appVersion,
+  addonVersion: d.addonVersion,
+  lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
+});
+
+const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
 // The account API (spec, "Account API"), for the app's window.
 export const account = pcRoutes()
@@ -147,4 +158,42 @@ export const account = pcRoutes()
       return { error: "the journey changed just now; try again" };
     }
     return { version };
+  })
+
+  .get("/devices", async ({ device }): Promise<DeviceInfo[]> =>
+    (
+      await db
+        .select()
+        .from(devices)
+        .where(and(eq(devices.userId, device!.userId), isNull(devices.revokedAt)))
+        .orderBy(sql`${devices.lastSeenAt} DESC NULLS LAST`, devices.name)
+    ).map(info),
+  )
+
+  .patch("/devices/:id", async ({ device, params, body, set }): Promise<DeviceInfo | { error: string }> => {
+    const name = pcName((body as { name?: unknown } | null)?.name);
+    if (!name) {
+      set.status = 400;
+      return { error: "a PC needs a name" };
+    }
+    const [renamed] = await db.update(devices).set({ name }).where(mine(device!, params.id)).returning();
+    if (!renamed) {
+      set.status = 404;
+      return { error: "no such PC" };
+    }
+    return info(renamed);
+  })
+
+  // The token stops working at once; the PC's journeys stay where they are.
+  .delete("/devices/:id", async ({ device, params, set }) => {
+    const [gone] = await db
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(mine(device!, params.id))
+      .returning({ id: devices.id });
+    if (!gone) {
+      set.status = 404;
+      return { error: "no such PC" };
+    }
+    return { ok: true };
   });

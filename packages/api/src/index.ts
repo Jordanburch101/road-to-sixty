@@ -89,3 +89,14 @@ export type VersionInfo = {
 // current again as a new restore version; every PC replaces its copy with
 // it at its next login, unless it already took the restore in.
 export type RestoreResponse = { version: number };
+
+// GET /v1/devices: the player's linked PCs, most recently seen first.
+// PATCH /v1/devices/:id, body { name }, renames one; DELETE unlinks it.
+export type DeviceInfo = {
+  id: string; // the app compares it with its own pc to mark "This PC"
+  name: string;
+  platform: string | null; // darwin, windows or linux
+  appVersion: string | null;
+  addonVersion: string | null;
+  lastSeenAt: string | null;
+};

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { auth } from "./auth";
 import { db } from "./db";
-import { newDevice } from "./devices";
+import { newDevice, pcName } from "./devices";
 import { session } from "./schema";
 
 const PAGE = Bun.file(`${import.meta.dir}/link.html`);
@@ -23,7 +23,7 @@ export const link = new Elysia()
       set.status = 401;
       return { error: "sign in on the link page first" };
     }
-    const name = query.name?.trim().slice(0, 100) || "PC";
+    const name = pcName(query.name) ?? "PC";
     const platform = query.platform?.slice(0, 20);
     const { device, token } = await newDevice(signedIn.user.id, name, platform);
     await db.delete(session).where(eq(session.id, signedIn.session.id));

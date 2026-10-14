@@ -1,4 +1,4 @@
-import type { CharacterInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
+import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, upload, workAll } from "./helpers";
 
@@ -102,4 +102,40 @@ test("an upload waiting to be merged when a restore is picked is set aside, not 
   const [head] = await json<VersionInfo[]>(call(desk.token, `/v1/characters/${c.id}/versions`));
   expect(head).toMatchObject({ id: version, current: true });
   expect(after!.level).toBe(3);
+});
+
+test("the PC list shows each linked PC with its versions and when it was last seen", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await newDevice("user-1", "Laptop");
+  await newDevice("user-2", "Elsewhere");
+  await call(desk.token, "/v1/check?addon=1.9.0&app=0.1.2");
+  const list = await json<DeviceInfo[]>(call(desk.token, "/v1/devices"));
+  expect(list.map((d) => d.name)).toEqual(["Desk", "Laptop"]);
+  expect(list[0]).toMatchObject({ id: desk.device.id, addonVersion: "1.9.0", appVersion: "0.1.2" });
+});
+
+test("a PC can be renamed; a name is trimmed to 40 characters and can't be empty", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const rename = (name: unknown) =>
+    call(desk.token, `/v1/devices/${desk.device.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  expect(await json<DeviceInfo>(rename("  ROG   Ally\n"))).toMatchObject({ name: "ROG Ally" });
+  expect((await json<DeviceInfo>(rename("x".repeat(200)))).name).toHaveLength(40);
+  expect((await rename("   ")).status).toBe(400);
+  expect((await rename(12)).status).toBe(400);
+});
+
+test("unlinking a PC stops its token at once, from itself or another PC, but not another player's", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  const other = await newDevice("user-2", "Elsewhere");
+  expect((await call(other.token, `/v1/devices/${laptop.device.id}`, { method: "DELETE" })).status).toBe(404);
+  expect((await call(desk.token, `/v1/devices/${laptop.device.id}`, { method: "DELETE" })).status).toBe(200);
+  expect((await call(laptop.token, "/v1/check")).status).toBe(401);
+  expect((await json<DeviceInfo[]>(call(desk.token, "/v1/devices"))).map((d) => d.name)).toEqual(["Desk"]);
+  expect((await call(desk.token, `/v1/devices/${desk.device.id}`, { method: "DELETE" })).status).toBe(200);
+  expect((await call(desk.token, "/v1/check")).status).toBe(401);
 });
