@@ -117,13 +117,16 @@ impl Runner {
         self.stop();
         let state = match State::load(&self.state_path) {
             Ok(state) => state,
-            Err(e) => {
-                self.notifier.update(|s| {
-                    s.problems = vec![format!(
-                        "The app's settings file is damaged ({e}). Unlink this PC on the Account tab and link it again to start fresh."
-                    )]
-                });
-                return Ok(());
+            // Without its state the app can't tell which uploads went up or
+            // which PC it is, so it starts over: kept aside to look at, and
+            // the player links again, which the first run's steps offer.
+            Err(_) => {
+                let _ = fs::rename(&self.state_path, self.state_path.with_extension("json.damaged"));
+                let _ = self.tokens.clear();
+                State::default().save(&self.state_path).map_err(|e| e.to_string())?;
+                self.notifier
+                    .update(|s| s.problems = vec!["The app's settings were damaged, so they were reset. Link this PC again.".into()]);
+                State::default()
             }
         };
         let games = (self.find)(&state);
@@ -489,14 +492,14 @@ mod tests {
         let mut t = setup(true);
         std::fs::write(t.dir.path().join("data/state.json"), "{ not json").unwrap();
         assert!(t.runner.start().is_ok());
-        let problems = t.notifier.get().problems;
-        assert!(problems[0].contains("settings file is damaged"), "{problems:?}");
+        let s = t.notifier.get();
+        assert!(s.problems[0].contains("were reset"), "{:?}", s.problems);
+        // Back to the first run's steps, so the player can link again.
+        assert_eq!((s.linked_to, s.games.len(), s.line.as_str()), (None, 1, "Not linked"));
         assert!(!t.runner.is_running());
-        t.runner.unlink().unwrap();
-        assert!(
-            State::load(&t.dir.path().join("data/state.json")).is_ok(),
-            "unlinking starts it fresh"
-        );
+        assert!(State::load(&t.dir.path().join("data/state.json")).is_ok());
+        assert!(t.dir.path().join("data/state.json.damaged").exists(), "kept to look at");
+        assert_eq!(t.tokens.get(), None);
     }
 
     #[test]
