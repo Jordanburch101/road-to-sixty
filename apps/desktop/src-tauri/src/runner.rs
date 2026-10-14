@@ -103,6 +103,11 @@ impl Runner {
         }
     }
 
+    /// True while a pass runs, for the update to wait on.
+    pub fn busy(&self) -> Arc<AtomicBool> {
+        self.busy.clone()
+    }
+
     pub fn is_running(&self) -> bool {
         self.thread.as_ref().is_some_and(|t| !t.is_finished())
     }

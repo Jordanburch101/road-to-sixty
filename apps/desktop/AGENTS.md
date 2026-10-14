@@ -56,8 +56,12 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the server first, and still unlinks here when offline; and `src/main.rs` puts them together: closing the window
   only hides it, and only Quit in the menu ends the app.
   `src/update.rs` checks the downloads bucket's `latest.json` at start and
-  every six hours; the tray offers the update and a second click installs
-  it. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
+  every six hours (never in debug builds), downloads a newer version at
+  once, and restarts into it only while the window is hidden and the sync
+  thread isn't busy, or when the player asks (the tray item or Restart
+  now). Installing waits for the restart, because on Windows it ends the
+  app. A `version` file in the data folder tells a start after an update,
+  which stays hidden and says "Updated to X" for an hour. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
   the per-user Run key on Windows), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the

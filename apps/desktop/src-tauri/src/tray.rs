@@ -47,25 +47,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Tray> {
                 with_runner(app.clone(), move |r| r.set_paused(!paused));
             }
             "update" => {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let tray = app.state::<Tray>();
-                    match crate::update::check(&app).await {
-                        Ok(Some(version)) => {
-                            if tray.offered() {
-                                let _ = crate::update::install(&app).await;
-                            } else {
-                                let _ = tray.update.set_text(format!("Restart to update to {version}"));
-                            }
+                if matches!(app.state::<Notifier>().get().update, crate::status::UpdateState::Ready { .. }) {
+                    crate::update::restart_now(app);
+                } else {
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        if let Ok(None) = crate::update::run(&app) {
+                            let _ = app.state::<Tray>().update.set_text("Up to date");
                         }
-                        Ok(None) => {
-                            let _ = tray.update.set_text("Up to date");
-                        }
-                        Err(_) => {
-                            let _ = tray.update.set_text("Couldn't check for updates");
-                        }
-                    }
-                });
+                    });
+                }
             }
             "quit" => app.exit(0),
             _ => {}
@@ -80,10 +71,8 @@ impl Tray {
         let _ = self.line.set_text(status.line.replace('&', "&&"));
         let _ = self.pause.set_text(if status.paused { "Resume syncing" } else { "Pause syncing" });
         let _ = self.pause.set_enabled(status.linked_to.is_some());
-    }
-
-    /// True when the item already offers an update, so this click installs it.
-    fn offered(&self) -> bool {
-        self.update.text().is_ok_and(|t| t.starts_with("Restart to update"))
+        if let Some(text) = crate::status::update_line(&status.update) {
+            let _ = self.update.set_text(text);
+        }
     }
 }

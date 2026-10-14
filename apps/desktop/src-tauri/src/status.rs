@@ -16,6 +16,7 @@ pub struct Status {
     pub pc: Option<String>,
     /// This app's version.
     pub version: String,
+    pub update: UpdateState,
     pub games: Vec<Game>,
     pub characters: Vec<Character>,
     /// Unix seconds of the last pass that reached the server.
@@ -54,6 +55,30 @@ pub struct Character {
     pub problem: Option<String>,
     /// The line under the name.
     pub note: String,
+}
+
+/// Where a self-update is (spec, "Start at login and updates").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum UpdateState {
+    #[default]
+    None,
+    /// Downloaded; it installs when the window is closed and no sync runs.
+    Ready { version: String },
+    /// This start was into a new version, at this time.
+    Updated { version: String, at: u64 },
+    /// The last try failed; the next check tries again.
+    Failed { why: String },
+}
+
+/// The tray's update item, when an update has something to say.
+pub fn update_line(update: &UpdateState) -> Option<String> {
+    match update {
+        UpdateState::None => None,
+        UpdateState::Ready { version } => Some(format!("Restart to update to {version}")),
+        UpdateState::Updated { version, .. } => Some(format!("Updated to {version}")),
+        UpdateState::Failed { why } => Some(format!("Couldn't update: {why}")),
+    }
 }
 
 pub fn ago(secs: u64) -> String {
@@ -112,6 +137,11 @@ pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[St
 /// Rewrites the words that depend on the clock: the tray line and each
 /// character's note. Runs after every change and every half minute.
 pub fn refresh(status: &mut Status, now: u64) {
+    if let UpdateState::Updated { at, .. } = status.update
+        && now.saturating_sub(at) >= 3600
+    {
+        status.update = UpdateState::None;
+    }
     for c in &mut status.characters {
         c.note = if let Some(why) = &c.problem {
             why.clone()
@@ -309,5 +339,49 @@ mod tests {
         let json = serde_json::to_string(&linked()).unwrap();
         assert!(json.contains(r#""linkedTo":"Ann#1234""#), "{json}");
         assert!(json.contains(r#""lastSynced":null"#), "{json}");
+    }
+
+    #[test]
+    fn the_update_item_says_what_the_update_is_doing() {
+        assert_eq!(update_line(&UpdateState::None), None);
+        assert_eq!(
+            update_line(&UpdateState::Ready { version: "0.1.3".into() }).as_deref(),
+            Some("Restart to update to 0.1.3")
+        );
+        assert_eq!(
+            update_line(&UpdateState::Updated {
+                version: "0.1.3".into(),
+                at: 0
+            })
+            .as_deref(),
+            Some("Updated to 0.1.3")
+        );
+        assert_eq!(
+            update_line(&UpdateState::Failed { why: "no network".into() }).as_deref(),
+            Some("Couldn't update: no network")
+        );
+    }
+
+    #[test]
+    fn updated_to_shows_for_an_hour() {
+        let mut s = linked();
+        s.update = UpdateState::Updated {
+            version: "0.1.3".into(),
+            at: 1000,
+        };
+        refresh(&mut s, 1000 + 3599);
+        assert_ne!(s.update, UpdateState::None);
+        refresh(&mut s, 1000 + 3600);
+        assert_eq!(s.update, UpdateState::None);
+    }
+
+    #[test]
+    fn the_window_reads_the_update_by_its_state() {
+        let ready = serde_json::to_value(UpdateState::Ready { version: "0.1.3".into() }).unwrap();
+        assert_eq!(ready, serde_json::json!({ "state": "ready", "version": "0.1.3" }));
+        assert_eq!(
+            serde_json::to_value(UpdateState::None).unwrap(),
+            serde_json::json!({ "state": "none" })
+        );
     }
 }

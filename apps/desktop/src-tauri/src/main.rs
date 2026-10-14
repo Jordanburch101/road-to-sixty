@@ -56,7 +56,23 @@ fn main() {
                 let _ = handle.emit("status", status);
             });
             let mut runner = Runner::new(SERVER, &data_dir(), Arc::new(rts_sync::sync::games), notifier.clone());
-            notifier.update(|s| s.version = VERSION.into());
+            app.manage(update::Busy(runner.busy()));
+            // A different version last time means this start is an update:
+            // stay out of sight and say so in the menu for a while.
+            let data = data_dir();
+            let last = std::fs::read_to_string(data.join("version")).ok();
+            let updated = update::just_updated(last.as_deref(), VERSION);
+            let _ = std::fs::create_dir_all(&data);
+            let _ = std::fs::write(data.join("version"), VERSION);
+            notifier.update(|s| {
+                s.version = VERSION.into();
+                if updated {
+                    s.update = status::UpdateState::Updated {
+                        version: VERSION.into(),
+                        at: runner::now(),
+                    };
+                }
+            });
             runner.start()?;
             app.manage(notifier.clone());
             app.manage(account::Account::new(SERVER, &data_dir()));
@@ -75,21 +91,16 @@ fn main() {
                 }
             });
 
-            // A quiet check at start and every six hours; the tray offers what it finds.
+            // A check at start and every six hours; what it finds installs itself.
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
-                    if let Ok(Some(version)) = tauri::async_runtime::block_on(update::check(&app_handle)) {
-                        let _ = app_handle
-                            .state::<tray::Tray>()
-                            .update
-                            .set_text(format!("Restart to update to {version}"));
-                    }
+                    let _ = update::run(&app_handle);
                     std::thread::sleep(Duration::from_secs(6 * 3600));
                 }
             });
 
-            if !std::env::args().any(|a| a == "--hidden") {
+            if !updated && !std::env::args().any(|a| a == "--hidden") {
                 window::show(app.handle());
             }
             Ok(())
