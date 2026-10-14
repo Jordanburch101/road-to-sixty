@@ -61,7 +61,7 @@ test("a runner that never ends is killed, and that is the server's fault", async
 test("a stored journey the merge can't read is the server's fault, not the upload's", async () => {
   const upload = savedFile(journey({ events: session(5000) }));
   await expect(runMerge(upload, text(journey({ totals: 5 })), "pc-2")).rejects.toThrow(/stored journey/);
-  await expect(runMerge(upload, new TextEncoder().encode("{ cut short"), "pc-2")).rejects.toThrow("the merge failed");
+  await expect(runMerge(upload, new TextEncoder().encode("{ cut short"), "pc-2")).rejects.toThrow(/stored journey/);
 });
 
 test("an upload merges into a current journey saved in an older layout", async () => {

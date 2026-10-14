@@ -82,7 +82,7 @@ local function Run()
         -- counts are every PC's, so none is named as theirs.
         local read, current = Try(ns.Parse.Read, Read(currentPath))
         local bad
-        if read then current, bad = ns.Merge.Prepare(current, "server") else bad = current end
+        if read then current, bad = ns.Merge.Prepare(current, "server") else current, bad = nil, current end
         if not current then Fault("the stored journey can't be merged: " .. tostring(bad)) end
         TidyUp(current)
         out, why = ns.Merge.Merge(current, upload)
