@@ -101,7 +101,16 @@ fn main() -> ExitCode {
                     ..State::default()
                 })
             };
-            match watch::run(&client, &mut state, &state_path, &cache, &find, &stop, show) {
+            match watch::run(
+                &client,
+                &mut state,
+                &state_path,
+                &cache,
+                &find,
+                &stop,
+                &AtomicBool::new(false),
+                show,
+            ) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => fail(&e.to_string()),
             }

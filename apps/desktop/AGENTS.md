@@ -27,7 +27,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   - `sync.rs` is one sync pass; `watch.rs` decides when to upload. It
     looks for game folders and changed files again whenever a game or
     install folder changes and every five minutes, so WoW making its WTF
-    folder after the app started is noticed. A
+    folder after the app started is noticed. It also looks for a game starting
+    every five seconds and syncs at once when one does, so other PCs' play
+    is in the sync folder before the player logs in, and it sets `busy`
+    while a pass runs. A
     pass's `problems` name the character (`who`) and say what's wrong in
     words a player can read, with no codes or file paths.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
@@ -43,18 +46,32 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the app starts over unlinked, saying so, so the player can link again. Problems that name a character show on its row and
   count in the tray line ("2 characters not backed up"). `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
-  `src/tray.rs` is the menu bar or tray icon, `src/commands.rs` is what the
+  `src/tray.rs` is the menu bar or tray icon (a left click opens the window, a right click the menu), `src/window.rs` opens the window under it with tauri-plugin-positioner and hides it when it loses focus, except while one of our dialogs is open or a link waits on the browser (so dialogs run from Rust, through `window::holding`, and confirmations are inline in the window), `src/commands.rs` is what the
   window can ask (anything that restarts the sync thread runs on a thread
-  of its own), and `src/main.rs` puts them together: closing the window
+  of its own), `src/account.rs` holds the account screens' calls
+  (characters, history, restore, PCs, export, delete everything): the
+  window asks the app, which calls the server with the PC token, so the
+  window never holds it. Answers pass through as JSON and the window reads
+  them with `@road-to-sixty/api`'s types. Unlinking this PC revokes it on
+  the server first, and still unlinks here when offline; and `src/main.rs` puts them together: closing the window
   only hides it, and only Quit in the menu ends the app.
   `src/update.rs` checks the downloads bucket's `latest.json` at start and
-  every six hours; the tray offers the update and a second click installs
-  it. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
+  every six hours (never in debug builds), downloads a newer version at
+  once, and restarts into it only while the window is hidden and the sync
+  thread isn't busy, or when the player asks (the tray item or Restart
+  now). Installing waits for the restart, because on Windows it ends the
+  app. A `version` file in the data folder tells a start after an update,
+  which stays hidden and says "Updated to X" for an hour. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
   the per-user Run key on Windows), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
-  `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
-  the screens, after the mockups' "A · First run" and "A · Characters".
+  `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
+  `History.tsx` and `Account.tsx` are the screens, after the mockups'
+  A-Characters-2, A-History and A-Account (#39). `format.ts` works out
+  every word and number they show and is tested (`bun test src`);
+  `classes.ts` holds the class icons, cut from the game's art by
+  `scripts/class-icons.py`. `packages/ui/theme.css` gives every scrolling
+  list a thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
   tags), which uploads the builds to the public R2 bucket
@@ -84,8 +101,9 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
 - Tests that need a server use `api::fake`, which the `fake` feature lends
   to other crates' tests. The runner's tests pass a made-up `find` and a
   temporary data folder, so they never touch a real install or link.
-- The request and response shapes mirror `packages/api`; change them
-  together with the server.
+- The engine's request and response shapes mirror `packages/api` by hand;
+  the window imports `@road-to-sixty/api` itself. Change them together
+  with the server.
 - Updates are signed: the private key is only in GitHub secrets
   (`TAURI_SIGNING_PRIVATE_KEY` and its password) and in Jordan's
   `~/.config/road-to-sixty/`; the public key is in `tauri.conf.json`.

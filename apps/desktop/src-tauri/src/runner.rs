@@ -84,6 +84,7 @@ pub struct Runner {
     find: Find,
     notifier: Notifier,
     stop: Arc<AtomicBool>,
+    busy: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -97,8 +98,14 @@ impl Runner {
             find,
             notifier,
             stop: Arc::default(),
+            busy: Arc::default(),
             thread: None,
         }
+    }
+
+    /// True while a pass runs, for the update to wait on.
+    pub fn busy(&self) -> Arc<AtomicBool> {
+        self.busy.clone()
     }
 
     pub fn is_running(&self) -> bool {
@@ -135,6 +142,7 @@ impl Runner {
         let mut paused = false;
         self.notifier.update(|s| {
             s.linked_to = token.as_ref().and(state.battletag.clone());
+            s.pc = token.as_ref().and(state.pc.clone());
             s.games = shown(&games);
             for key in &local {
                 if !s.characters.iter().any(|c| &c.key == key) {
@@ -157,15 +165,16 @@ impl Runner {
 
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = stop.clone();
-        let (server, state_path, cache, notifier, find) = (
+        let (server, state_path, cache, notifier, find, busy) = (
             self.server.clone(),
             self.state_path.clone(),
             self.cache.clone(),
             self.notifier.clone(),
             self.find.clone(),
+            self.busy.clone(),
         );
         self.thread = Some(std::thread::spawn(move || {
-            let client = Client::new(&server, token);
+            let client = Client::new(&server, token).app(crate::VERSION);
             let picked = state.picked.clone();
             let mut state = state;
             let lookup = || {
@@ -184,7 +193,7 @@ impl Runner {
                     apply(s, result, &local, now());
                 });
             };
-            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, report) {
+            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, &busy, report) {
                 notifier.update(|s| s.problems = vec![format!("Couldn't watch the game folders: {e}")]);
             }
         }));
@@ -219,6 +228,12 @@ impl Runner {
 
     pub fn unlink(&mut self) -> Result<(), String> {
         self.stop();
+        // Revoked on the server first, so the token stops working there too.
+        // Offline, this PC still unlinks; the player can remove it from
+        // another PC's list.
+        if let (Some(token), Ok(State { pc: Some(pc), .. })) = (self.tokens.get(), State::load(&self.state_path)) {
+            let _ = Client::new(&self.server, Some(token)).account("DELETE", &format!("/v1/devices/{pc}"), None);
+        }
         self.tokens.clear()?;
         let _ = fs::remove_dir_all(&self.cache);
         // A damaged state file is replaced: unlinking is how to start fresh.
@@ -231,6 +246,7 @@ impl Runner {
         .map_err(|e| e.to_string())?;
         self.notifier.update(|s| {
             s.characters.clear();
+            s.pc = None;
             s.last_synced = None;
             s.problems.clear();
         });
@@ -271,6 +287,7 @@ fn shown(games: &[GameFolder]) -> Vec<Game> {
             path: g.path.display().to_string(),
             name: g.name.clone(),
             addon: installs::addon_version(&g.path),
+            characters: local_keys(std::slice::from_ref(g)).len(),
         })
         .collect()
 }
@@ -315,7 +332,7 @@ mod tests {
         std::fs::create_dir_all(&saved).unwrap();
         std::fs::write(saved.join("RoadToSixty.lua"), FILE).unwrap();
         let fake = fake::serve(|_, url| match url {
-            "/v1/check" => (200, CHECK.as_bytes().to_vec()),
+            u if u.starts_with("/v1/check") => (200, CHECK.as_bytes().to_vec()),
             _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
         });
         let data = dir.path().join("data");
@@ -402,6 +419,7 @@ mod tests {
         let s = t.notifier.get();
         assert_eq!(s.line, "Not linked");
         assert_eq!(s.games.len(), 1);
+        assert_eq!(s.games[0].characters, 1);
         assert_eq!(s.characters[0].key, "Ann-Test Realm");
         assert!(!t.runner.is_running());
     }
@@ -415,6 +433,7 @@ mod tests {
         assert_eq!(rows, [("Ann-Test Realm", true), ("Bob-Test Realm", false)]);
         assert!(s.characters[0].uploaded.is_some());
         assert!(s.line.starts_with("Synced"), "{}", s.line);
+        assert_eq!(s.pc.as_deref(), Some("pc-1"));
         t.runner.stop();
         assert!(!t.runner.is_running());
     }
@@ -546,5 +565,26 @@ mod tests {
             "{:?}",
             t.notifier.get().problems
         );
+    }
+
+    #[test]
+    fn unlinking_revokes_this_pc_on_the_server_first() {
+        let mut t = setup(true);
+        t.runner.unlink().unwrap();
+        let seen = t._fake.seen.lock().unwrap();
+        assert!(
+            seen.iter()
+                .any(|s| s.method == "DELETE" && s.url == "/v1/devices/pc-1" && s.authorization == "Bearer pc-token")
+        );
+    }
+
+    #[test]
+    fn unlinking_offline_still_unlinks_here() {
+        let mut t = setup(true);
+        let notifier = Notifier::new(|_| {});
+        let mut offline = Runner::new("http://127.0.0.1:9", &t.dir.path().join("data"), t.runner.find.clone(), notifier);
+        offline.unlink().unwrap();
+        assert_eq!(t.tokens.get(), None);
+        t.runner.stop();
     }
 }

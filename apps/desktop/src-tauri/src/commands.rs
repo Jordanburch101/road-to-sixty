@@ -2,11 +2,11 @@
 //! thread runs on a thread of its own, so the window never waits on an
 //! upload; it hears the outcome through the "status" event.
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use rts_sync::api::Client;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::runner::{Links, Notifier, Runner};
@@ -21,12 +21,15 @@ pub fn status(notifier: State<'_, Notifier>) -> Status {
 /// browser is retired, so a double click or a closed tab never leaves the
 /// window stuck on the old code.
 #[tauri::command]
-pub fn link(app: AppHandle) {
+pub fn link(app: AppHandle, name: String) {
     std::thread::spawn(move || {
         let notifier = app.state::<Notifier>().inner().clone();
         let links = app.state::<Links>();
         let this = links.begin();
-        let name = sysinfo::System::host_name().unwrap_or_else(|| "This PC".into());
+        let name = match name.trim() {
+            "" => pc_name(sysinfo::System::host_name()),
+            name => name.chars().take(40).collect(),
+        };
         let result = rts_sync::link::link(
             &Client::new(crate::SERVER, None),
             &name,
@@ -53,9 +56,32 @@ pub fn link(app: AppHandle) {
     });
 }
 
+/// The name the link box starts with.
 #[tauri::command]
-pub fn add_folder(app: AppHandle, path: String) {
-    with_runner(app, move |r| r.add_folder(PathBuf::from(path)));
+pub fn host_name() -> String {
+    pc_name(sysinfo::System::host_name())
+}
+
+fn pc_name(host: Option<String>) -> String {
+    host.map(|h| h.trim_end_matches(".local").to_string())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "This PC".into())
+}
+
+/// The folder picker, run here so the window knows not to hide behind it.
+#[tauri::command]
+pub fn pick_folder(app: AppHandle) {
+    std::thread::spawn(move || {
+        let picked = crate::window::holding(&app, || {
+            app.dialog()
+                .file()
+                .set_title("Pick your World of Warcraft folder")
+                .blocking_pick_folder()
+        });
+        if let Some(path) = picked.and_then(|p| p.into_path().ok()) {
+            with_runner(app, move |r| r.add_folder(path));
+        }
+    });
 }
 
 #[tauri::command]
@@ -77,4 +103,16 @@ pub fn with_runner(app: AppHandle, job: impl FnOnce(&mut Runner) -> Result<(), S
             app.state::<Notifier>().update(|s| s.problems = vec![e]);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_suggested_pc_name_is_the_computers_without_its_network_suffix() {
+        assert_eq!(pc_name(Some("Anns-MacBook-Pro.local".into())), "Anns-MacBook-Pro");
+        assert_eq!(pc_name(Some("DESKTOP-7Q2".into())), "DESKTOP-7Q2");
+        assert_eq!(pc_name(None), "This PC");
+    }
 }

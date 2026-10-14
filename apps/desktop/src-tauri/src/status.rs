@@ -12,6 +12,11 @@ pub struct Status {
     /// The BattleTag this PC is linked to. None before linking, and after
     /// the server stops accepting the token.
     pub linked_to: Option<String>,
+    /// This PC's id, to mark it in the PC list.
+    pub pc: Option<String>,
+    /// This app's version.
+    pub version: String,
+    pub update: UpdateState,
     pub games: Vec<Game>,
     pub characters: Vec<Character>,
     /// Unix seconds of the last pass that reached the server.
@@ -32,6 +37,8 @@ pub struct Game {
     pub path: String,
     pub name: String,
     pub addon: Option<String>,
+    /// The characters with a saved file in it.
+    pub characters: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -48,6 +55,30 @@ pub struct Character {
     pub problem: Option<String>,
     /// The line under the name.
     pub note: String,
+}
+
+/// Where a self-update is (spec, "Start at login and updates").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum UpdateState {
+    #[default]
+    None,
+    /// Downloaded; it installs when the window is closed and no sync runs.
+    Ready { version: String },
+    /// This start was into a new version, at this time.
+    Updated { version: String, at: u64 },
+    /// The last try failed; the next check tries again.
+    Failed { why: String },
+}
+
+/// The tray's update item.
+pub fn update_line(update: &UpdateState) -> String {
+    match update {
+        UpdateState::None => "Check for updates".into(),
+        UpdateState::Ready { version } => format!("Restart to update to {version}"),
+        UpdateState::Updated { version, .. } => format!("Updated to {version}"),
+        UpdateState::Failed { why } => format!("Couldn't update: {why}"),
+    }
 }
 
 pub fn ago(secs: u64) -> String {
@@ -106,6 +137,11 @@ pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[St
 /// Rewrites the words that depend on the clock: the tray line and each
 /// character's note. Runs after every change and every half minute.
 pub fn refresh(status: &mut Status, now: u64) {
+    if let UpdateState::Updated { at, .. } = status.update
+        && now.saturating_sub(at) >= 3600
+    {
+        status.update = UpdateState::None;
+    }
     for c in &mut status.characters {
         c.note = if let Some(why) = &c.problem {
             why.clone()
@@ -157,6 +193,7 @@ mod tests {
                 path: "/wow/_classic_beta_".into(),
                 name: "_classic_beta_".into(),
                 addon: Some("1.9.0".into()),
+                characters: 1,
             }],
             ..Status::default()
         }
@@ -302,5 +339,48 @@ mod tests {
         let json = serde_json::to_string(&linked()).unwrap();
         assert!(json.contains(r#""linkedTo":"Ann#1234""#), "{json}");
         assert!(json.contains(r#""lastSynced":null"#), "{json}");
+    }
+
+    #[test]
+    fn the_update_item_says_what_the_update_is_doing() {
+        assert_eq!(update_line(&UpdateState::None), "Check for updates");
+        assert_eq!(
+            update_line(&UpdateState::Ready { version: "0.1.3".into() }),
+            "Restart to update to 0.1.3"
+        );
+        assert_eq!(
+            update_line(&UpdateState::Updated {
+                version: "0.1.3".into(),
+                at: 0
+            }),
+            "Updated to 0.1.3"
+        );
+        assert_eq!(
+            update_line(&UpdateState::Failed { why: "no space".into() }),
+            "Couldn't update: no space"
+        );
+    }
+
+    #[test]
+    fn updated_to_shows_for_an_hour() {
+        let mut s = linked();
+        s.update = UpdateState::Updated {
+            version: "0.1.3".into(),
+            at: 1000,
+        };
+        refresh(&mut s, 1000 + 3599);
+        assert_ne!(s.update, UpdateState::None);
+        refresh(&mut s, 1000 + 3600);
+        assert_eq!(s.update, UpdateState::None);
+    }
+
+    #[test]
+    fn the_window_reads_the_update_by_its_state() {
+        let ready = serde_json::to_value(UpdateState::Ready { version: "0.1.3".into() }).unwrap();
+        assert_eq!(ready, serde_json::json!({ "state": "ready", "version": "0.1.3" }));
+        assert_eq!(
+            serde_json::to_value(UpdateState::None).unwrap(),
+            serde_json::json!({ "state": "none" })
+        );
     }
 }

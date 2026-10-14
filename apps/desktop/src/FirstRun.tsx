@@ -2,18 +2,19 @@ import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
-import type { ReactNode } from "react";
-import { addFolder, isMac, link, setStartsAtLogin, type Status } from "./api";
+import { useEffect, useState, type ReactNode } from "react";
+import { hostName, link, pickFolder, setStartsAtLogin, type Status } from "./api";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
 
 export function FirstRun({ status, onDone }: { status: Status; onDone: () => void }) {
+  const [name, setName] = useState("");
+  useEffect(() => void hostName().then((n) => setName((typed) => typed || n)), []);
   const found = status.games.length > 0;
   const linked = status.linkedTo !== null;
   return (
     <main className="flex h-full flex-col">
-      {isMac && <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />}
       <header className="relative overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
         <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
           <Fog width={400} height={180} step={14} roads={[ROAD]} marks={MARKS} />
@@ -35,10 +36,22 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         </Step>
 
         <Step n={2} done={linked} current={found && !linked} title="Link this PC">
-          <p className="text-[13px] leading-snug text-muted">Sign in with Battle.net in your browser, check the code matches, and click Link.</p>
+          <p className="text-[13px] leading-snug text-muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</p>
           {found && !linked && (
             <>
-              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={link}>
+              {!status.linkCode && (
+                <label className="flex flex-col gap-1.5 text-xs text-muted">
+                  This PC's name
+                  <input
+                    value={name}
+                    maxLength={40}
+                    autoComplete="off"
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-9 rounded-lg border border-outline bg-ground px-2.5 text-sm text-text outline-none focus:border-accent"
+                  />
+                </label>
+              )}
+              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={() => link(name)}>
                 {status.linkCode ? "Start over" : "Link this PC"}
               </Button>
               {status.linkCode && (
@@ -54,7 +67,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         <Step n={3} current={linked} title="Restart WoW once">
           <p className="text-[13px] leading-snug text-muted">So the game loads the sync folder. Your journeys stay where they are.</p>
           {linked && (
-            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).finally(onDone)}>
+            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).catch(() => {}).then(onDone)}>
               Done
             </Button>
           )}
@@ -63,7 +76,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
 
       {status.problems.length > 0 && <p className="px-6 pb-3 text-xs text-warn">{status.problems[0]}</p>}
       <footer className="flex items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px]">
-        <button type="button" className="text-[#c9c4d6] hover:text-text" onClick={addFolder}>
+        <button type="button" className="text-[#c9c4d6] hover:text-text" onClick={pickFolder}>
           Add a game folder…
         </button>
         <span className="text-faint">Free · works offline</span>
