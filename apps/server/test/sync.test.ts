@@ -1,4 +1,4 @@
-import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
+import type { CheckResponse, RestoreResponse, UploadResponse } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { app } from "../src/app";
@@ -97,13 +97,9 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
   await upload(token, savedFile(journey({ events: session(1000) })));
   await workAll();
   const merged = (await check(token)).characters[0]!;
-  // The website's restore (a later step) adds a version like this.
-  const [c] = await db.select().from(characters);
-  const [restore] = await db
-    .insert(versions)
-    .values({ characterId: c!.id, kind: "restore", fingerprint: merged.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
-    .returning();
-  await db.update(characters).set({ headVersionId: restore!.id });
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(3000)] })), { received: String(merged.version) });
+  await workAll();
+  const restore = { id: await restoreTo(token, merged.version!) };
   expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, restore: restore!.id, replace: true });
 
   await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(merged.version) });
@@ -117,17 +113,25 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
   expect((await check(token)).characters[0]).toMatchObject({ restore: null, replace: false });
 });
 
-// What the website's restore (a later step) does: a new head holding the
-// current head's text.
-async function restoreHead() {
+// Restores the given version, as the app's history screen does.
+async function restoreTo(token: string, version: number) {
   const [c] = await db.select().from(characters);
-  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
-  const [restore] = await db
-    .insert(versions)
-    .values({ characterId: c!.id, kind: "restore", fingerprint: head!.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
-    .returning();
-  await db.update(characters).set({ headVersionId: restore!.id });
-  return restore!.id;
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  return ((await r.json()) as RestoreResponse).version;
+}
+
+// One more session from token's PC, then a restore of the journey as it
+// was before it.
+async function restoreHead(token: string) {
+  const [c] = await db.select().from(characters);
+  const before = c!.headVersionId!;
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(20000)] })));
+  await workAll();
+  return restoreTo(token, before);
 }
 
 test("a PC that hasn't applied a restore gets a replace, even once new play is merged on top of it", async () => {
@@ -135,7 +139,7 @@ test("a PC that hasn't applied a restore gets a replace, even once new play is m
   const laptop = await newDevice("user-1", "Laptop");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
   await workAll();
-  const restore = await restoreHead();
+  const restore = await restoreHead(desk.token);
   await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(restore) });
   await workAll();
 
@@ -154,7 +158,7 @@ test("an upload from a PC that never received anything is set aside once there i
   const desk = await newDevice("user-1", "Desk");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
   await workAll();
-  const restore = await restoreHead();
+  const restore = await restoreHead(desk.token);
   const copied = await newDevice("user-1", "Copied WTF folder");
   await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(3000)] })));
   await workAll();

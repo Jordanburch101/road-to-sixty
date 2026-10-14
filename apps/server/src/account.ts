@@ -1,5 +1,5 @@
-import type { CharacterInfo, VersionInfo } from "@road-to-sixty/api";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import type { CharacterInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
+import { TransactionRollbackError, and, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import type { Device } from "./devices";
@@ -92,4 +92,59 @@ export const account = pcRoutes()
       restoredFrom: restored.get(v.id) ?? null,
       current: v.id === c.headVersionId,
     }));
+  })
+
+  .post("/characters/:id/restore", async ({ device, params, body, set }): Promise<RestoreResponse | { error: string }> => {
+    const c = await own(device!, params.id);
+    const id = Number((body as { version?: unknown } | null)?.version);
+    const [source] =
+      c && Number.isSafeInteger(id)
+        ? await db
+            .select()
+            .from(versions)
+            .where(and(eq(versions.id, id), eq(versions.characterId, c.id), inArray(versions.kind, ["merged", "restore"])))
+        : [];
+    if (!c || !source) {
+      set.status = 404;
+      return { error: "no such version" };
+    }
+    if (source.id === c.headVersionId) {
+      set.status = 400;
+      return { error: "that is already the current version" };
+    }
+    // The restore, its parent and the head move are one change: a merge
+    // finishing in between must either see all of it or none.
+    const version = await db
+      .transaction(async (tx) => {
+        const [made] = await tx
+          .insert(versions)
+          .values({
+            characterId: c.id,
+            deviceId: device!.id,
+            kind: "restore",
+            fingerprint: source.fingerprint,
+            rawSize: source.rawSize,
+            dataVersion: source.dataVersion,
+            level: source.level,
+            status: "accepted",
+          })
+          .returning({ id: versions.id });
+        await tx.insert(versionParents).values({ versionId: made!.id, parentId: source.id });
+        const moved = await tx
+          .update(characters)
+          .set({ headVersionId: made!.id, level: source.level, updatedAt: new Date() })
+          .where(and(eq(characters.id, c.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${c.headVersionId}::bigint`))
+          .returning({ id: characters.id });
+        if (moved.length === 0) tx.rollback();
+        return made!.id;
+      })
+      .catch((e) => {
+        if (e instanceof TransactionRollbackError) return null;
+        throw e;
+      });
+    if (version === null) {
+      set.status = 409;
+      return { error: "the journey changed just now; try again" };
+    }
+    return { version };
   });

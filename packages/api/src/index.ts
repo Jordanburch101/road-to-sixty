@@ -84,3 +84,8 @@ export type VersionInfo = {
   restoredFrom: { id: number; createdAt: string } | null;
   current: boolean;
 };
+
+// POST /v1/characters/:id/restore, body { version }: the version becomes
+// current again as a new restore version; every PC replaces its copy with
+// it at its next login, unless it already took the restore in.
+export type RestoreResponse = { version: number };
