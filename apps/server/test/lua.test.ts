@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { config } from "../src/config";
 import { runMerge } from "../src/lua";
 import { journey, lua, savedFile, session, sessions } from "./helpers";
 
@@ -70,4 +74,24 @@ test("an upload merges into a current journey saved in an older layout", async (
   if (!r.ok) throw new Error(r.reason);
   expect(r.layout).toBe(3);
   expect(sessions(r.journey)).toBe(2);
+});
+
+test("a merge that fails its own check is the server's fault, so a fixed server tries again", async () => {
+  // A Merge.lua with a bug that loses data, as Merge.Check would catch it.
+  const dir = await mkdtemp(join(tmpdir(), "rts-addon-"));
+  try {
+    for (const name of ["Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Merge.lua"]) {
+      await Bun.write(join(dir, name), Bun.file(join(config.luaDir, name)));
+    }
+    const merge = await Bun.file(join(dir, "Merge.lua")).text();
+    await Bun.write(join(dir, "Merge.lua"), `${merge}\nfunction Merge.Check() return false, "the kills went down" end\n`);
+    await Bun.write(join(dir, "upload.lua"), savedFile(journey({ events: session(5000) })));
+    await Bun.write(join(dir, "current.lua"), text(journey({ events: session(1000) })));
+    const runner = `${import.meta.dir}/../src/runner.lua`;
+    const args = [dir, join(dir, "upload.lua"), join(dir, "current.lua"), join(dir, "out.lua"), "pc-2", "512", "30"];
+    const proc = Bun.spawn([config.lua51, runner, ...args], { stdout: "pipe" });
+    expect((await new Response(proc.stdout).text()).trim()).toBe("failed the kills went down");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

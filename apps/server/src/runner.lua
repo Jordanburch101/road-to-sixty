@@ -88,7 +88,9 @@ local function Run()
         out, why = ns.Merge.Merge(current, upload)
         if not out then error(why, 0) end
         local passed, failed = ns.Merge.Check(current, upload, out)
-        if not passed then error(failed, 0) end
+        -- Check fails only when the merge lost something: a bug in the
+        -- merge, not in the upload, so a fixed server tries it again.
+        if not passed then Fault(failed) end
     end
     local written, text = Try(ns.Parse.Write, out)
     if not written then Fault("couldn't write the result: " .. tostring(text)) end
