@@ -29,6 +29,13 @@
       "when": 1791970022123,
       "tag": "0003_version_level",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792007027803,
+      "tag": "0004_restore_removed",
+      "breakpoints": true
     }
   ]
 }

@@ -103,15 +103,22 @@ test("a restore can't pick the current version, or another player's", async () =
   expect((await restore(desk.token, c.id, 999999)).status).toBe(404);
 });
 
-test("an upload waiting to be merged when a restore is picked is set aside, not merged on top", async () => {
+test("an upload waiting when a restore is picked keeps its new play, but not what the restore took out", async () => {
   const { desk, c, older } = await twoVersions();
   await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000), ...session(9000)] })));
-  const { version } = await json<RestoreResponse>(restore(desk.token, c.id, older.id));
+  await json<RestoreResponse>(restore(desk.token, c.id, older.id));
   await workAll();
-  const [after] = await json<CharacterInfo[]>(call(desk.token, "/v1/characters"));
-  const [head] = await json<VersionInfo[]>(call(desk.token, `/v1/characters/${c.id}/versions`));
-  expect(head).toMatchObject({ id: version, current: true });
-  expect(after!.level).toBe(3);
+  const [entry] = (await check(desk.token)).characters;
+  const text = new TextDecoder().decode(storage.unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
+  expect(text).toContain("9000");
+  expect(text).not.toContain("5000");
+});
+
+test("a restore keeps the sessions it took out", async () => {
+  const { desk, c, older } = await twoVersions();
+  const { version } = await json<RestoreResponse>(restore(desk.token, c.id, older.id));
+  const [row] = await db.select().from(versions).where(eq(versions.id, version));
+  expect(JSON.parse(row!.removed!)).toEqual([[5000, 5120]]);
 });
 
 test("the PC list shows each linked PC with its versions and when it was last seen", async () => {

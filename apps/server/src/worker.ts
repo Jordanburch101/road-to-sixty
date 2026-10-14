@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
-import { LIMITS, runMerge } from "./lua";
+import { LIMITS, runMerge, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { fingerprint, get, pack, put, remove } from "./storage";
 
@@ -52,18 +52,17 @@ async function runJob(job: Job) {
   const [character] = await db.select().from(characters).where(eq(characters.id, job.characterId));
   if (!upload || !character) throw new Error(`job ${job.id} has no upload or character`);
 
-  // An upload from a PC that hadn't yet applied the latest restore still
-  // holds what the restore took out; merging it would undo the restore. A
-  // PC that never received anything (a copied WTF folder, say) counts too.
-  const [restore] = await db
-    .select({ id: versions.id })
+  // An upload from a PC that hadn't yet taken in the latest restore (or
+  // never received anything, like a copied WTF folder) may still hold what
+  // restores took out. It is merged without the play inside their windows,
+  // so the restore holds and the PC's own new play is kept.
+  const restores = await db
+    .select({ id: versions.id, removed: versions.removed })
     .from(versions)
     .where(and(eq(versions.characterId, character.id), eq(versions.kind, "restore")))
-    .orderBy(desc(versions.id))
-    .limit(1);
-  if (restore && (upload.receivedId ?? 0) < restore.id) {
-    return settle(job, upload, "superseded", "made before the restore reached this PC");
-  }
+    .orderBy(desc(versions.id));
+  const stale = restores.length > 0 && (upload.receivedId ?? 0) < restores[0]!.id;
+  const windows: Window[] = stale ? restores.flatMap((r) => (r.removed ? (JSON.parse(r.removed) as Window[]) : [])) : [];
 
   const [head] = character.headVersionId
     ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))
@@ -72,6 +71,7 @@ async function runJob(job: Job) {
     await get(character.userId, upload.fingerprint),
     head ? await get(character.userId, head.fingerprint) : null,
     upload.deviceId ?? "server",
+    windows,
   );
   if (!result.ok) return settle(job, upload, "rejected", result.reason);
   // Never lowered: an alt's file untouched since an older addon is still

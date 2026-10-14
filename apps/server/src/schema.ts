@@ -56,6 +56,9 @@ export const versions = pgTable("versions", {
   dataVersion: integer("data_version"),
   // The character's level in this version, for the history the app shows.
   level: integer("level"),
+  // On a restore: the stretches of time it took out, JSON [[from, to], ...],
+  // stripped from any upload made before the restore reached its PC.
+  removed: text("removed"),
   addonVersion: text("addon_version"),
   receivedId: bigint("received_id", { mode: "number" }),
   status: text("status", { enum: ["pending", "accepted", "rejected", "superseded"] }).notNull(),

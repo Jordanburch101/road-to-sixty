@@ -195,7 +195,7 @@ Every request from the app carries the PC's addon version. The server never send
 
 ### Restore
 
-Restoring a version creates a new version, a copy of the one picked, and makes it current in one transaction. Until a PC's uploads show (by their received id) that its addon took the restore in, `/check` sends that PC the restore's id as `restore`. The app writes it into the sync folder, and the addon replaces its data for that character only if the version it last brought in is older than the restore; otherwise it merges, so play since the restore is kept (#40). An upload made before the restore reached its PC is set aside, not merged on top. The pre-restore version stays in history, so a restore can be undone.
+Restoring a version creates a new version, a copy of the one picked, and makes it current in one transaction. Until a PC's uploads show (by their received id) that its addon took the restore in, `/check` sends that PC the restore's id as `restore`. The app writes it into the sync folder, and the addon replaces its data for that character only if the version it last brought in is older than the restore; otherwise it merges, so play since the restore is kept (#40). The restore keeps the stretches of time it took out (the sessions the old journey had and the restored one doesn't). An upload made before the restore reached its PC, or from a PC that never received anything, is merged without its play inside those stretches, so the restore holds and the PC's own new play is kept (#40). Counts that carry no times (per-PC tallies) under a PC the journey knows are held to the journey's; recipes, mounts and people first noted during a removed session may come back. The pre-restore version stays in history, so a restore can be undone.
 
 ## Storage
 
