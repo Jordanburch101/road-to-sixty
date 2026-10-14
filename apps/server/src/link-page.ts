@@ -10,12 +10,19 @@ const LOOP = 14;
 const ROAD: Point[] = [[-20, 300], [220, 250], [420, 190], [620, 170], [820, 110], [1040, 80], [1420, 20]];
 const PLATFORMS: Record<string, string> = { darwin: "Mac", windows: "Windows", linux: "Linux" };
 
+// The fog spans the whole window however wide it is, the road stretched to
+// fit, so its edges never show as a box.
 function drawFog() {
   const svg = $("fog");
+  const width = Math.max(document.documentElement.clientWidth, 320);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("viewBox", `0 0 ${width} 360`);
+  svg.replaceChildren();
   const style = document.createElementNS(SVG, "style");
   style.textContent = fogAnimation(LOOP);
   svg.append(style);
-  const { lit, edge, fog } = fogDots(1400, 360, 18, [ROAD]);
+  const road = ROAD.map(([x, y]): Point => [(x * width) / 1400, y]);
+  const { lit, edge, fog } = fogDots(width, 360, 18, [road]);
   const dot = (x: number, y: number, r: number, fill: string, at?: number) => {
     const c = document.createElementNS(SVG, "circle");
     c.setAttribute("cx", String(x));
@@ -53,6 +60,11 @@ function pcOf(scope: unknown): string | null {
 const typed = () => ($("code") as HTMLInputElement).value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 drawFog();
+let resized: ReturnType<typeof setTimeout> | undefined;
+addEventListener("resize", () => {
+  clearTimeout(resized);
+  resized = setTimeout(drawFog, 150);
+});
 const signedIn = (await call("/get-session")).data as { user: { name: string } } | null;
 if (!signedIn) {
   $("sign-in").hidden = false;
