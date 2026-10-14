@@ -2,11 +2,11 @@
 //! thread runs on a thread of its own, so the window never waits on an
 //! upload; it hears the outcome through the "status" event.
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use rts_sync::api::Client;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::runner::{Links, Notifier, Runner};
@@ -53,9 +53,20 @@ pub fn link(app: AppHandle) {
     });
 }
 
+/// The folder picker, run here so the window knows not to hide behind it.
 #[tauri::command]
-pub fn add_folder(app: AppHandle, path: String) {
-    with_runner(app, move |r| r.add_folder(PathBuf::from(path)));
+pub fn pick_folder(app: AppHandle) {
+    std::thread::spawn(move || {
+        let picked = crate::window::holding(&app, || {
+            app.dialog()
+                .file()
+                .set_title("Pick your World of Warcraft folder")
+                .blocking_pick_folder()
+        });
+        if let Some(path) = picked.and_then(|p| p.into_path().ok()) {
+            with_runner(app, move |r| r.add_folder(path));
+        }
+    });
 }
 
 #[tauri::command]

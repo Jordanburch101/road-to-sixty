@@ -19,9 +19,10 @@
         "resizable": false,
         "maximizable": false,
         "visible": false,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "backgroundColor": "#07060a"
+        "backgroundColor": "#07060a",
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {

@@ -2,7 +2,7 @@
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands::with_runner;
@@ -27,9 +27,21 @@ pub fn build(app: &AppHandle) -> tauri::Result<Tray> {
         .icon(Image::from_bytes(include_bytes!("../icons/32x32.png"))?)
         .tooltip("Road to Sixty")
         .menu(&menu)
-        .show_menu_on_left_click(true)
+        .show_menu_on_left_click(false)
+        // A left click opens the window under the icon; the menu is on a right click.
+        .on_tray_icon_event(|tray, event| {
+            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                crate::window::toggle(tray.app_handle());
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_window(app),
+            "open" => crate::window::show(app),
             "pause" => {
                 let paused = app.state::<Notifier>().get().paused;
                 with_runner(app.clone(), move |r| r.set_paused(!paused));
@@ -73,13 +85,5 @@ impl Tray {
     /// True when the item already offers an update, so this click installs it.
     fn offered(&self) -> bool {
         self.update.text().is_ok_and(|t| t.starts_with("Restart to update"))
-    }
-}
-
-pub fn show_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
     }
 }

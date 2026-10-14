@@ -3,7 +3,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
 import type { ReactNode } from "react";
-import { addFolder, isMac, link, setStartsAtLogin, type Status } from "./api";
+import { addFolder, link, setStartsAtLogin, type Status } from "./api";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
@@ -13,7 +13,6 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
   const linked = status.linkedTo !== null;
   return (
     <main className="flex h-full flex-col">
-      {isMac && <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />}
       <header className="relative overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
         <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
           <Fog width={400} height={180} step={14} roads={[ROAD]} marks={MARKS} />

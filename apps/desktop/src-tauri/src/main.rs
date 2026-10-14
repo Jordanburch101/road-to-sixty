@@ -10,6 +10,7 @@ mod runner;
 mod status;
 mod tray;
 mod update;
+mod window;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -28,7 +29,7 @@ pub const SERVER: &str = match option_env!("RTS_SERVER") {
 fn main() {
     tauri::Builder::default()
         // Must come first: a second copy only shows this one's window.
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| tray::show_window(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| window::show(app)))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
@@ -36,11 +37,13 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            app.manage(window::Popover::default());
             let tray = tray::build(app.handle())?;
             app.manage(tray.clone());
             let handle = app.handle().clone();
@@ -81,7 +84,7 @@ fn main() {
             });
 
             if !std::env::args().any(|a| a == "--hidden") {
-                tray::show_window(app.handle());
+                window::show(app.handle());
             }
             Ok(())
         })
@@ -91,11 +94,14 @@ fn main() {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            if let WindowEvent::Focused(false) = event {
+                window::blurred(window);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::status,
             commands::link,
-            commands::add_folder,
+            commands::pick_folder,
             commands::set_paused,
             commands::unlink,
             update::check_update,
@@ -110,7 +116,7 @@ fn main() {
             // Opening the app again on a Mac (say, from Applications while it
             // started at login) only wakes this copy; show its window.
             #[cfg(target_os = "macos")]
-            RunEvent::Reopen { .. } => tray::show_window(_app),
+            RunEvent::Reopen { .. } => window::show(_app),
             _ => {}
         });
 }

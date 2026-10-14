@@ -1,7 +1,7 @@
 import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import type { ReactNode } from "react";
-import { isMac, setPaused, type Status } from "./api";
+import { setPaused, type Status } from "./api";
 
 export type Tab = "characters" | "account";
 
@@ -39,7 +39,6 @@ export function Shell({ status, tab, onTab, children }: { status: Status; tab: T
     !status.paused && !status.offline && status.problems.length === 0 && !status.characters.some((c) => c.problem);
   return (
     <main className="flex h-full flex-col">
-      {isMac && <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />}
       <div className="flex items-center gap-2.5 px-5 py-3.5">
         <img src={compass} alt="" className="size-7 rounded-md" />
         <div className="flex flex-1 flex-col">
