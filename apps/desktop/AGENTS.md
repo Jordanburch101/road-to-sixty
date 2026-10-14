@@ -21,7 +21,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 - `src-tauri/` is the app around the engine (package `road-to-sixty-app`):
   `tauri.conf.json` sets the window, bundles and icons (made from
   `packages/ui/compass.png` by `bunx tauri icon`), `capabilities/` says what
-  the window may call, and `src/status.rs` words the tray line and each
+  the window may call. `src/runner.rs` runs the engine on a thread of its
+  own; linking, pausing, unlinking and adding a folder stop it, change the
+  saved state and start it again, and every change to the status goes
+  through its `Notifier`. `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
@@ -48,7 +51,8 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   hand the engine made-up game folders instead (`watch::run` takes
   `games`), so they never touch a real install or a real character.
 - Tests that need a server use `api::fake`, which the `fake` feature lends
-  to other crates' tests.
+  to other crates' tests. The runner's tests pass a made-up `find` and
+  `MemoryTokens`, so they never touch a real install or the real Keychain.
 - The request and response shapes mirror `packages/api`; change them
   together with the server.
 - Files the game reads are written to a temporary file and renamed over the

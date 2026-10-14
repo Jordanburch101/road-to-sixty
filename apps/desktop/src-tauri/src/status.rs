@@ -161,7 +161,12 @@ mod tests {
     #[test]
     fn a_pass_lists_characters_from_here_and_the_server_once_each() {
         let mut s = linked();
-        apply(&mut s, &report(&["Ann-Test", "Bob-Test"], &["Ann-Test"], &[]), &["Ann-Test".into(), "Cy-Test".into()], 1000);
+        apply(
+            &mut s,
+            &report(&["Ann-Test", "Bob-Test"], &["Ann-Test"], &[]),
+            &["Ann-Test".into(), "Cy-Test".into()],
+            1000,
+        );
         refresh(&mut s, 1000);
         let keys: Vec<_> = s.characters.iter().map(|c| (c.key.as_str(), c.here, c.note.as_str())).collect();
         assert_eq!(
