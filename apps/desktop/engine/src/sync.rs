@@ -202,7 +202,7 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
                 by_game.entry(&entry.game).or_default().push(Delivery {
                     key: who,
                     version,
-                    replace: entry.replace,
+                    restore: entry.restore,
                     journey,
                 });
             }
@@ -425,7 +425,7 @@ mod tests {
         assert_eq!(report.update_addon, ["Old-Test Realm"]);
         let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
         assert!(
-            data.contains(r#"["Ann-Test Realm"] = { version = 9, replace = false, journey = "{[\"version\"]=3,}" }"#),
+            data.contains(r#"["Ann-Test Realm"] = { version = 9, journey = "{[\"version\"]=3,}" }"#),
             "{data}"
         );
         assert!(!data.contains("Elsewhere"));

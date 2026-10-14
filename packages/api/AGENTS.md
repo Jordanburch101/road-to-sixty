@@ -11,5 +11,7 @@ TypeScript types and a few constants, with no runtime code.
   (`apps/server/src/sync.ts`) and the engine in the same commit.
 - Each field gets a comment saying what it holds, because the Rust mirror
   and the server both read this file to learn it.
+- `CheckEntry.replace` stays until no tester runs app 0.1.1: its `api.rs`
+  needs the field. Newer apps read `restore`.
 
 `bun run typecheck` from here checks it.

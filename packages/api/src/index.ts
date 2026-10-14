@@ -42,7 +42,11 @@ export type CheckEntry = {
   // has, or when the character has no merged version yet.
   version: number | null;
   fingerprint: string;
-  replace: boolean; // a restore: the addon replaces instead of merging
+  // The newest restore, while this PC hasn't shown (by an upload's received)
+  // that its addon took it in. The addon replaces its copy only when the
+  // version it last brought in is older than this, so play since stays.
+  restore: number | null;
+  replace: boolean; // restore !== null; read by app 0.1.1
   updateAddon: boolean;
   // Why the server refused this PC's newest upload of this character, or
   // null. The app shows it against the character until a newer upload goes in.

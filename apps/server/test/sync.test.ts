@@ -126,13 +126,17 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
     .values({ characterId: c!.id, kind: "restore", fingerprint: merged.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
     .returning();
   await db.update(characters).set({ headVersionId: restore!.id });
-  expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, replace: true });
+  expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, restore: restore!.id, replace: true });
 
   await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(merged.version) });
   await workAll();
   const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
   expect(superseded?.deviceId).toBe(device.id);
   expect((await check(token)).characters[0]!.version).toBe(restore!.id);
+
+  await upload(token, savedFile(journey({ events: session(9000) })), { received: String(restore!.id) });
+  await workAll();
+  expect((await check(token)).characters[0]).toMatchObject({ restore: null, replace: false });
 });
 
 // What the website's restore (a later step) does: a new head holding the

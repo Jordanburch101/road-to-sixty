@@ -12,7 +12,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 - `engine/` is the sync engine, a Rust library with no window (package
   `rts-sync`):
   - `installs.rs` finds WoW installs, game folders and saved journeys.
-  - `inbox.rs` writes the `RoadToSixty_Sync` folder.
+  - `inbox.rs` writes the `RoadToSixty_Sync` folder. A restore reaches the
+    addon as `restore = <id>`, never as a yes or no: the addon replaces only
+    a copy older than that restore (`Sync.lua`).
   - `api.rs` is the server client; `link.rs` links a PC.
   - `state.rs` is what the app remembers. The PC token is in `token`
     beside `state.json`, readable only by the player, and never in

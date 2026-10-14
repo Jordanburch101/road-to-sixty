@@ -31,7 +31,10 @@ pub struct CheckEntry {
     /// version yet.
     pub version: Option<i64>,
     pub fingerprint: String,
-    pub replace: bool,
+    /// The restore this PC hasn't taken in yet; the addon replaces its copy
+    /// only if the version it last brought in is older.
+    #[serde(default)]
+    pub restore: Option<i64>,
     #[serde(rename = "updateAddon")]
     pub update_addon: bool,
     /// Why the server refused this PC's newest upload of this character.

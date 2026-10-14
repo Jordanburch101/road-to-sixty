@@ -84,9 +84,15 @@ check(what == "merged" and #out.events == 6 and out.totals.deaths == 2, "a newer
 check(Same(out.events, Both(here, there)), "both PCs' sessions, in time order")
 check(#char.events == 3, "the journey given is not changed")
 
--- 2. Replaced: a restore takes the incoming journey whole.
-what, out = Sync.Apply(Journey({ events = Both(here, there) }), { version = 6, replace = true, journey = Write(Journey({ events = Session(1000) })) })
+-- 2. Replaced: a restore takes the incoming journey whole, unless this PC
+-- already took that restore in, so its play since then merges instead.
+what, out = Sync.Apply(Journey({ events = Both(here, there) }), { version = 6, restore = 6, journey = Write(Journey({ events = Session(1000) })) })
 check(what == "replaced" and Same(out.events, here), "a restore replaces: " .. tostring(what))
+local tookIt = Journey({ events = Both(here, there), syncedVersion = 6 })
+what, out = Sync.Apply(tookIt, { version = 9, restore = 6, journey = Write(Journey({ events = Session(1000) })) })
+check(what == "merged" and #out.events == 6, "a restore this PC already took in merges, keeping its play since: " .. tostring(what))
+what, out = Sync.Apply(Journey({ events = Both(here, there) }), { version = 6, replace = true, journey = Write(Journey({ events = Session(1000) })) })
+check(what == "replaced", "a sync folder from app 0.1.1 still replaces on its flag: " .. tostring(what))
 
 -- 3. Already brought in: the same version, or an older one.
 char = Journey({ events = Session(1000), syncedVersion = 6 })

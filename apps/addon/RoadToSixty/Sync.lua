@@ -1,8 +1,8 @@
 local _, ns = ...
 
 -- Brings in the journey the Road to Sixty app left in the sync folder
--- (#1): merged into what this PC has, or, for a restore picked on the
--- website, put in its place. The app owns Interface/AddOns/RoadToSixty_Sync,
+-- (#1): merged into what this PC has, or, for a restore picked in the
+-- app, put in its place. The app owns Interface/AddOns/RoadToSixty_Sync,
 -- which RoadToSixty.toc lists under OptionalDeps so it loads first. Its
 -- data.lua sets one global:
 --
@@ -11,7 +11,7 @@ local _, ns = ...
 --       chars = {
 --           ["Name-Realm"] = {     -- Roster:Key()
 --               version = 42,      -- the server's version number; higher is newer
---               replace = true,    -- optional: a restore
+--               restore = 40,      -- optional: the restore this PC hasn't taken in yet
 --               journey = "...",   -- the journey as Parse.Write text
 --           },
 --       },
@@ -53,7 +53,13 @@ function Sync.Apply(char, entry)
     if not journey then return "problem", why end
     TidyUp(char)
     TidyUp(journey)
-    if entry.replace then return "replaced", journey end
+    -- A restore replaces only a copy older than it. A PC that already took
+    -- the restore in has play since then that a replace would throw away.
+    -- replace is what app 0.1.1 writes instead of restore.
+    local restore = tonumber(entry.restore)
+    if (restore and (char.syncedVersion or 0) < restore) or (not restore and entry.replace) then
+        return "replaced", journey
+    end
     local out
     out, why = ns.Merge.Merge(char, journey)
     if not out then return "problem", why end
@@ -81,7 +87,7 @@ ns.On("PLAYER_LOGIN", function()
         ns.CharDefaults(char)
         char.addon, char.syncedVersion, char.rosterBuilt = addon, entry.version, nil
         ns.Print(what == "merged" and "Brought in your journey from your other PCs."
-            or "Restored this character's journey to the version picked on the website.")
+            or "Restored this character's journey to the version picked in the Road to Sixty app.")
     elseif what == "problem" then
         status.why = tostring(value)
         ns.Print("|cffff4040Could not bring in the synced journey: " .. status.why .. ". Type /rts check.|r")

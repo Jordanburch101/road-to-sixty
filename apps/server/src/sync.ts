@@ -147,13 +147,16 @@ export const sync = new Elysia({ prefix: "/v1" })
           // addon refuses a newer layout itself.
           const updateAddon = head !== null && device!.dataLayout !== null && (head.dataVersion ?? 0) > device!.dataLayout;
           const last = newest.get(c.id);
+          const lastRestoreId = lastRestore.get(c.id) ?? 0;
+          const restore = head !== null && (applied.get(c.id) ?? 0) < lastRestoreId ? lastRestoreId : null;
           return {
             game: c.game,
             realm: c.realm,
             name: c.name,
             version: head === null || updateAddon ? null : head.id,
             fingerprint: head?.fingerprint ?? "",
-            replace: head !== null && (applied.get(c.id) ?? 0) < (lastRestore.get(c.id) ?? 0),
+            restore,
+            replace: restore !== null,
             updateAddon,
             rejected: last?.status === "rejected" ? (last.reason ?? "refused") : null,
           };
