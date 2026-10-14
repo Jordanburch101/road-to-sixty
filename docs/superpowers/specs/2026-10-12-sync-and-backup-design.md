@@ -261,6 +261,8 @@ Detecting whether the game is running (to apply the 15-minute limit) matches the
 
 On macOS the app installs a LaunchAgent through tauri-plugin-autostart, which lists it under System Settings, General, Login Items, Allow in the Background (the plugin has no SMAppService option). On Windows it uses the per-user `Run` registry key. Updates come through Tauri's updater, which checks the app's own signature against a manifest published with each GitHub release. That works without Apple or Microsoft signing.
 
+Updates install themselves (Jordan, 2026-10-14). The app checks at start and every six hours. When it finds a newer version it downloads and installs it without asking. It restarts into it only while the window is closed and no upload or delivery is under way, so it never cuts a sync short, and it comes back hidden in the menu bar or tray, with the menu saying "Updated to X" for a while. On Windows the installer runs without questions. A failed update shows "Couldn't update" in the menu with the reason and is tried again at the next check. Debug builds never check or install, because the updater would replace the build folder. "Check for updates" stays in the menu for anyone who doesn't want to wait.
+
 ### Signing and builds
 
 The Mac build is unsigned at first, apart from the ad-hoc signature the Rust toolchain adds, which Apple Silicon needs to run any binary. The download page shows the System Settings, Privacy & Security, "Open Anyway" steps with screenshots. Windows ships as an unsigned per-user installer that needs no admin rights at first, with the "More info, Run anyway" steps on the download page, and moves to the free Microsoft Store individual account once stable.
