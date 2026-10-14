@@ -1,0 +1,45 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { addonUrl, fileUrl } from "../../config";
+
+export function getStaticPaths() {
+  return [{ params: { platform: "mac" } }, { params: { platform: "windows" } }];
+}
+
+const platform = Astro.params.platform as "mac" | "windows";
+const file = fileUrl(platform);
+const mac = platform === "mac";
+const steps = mac
+  ? [
+      "Open Road-to-Sixty.dmg and drag the app into Applications.",
+      "Open it. When macOS says it can't check the app, click Done.",
+      "Open System Settings, then Privacy & Security, scroll down and click Open Anyway.",
+      "Click Open Anyway once more and enter your password.",
+    ]
+  : [
+      "Run Road-to-Sixty-Setup.exe.",
+      "When Windows says it protected your PC, click More info.",
+      "Click Run anyway. It installs for you only and needs no admin rights.",
+    ];
+---
+<Layout title={`Download for ${mac ? "macOS" : "Windows"} · Road to Sixty`}>
+  <meta slot="head" http-equiv="refresh" content={`1; url=${file}`} />
+  <main class="mx-auto flex max-w-xl flex-col gap-8 px-4 py-20">
+    <div class="flex flex-col gap-3">
+      <h1 class="text-4xl font-medium tracking-tight">Your download has started</h1>
+      <p class="text-muted">If it didn't, <a href={file} class="text-text underline underline-offset-2">download it again</a>.</p>
+    </div>
+    <section class="flex flex-col gap-4 rounded-xl border border-line bg-panel p-6">
+      <h2 class="text-lg font-medium">{mac ? "Opening it the first time on a Mac" : "Opening it the first time on Windows"}</h2>
+      <p class="text-[15px] text-muted">The app isn't signed by {mac ? "Apple" : "Microsoft"} yet, so your computer asks once before it opens it.</p>
+      <ol class="flex list-decimal flex-col gap-2 pl-5 text-[15px] leading-relaxed text-muted">
+        {steps.map((s) => <li>{s}</li>)}
+      </ol>
+    </section>
+    <p class="text-[15px] leading-relaxed text-muted">Then give this PC a name, link it with Battle.net, and restart WoW once. The app does the rest.</p>
+    <p class="text-sm text-faint">
+      On {mac ? "Windows" : "a Mac"}? <a href={mac ? "/download/windows" : "/download/mac"} class="text-muted hover:text-text">Get it for {mac ? "Windows" : "macOS"}</a>.
+      Just the addon? <a href={addonUrl()} class="text-muted hover:text-text">It works on its own</a>.
+    </p>
+  </main>
+</Layout>
