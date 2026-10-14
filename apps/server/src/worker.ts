@@ -95,6 +95,7 @@ async function runJob(job: Job) {
         fingerprint: fp,
         rawSize: result.journey.length,
         dataVersion: result.layout,
+        level: result.level,
         status: "accepted",
       })
       .returning({ id: versions.id });
@@ -106,6 +107,8 @@ async function runJob(job: Job) {
       .set({
         headVersionId: merged!.id,
         level: result.level,
+        // A file from before the addon recorded the class doesn't forget it.
+        ...(result.class ? { class: result.class } : {}),
         played: result.played === null ? null : Math.round(result.played),
         lastPlayedAt: result.lastSeen === null ? null : new Date(result.lastSeen * 1000),
         updatedAt: new Date(),

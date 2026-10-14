@@ -18,7 +18,9 @@ push to `dev` that touches it. The design is
 - `src/link.ts` and `src/link.html` link a PC: the app's device code is
   approved on `/link` and traded for a PC token (`src/devices.ts`, which
   keeps only the token's hash).
-- `src/worker.ts` runs merge jobs one at a time per character;
+- `src/worker.ts` runs merge jobs one at a time per character; it fills
+  each character's level, class and time played, and each merged
+  version's level, from the runner's `ok` line;
   `src/lua.ts` starts `src/runner.lua` under standard Lua 5.1, with the
   addon's pure files, under a memory and time limit.
 - `src/schema.ts` holds the tables; migrations are in `drizzle/`, made by

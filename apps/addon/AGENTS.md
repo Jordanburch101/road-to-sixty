@@ -37,6 +37,8 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
 - Counts kept per PC (Tally.lua) go under the PC that started the thing:
   an open dungeon run and group carry `pc`, so two PCs finishing the same
   one from their copies count it once after the merge.
+- The character file keeps its own `class` (set at each login) because
+  the sync server reads only that file, never the account-wide one.
 - Saved times use `ns.Now()`, never `time()` (a test fails on `time()` in
   shipped files).
 - Map.lua is near Lua's 200-local limit: new map features go in their own file.

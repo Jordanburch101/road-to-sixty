@@ -15,10 +15,11 @@ test("a first upload is prepared and tidied, and becomes the journey", async () 
     people: { "Player-1-0001": { name: "Ann", groups: 2 } },
     levels: { 5: { t: 900 }, 6: { t: 1100 } },
     played: 3600,
+    class: "MAGE",
   });
   const r = await runMerge(savedFile(upload), null, "pc-1");
   if (!r.ok) throw new Error(r.reason);
-  expect(r).toMatchObject({ from: 2, layout: 3, level: 6, played: 3600, lastSeen: 1120 });
+  expect(r).toMatchObject({ from: 2, layout: 3, level: 6, played: 3600, lastSeen: 1120, class: "MAGE" });
   const out = new TextDecoder().decode(r.journey);
   expect(sessions(out)).toBe(1);
   expect(out).not.toContain("1415");
@@ -31,6 +32,7 @@ test("an upload merges into the current journey", async () => {
   if (!r.ok) throw new Error(r.reason);
   expect(sessions(r.journey)).toBe(2);
   expect(r.lastSeen).toBe(5120);
+  expect(r.class).toBeNull(); // neither copy was saved by an addon that records it
 });
 
 test("uploads the merge can't take are rejected with a reason", async () => {

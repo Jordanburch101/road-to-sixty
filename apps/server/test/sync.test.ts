@@ -54,7 +54,7 @@ test("an upload is refused when it isn't zstd, is too large, or is compiled Lua"
 
 test("the first upload becomes the character's journey, and the same file again is known", async () => {
   const { token } = await newDevice("user-1", "Desk");
-  const file = savedFile(journey({ events: session(1000), levels: { 4: { t: 900 } }, played: 600 }));
+  const file = savedFile(journey({ events: session(1000), levels: { 4: { t: 900 } }, played: 600, class: "PRIEST" }));
   const first = (await (await upload(token, file)).json()) as UploadResponse;
   expect(first.status).toBe("queued");
   expect(((await (await upload(token, file)).json()) as UploadResponse).status).toBe("known");
@@ -64,7 +64,9 @@ test("the first upload becomes the character's journey, and the same file again 
   const [entry] = (await check(token)).characters;
   expect(entry).toMatchObject({ ...CHAR, replace: false, updateAddon: false });
   const [c] = await db.select().from(characters);
-  expect(c).toMatchObject({ level: 4, played: 600, headVersionId: entry!.version });
+  expect(c).toMatchObject({ level: 4, played: 600, class: "PRIEST", headVersionId: entry!.version });
+  const [merged] = await db.select().from(versions).where(eq(versions.id, entry!.version!));
+  expect(merged!.level).toBe(4);
 
   const download = await call(token, `/v1/versions/${entry!.version}`);
   expect(download.headers.get("content-type")).toBe("application/zstd");

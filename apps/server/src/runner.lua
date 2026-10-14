@@ -9,7 +9,7 @@
 -- character's merged journey as Parse.Write text (none for a first
 -- upload), <pc> the uploading device's ID. Writes the result to <out> as
 -- Parse.Write text and prints one line, - for anything unknown:
---   ok <layout uploaded> <layout> <level> <played> <last seen>
+--   ok <layout uploaded> <layout> <level> <played> <last seen> <class>
 --   rejected <layout uploaded> <reason>
 --   failed <why>        the server's fault; lua.ts throws and the job is tried again
 
@@ -106,8 +106,11 @@ local function Run()
     for _, e in ipairs(out.events) do
         if not last or e[1] > last then last = e[1] end
     end
-    return ("ok %s %d %s %s %s"):format(from, out.version, tostring(level or "-"),
-        tostring(tonumber(out.played) or "-"), tostring(last or "-"))
+    -- The class is a file name like WARRIOR; anything else is left out, so
+    -- it can't break the line lua.ts reads.
+    local class = type(out.class) == "string" and out.class:match("^%u+$")
+    return ("ok %s %d %s %s %s %s"):format(from, out.version, tostring(level or "-"),
+        tostring(tonumber(out.played) or "-"), tostring(last or "-"), class or "-")
 end
 
 local ok, result = pcall(Run)
