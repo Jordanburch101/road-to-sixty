@@ -7,7 +7,7 @@ import { client, db } from "../src/db";
 import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
-import { work } from "../src/worker";
+import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
 import { journey, savedFile, session, sessions } from "./helpers";
 import { addUser, reset } from "./helpers";
 
@@ -181,30 +181,46 @@ test("an upload from a PC that never received anything is set aside once there i
 
 const s3 = new Bun.S3Client(config.s3);
 
-test("a job that throws waits before its next try, and a file the server failed to merge can be sent again", async () => {
+test("a job that throws waits longer before each try, and after the last a file can be sent again", async () => {
   const { token } = await newDevice("user-1", "Desk");
   const file = savedFile(journey({ events: session(1000) }));
   await upload(token, file);
   const [pending] = await db.select().from(versions);
   await s3.delete(`user-1/${pending!.fingerprint}.zst`); // storage lost it
 
-  for (let tries = 1; tries <= 3; tries++) {
+  let lastWait = 0;
+  for (let tries = 1; tries <= MAX_ATTEMPTS; tries++) {
     expect(await work()).toBe(true);
     const [job] = await db.select().from(jobs);
     expect(job!.attempts).toBe(tries);
-    if (tries < 3) {
+    if (tries < MAX_ATTEMPTS) {
       expect(job!.state).toBe("queued");
-      expect(job!.runAfter.getTime()).toBeGreaterThan(Date.now());
+      const wait = job!.runAfter.getTime() - Date.now();
+      expect(wait).toBeGreaterThan(lastWait);
+      expect(wait).toBeLessThanOrEqual(6 * 3600 * 1000);
+      lastWait = wait;
       expect(await work()).toBe(false); // not yet due
       await db.update(jobs).set({ runAfter: new Date(0) });
     }
   }
   const [failed] = await db.select().from(versions);
   expect(failed!.status).toBe("rejected");
+  expect(failed!.rejectReason).toBe(SERVER_FAILED);
 
   expect(((await (await upload(token, file)).json()) as UploadResponse).status).toBe("queued");
   await workAll();
   expect((await check(token)).characters).toHaveLength(1);
+});
+
+test("a job left running, as after a crash, is taken back once it is stale, and a fresh one isn't", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await db.update(jobs).set({ state: "running", claimedAt: new Date() });
+  expect(await work()).toBe(false); // claimed a moment ago: someone is on it
+  await db.update(jobs).set({ claimedAt: new Date(Date.now() - 10 * 60 * 1000) });
+  expect(await work()).toBe(true);
+  const [job] = await db.select().from(jobs);
+  expect(job!.state).toBe("done");
 });
 
 test("a merge-refused file sent again is known, not merged again", async () => {

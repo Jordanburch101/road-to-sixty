@@ -44,19 +44,24 @@ test("uploads the merge can't take are rejected with a reason", async () => {
   }
 });
 
-test("the runner stops itself over the memory or time limit", async () => {
+test("over the memory or time limit is the server's fault, not the upload's", async () => {
   const upload = savedFile(journey({ events: session(1000) }));
-  const memory = await runMerge(upload, null, "pc-1", { mb: 0.05, seconds: 30 });
-  expect(memory).toMatchObject({ ok: false, reason: "over the memory limit" });
-  const time = await runMerge(upload, null, "pc-1", { mb: 512, seconds: 0 });
-  expect(time).toMatchObject({ ok: false, reason: "over the time limit" });
+  await expect(runMerge(upload, null, "pc-1", { mb: 0.05, seconds: 30 })).rejects.toThrow("over the memory limit");
+  await expect(runMerge(upload, null, "pc-1", { mb: 512, seconds: 0 })).rejects.toThrow("over the time limit");
 });
 
-test("a runner that never ends is killed", async () => {
+test("a runner that never ends is killed, and that is the server's fault", async () => {
   const started = Date.now();
-  const r = await runMerge(savedFile(journey()), null, "pc-1", { mb: 512, seconds: 1 }, `${import.meta.dir}/fixtures/hang.lua`);
-  expect(r).toMatchObject({ ok: false, reason: "the merge didn't finish in time and was stopped" });
+  await expect(
+    runMerge(savedFile(journey()), null, "pc-1", { mb: 512, seconds: 1 }, `${import.meta.dir}/fixtures/hang.lua`),
+  ).rejects.toThrow("didn't finish in time");
   expect(Date.now() - started).toBeLessThan(10_000);
+});
+
+test("a stored journey the merge can't read is the server's fault, not the upload's", async () => {
+  const upload = savedFile(journey({ events: session(5000) }));
+  await expect(runMerge(upload, text(journey({ totals: 5 })), "pc-2")).rejects.toThrow(/stored journey/);
+  await expect(runMerge(upload, new TextEncoder().encode("{ cut short"), "pc-2")).rejects.toThrow("the merge failed");
 });
 
 test("an upload merges into a current journey saved in an older layout", async () => {

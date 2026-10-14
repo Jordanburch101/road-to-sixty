@@ -15,6 +15,13 @@
       "when": 1791929372754,
       "tag": "0001_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791949094868,
+      "tag": "0002_claimed_at",
+      "breakpoints": true
     }
   ]
 }
