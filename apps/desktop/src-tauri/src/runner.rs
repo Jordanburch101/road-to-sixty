@@ -101,30 +101,38 @@ impl Runner {
         }
     }
 
-    #[cfg(test)]
     pub fn is_running(&self) -> bool {
         self.thread.as_ref().is_some_and(|t| !t.is_finished())
+    }
+
+    /// Looks for game folders again when nothing is syncing (not linked, or
+    /// no WoW found yet); a running sync looks for itself.
+    pub fn rescan(&mut self) -> Result<(), String> {
+        if self.is_running() { Ok(()) } else { self.start() }
     }
 
     /// Brings the status up to date, then syncs if this PC is linked and
     /// syncing isn't paused.
     pub fn start(&mut self) -> Result<(), String> {
         self.stop();
-        let state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        let state = match State::load(&self.state_path) {
+            Ok(state) => state,
+            Err(e) => {
+                self.notifier.update(|s| {
+                    s.problems = vec![format!(
+                        "The app's settings file is damaged ({e}). Unlink this PC on the Account tab and link it again to start fresh."
+                    )]
+                });
+                return Ok(());
+            }
+        };
         let games = (self.find)(&state);
         let token = self.tokens.get();
         let local = local_keys(&games);
         let mut paused = false;
         self.notifier.update(|s| {
             s.linked_to = token.as_ref().and(state.battletag.clone());
-            s.games = games
-                .iter()
-                .map(|g| Game {
-                    path: g.path.display().to_string(),
-                    name: g.name.clone(),
-                    addon: installs::addon_version(&g.path),
-                })
-                .collect();
+            s.games = shown(&games);
             for key in &local {
                 if !s.characters.iter().any(|c| &c.key == key) {
                     s.characters.push(Character {
@@ -132,6 +140,7 @@ impl Runner {
                         here: true,
                         update_addon: false,
                         uploaded: None,
+                        problem: None,
                         note: String::new(),
                     });
                 }
@@ -145,20 +154,34 @@ impl Runner {
 
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = stop.clone();
-        let (server, state_path, cache, notifier) = (
+        let (server, state_path, cache, notifier, find) = (
             self.server.clone(),
             self.state_path.clone(),
             self.cache.clone(),
             self.notifier.clone(),
+            self.find.clone(),
         );
         self.thread = Some(std::thread::spawn(move || {
             let client = Client::new(&server, token);
+            let picked = state.picked.clone();
             let mut state = state;
-            let report = |result: &Result<Report, ApiError>| {
-                let local = local_keys(&games);
-                notifier.update(|s| apply(s, result, &local, now()));
+            let lookup = || {
+                find(&State {
+                    picked: picked.clone(),
+                    ..State::default()
+                })
             };
-            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &games, &stop, report) {
+            let report = |result: &Result<Report, ApiError>| {
+                let games = result.as_ref().map(|r| r.games.clone()).unwrap_or_default();
+                let local = local_keys(&games);
+                notifier.update(|s| {
+                    if result.is_ok() {
+                        s.games = shown(&games);
+                    }
+                    apply(s, result, &local, now());
+                });
+            };
+            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, report) {
                 notifier.update(|s| s.problems = vec![format!("Couldn't watch the game folders: {e}")]);
             }
         }));
@@ -195,9 +218,10 @@ impl Runner {
         self.stop();
         self.tokens.clear()?;
         let _ = fs::remove_dir_all(&self.cache);
-        let state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        // A damaged state file is replaced: unlinking is how to start fresh.
+        let picked = State::load(&self.state_path).map(|s| s.picked).unwrap_or_default();
         State {
-            picked: state.picked,
+            picked,
             ..State::default()
         }
         .save(&self.state_path)
@@ -235,6 +259,17 @@ impl Runner {
         self.notifier.update(|s| s.paused = paused);
         self.start()
     }
+}
+
+fn shown(games: &[GameFolder]) -> Vec<Game> {
+    games
+        .iter()
+        .map(|g| Game {
+            path: g.path.display().to_string(),
+            name: g.name.clone(),
+            addon: installs::addon_version(&g.path),
+        })
+        .collect()
 }
 
 /// `Name-Realm` of every character with a saved file in these game folders.
@@ -447,6 +482,51 @@ mod tests {
         assert_eq!((state.pc, state.picked), (None, vec![PathBuf::from("/somewhere")]));
         assert_eq!(t.notifier.get().line, "Not linked");
         assert!(!t.runner.is_running());
+    }
+
+    #[test]
+    fn a_damaged_settings_file_is_a_problem_not_a_crash() {
+        let mut t = setup(true);
+        std::fs::write(t.dir.path().join("data/state.json"), "{ not json").unwrap();
+        assert!(t.runner.start().is_ok());
+        let problems = t.notifier.get().problems;
+        assert!(problems[0].contains("settings file is damaged"), "{problems:?}");
+        assert!(!t.runner.is_running());
+        t.runner.unlink().unwrap();
+        assert!(
+            State::load(&t.dir.path().join("data/state.json")).is_ok(),
+            "unlinking starts it fresh"
+        );
+    }
+
+    #[test]
+    fn looking_again_while_idle_finds_a_game_installed_since() {
+        let t = setup(true);
+        let installed = Arc::new(AtomicBool::new(false));
+        let game = t.dir.path().join("wow/_classic_beta_");
+        let find: Find = {
+            let installed = installed.clone();
+            Arc::new(move |_: &State| {
+                if installed.load(Ordering::Relaxed) {
+                    vec![GameFolder {
+                        path: game.clone(),
+                        name: "_classic_beta_".into(),
+                    }]
+                } else {
+                    Vec::new()
+                }
+            })
+        };
+        let notifier = Notifier::new(|_| {});
+        let mut runner = Runner::new(&t._fake.url, &t.dir.path().join("data"), find, notifier.clone());
+        runner.start().unwrap();
+        assert_eq!(notifier.get().line, "WoW not found");
+        assert!(!runner.is_running());
+        installed.store(true, Ordering::Relaxed);
+        runner.rescan().unwrap();
+        assert!(runner.is_running());
+        assert_eq!(notifier.get().games.len(), 1);
+        runner.stop();
     }
 
     #[test]

@@ -5,8 +5,18 @@ import { listen } from "@tauri-apps/api/event";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 
+// Only a Mac draws its window buttons over the window; Windows has a title bar.
+export const isMac = navigator.userAgent.includes("Mac");
+
 export type Game = { path: string; name: string; addon: string | null };
-export type Character = { key: string; here: boolean; updateAddon: boolean; uploaded: number | null; note: string };
+export type Character = {
+  key: string;
+  here: boolean;
+  updateAddon: boolean;
+  uploaded: number | null;
+  problem: string | null; // why it isn't backed up
+  note: string;
+};
 export type Status = {
   linkedTo: string | null;
   games: Game[];

@@ -34,7 +34,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the window may call. `src/runner.rs` runs the engine on a thread of its
   own; linking, pausing, unlinking and adding a folder stop it, change the
   saved state and start it again, and every change to the status goes
-  through its `Notifier`. `src/status.rs` words the tray line and each
+  through its `Notifier`. While nothing syncs (not linked, no WoW yet, the
+  thread stopped) the 30-second ticker calls `rescan`, which starts it
+  again; a damaged `state.json` is a problem in the window, and unlinking
+  writes a fresh one. Problems that name a character show on its row and
+  count in the tray line ("2 characters not backed up"). `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
   `src/tray.rs` is the menu bar or tray icon, `src/commands.rs` is what the
   window can ask (anything that restarts the sync thread runs on a thread
