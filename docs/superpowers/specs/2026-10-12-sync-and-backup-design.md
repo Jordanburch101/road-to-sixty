@@ -23,7 +23,7 @@ There is no deadline. The service should be solid before it ships. The only time
 | Area | Decision |
 |---|---|
 | Sign-in | Battle.net, through Better Auth running in the backend |
-| Linking the app | Better Auth device sign-in: the app opens the server's link page with its code, the player signs in with Battle.net there and confirms |
+| Linking the app | Better Auth device sign-in: the app opens the server's link page, the player signs in with Battle.net there, types the code the app shows and confirms the PC by its name |
 | Where the merge runs | One `Merge.lua` in plain Lua 5.1. The server runs it to keep the merged journey. The addon runs the same file at login to fold the server's copy into anything played since |
 | Delivery to the PC | The app writes its own addon folder, `RoadToSixty_Sync`. It never writes the game's SavedVariables |
 | Backend | Elysia on Bun, deployed by Dokploy on our own server, with Postgres beside it |
@@ -164,7 +164,16 @@ The upload format leaves room for sending only the difference from a previous ve
 
 ### Account API, called by the app's window with its PC token
 
-List characters, list a character's versions, restore a version, list and unlink PCs, download all my data as a zip, delete everything.
+Every route uses the PC token, and a player only ever sees their own characters and PCs (another player's ids answer 404).
+
+- `GET /v1/characters`: each character with a merged journey, with class, level, time played, when it was last played, and when and from which PC its current version came.
+- `GET /v1/characters/:id/versions`: its merged and restored versions, newest first, at most 100, each with its level and the PC that made it, or the version a restore brought back.
+- `POST /v1/characters/:id/restore` with `{ version }`: makes that version current again (see Restore). Restoring the current version is refused.
+- `GET /v1/devices`: the player's linked PCs, with platform, app and addon versions and when each was last seen.
+- `PATCH /v1/devices/:id` with `{ name }`: renames a PC. Names are one line of at most 40 characters.
+- `DELETE /v1/devices/:id`: unlinks a PC. Its token stops working at once; its journeys stay on it and on the server.
+- `GET /v1/export`: a zip of each character's current journey as the game would save it.
+- `DELETE /v1/account`: delete everything (see Deleting an account).
 
 ### Merge jobs
 
@@ -186,7 +195,7 @@ Every request from the app carries the PC's addon version. The server never send
 
 ### Restore
 
-Restoring a version creates a new version with the replace flag set. The app delivers it, and the addon replaces its data for that character instead of merging. The pre-restore version stays in history, so a restore can be undone.
+Restoring a version creates a new version, a copy of the one picked, and makes it current in one transaction. Until a PC's uploads show (by their received id) that its addon took the restore in, `/check` sends that PC the restore's id as `restore`. The app writes it into the sync folder, and the addon replaces its data for that character only if the version it last brought in is older than the restore; otherwise it merges, so play since the restore is kept (#40). An upload made before the restore reached its PC is set aside, not merged on top. The pre-restore version stays in history, so a restore can be undone.
 
 ## Storage
 
@@ -199,7 +208,7 @@ devices          id, user_id, name, platform, app_version, addon_version, last_s
 characters       id, user_id, game, realm, name, class, level, played, last_played_at,
                  head_version_id, updated_at          unique (user_id, game, realm, name)
 versions         id, character_id, device_id, kind ('upload' | 'merged' | 'restore'),
-                 fingerprint, raw_size, data_version, addon_version, status, reject_reason, created_at
+                 fingerprint, raw_size, data_version, level, addon_version, status, reject_reason, created_at
 version_parents  version_id, parent_id
 jobs             id, character_id, version_id, state, attempts, error, created_at, finished_at
 account_backups  id, user_id, device_id, game, account_hash, fingerprint, created_at
@@ -207,7 +216,7 @@ account_backups  id, user_id, device_id, game, account_hash, fingerprint, create
 
 Device tokens are Better Auth's. The server stores only their hashes. The Battle.net account ID is stored as a hash, and the BattleTag is refreshed at each sign-in, as Blizzard's API terms require.
 
-The server fills in `level`, `class`, `played` and `last_played_at` when it accepts an upload, so the app lists characters without opening any file.
+The server fills in `level`, `class`, `played` and `last_played_at` when it accepts an upload, so the app lists characters without opening any file. The class comes from the character file itself, which the addon gives a `class` field at each login, since the server never sees the account-wide file. Each merged or restored version keeps its own `level` for the history.
 
 The account-wide file is backed up at most once a day and never merged.
 
@@ -242,7 +251,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 ### First run
 
 1. Find WoW installs: Battle.net's own install list (`C:\ProgramData\Battle.net\Agent\product.db` on Windows, `/Users/Shared/Battle.net/Agent/product.db` on Mac), the default locations (`C:\Program Files (x86)\World of Warcraft`, `/Applications/World of Warcraft`), then a folder picker. Inside each install, check every game folder matching `_*_` that has the addon, so the folder name Forever launches with doesn't matter. Each game folder's `.build.info` names its product.
-2. Link the PC through Better Auth's device sign-in. The token goes into a file of its own in the app's data folder, readable only by the player (Jordan, 2026-10-14). Not the Keychain or Credential Manager: an app without a paid Apple signature is asked for Keychain access after every update, players wouldn't know why, and Linux has no common store. The token can only sync this player's journeys and unlinking revokes it.
+2. Link the PC through Better Auth's device sign-in. The player names the PC (filled in with the computer's own name), and the name goes with the code request in its `scope`, so the link page can show which PC the code belongs to. The player types the code on the link page; it is never filled in from the address, which is what stops a phishing link from linking someone else's PC. The token goes into a file of its own in the app's data folder, readable only by the player (Jordan, 2026-10-14). Not the Keychain or Credential Manager: an app without a paid Apple signature is asked for Keychain access after every update, players wouldn't know why, and Linux has no common store. The token can only sync this player's journeys and unlinking revokes it.
 3. Create `RoadToSixty_Sync` in every game folder with the addon, and ask the player to restart WoW once.
 
 ### While running
@@ -287,7 +296,7 @@ The account screens live in the app's window, called through the account API wit
 | PCs | Linked PCs with name, platform, app and addon versions, last seen, "Unlink" |
 | Account | "Download all my data" (a zip of each character's latest merged file), "Delete everything" with confirmation |
 
-Signing in and linking happen on one plain page the server itself serves (`/link`), which the app opens in the browser with its code filled in.
+Signing in and linking happen on one page the server itself serves (`/link`), in look A with the moving fog, which the app opens in the browser. The player types the code there and sees the PC's name before linking.
 
 Viewing journeys on a map in the browser is left out. Storing journeys as whole files keeps it possible.
 
@@ -295,7 +304,7 @@ Viewing journeys on a map in the browser is left out. Storing journeys as whole 
 
 Dark and minimal in the Vercel style: near-black background, thin borders, plenty of space, the Geist font, shadcn components close to their defaults. One accent colour, the electric blue from the icon, used for buttons, links, the sync status dot and a soft glow behind the icon on the home page. The icon's compass rings may appear as faint lines behind the home page's top section and nowhere else.
 
-The site and the app's window share one set of components and colours in `packages/ui`.
+The site and the app's window share one set of components and colours in `packages/ui`. The fog of war background is shared too: on the website and the link page it moves, a lit stretch travelling along each road as its dots light up, swell and fade (`packages/ui/src/dots.ts`), and it stays still for anyone who has asked their system for reduced motion.
 
 The icon is the glowing blue compass Jordan provided, used for the site, the app and its installers. This was Jordan's call after the question of whether it is Blizzard art came up. If Blizzard objects later, the icon files in `packages/ui` are the one place to swap it.
 
