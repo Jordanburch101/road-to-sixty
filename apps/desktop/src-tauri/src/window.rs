@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, Window};
 use tauri_plugin_positioner::{Position, WindowExt};
 
+use crate::runner::Notifier;
+
 #[derive(Default)]
 pub struct Popover {
     holding: AtomicBool,
@@ -58,10 +60,18 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
-/// The window lost focus: hide it, unless one of our dialogs took it.
+/// Whether losing focus hides the window: not while one of our dialogs has
+/// focus, nor while linking, when the browser has it and the player compares
+/// the code with the one in the window.
+fn hides(held: bool, linking: bool) -> bool {
+    !held && !linking
+}
+
+/// The window lost focus: hide it, unless one of our dialogs or the link took it.
 pub fn blurred(window: &Window) {
     let popover = window.app_handle().state::<Popover>();
-    if !popover.held() {
+    let linking = window.app_handle().state::<Notifier>().get().link_code.is_some();
+    if hides(popover.held(), linking) {
         *popover.hidden_at.lock().unwrap() = Some(Instant::now());
         let _ = window.hide();
     }
@@ -84,6 +94,13 @@ mod tests {
         assert!(!should_show(false, Some(Duration::from_millis(100))));
         assert!(should_show(false, Some(Duration::from_secs(2))));
         assert!(should_show(false, None));
+    }
+
+    #[test]
+    fn the_window_stays_while_linking_so_the_code_can_be_checked() {
+        assert!(hides(false, false));
+        assert!(!hides(true, false), "one of our dialogs is open");
+        assert!(!hides(false, true), "the browser took focus to link");
     }
 
     #[test]

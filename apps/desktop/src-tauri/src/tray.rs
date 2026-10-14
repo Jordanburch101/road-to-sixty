@@ -71,8 +71,6 @@ impl Tray {
         let _ = self.line.set_text(status.line.replace('&', "&&"));
         let _ = self.pause.set_text(if status.paused { "Resume syncing" } else { "Pause syncing" });
         let _ = self.pause.set_enabled(status.linked_to.is_some());
-        if let Some(text) = crate::status::update_line(&status.update) {
-            let _ = self.update.set_text(text);
-        }
+        let _ = self.update.set_text(crate::status::update_line(&status.update));
     }
 }

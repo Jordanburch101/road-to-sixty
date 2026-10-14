@@ -71,13 +71,13 @@ pub enum UpdateState {
     Failed { why: String },
 }
 
-/// The tray's update item, when an update has something to say.
-pub fn update_line(update: &UpdateState) -> Option<String> {
+/// The tray's update item.
+pub fn update_line(update: &UpdateState) -> String {
     match update {
-        UpdateState::None => None,
-        UpdateState::Ready { version } => Some(format!("Restart to update to {version}")),
-        UpdateState::Updated { version, .. } => Some(format!("Updated to {version}")),
-        UpdateState::Failed { why } => Some(format!("Couldn't update: {why}")),
+        UpdateState::None => "Check for updates".into(),
+        UpdateState::Ready { version } => format!("Restart to update to {version}"),
+        UpdateState::Updated { version, .. } => format!("Updated to {version}"),
+        UpdateState::Failed { why } => format!("Couldn't update: {why}"),
     }
 }
 
@@ -343,22 +343,21 @@ mod tests {
 
     #[test]
     fn the_update_item_says_what_the_update_is_doing() {
-        assert_eq!(update_line(&UpdateState::None), None);
+        assert_eq!(update_line(&UpdateState::None), "Check for updates");
         assert_eq!(
-            update_line(&UpdateState::Ready { version: "0.1.3".into() }).as_deref(),
-            Some("Restart to update to 0.1.3")
+            update_line(&UpdateState::Ready { version: "0.1.3".into() }),
+            "Restart to update to 0.1.3"
         );
         assert_eq!(
             update_line(&UpdateState::Updated {
                 version: "0.1.3".into(),
                 at: 0
-            })
-            .as_deref(),
-            Some("Updated to 0.1.3")
+            }),
+            "Updated to 0.1.3"
         );
         assert_eq!(
-            update_line(&UpdateState::Failed { why: "no network".into() }).as_deref(),
-            Some("Couldn't update: no network")
+            update_line(&UpdateState::Failed { why: "no space".into() }),
+            "Couldn't update: no space"
         );
     }
 

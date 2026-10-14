@@ -21,7 +21,6 @@
         "visible": false,
         "backgroundColor": "#07060a",
         "decorations": false,
-        "alwaysOnTop": true,
         "skipTaskbar": true
       }
     ],

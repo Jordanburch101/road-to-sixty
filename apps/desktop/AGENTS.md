@@ -46,7 +46,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the app starts over unlinked, saying so, so the player can link again. Problems that name a character show on its row and
   count in the tray line ("2 characters not backed up"). `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
-  `src/tray.rs` is the menu bar or tray icon (a left click opens the window, a right click the menu), `src/window.rs` opens the window under it with tauri-plugin-positioner and hides it when it loses focus, except while one of our dialogs is open (so dialogs run from Rust, through `window::holding`, and confirmations are inline in the window), `src/commands.rs` is what the
+  `src/tray.rs` is the menu bar or tray icon (a left click opens the window, a right click the menu), `src/window.rs` opens the window under it with tauri-plugin-positioner and hides it when it loses focus, except while one of our dialogs is open or a link waits on the browser (so dialogs run from Rust, through `window::holding`, and confirmations are inline in the window), `src/commands.rs` is what the
   window can ask (anything that restarts the sync thread runs on a thread
   of its own), `src/account.rs` holds the account screens' calls
   (characters, history, restore, PCs, export, delete everything): the
