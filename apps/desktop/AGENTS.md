@@ -38,12 +38,16 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
   the screens, after the mockups' "A · First run" and "A · Characters".
+- `scripts/latest-json.ts` writes the updater's `latest.json` in the
+  release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
+  tags), which uploads the builds to the public R2 bucket
+  `road-to-sixty-downloads` at `https://dl.rts.everhold.online/app/`.
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
 
 ```
-cargo test --workspace              # engine and app tests (one needs luajit on the path; needs dist/, so build the window first)
+bun run test                        # every Rust test (one needs luajit; build the window first) and the script tests
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
 bunx tauri dev                      # the app, using this PC's real link, Keychain and WoW
 bun run build                       # the window into dist/
@@ -71,3 +75,6 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   by hand, so never regenerate it.
 - Files the game reads are written to a temporary file and renamed over the
   old one, so the game never reads half a file.
+- A release needs `version` raised in both `src-tauri/tauri.conf.json` and
+  `src-tauri/Cargo.toml`, and a tag `app-v<that version>`; the workflow
+  refuses a tag that doesn't match.

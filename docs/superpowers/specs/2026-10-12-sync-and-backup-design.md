@@ -236,7 +236,7 @@ Stored personal data: a hash of the Battle.net account ID, the BattleTag, charac
 
 ## The desktop app
 
-Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window for first-run setup, status and the account screens (see The website). The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Link this PC, Game folders, Open website, Pause syncing, Quit.
+Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, with a small window for first-run setup, status and the account screens (see The website). The menu shows the status ("Synced 2 minutes ago", "Update the addon on this PC"), then Open Road to Sixty, Pause syncing, Check for updates, Quit; linking and game folders are in the window.
 
 ### First run
 
@@ -258,13 +258,13 @@ Detecting whether the game is running (to apply the 15-minute limit) matches the
 
 ### Start at login and updates
 
-On macOS the app registers through `SMAppService` (macOS 13 and later), so it appears under System Settings, General, Login Items. On Windows it uses the per-user `Run` registry key. Updates come through Tauri's updater, which checks the app's own signature against a manifest published with each GitHub release. That works without Apple or Microsoft signing.
+On macOS the app installs a LaunchAgent through tauri-plugin-autostart, which lists it under System Settings, General, Login Items, Allow in the Background (the plugin has no SMAppService option). On Windows it uses the per-user `Run` registry key. Updates come through Tauri's updater, which checks the app's own signature against a manifest published with each GitHub release. That works without Apple or Microsoft signing.
 
 ### Signing and builds
 
 The Mac build is unsigned at first, apart from the ad-hoc signature the Rust toolchain adds, which Apple Silicon needs to run any binary. The download page shows the System Settings, Privacy & Security, "Open Anyway" steps with screenshots. Windows ships as an unsigned per-user installer that needs no admin rights at first, with the "More info, Run anyway" steps on the download page, and moves to the free Microsoft Store individual account once stable.
 
-GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Windows installer. App releases use `app-*` tags so they never trigger the addon's `v*` release workflow.
+GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Windows installer. App releases use `app-v*` tags so they never trigger the addon's `v*` release workflow. The repo is private, so CI uploads the builds to a public R2 bucket, `road-to-sixty-downloads` at `dl.rts.everhold.online`: each version under `app/<version>/`, fixed names for the website, and `app/latest.json` for the updater. Each update makes the Mac Keychain ask once more for the PC token, because an ad-hoc signed build counts as a new app; a Developer ID would end that.
 
 ## The website
 

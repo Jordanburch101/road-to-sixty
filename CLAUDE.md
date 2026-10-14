@@ -59,6 +59,14 @@ Keychain or Credential Manager), `sync.rs` is one sync pass and `watch.rs`
 decides when to upload. `src/bin/rts-sync.rs` runs it from a terminal. A
 character is named by the `rosterKey` its saved file holds, never by the
 game's folder names, which don't give the realm the addon uses.
+`src-tauri/` is the app around the engine: `runner.rs` runs the engine on
+its own thread and keeps the status, `status.rs` words the tray line and the
+window's notes, `tray.rs` is the menu bar or tray icon, `commands.rs` is what
+the window can ask, `update.rs` is self-update. `src/` is the window (Vite
+and React), styled from `packages/ui`, the look the website shares. App
+releases come from `app-v*` tags: CI uploads them to the public R2 bucket
+`road-to-sixty-downloads` (`https://dl.rts.everhold.online/app/`), with
+`latest.json` for the updater, because this repo is private.
 `packages/api/` holds the request and response types the server, website
 and app share.
 
@@ -97,8 +105,9 @@ bun scripts/link-pc.ts <server> [name]   # link this machine as the app will: ap
 bun scripts/try-upload.ts <server> <token>   # upload a made-up journey as that PC and wait for the merge
 
 # From apps/desktop (Rust from rustup; rust-toolchain.toml picks the version)
-cargo test                          # engine tests (one needs luajit on the path)
+bun run build && bun run test       # the window, then every Rust test (one needs luajit) and the script tests
 cargo run --bin rts-sync -- status  # installs and characters found; also link, once, run, unlink
+bunx tauri dev                      # the app with its window, using this PC's real link and data
 ```
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old

@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "tauri": "tauri",
-    "test": "cargo test --workspace",
+    "test": "cargo test --workspace && bun test scripts",
     "check": "cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check",
     "typecheck": "tsc --noEmit -p ."
   },
