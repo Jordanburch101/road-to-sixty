@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ESNext", "DOM"], "jsx": "react-jsx", "types": ["astro/client", "bun"] },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

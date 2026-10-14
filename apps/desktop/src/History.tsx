@@ -2,7 +2,7 @@ import type { CharacterInfo } from "@road-to-sixty/api";
 import { Button } from "@road-to-sixty/ui/Button";
 import { useState } from "react";
 import { restore, useLoad, versions, type Status } from "./api";
-import { CLASS_ICONS } from "./classes";
+import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
 import { CLASSES, levelClass, played, versionLine, when } from "./format";
 
 // A character's merged and restored versions, newest first, after the

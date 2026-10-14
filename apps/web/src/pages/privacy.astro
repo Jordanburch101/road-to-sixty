@@ -1,0 +1,59 @@
+---
+import Prose from "../layouts/Prose.astro";
+import { contactEmail } from "../config";
+
+const email = contactEmail();
+---
+<Prose title="Privacy">
+  <p class="mt-4">
+    Road to Sixty is run by <a href="https://jordanburch.dev">Jordan Burch</a>. This page says what it keeps about you, where, and how to have it
+    removed. In short: only what syncing needs, nothing public, nothing sold.
+  </p>
+
+  <section>
+    <h2>The addon on its own</h2>
+    <p>The addon saves everything in your own World of Warcraft folder. Nothing leaves your computer unless you install the app and link it.</p>
+  </section>
+
+  <section>
+    <h2>What the app sends</h2>
+    <ul>
+      <li>Your BattleTag, to show which account a PC is linked to.</li>
+      <li>Your Battle.net account number, scrambled with a secret key before it is stored, so the number itself is never kept.</li>
+      <li>Each character's name, realm and journey: where it went, quests, kills, levels, gear, and the names of other players it grouped with.</li>
+      <li>For each linked PC: the name you gave it, whether it's a Mac or Windows, and its app and addon versions.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Where it's kept</h2>
+    <p>Accounts and the list of versions are in a database on a server Jordan runs. Journey files are in Cloudflare R2 storage. Database backups are deleted after 30 days.</p>
+  </section>
+
+  <section>
+    <h2>Who can see it</h2>
+    <p>Only you, through the app on a PC you linked. Nothing is shown publicly, and nothing is sold or shared with anyone.</p>
+  </section>
+
+  <section>
+    <h2>Deleting it</h2>
+    <p>
+      In the app, open Account and choose Delete everything. Your account and every journey are removed from the server at once, and from backups
+      within 30 days. Journeys on your own PCs stay. You can download everything first, from the same screen.
+    </p>
+    <p>You can also ask by email at <a href={`mailto:${email}`}>{email}</a>, for a copy, a correction or deletion.</p>
+  </section>
+
+  <section>
+    <h2>Cookies</h2>
+    <p>This site sets none. The sign-in page on the sync server sets one when you link a PC. Only that page uses it, and it expires within a week.</p>
+  </section>
+
+  <section>
+    <h2>Battle.net</h2>
+    <p>
+      Signing in goes through Blizzard's Battle.net. Road to Sixty only receives your account number and BattleTag, never your password. Road to
+      Sixty isn't affiliated with Blizzard Entertainment.
+    </p>
+  </section>
+</Prose>

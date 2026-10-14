@@ -3,7 +3,7 @@ import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import type { ReactNode } from "react";
 import { characters, setPaused, useLoad, type Status } from "./api";
-import { CLASS_ICONS } from "./classes";
+import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
 import { CLASSES, characterLine, levelClass, played } from "./format";
 
 export type Tab = "characters" | "account";

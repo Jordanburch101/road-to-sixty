@@ -82,7 +82,7 @@ One readable column, as in `Site-Privacy`.
 - **Where it's kept:** a server Jordan runs, and journey files in Cloudflare R2. Database backups age out within 30 days.
 - **Who sees it:** only the player, through the app.
 - **Deleting it:** Delete everything in the app, or email. It is gone from backups within 30 days.
-- **Cookies:** none on the site. The link page sets one only while linking.
+- **Cookies:** none on the site. The link page sets one when linking, used only there, which expires within a week.
 - **Battle.net:** only the account number and BattleTag are received, never a password.
 - **Who runs it:** Jordan Burch, with the contact email.
 

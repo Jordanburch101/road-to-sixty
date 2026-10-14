@@ -1,0 +1,32 @@
+---
+import Prose from "../layouts/Prose.astro";
+import { contactEmail } from "../config";
+
+const email = contactEmail();
+---
+<Prose title="Terms">
+  <section>
+    <h2>Using Road to Sixty</h2>
+    <p>The addon and the app are free. They're provided as they are, without any warranty, and Jordan Burch isn't liable for lost or damaged journeys.</p>
+  </section>
+
+  <section>
+    <h2>Fair use</h2>
+    <p>Use the app for your own characters. Don't try to get at other players' data, break the service, or send it more than normal play would.</p>
+  </section>
+
+  <section>
+    <h2>Changes</h2>
+    <p>The service may change or end. If it is going to end, there will be notice where possible, and you can download your journeys from the app first.</p>
+  </section>
+
+  <section>
+    <h2>Not Blizzard</h2>
+    <p>Road to Sixty isn't affiliated with or endorsed by Blizzard Entertainment. World of Warcraft and Battle.net are trademarks of Blizzard Entertainment, Inc.</p>
+  </section>
+
+  <section>
+    <h2>Contact</h2>
+    <p>Email <a href={`mailto:${email}`}>{email}</a>. What is kept about you, and how to have it removed, is on the <a href="/privacy">Privacy</a> page.</p>
+  </section>
+</Prose>

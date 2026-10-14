@@ -1,7 +1,7 @@
 # Cuts the class icons the app shows from the game's UI-Classes-Circles
 # texture (file 237669), a 4 by 4 grid in CLASS_ICON_TCOORDS order.
 #   curl -o circles.blp "https://wago.tools/api/casc/237669?version=1.60.1.70245"
-#   python scripts/class-icons.py circles.blp src/classes   (needs Pillow)
+#   python scripts/class-icons.py circles.blp ../../packages/ui/classes   (needs Pillow)
 import sys
 from PIL import Image
 

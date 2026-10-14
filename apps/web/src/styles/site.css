@@ -1,0 +1,29 @@
+@import "tailwindcss";
+@import "@road-to-sixty/ui/theme.css";
+@source "../../../../packages/ui/src";
+
+html { background: var(--color-ground); scroll-behavior: smooth; }
+body { font-family: var(--font-sans); color: var(--color-text); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* The journey screenshots take turns (Journey.astro): three, six seconds each. */
+@keyframes shot-2 { 0%, 30% { opacity: 0 } 34%, 63% { opacity: 1 } 67%, 100% { opacity: 0 } }
+@keyframes shot-3 { 0%, 63% { opacity: 0 } 67%, 96% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes cap-1 { 0%, 30% { color: var(--color-text) } 34%, 96% { color: var(--color-faint) } 100% { color: var(--color-text) } }
+@keyframes cap-2 { 0%, 30% { color: var(--color-faint) } 34%, 63% { color: var(--color-text) } 67%, 100% { color: var(--color-faint) } }
+@keyframes cap-3 { 0%, 63% { color: var(--color-faint) } 67%, 96% { color: var(--color-text) } 100% { color: var(--color-faint) } }
+.shot-2 { opacity: 0; animation: shot-2 18s ease-in-out infinite; }
+.shot-3 { opacity: 0; animation: shot-3 18s ease-in-out infinite; }
+.cap-1 { color: var(--color-text); animation: cap-1 18s ease-in-out infinite; }
+.cap-2 { color: var(--color-faint); animation: cap-2 18s ease-in-out infinite; }
+.cap-3 { color: var(--color-faint); animation: cap-3 18s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .shot-2, .shot-3, .cap-1, .cap-2, .cap-3 { animation: none; }
+}
+
+/* Privacy and Terms (Prose.astro). */
+.prose-rts section { display: flex; flex-direction: column; gap: 10px; padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--color-line-soft); }
+.prose-rts h2 { font-size: 18px; font-weight: 500; }
+.prose-rts p, .prose-rts li { font-size: 15px; line-height: 1.65; color: var(--color-muted); }
+.prose-rts ul { padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 6px; }
+.prose-rts a { color: #c9c4d6; text-decoration: underline; text-underline-offset: 2px; }

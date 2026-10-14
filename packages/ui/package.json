@@ -7,7 +7,9 @@
     "./dots": "./src/dots.ts",
     "./Fog": "./src/Fog.tsx",
     "./Button": "./src/Button.tsx",
-    "./compass.png": "./compass.png"
+    "./compass.png": "./compass.png",
+    "./classes": "./src/classes.ts",
+    "./classes/*": "./classes/*"
   },
   "scripts": {
     "test": "bun test",
@@ -19,7 +21,9 @@
   },
   "devDependencies": {
     "@types/react": "19.3.0",
-    "react": "19.3.0"
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "peerDependencies": {
     "react": "^19.3.0"
