@@ -99,13 +99,14 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("the app failed to start")
-        .run(|app, event| match event {
+        // Only the Mac's reopen uses the app handle, hence the underscore.
+        .run(|_app, event| match event {
             // Only Quit in the tray menu ends the app (it passes an exit code).
             RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
             // Opening the app again on a Mac (say, from Applications while it
             // started at login) only wakes this copy; show its window.
             #[cfg(target_os = "macos")]
-            RunEvent::Reopen { .. } => tray::show_window(app),
+            RunEvent::Reopen { .. } => tray::show_window(_app),
             _ => {}
         });
 }
