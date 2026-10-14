@@ -15,7 +15,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   - `inbox.rs` writes the `RoadToSixty_Sync` folder. A restore reaches the
     addon as `restore = <id>`, never as a yes or no: the addon replaces only
     a copy older than that restore (`Sync.lua`).
-  - `api.rs` is the server client; `link.rs` links a PC.
+  - `api.rs` is the server client; `link.rs` links a PC. The PC's name goes
+    with the code request, in `scope`, so the link page can show it.
   - `state.rs` is what the app remembers. The PC token is in `token`
     beside `state.json`, readable only by the player, and never in
     `state.json` itself, so that can be shared when asking for help.

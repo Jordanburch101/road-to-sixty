@@ -100,6 +100,17 @@ test("linking needs the device sign-in's token: not a cookie, and not twice", as
   expect((await link({ authorization: `Bearer ${access_token}` })).status).toBe(401);
 });
 
+test("the PC's name comes back with its code, but only to the player who typed the code in", async () => {
+  const scope = JSON.stringify({ pc: "Desk", platform: "darwin" });
+  const code = (await (await post("/api/auth/device/code", { client_id: APP_CLIENT_ID, scope })).json()) as { user_code: string };
+  const ann = await signIn({ id: 1, battletag: "Ann#1111" });
+  const bob = await signIn({ id: 2, battletag: "Bob#2222" });
+  const first = (await (await get(`/api/auth/device?user_code=${code.user_code}`, { cookie: ann })).json()) as { scope?: string };
+  expect(JSON.parse(first.scope!)).toEqual({ pc: "Desk", platform: "darwin" });
+  const second = (await (await get(`/api/auth/device?user_code=${code.user_code}`, { cookie: bob })).json()) as { scope?: string };
+  expect(second.scope).toBeUndefined();
+});
+
 test("only the app may ask for a device code", async () => {
   expect((await deviceCode("something-else")).status).toBe(400);
 });

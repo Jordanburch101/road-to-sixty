@@ -17,7 +17,7 @@ pub fn link(
     sleep: impl Fn(Duration),
     keep_going: impl Fn() -> bool,
 ) -> Result<LinkResponse, ApiError> {
-    let code = client.device_code()?;
+    let code = client.device_code(pc_name, platform())?;
     open(&code.verification_uri_complete, &code.user_code);
     let mut interval = code.interval.max(1);
     let polls = code.expires_in / interval + 1;
@@ -78,6 +78,11 @@ mod tests {
         .unwrap();
         assert_eq!(linked.battletag, "Ann#1234");
         assert_eq!(*opened.borrow(), "https://api/link?user_code=ABCD1234 ABCD1234");
+        let asked = fake.seen.lock().unwrap().iter().find(|s| s.url == "/api/auth/device/code").unwrap().clone();
+        let body: serde_json::Value = serde_json::from_slice(&asked.body).unwrap();
+        let scope: serde_json::Value = serde_json::from_str(body["scope"].as_str().unwrap()).unwrap();
+        assert_eq!(scope["pc"], "Desk");
+        assert_eq!(scope["platform"], platform());
         assert_eq!(*waits.borrow(), 2);
         let last = fake.seen.lock().unwrap().last().unwrap().clone();
         assert!(last.url.starts_with("/v1/link?name=Desk&platform="), "{}", last.url);
