@@ -1,0 +1,34 @@
+// Everything the window asks of the app. The names and shapes match
+// src-tauri/src/commands.rs and status.rs.
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
+
+export type Game = { path: string; name: string; addon: string | null };
+export type Character = { key: string; here: boolean; updateAddon: boolean; uploaded: number | null; note: string };
+export type Status = {
+  linkedTo: string | null;
+  games: Game[];
+  characters: Character[];
+  lastSynced: number | null;
+  paused: boolean;
+  offline: boolean;
+  problems: string[];
+  linkCode: string | null;
+  line: string;
+};
+
+export const getStatus = () => invoke<Status>("status");
+export const onStatus = (show: (s: Status) => void) => listen<Status>("status", (e) => show(e.payload));
+export const link = () => invoke("link");
+export const setPaused = (paused: boolean) => invoke("set_paused", { paused });
+
+export async function unlink() {
+  const sure = await confirm("Syncing stops on this PC. Your journeys stay here and on the server.", { title: "Unlink this PC?", kind: "warning" });
+  if (sure) await invoke("unlink");
+}
+
+export async function addFolder() {
+  const path = await open({ directory: true, title: "Pick your World of Warcraft folder" });
+  if (typeof path === "string") await invoke("add_folder", { path });
+}

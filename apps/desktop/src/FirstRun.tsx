@@ -1,0 +1,86 @@
+import compass from "@road-to-sixty/ui/compass.png";
+import { Button } from "@road-to-sixty/ui/Button";
+import { Fog } from "@road-to-sixty/ui/Fog";
+import type { Point } from "@road-to-sixty/ui/dots";
+import type { ReactNode } from "react";
+import { addFolder, link, type Status } from "./api";
+
+const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
+const MARKS: Point[] = [[240, 118], [330, 70]];
+
+export function FirstRun({ status, onDone }: { status: Status; onDone: () => void }) {
+  const found = status.games.length > 0;
+  const linked = status.linkedTo !== null;
+  return (
+    <main className="flex h-full flex-col">
+      <div data-tauri-drag-region className="h-9 shrink-0 border-b border-line-soft" />
+      <header className="relative overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
+        <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
+          <Fog width={400} height={180} step={14} roads={[ROAD]} marks={MARKS} />
+        </div>
+        <img src={compass} alt="" className="relative size-12 rounded-[10px]" />
+        <h1 className="relative mt-3.5 text-xl font-medium tracking-tight">Set up Road to Sixty</h1>
+        <p className="relative mt-1 text-sm text-muted">Three steps, once. After that it runs by itself.</p>
+      </header>
+
+      <ol className="flex flex-1 flex-col gap-[18px] px-6 py-5">
+        <Step n={1} done={found} title={found ? "WoW found" : "WoW not found"}>
+          {status.games.map((g) => (
+            <div key={g.path} className="min-w-0">
+              <div className="truncate font-mono text-xs text-muted">{g.path}</div>
+              <div className="text-[13px] text-muted">{g.name} · Road to Sixty {g.addon ?? "(developer copy)"}</div>
+            </div>
+          ))}
+          {!found && <p className="text-[13px] text-muted">Install the Road to Sixty addon first, or show us where WoW is.</p>}
+        </Step>
+
+        <Step n={2} done={linked} current={found && !linked} title="Link this PC">
+          <p className="text-[13px] leading-snug text-muted">Sign in with Battle.net in your browser, check the code matches, and click Link.</p>
+          {found && !linked && (
+            <>
+              <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={link} disabled={status.linkCode !== null}>
+                {status.linkCode ? "Waiting for your browser…" : "Link this PC"}
+              </Button>
+              {status.linkCode && (
+                <div className="text-xs text-muted">
+                  Your code: <span className="font-mono tracking-[0.08em] text-text">{status.linkCode}</span>
+                </div>
+              )}
+            </>
+          )}
+          {linked && <p className="text-[13px] text-muted">Linked to {status.linkedTo}.</p>}
+        </Step>
+
+        <Step n={3} current={linked} title="Restart WoW once">
+          <p className="text-[13px] leading-snug text-muted">So the game loads the sync folder. Your journeys stay where they are.</p>
+          {linked && (
+            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={onDone}>
+              Done
+            </Button>
+          )}
+        </Step>
+      </ol>
+
+      {status.problems.length > 0 && <p className="px-6 pb-3 text-xs text-warn">{status.problems[0]}</p>}
+      <footer className="flex items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px]">
+        <button type="button" className="text-[#c9c4d6] hover:text-text" onClick={addFolder}>
+          Add a game folder…
+        </button>
+        <span className="text-faint">Free · works offline</span>
+      </footer>
+    </main>
+  );
+}
+
+function Step({ n, title, done = false, current = false, children }: { n: number; title: string; done?: boolean; current?: boolean; children: ReactNode }) {
+  const dot = done ? "bg-accent-soft text-accent" : current ? "border border-text text-text" : "border border-outline text-faint";
+  return (
+    <li className="flex gap-3">
+      <div className={`flex size-[22px] shrink-0 items-center justify-center rounded-full text-xs ${dot}`}>{done ? "✓" : n}</div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+        <div className={`text-sm font-medium ${done || current ? "" : "text-muted"}`}>{title}</div>
+        {children}
+      </div>
+    </li>
+  );
+}

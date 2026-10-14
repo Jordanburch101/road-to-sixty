@@ -1,0 +1,22 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@theme {
+  --color-ground: #07060a;
+  --color-panel: #0c0b10;
+  --color-tab: #1c1a23;
+  --color-line: #1f1d26;
+  --color-line-soft: #1a1820;
+  --color-outline: #2a2733;
+  --color-text: #ece9f2;
+  --color-muted: #9a95a8;
+  --color-faint: #6f6a7d;
+  --color-cream: #f7f4ee;
+  --color-ink: #17141d;
+  --color-accent: #3aa0ff;
+  --color-accent-soft: #12233a;
+  --color-warn: #e5b84a;
+  --color-warn-line: #3d3215;
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+}

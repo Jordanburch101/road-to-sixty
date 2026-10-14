@@ -18,6 +18,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     Keychain or Credential Manager, never in the state file).
   - `sync.rs` is one sync pass; `watch.rs` decides when to upload.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
+- `src/` is the app's window, Vite and React styled from `packages/ui`.
+  `api.ts` is the only file that talks to the app (its commands and the
+  `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
+  the screens, after the mockups' "A · First run" and "A · Characters".
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
@@ -25,6 +29,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 ```
 cargo test                          # engine tests (one needs luajit on the path)
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
+bun run build                       # the window into dist/
+bun run typecheck
 ```
 
 If `cargo` isn't found, run `. ~/.cargo/env` first.
