@@ -26,6 +26,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   saved state and start it again, and every change to the status goes
   through its `Notifier`. `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
+  `src/tray.rs` is the menu bar or tray icon, `src/commands.rs` is what the
+  window can ask (anything that restarts the sync thread runs on a thread
+  of its own), and `src/main.rs` puts them together: closing the window
+  only hides it, and only Quit in the menu ends the app.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
@@ -37,6 +41,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 ```
 cargo test --workspace              # engine and app tests (one needs luajit on the path; needs dist/, so build the window first)
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
+bunx tauri dev                      # the app, using this PC's real link, Keychain and WoW
 bun run build                       # the window into dist/
 bun run typecheck
 ```

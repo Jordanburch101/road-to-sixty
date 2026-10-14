@@ -76,6 +76,7 @@ impl Runner {
         }
     }
 
+    #[cfg(test)]
     pub fn is_running(&self) -> bool {
         self.thread.as_ref().is_some_and(|t| !t.is_finished())
     }
