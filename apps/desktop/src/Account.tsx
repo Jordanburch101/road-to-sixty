@@ -1,6 +1,6 @@
 import { Button } from "@road-to-sixty/ui/Button";
 import { useEffect, useState } from "react";
-import { addFolder, checkUpdate, installUpdate, setStartsAtLogin, startsAtLogin, unlink, type Status } from "./api";
+import { pickFolder, checkUpdate, installUpdate, setStartsAtLogin, startsAtLogin, unlink, type Status } from "./api";
 import { Shell, type Tab } from "./Characters";
 
 export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => void }) {
@@ -21,7 +21,7 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
               </div>
             </div>
           ))}
-          <Button className="self-start" onClick={addFolder}>
+          <Button className="self-start" onClick={pickFolder}>
             Add a game folder…
           </Button>
         </section>

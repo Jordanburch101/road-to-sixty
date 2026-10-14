@@ -3,7 +3,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
 import type { ReactNode } from "react";
-import { addFolder, link, setStartsAtLogin, type Status } from "./api";
+import { pickFolder, link, setStartsAtLogin, type Status } from "./api";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
@@ -37,7 +37,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
           <p className="text-[13px] leading-snug text-muted">Sign in with Battle.net in your browser, check the code matches, and click Link.</p>
           {found && !linked && (
             <>
-              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={link}>
+              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={() => link("")}>
                 {status.linkCode ? "Start over" : "Link this PC"}
               </Button>
               {status.linkCode && (
@@ -62,7 +62,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
 
       {status.problems.length > 0 && <p className="px-6 pb-3 text-xs text-warn">{status.problems[0]}</p>}
       <footer className="flex items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px]">
-        <button type="button" className="text-[#c9c4d6] hover:text-text" onClick={addFolder}>
+        <button type="button" className="text-[#c9c4d6] hover:text-text" onClick={pickFolder}>
           Add a game folder…
         </button>
         <span className="text-faint">Free · works offline</span>
