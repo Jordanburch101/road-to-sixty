@@ -110,7 +110,12 @@ impl Client {
     pub fn new(server: &str, token: Option<String>) -> Self {
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(120)))
+            // Each step has its own limit, so a slow connection can still send
+            // a large journey, and a server that stops answering still times out.
+            .timeout_connect(Some(Duration::from_secs(30)))
+            .timeout_recv_response(Some(Duration::from_secs(120)))
+            .timeout_send_body(Some(Duration::from_secs(30 * 60)))
+            .timeout_recv_body(Some(Duration::from_secs(30 * 60)))
             .build()
             .into();
         Client {

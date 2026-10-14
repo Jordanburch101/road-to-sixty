@@ -94,8 +94,14 @@ fn main() -> ExitCode {
         }
         Some("run") => {
             let stop = AtomicBool::new(false);
-            let games = sync::games(&state);
-            match watch::run(&client, &mut state, &state_path, &cache, &games, &stop, show) {
+            let picked = state.picked.clone();
+            let find = || {
+                sync::games(&State {
+                    picked: picked.clone(),
+                    ..State::default()
+                })
+            };
+            match watch::run(&client, &mut state, &state_path, &cache, &find, &stop, show) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => fail(&e.to_string()),
             }

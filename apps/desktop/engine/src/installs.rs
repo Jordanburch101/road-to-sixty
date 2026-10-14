@@ -45,14 +45,18 @@ pub fn default_installs() -> Vec<PathBuf> {
 /// of text, and the caller keeps those that exist.
 pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
-    for run in bytes.split(|b| !(0x20..0x7f).contains(b)) {
-        // A length byte before the text can itself read as a letter, so the
-        // path may start one character into the run.
+    // Text runs end at control bytes; UTF-8 letters (é is two bytes over
+    // 0x7f) stay in the run.
+    for run in bytes.split(|b| *b < 0x20 || *b == 0x7f) {
+        // A length byte before the text can itself read as a letter, or as
+        // an invalid character, so the path may start a little way in.
         let text = String::from_utf8_lossy(run);
-        let drive = (0..text.len().saturating_sub(2))
-            .find(|&i| run[i].is_ascii_alphabetic() && (&text[i + 1..i + 3] == ":/" || &text[i + 1..i + 3] == ":\\"));
+        let drive = text
+            .char_indices()
+            .find(|&(i, c)| c.is_ascii_alphabetic() && (text[i + 1..].starts_with(":/") || text[i + 1..].starts_with(":\\")))
+            .map(|(i, _)| i);
         let Some(start) = drive.or_else(|| text.find('/')) else { continue };
-        let path = PathBuf::from(&text[start..]);
+        let path = PathBuf::from(text[start..].trim_end_matches('\u{FFFD}'));
         if !found.contains(&path) {
             found.push(path);
         }
@@ -148,6 +152,14 @@ mod tests {
     fn touch(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn product_db_paths_may_have_accents() {
+        let mut bytes = b"\x0a\x22".to_vec();
+        bytes.extend_from_slice("D:/Jeux vidéo/World of Warcraft".as_bytes());
+        bytes.extend_from_slice(b"\x12\x05other");
+        assert!(installs_in_product_db(&bytes).contains(&PathBuf::from("D:/Jeux vidéo/World of Warcraft")));
     }
 
     #[test]

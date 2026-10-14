@@ -56,9 +56,11 @@ impl State {
     }
 }
 
-/// The app's own folder for its state and downloaded journeys.
+/// The app's own folder for its state and downloaded journeys. On Windows
+/// the local folder, not the roaming one: a roaming profile would copy the
+/// token and the PC's identity to other PCs.
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Road to Sixty")
+    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("Road to Sixty")
 }
 
 /// The PC token, in a file only this user can read. Not in the Mac

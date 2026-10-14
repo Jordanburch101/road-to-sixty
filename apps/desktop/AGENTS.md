@@ -21,7 +21,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     update, which players wouldn't understand.
     `state.json` also remembers refused files (`refused`), so a refusal
     stays shown, without sending the file again, until the file changes.
-  - `sync.rs` is one sync pass; `watch.rs` decides when to upload. A
+  - `sync.rs` is one sync pass; `watch.rs` decides when to upload. It
+    looks for game folders and changed files again whenever a game or
+    install folder changes and every five minutes, so WoW making its WTF
+    folder after the app started is noticed. A
     pass's `problems` name the character (`who`) and say what's wrong in
     words a player can read, with no codes or file paths.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
@@ -68,8 +71,9 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
 - A character is named by the `rosterKey` in its saved file, never by the
   game's folder names, which don't give the realm the addon uses.
 - `installs::find_installs` scans this machine's real WoW installs. Tests
-  hand the engine made-up game folders instead (`watch::run` takes
-  `games`), so they never touch a real install or a real character.
+  hand the engine made-up game folders instead (`watch::run` takes a
+  `find` that returns them), so they never touch a real install or a real
+  character.
 - Tests that need a server use `api::fake`, which the `fake` feature lends
   to other crates' tests. The runner's tests pass a made-up `find` and a
   temporary data folder, so they never touch a real install or link.

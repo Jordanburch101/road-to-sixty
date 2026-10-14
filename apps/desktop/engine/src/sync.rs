@@ -29,6 +29,8 @@ pub struct Report {
     /// Every character the server has, as `Name-Realm`, including ones only
     /// played on other PCs.
     pub characters: Vec<String>,
+    /// The game folders this pass looked at, for the app to show.
+    pub games: Vec<GameFolder>,
 }
 
 /// Something the player should know: `who` names the character (empty when
@@ -258,7 +260,10 @@ pub fn pass(
     cache: &Path,
     ready: impl Fn(&SavedFile) -> bool,
 ) -> Result<Report, ApiError> {
-    let mut report = Report::default();
+    let mut report = Report {
+        games: games.to_vec(),
+        ..Report::default()
+    };
     for game in games {
         let addon = installs::addon_version(&game.path);
         for file in installs::saved_files(game).iter().filter(|f| ready(f)) {
