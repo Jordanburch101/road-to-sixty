@@ -503,6 +503,142 @@ function Merge.Merge(a, b)
     return out
 end
 
+-- Restores -----------------------------------------------------------------------
+
+-- The "on" times of a journey's sessions, as a set.
+local function OnTimes(char)
+    local on = {}
+    for _, e in ipairs(char.events or {}) do
+        if e[2] == "on" then on[e[1]] = true end
+    end
+    return on
+end
+
+-- The sessions of old whose "on" isn't in kept, as { from, to }, oldest
+-- first: what a restore from old to kept takes out. A session runs from
+-- its "on" to the next "off"; with none, to a second before the next
+-- "on", or to the last event. One character plays on one PC at a time, so
+-- these stretches of time hold that play and nothing else.
+function Merge.Windows(old, kept)
+    local keep, events, windows = OnTimes(kept), old.events or {}, {}
+    for i, e in ipairs(events) do
+        if e[2] == "on" and not keep[e[1]] then
+            local to = LastSeen(old)
+            for j = i + 1, #events do
+                if events[j][2] == "off" then
+                    to = events[j][1]
+                    break
+                elseif events[j][2] == "on" then
+                    to = events[j][1] - 1
+                    break
+                end
+            end
+            windows[#windows + 1] = { e[1], to }
+        end
+    end
+    return windows
+end
+
+-- Every PC id with a part in one of a journey's tallies.
+local function TallyPCs(char)
+    local pcs = {}
+    for _, p in pairs(char.people or {}) do
+        for _, f in ipairs(ns.Tally.PEOPLE) do
+            if type(p[f]) == "table" then
+                for pc in pairs(p[f]) do pcs[pc] = true end
+            end
+        end
+    end
+    for _, r in pairs(char.rares or {}) do
+        if type(r[1]) == "table" then
+            for pc in pairs(r[1]) do pcs[pc] = true end
+        end
+    end
+    return pcs
+end
+
+-- A tally's parts under the PCs head knows, no higher than head's.
+local function Cap(t, theirs, known)
+    if type(t) ~= "table" then return t end
+    local out = {}
+    for pc, n in pairs(t) do
+        if known[pc] then
+            local most = type(theirs) == "table" and theirs[pc] or 0
+            n = math.min(n, most)
+        end
+        if n > 0 then out[pc] = n end
+    end
+    return next(out) and out or nil
+end
+
+-- Takes out of char (an upload made before a restore reached its PC) its
+-- play inside windows, the sessions the restore removed, so merging it
+-- can't bring them back. A window whose "on" head (the current journey)
+-- has is skipped: head holds that session again. The totals and later
+-- snapshots come down by what was taken out, or the recount would put it
+-- back as counts kept before the data. Tallies carry no times, so parts
+-- under a PC head knows are held to head's; a new PC's parts stay. Changes
+-- char in place and returns it.
+function Merge.Strip(char, windows, head)
+    local has, live = OnTimes(head), {}
+    for _, w in ipairs(windows) do
+        if not has[w[1]] then live[#live + 1] = w end
+    end
+    if #live == 0 then return char end
+    local function Inside(t)
+        if type(t) ~= "number" then return false end
+        for _, w in ipairs(live) do
+            if t >= w[1] and t <= w[2] then return true end
+        end
+        return false
+    end
+    local gone = { events = {}, segments = {}, levels = {} }
+    local function Split(list, timeOf, into)
+        local stay = {}
+        for _, item in ipairs(list or {}) do
+            if Inside(timeOf(item)) then into[#into + 1] = item else stay[#stay + 1] = item end
+        end
+        return stay
+    end
+    char.events = Split(char.events, function(e) return e[1] end, gone.events)
+    char.segments = Split(char.segments, function(s) return s.t end, gone.segments)
+    local kills, goneKills = {}, {}
+    for _, k in ipairs(KillList(char.kills)) do
+        if Inside(k.t) then goneKills[#goneKills + 1] = k else kills[#kills + 1] = k end
+    end
+    if #goneKills > 0 then char.kills = ns.Packed.PackKills(kills) end
+    gone.kills = ns.Packed.PackKills(goneKills)
+    for level, s in pairs(char.levels or {}) do
+        if Inside(s.t) then char.levels[level] = nil end
+    end
+    -- What was taken out, counted up to each snapshot that stays and to the end.
+    for level, s in pairs(char.levels or {}) do gone.levels[level] = { t = s.t } end
+    local removed = Counts(gone)
+    for _, f in ipairs(COUNTED) do
+        if char.totals and tonumber(char.totals[f]) then
+            char.totals[f] = char.totals[f] - removed[math.huge][f]
+        end
+    end
+    for _, s in pairs(char.levels or {}) do
+        local at = s.t and removed[s.t]
+        if at then
+            for _, f in ipairs(COUNTED) do
+                if tonumber(s[f]) then s[f] = s[f] - at[f] end
+            end
+        end
+    end
+    local known = TallyPCs(head)
+    for guid, p in pairs(char.people or {}) do
+        local theirs = head.people and head.people[guid] or {}
+        for _, f in ipairs(ns.Tally.PEOPLE) do p[f] = Cap(p[f], theirs[f], known) end
+    end
+    for key, r in pairs(char.rares or {}) do
+        local theirs = head.rares and head.rares[key]
+        r[1] = Cap(r[1], theirs and theirs[1], known)
+    end
+    return char
+end
+
 -- For the server -------------------------------------------------------------
 
 -- The parts the addon adds to or indexes. A journey with one of the wrong
