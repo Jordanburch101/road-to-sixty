@@ -85,7 +85,8 @@ jobs:
 
   # The desktop app's sync engine: its tests (one has LuaJIT read back the
   # sync folder it writes), clippy and formatting. rust-toolchain.toml picks
-  # the Rust version.
+  # the Rust version. Only the engine: the app needs a webview library
+  # Linux runners lack, so the job below builds it on Mac and Windows.
   desktop:
     runs-on: ubuntu-latest
     defaults:
@@ -98,7 +99,46 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y luajit
 
       - name: Tests
-        run: cargo test
+        run: cargo test -p rts-sync
 
       - name: Clippy and formatting
-        run: cargo clippy --all-targets -- -D warnings && cargo fmt --check
+        run: cargo clippy -p rts-sync --all-targets -- -D warnings && cargo fmt --check
+
+  # The app on the systems it ships for: the window builds, every Rust test
+  # passes (LuaJIT's is left to the Linux job), and on Windows the token
+  # really goes into Credential Manager.
+  desktop-app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Window
+        working-directory: apps/desktop
+        run: bun run build && bun run typecheck
+
+      - name: Tests
+        working-directory: apps/desktop
+        run: cargo test --workspace -- --skip luajit_reads_the_journey_back_unchanged
+
+      - name: Clippy
+        working-directory: apps/desktop
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Credential Manager
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: cargo test -p rts-sync -- --ignored the_system_store_keeps_a_token
+
+      - name: Script and UI tests
+        run: cd apps/desktop && bun test scripts && cd ../../packages/ui && bun test

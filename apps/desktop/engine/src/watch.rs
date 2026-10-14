@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use notify::{RecursiveMode, Watcher};
 
 use crate::api::{ApiError, Client};
-use crate::installs;
+use crate::installs::{self, GameFolder};
 use crate::state::State;
 use crate::sync::{self, Report};
 
@@ -80,7 +80,7 @@ impl Schedule {
     }
 }
 
-/// Watches every game folder's WTF and syncs until `stop` is set, calling
+/// Watches the WTF folder of each of `games` and syncs until `stop` is set, calling
 /// `report` after each pass. Every saved journey counts as changed at the
 /// start, so anything new since the app last ran goes up first (an
 /// unchanged file is skipped by its fingerprint).
@@ -89,10 +89,10 @@ pub fn run(
     state: &mut State,
     state_path: &Path,
     cache: &Path,
+    games: &[GameFolder],
     stop: &AtomicBool,
     mut report: impl FnMut(&Result<Report, ApiError>),
 ) -> notify::Result<()> {
-    let games = sync::games(state);
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if let Ok(event) = event {
@@ -103,7 +103,7 @@ pub fn run(
             }
         }
     })?;
-    for wtf in sync::watched(&games) {
+    for wtf in sync::watched(games) {
         watcher.watch(&wtf, RecursiveMode::Recursive)?;
     }
 
@@ -129,7 +129,7 @@ pub fn run(
         let due = schedule.due(now, playing);
         let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
         if now >= wait_until && (!due.is_empty() || check_due) {
-            let result = sync::pass(client, state, state_path, &games, cache, |f| due.contains(&f.path));
+            let result = sync::pass(client, state, state_path, games, cache, |f| due.contains(&f.path));
             match &result {
                 Ok(_) => {
                     schedule.sent(&due, now);

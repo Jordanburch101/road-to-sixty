@@ -128,4 +128,14 @@ mod tests {
         fs::write(&path, "{ not json").unwrap();
         assert!(State::load(&path).is_err());
     }
+
+    #[test]
+    #[ignore = "uses the real Keychain or Credential Manager; CI runs it on Windows"]
+    fn the_system_store_keeps_a_token() {
+        let entry = || keyring::Entry::new("Road to Sixty test", "PC token").unwrap();
+        entry().set_password("t-123").unwrap();
+        assert_eq!(entry().get_password().unwrap(), "t-123");
+        entry().delete_credential().unwrap();
+        assert!(entry().get_password().is_err());
+    }
 }

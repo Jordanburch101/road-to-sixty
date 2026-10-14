@@ -1,0 +1,121 @@
+# The app's releases: an app-v* tag builds the universal Mac app and the
+# Windows installer, signed for the updater, then uploads both to the
+# public downloads bucket (this repo is private, so its own release
+# downloads would need a login). Nothing is uploaded unless both builds
+# worked, and latest.json goes last, so the updater never sees a version
+# whose files aren't there yet.
+name: Desktop release
+
+on:
+  push:
+    tags: ['app-v*']
+
+env:
+  BUCKET: road-to-sixty-downloads
+  DOWNLOADS: https://dl.rts.everhold.online
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+            bundle: target/universal-apple-darwin/release/bundle
+          - os: windows-latest
+            args: ''
+            bundle: target/release/bundle
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      # In apps/desktop, so the targets land on the toolchain rust-toolchain.toml picks.
+      - name: The tag matches the app's version
+        shell: bash
+        run: |
+          # Read as JSON: Windows checks files out with CRLF line endings.
+          version=$(bun -e 'console.log(require("./apps/desktop/src-tauri/tauri.conf.json").version)')
+          test "app-v$version" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} but tauri.conf.json says $version"; exit 1; }
+
+      - name: Both Mac processors
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RTS_SERVER: https://api.rts.everhold.online
+        run: bunx tauri build ${{ matrix.args }}
+
+      # Fixed names without spaces, which latest-json.ts and the website expect.
+      - name: Collect
+        shell: bash
+        run: |
+          v=${GITHUB_REF_NAME#app-v}
+          b="apps/desktop/${{ matrix.bundle }}"
+          mkdir out
+          if [ "$RUNNER_OS" = macOS ]; then
+            cp "$b"/dmg/*.dmg "out/Road-to-Sixty_${v}_universal.dmg"
+            cp "$b"/macos/*.app.tar.gz out/Road-to-Sixty.app.tar.gz
+            cp "$b"/macos/*.app.tar.gz.sig out/Road-to-Sixty.app.tar.gz.sig
+          else
+            cp "$b"/nsis/*-setup.exe "out/Road-to-Sixty_${v}_x64-setup.exe"
+            cp "$b"/nsis/*-setup.exe.sig "out/Road-to-Sixty_${v}_x64-setup.exe.sig"
+          fi
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}
+          path: out/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: latest.json
+        run: bun apps/desktop/scripts/latest-json.ts "${GITHUB_REF_NAME#app-v}" "$DOWNLOADS" out > latest.json
+
+      - name: Upload
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 rejects the newer checksums the aws CLI sends by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          v=${GITHUB_REF_NAME#app-v}
+          s3() { aws s3 --endpoint-url "$R2_ENDPOINT" "$@"; }
+          s3 cp out/ "s3://$BUCKET/app/$v/" --recursive
+          # Fixed names for the website, never cached, so a new version shows at once.
+          s3 cp "out/Road-to-Sixty_${v}_universal.dmg" "s3://$BUCKET/app/Road-to-Sixty.dmg" --cache-control no-cache
+          s3 cp "out/Road-to-Sixty_${v}_x64-setup.exe" "s3://$BUCKET/app/Road-to-Sixty-Setup.exe" --cache-control no-cache
+          s3 cp latest.json "s3://$BUCKET/app/latest.json" --cache-control no-cache --content-type application/json
+
+      - name: The updater can read it
+        run: |
+          curl -fsS "$DOWNLOADS/app/latest.json" | grep "\"version\": \"${GITHUB_REF_NAME#app-v}\""

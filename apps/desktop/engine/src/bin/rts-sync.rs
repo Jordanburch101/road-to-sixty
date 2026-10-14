@@ -19,10 +19,8 @@ use rts_sync::state::{self, Keychain, State, Tokens};
 use rts_sync::sync::Report;
 use rts_sync::{installs, link, sync, watch};
 
-const DEFAULT_SERVER: &str = "https://api.rts.everhold.online";
-
 fn main() -> ExitCode {
-    let server = std::env::var("RTS_SERVER").unwrap_or_else(|_| DEFAULT_SERVER.to_string());
+    let server = std::env::var("RTS_SERVER").unwrap_or_else(|_| rts_sync::api::TEST_SERVER.to_string());
     let data = std::env::var_os("RTS_DATA_DIR").map(PathBuf::from).unwrap_or_else(state::data_dir);
     let state_path = data.join("state.json");
     let cache = data.join("journeys");
@@ -67,6 +65,7 @@ fn main() -> ExitCode {
                     let _ = open(url);
                 },
                 std::thread::sleep,
+                || true,
             );
             match linked {
                 Ok(linked) => {
@@ -95,7 +94,8 @@ fn main() -> ExitCode {
         }
         Some("run") => {
             let stop = AtomicBool::new(false);
-            match watch::run(&client, &mut state, &state_path, &cache, &stop, show) {
+            let games = sync::games(&state);
+            match watch::run(&client, &mut state, &state_path, &cache, &games, &stop, show) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => fail(&e.to_string()),
             }

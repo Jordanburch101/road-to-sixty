@@ -9,6 +9,9 @@ use serde::Deserialize;
 /// The app's client ID for Better Auth's device sign-in (APP_CLIENT_ID).
 pub const APP_CLIENT_ID: &str = "road-to-sixty-app";
 
+/// The test server on everhold.online. Builds for players set RTS_SERVER.
+pub const TEST_SERVER: &str = "https://api.rts.everhold.online";
+
 /// The most a merged journey may unpack to; the server refuses more.
 const MAX_JOURNEY: u64 = 32 * 1024 * 1024;
 
@@ -237,7 +240,7 @@ fn json<T: serde::de::DeserializeOwned>(reply: Result<Reply, ureq::Error>) -> Re
     ok(reply)?.body_mut().read_json().map_err(network)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fake"))]
 pub mod fake {
     //! A stand-in sync server for tests: answers from a list of canned
     //! replies and keeps what each request sent.

@@ -7,14 +7,25 @@ use std::time::Duration;
 use crate::api::{ApiError, Client, DevicePoll, LinkResponse};
 
 /// Links this PC. `open` shows the player the page to approve on (the app
-/// opens their browser); `sleep` waits between polls (tests pass a no-op).
-pub fn link(client: &Client, pc_name: &str, open: impl FnOnce(&str, &str), sleep: impl Fn(Duration)) -> Result<LinkResponse, ApiError> {
+/// opens their browser); `sleep` waits between polls (tests pass a no-op);
+/// `keep_going` turns false when the player has started linking over, so
+/// an old attempt stops instead of polling until its code expires.
+pub fn link(
+    client: &Client,
+    pc_name: &str,
+    open: impl FnOnce(&str, &str),
+    sleep: impl Fn(Duration),
+    keep_going: impl Fn() -> bool,
+) -> Result<LinkResponse, ApiError> {
     let code = client.device_code()?;
     open(&code.verification_uri_complete, &code.user_code);
     let mut interval = code.interval.max(1);
     let polls = code.expires_in / interval + 1;
     for _ in 0..polls {
         sleep(Duration::from_secs(interval));
+        if !keep_going() {
+            return Err(ApiError::Status(0, "started over".into()));
+        }
         match client.device_token(&code.device_code)? {
             DevicePoll::Approved(session) => return client.link(&session, pc_name, platform()),
             DevicePoll::Pending => {}
@@ -62,6 +73,7 @@ mod tests {
             "Desk",
             |url, code| *opened.borrow_mut() = format!("{url} {code}"),
             |_| *waits.borrow_mut() += 1,
+            || true,
         )
         .unwrap();
         assert_eq!(linked.battletag, "Ann#1234");
@@ -73,6 +85,27 @@ mod tests {
     }
 
     #[test]
+    fn a_link_that_was_started_over_stops_polling() {
+        let fake = fake::serve(|_, url| match url {
+            "/api/auth/device/code" => (
+                200,
+                br#"{"device_code":"dc","user_code":"U","verification_uri_complete":"x","interval":5,"expires_in":1800}"#.to_vec(),
+            ),
+            _ => (400, br#"{"error":"authorization_pending"}"#.to_vec()),
+        });
+        let polls = RefCell::new(0);
+        let result = link(
+            &Client::new(&fake.url, None),
+            "Desk",
+            |_, _| {},
+            |_| *polls.borrow_mut() += 1,
+            || *polls.borrow() < 2,
+        );
+        assert_eq!(result, Err(ApiError::Status(0, "started over".into())));
+        assert_eq!(*polls.borrow(), 2);
+    }
+
+    #[test]
     fn a_denied_code_stops() {
         let fake = fake::serve(|_, url| match url {
             "/api/auth/device/code" => (
@@ -81,7 +114,7 @@ mod tests {
             ),
             _ => (400, br#"{"error":"access_denied","error_description":"denied"}"#.to_vec()),
         });
-        let result = link(&Client::new(&fake.url, None), "Desk", |_, _| {}, |_| {});
+        let result = link(&Client::new(&fake.url, None), "Desk", |_, _| {}, |_| {}, || true);
         assert_eq!(result, Err(ApiError::Status(400, "denied".into())));
     }
 }
