@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
 import { LIMITS, runMerge } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
-import { fingerprint, get, pack, put } from "./storage";
+import { fingerprint, get, pack, put, remove } from "./storage";
 
 type Job = typeof jobs.$inferSelect;
 type Version = typeof versions.$inferSelect;
@@ -86,41 +86,49 @@ async function runJob(job: Job) {
   const fp = fingerprint(result.journey);
   if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
   await put(character.userId, fp, pack(result.journey));
-  await db.transaction(async (tx) => {
-    const [merged] = await tx
-      .insert(versions)
-      .values({
-        characterId: character.id,
-        kind: "merged",
-        fingerprint: fp,
-        rawSize: result.journey.length,
-        dataVersion: result.layout,
-        level: result.level,
-        status: "accepted",
-      })
-      .returning({ id: versions.id });
-    await tx
-      .insert(versionParents)
-      .values([upload.id, ...(head ? [head.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
-    const updated = await tx
-      .update(characters)
-      .set({
-        headVersionId: merged!.id,
-        level: result.level,
-        // A file from before the addon recorded the class doesn't forget it.
-        ...(result.class ? { class: result.class } : {}),
-        played: result.played === null ? null : Math.round(result.played),
-        lastPlayedAt: result.lastSeen === null ? null : new Date(result.lastSeen * 1000),
-        updatedAt: new Date(),
-      })
-      // Unless the head moved meanwhile (a restore, or a second worker during
-      // a deploy): writing over it would drop that version from the journey.
-      .where(and(eq(characters.id, character.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${head?.id ?? null}::bigint`))
-      .returning({ id: characters.id });
-    if (updated.length === 0) throw new Error("the head moved during the merge");
-    await tx.update(versions).set({ status: "accepted", dataVersion: result.from }).where(eq(versions.id, upload.id));
-    await tx.update(jobs).set({ state: "done", finishedAt: new Date() }).where(eq(jobs.id, job.id));
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const [merged] = await tx
+        .insert(versions)
+        .values({
+          characterId: character.id,
+          kind: "merged",
+          fingerprint: fp,
+          rawSize: result.journey.length,
+          dataVersion: result.layout,
+          level: result.level,
+          status: "accepted",
+        })
+        .returning({ id: versions.id });
+      await tx
+        .insert(versionParents)
+        .values([upload.id, ...(head ? [head.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
+      const updated = await tx
+        .update(characters)
+        .set({
+          headVersionId: merged!.id,
+          level: result.level,
+          // A file from before the addon recorded the class doesn't forget it.
+          ...(result.class ? { class: result.class } : {}),
+          played: result.played === null ? null : Math.round(result.played),
+          lastPlayedAt: result.lastSeen === null ? null : new Date(result.lastSeen * 1000),
+          updatedAt: new Date(),
+        })
+        // Unless the head moved meanwhile (a restore, or a second worker during
+        // a deploy): writing over it would drop that version from the journey.
+        .where(and(eq(characters.id, character.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${head?.id ?? null}::bigint`))
+        .returning({ id: characters.id });
+      if (updated.length === 0) throw new Error("the head moved during the merge");
+      await tx.update(versions).set({ status: "accepted", dataVersion: result.from }).where(eq(versions.id, upload.id));
+      await tx.update(jobs).set({ state: "done", finishedAt: new Date() }).where(eq(jobs.id, job.id));
+    });
+  } catch (e) {
+    // The player deleted everything while this merge ran: their files went
+    // then, so this one goes too instead of staying with no owner.
+    const [still] = await db.select({ id: characters.id }).from(characters).where(eq(characters.id, character.id));
+    if (!still) await remove(character.userId, fp);
+    throw e;
+  }
 }
 
 // Runs the oldest due job. False when there was none. A job that throws

@@ -1,15 +1,18 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { config } from "../src/config";
 import { db } from "../src/db";
+import * as lua from "../src/lua";
 import { characters, devices, jobs, user, versions } from "../src/schema";
+import * as storage from "../src/storage";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
+afterEach(() => mock.restore());
 
 const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
 
@@ -192,4 +195,58 @@ test("delete everything removes the player's rows, files and PCs, even with a me
   expect(((await s3.list({ prefix: "user-2/" })).contents ?? []).length).toBeGreaterThan(0);
   expect((await call(other.token, "/v1/check")).status).toBe(200);
   expect((await db.select().from(versions)).length).toBeGreaterThan(0);
+});
+
+const s3Files = async (prefix: string) => (await new Bun.S3Client(config.s3).list({ prefix })).contents ?? [];
+
+test("if delete everything fails part way, the PC that asked can try again", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  spyOn(storage, "removeAll").mockImplementationOnce(async () => {
+    throw new Error("the bucket is down");
+  });
+  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(500);
+  expect((await call(laptop.token, "/v1/check")).status).toBe(401); // nothing new arrives meanwhile
+  expect((await call(desk.token, "/v1/check")).status).toBe(200);
+  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+  expect(await db.select().from(user).where(eq(user.id, "user-1"))).toEqual([]);
+  expect(await s3Files("user-1/")).toEqual([]);
+});
+
+test("an upload that lands while the files are being deleted doesn't stop the delete", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const real = storage.removeAll;
+  spyOn(storage, "removeAll").mockImplementationOnce(async (userId) => {
+    // An upload that passed the token check just before the PCs were unlinked.
+    const [c] = await db.select().from(characters).where(eq(characters.userId, userId));
+    const [v] = await db
+      .insert(versions)
+      .values({ characterId: c!.id, deviceId: desk.device.id, kind: "upload", fingerprint: "late", rawSize: 1, status: "pending" })
+      .returning();
+    await db.insert(jobs).values({ characterId: c!.id, versionId: v!.id });
+    return real(userId);
+  });
+  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+  expect(await db.select().from(characters).where(eq(characters.userId, "user-1"))).toEqual([]);
+  expect(await db.select().from(jobs)).toEqual([]);
+});
+
+test("a merge that finishes after the account is gone leaves no file behind", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  const real = lua.runMerge;
+  spyOn(lua, "runMerge").mockImplementationOnce(async (...args) => {
+    const result = await real(...args);
+    // The player deletes everything while this merge is still running.
+    expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+    return result;
+  });
+  await workAll();
+  expect(await s3Files("user-1/")).toEqual([]);
 });

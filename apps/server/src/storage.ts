@@ -36,6 +36,11 @@ export async function get(userId: string, fp: string): Promise<Uint8Array> {
   return unpack(await getPacked(userId, fp));
 }
 
+// One journey file, for a merge whose account was deleted while it ran.
+export async function remove(userId: string, fp: string): Promise<void> {
+  await s3.delete(key(userId, fp));
+}
+
 // Every journey file of a player. Listing again after each page works
 // because the page just listed is gone.
 // ponytail: one request per file; a bulk delete if players hold thousands.
