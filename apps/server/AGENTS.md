@@ -17,9 +17,13 @@ push to `dev` that touches it. The design is
   everything). Both start from `src/pc.ts`, the PC token check.
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
-- `src/link.ts` and `src/link.html` link a PC: the app's device code is
-  approved on `/link` and traded for a PC token (`src/devices.ts`, which
-  keeps only the token's hash).
+- `src/link.ts`, `src/link.html` and `src/link-page.ts` link a PC: the
+  player types the app's code on `/link`, sees the PC's name the app sent
+  in the code's `scope`, and approves it; the app trades it for a PC token
+  (`src/devices.ts`, which keeps only the token's hash). The page's script
+  is built once by `Bun.build`, draws the fog from `packages/ui` (so the
+  image copies that package), and is typechecked with the browser's types
+  by `tsconfig.page.json`, kept apart so they don't clash with Bun's.
 - `src/worker.ts` runs merge jobs one at a time per character; it fills
   each character's level, class and time played, and each merged
   version's level, from the runner's `ok` line;
@@ -55,6 +59,8 @@ bun run dev               # port 3000, with .env copied from .env.example
   a file and line, storage down) makes `runMerge` throw, and the worker
   tries again for about a day with a doubling wait. A job left running past
   `STALE_SECONDS` is taken back by the next claim.
+- Never fill the link code in from the address: typing it is the
+  protection against a link with someone else's code.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in

@@ -1,5 +1,6 @@
 import type { LinkResponse } from "@road-to-sixty/api";
 import { eq } from "drizzle-orm";
+import { dirname } from "node:path";
 import { Elysia } from "elysia";
 import { auth } from "./auth";
 import { db } from "./db";
@@ -7,6 +8,18 @@ import { newDevice, pcName } from "./devices";
 import { session } from "./schema";
 
 const PAGE = Bun.file(`${import.meta.dir}/link.html`);
+const COMPASS = Bun.resolveSync("@road-to-sixty/ui/compass.png", import.meta.dir);
+const GEIST = Bun.resolveSync("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2", dirname(COMPASS));
+
+// The page's script, built for the browser the first time it is asked for.
+let script: Promise<string> | undefined;
+function pageScript(): Promise<string> {
+  script ??= Bun.build({ entrypoints: [`${import.meta.dir}/link-page.ts`], target: "browser", minify: true }).then((r) => {
+    if (!r.success) throw new AggregateError(r.logs, "the link page's script didn't build");
+    return r.outputs[0]!.text();
+  });
+  return script;
+}
 
 // Linking a PC (spec, "Linking the app"). The app shows a code from
 // /api/auth/device/code, the player approves it on /link, and the app's
@@ -14,6 +27,9 @@ const PAGE = Bun.file(`${import.meta.dir}/link.html`);
 // session here for a PC token of its own, and the session ends.
 export const link = new Elysia()
   .get("/link", () => new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } }))
+  .get("/link.js", async () => new Response(await pageScript(), { headers: { "content-type": "text/javascript; charset=utf-8" } }))
+  .get("/link/compass.png", () => new Response(Bun.file(COMPASS), { headers: { "content-type": "image/png" } }))
+  .get("/link/geist.woff2", () => new Response(Bun.file(GEIST), { headers: { "content-type": "font/woff2" } }))
   .post("/v1/link", async ({ headers, query, set }): Promise<LinkResponse | { error: string }> => {
     // Only the bearer token counts: a browser's sign-in cookie can't link a PC.
     const signedIn = headers.authorization
