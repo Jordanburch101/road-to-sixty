@@ -32,6 +32,9 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
 - `Packed.lua`, `Tidy.lua`, `Parse.lua`, `Tally.lua` and `Merge.lua` make no
   game calls: the sync server runs them under plain Lua 5.1.
   `tests/pure_test.lua` fails if one does.
+- `Merge.Windows` and `Merge.Strip` serve restores on the sync server: the
+  sessions a restore took out, and taking them out of an upload made before
+  the restore reached its PC. `tests/restore_test.lua` covers them.
 - Any change to what is saved, or what it means, bumps `DATA_VERSION` in
   Core.lua, gets listed there, and brings older files up in `Upgrade`.
 - Counts kept per PC (Tally.lua) go under the PC that started the thing:

@@ -3,6 +3,7 @@ import { TransactionRollbackError, and, desc, eq, inArray, isNull, ne, sql } fro
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
+import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { get, removeAll } from "./storage";
@@ -128,6 +129,10 @@ export const account = pcRoutes()
       set.status = 400;
       return { error: "that is already the current version" };
     }
+    // Worked out before anything is written: a fault here answers 500 and
+    // leaves the journey as it was.
+    const [current] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
+    const removed = await runWindows(await get(c.userId, current!.fingerprint), await get(c.userId, source.fingerprint));
     // The restore, its parent and the head move are one change: a merge
     // finishing in between must either see all of it or none.
     const version = await db
@@ -142,6 +147,7 @@ export const account = pcRoutes()
             rawSize: source.rawSize,
             dataVersion: source.dataVersion,
             level: source.level,
+            removed: JSON.stringify(removed),
             status: "accepted",
           })
           .returning({ id: versions.id });

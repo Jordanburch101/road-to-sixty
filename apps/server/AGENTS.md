@@ -59,6 +59,10 @@ bun run dev               # port 3000, with .env copied from .env.example
   a file and line, storage down) makes `runMerge` throw, and the worker
   tries again for about a day with a doubling wait. A job left running past
   `STALE_SECONDS` is taken back by the next claim.
+- An upload made before the latest restore reached its PC is merged
+  without the play inside every restore's windows (`versions.removed`,
+  worked out by the restore route with `runWindows`). Only a restore made
+  before windows were kept (`removed` is null) still sets it aside.
 - The link page fills the code in from the app's link (Jordan's call), so
   a link with someone else's code works too. Keep the PC's name and the
   "check the code matches" note on the page; they are what's left of the

@@ -93,7 +93,7 @@ test("a PC whose addon writes an older layout is told to update instead of given
 });
 
 test("a restore is delivered as a replace, and an upload made before it arrived doesn't undo it", async () => {
-  const { device, token } = await newDevice("user-1", "Desk");
+  const { token } = await newDevice("user-1", "Desk");
   await upload(token, savedFile(journey({ events: session(1000) })));
   await workAll();
   const merged = (await check(token)).characters[0]!;
@@ -102,11 +102,15 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
   const restore = { id: await restoreTo(token, merged.version!) };
   expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, restore: restore!.id, replace: true });
 
+  // Made before the restore arrived: merged, but without the session the
+  // restore took out.
   await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(merged.version) });
   await workAll();
-  const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
-  expect(superseded?.deviceId).toBe(device.id);
-  expect((await check(token)).characters[0]!.version).toBe(restore!.id);
+  const head = (await check(token)).characters[0]!;
+  const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(token, `/v1/versions/${head.version}`)).arrayBuffer())));
+  expect(text).toContain("5000");
+  expect(text).not.toContain("3000");
+  expect(head.restore).toBe(restore!.id);
 
   await upload(token, savedFile(journey({ events: session(9000) })), { received: String(restore!.id) });
   await workAll();
@@ -154,17 +158,46 @@ test("a PC that hasn't applied a restore gets a replace, even once new play is m
   expect((await check(laptop.token)).characters[0]!.replace).toBe(false);
 });
 
-test("an upload from a PC that never received anything is set aside once there is a restore", async () => {
+test("a PC that never received anything after a restore: what the restore took out stays out, its own play is merged", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await restoreHead(desk.token); // plays a session at 20000, then restores the journey from before it
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(20000), ...session(30000)] })));
+  await workAll();
+  const [entry] = (await check(desk.token)).characters;
+  const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
+  expect(text).toContain("30000");
+  expect(text).not.toContain("20000");
+  expect(await db.select().from(versions).where(eq(versions.status, "superseded"))).toEqual([]);
+});
+
+test("a stale upload is still set aside when a restore has no windows, as one made before they were kept", async () => {
   const desk = await newDevice("user-1", "Desk");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
   await workAll();
   const restore = await restoreHead(desk.token);
+  await db.update(versions).set({ removed: null }).where(eq(versions.id, restore));
   const copied = await newDevice("user-1", "Copied WTF folder");
-  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(3000)] })));
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(20000), ...session(30000)] })));
   await workAll();
   const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
   expect(superseded?.deviceId).toBe(copied.device.id);
   expect((await check(desk.token)).characters[0]!.version).toBe(restore);
+});
+
+test("a copy taken after its PC applied the restore merges cleanly", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await restoreHead(desk.token);
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(40000)] })));
+  await workAll();
+  const [entry] = (await check(desk.token)).characters;
+  const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
+  expect(text).toContain("40000");
 });
 
 const s3 = new Bun.S3Client(config.s3);

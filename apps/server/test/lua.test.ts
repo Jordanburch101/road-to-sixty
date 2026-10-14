@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../src/config";
-import { runMerge } from "../src/lua";
+import { runMerge, runWindows } from "../src/lua";
 import { journey, lua, savedFile, session, sessions } from "./helpers";
 
 const text = (j: object) => new TextEncoder().encode(lua(j));
@@ -52,14 +52,14 @@ test("uploads the merge can't take are rejected with a reason", async () => {
 
 test("over the memory or time limit is the server's fault, not the upload's", async () => {
   const upload = savedFile(journey({ events: session(1000) }));
-  await expect(runMerge(upload, null, "pc-1", { mb: 0.05, seconds: 30 })).rejects.toThrow("over the memory limit");
-  await expect(runMerge(upload, null, "pc-1", { mb: 512, seconds: 0 })).rejects.toThrow("over the time limit");
+  await expect(runMerge(upload, null, "pc-1", [], { mb: 0.05, seconds: 30 })).rejects.toThrow("over the memory limit");
+  await expect(runMerge(upload, null, "pc-1", [], { mb: 512, seconds: 0 })).rejects.toThrow("over the time limit");
 });
 
 test("a runner that never ends is killed, and that is the server's fault", async () => {
   const started = Date.now();
   await expect(
-    runMerge(savedFile(journey()), null, "pc-1", { mb: 512, seconds: 1 }, `${import.meta.dir}/fixtures/hang.lua`),
+    runMerge(savedFile(journey()), null, "pc-1", [], { mb: 512, seconds: 1 }, `${import.meta.dir}/fixtures/hang.lua`),
   ).rejects.toThrow("didn't finish in time");
   expect(Date.now() - started).toBeLessThan(10_000);
 });
@@ -90,10 +90,34 @@ test("a merge that fails its own check is the server's fault, so a fixed server 
     await Bun.write(join(dir, "upload.lua"), savedFile(journey({ events: session(5000) })));
     await Bun.write(join(dir, "current.lua"), text(journey({ events: session(1000) })));
     const runner = `${import.meta.dir}/../src/runner.lua`;
-    const args = [dir, join(dir, "upload.lua"), join(dir, "current.lua"), join(dir, "out.lua"), "pc-2", "512", "30"];
+    const args = [dir, "merge", join(dir, "upload.lua"), join(dir, "current.lua"), join(dir, "out.lua"), "pc-2", "", "512", "30"];
     const proc = Bun.spawn([config.lua51, runner, ...args], { stdout: "pipe" });
     expect((await new Response(proc.stdout).text()).trim()).toBe("failed the kills went down");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("the windows of a restore are the sessions the old journey has and the kept one doesn't", async () => {
+  const old = text(journey({ events: [...session(1000), ...session(5000)] }));
+  const kept = text(journey({ events: session(1000) }));
+  expect(await runWindows(old, kept)).toEqual([[5000, 5120]]);
+});
+
+test("an upload is merged without the play inside the windows it is given", async () => {
+  const current = text(journey({ events: session(1000) }));
+  const upload = savedFile(journey({ events: [...session(1000), ...session(5000), ...session(9000)] }));
+  const r = await runMerge(upload, current, "pc-2", [[5000, 5120]]);
+  if (!r.ok) throw new Error(r.reason);
+  const out = new TextDecoder().decode(r.journey);
+  expect(sessions(out)).toBe(2);
+  expect(out).not.toContain("5000");
+});
+
+test("a layout 2 upload's counts become its PC's tallies before the cap, so they stay", async () => {
+  const current = text(journey({ events: session(1000), people: { "Player-1-0001": { name: "Ann", groups: { "pc-1": 1 } } } }));
+  const upload = savedFile(journey({ version: 2, events: [...session(1000), ...session(5000)], people: { "Player-1-0001": { name: "Ann", groups: 3 } } }));
+  const r = await runMerge(upload, current, "pc-2", [[5000, 5120]]);
+  if (!r.ok) throw new Error(r.reason);
+  expect(new TextDecoder().decode(r.journey)).toContain('["pc-2"]=3');
 });
