@@ -1,0 +1,29 @@
+---
+import "../styles/site.css";
+import compass from "@road-to-sixty/ui/compass.png";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+
+const { title, description = "The Road to Sixty app backs up your WoW Forever journey and keeps it the same on every PC you play on." } =
+  Astro.props as { title: string; description?: string };
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/png" href={compass.src} />
+    <slot name="head" />
+  </head>
+  <body class="min-h-screen overflow-x-hidden bg-ground antialiased">
+    <Header />
+    <slot />
+    <Footer />
+    <script>
+      import { wireDownloads } from "../download";
+      wireDownloads();
+    </script>
+  </body>
+</html>

@@ -45,6 +45,25 @@ jobs:
           name: RoadToSixty-${{ steps.package.outputs.version }}
           path: apps/addon/build/
 
+  # The website: its tests, then a build with stand-in settings.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Tests and types
+        run: cd packages/ui && bun test && cd ../../apps/web && bun test && bun run typecheck
+      - name: Build
+        working-directory: apps/web
+        env:
+          PUBLIC_ADDON_URL: https://example.test/addon
+          PUBLIC_CONTACT_EMAIL: test@example.test
+        run: bun run build
+
   # The sync server: its tests against Postgres and an S3 store, then the
   # image Dokploy deploys, checked to merge with Lua 5.1 inside it.
   server:

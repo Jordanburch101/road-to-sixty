@@ -71,6 +71,8 @@ releases come from `app-v*` tags: CI uploads them to the public R2 bucket
 `latest.json` for the updater, because this repo is private.
 `packages/api/` holds the request and response types the server, website
 and app share.
+`apps/web/` is the website (Astro, static, on Vercel): the download for
+the visitor's computer, the unsigned-app steps, Privacy and Terms.
 
 Each app and package has an `AGENTS.md` with its layout, commands and the
 rules that bite there (its `CLAUDE.md` just imports it). Keep it current in

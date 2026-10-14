@@ -1,0 +1,16 @@
+---
+// The main download button. It offers both platforms until the page's
+// script (download.ts) points it at the visitor's computer.
+const { size = "large" } = Astro.props as { size?: "small" | "large" };
+const box = size === "large" ? "h-11 gap-2.5 rounded-[10px] px-[18px] text-[15px]" : "h-8 gap-2 rounded-lg px-3.5 text-sm";
+---
+<a href="/download" data-download class={`inline-flex items-center justify-center bg-cream font-medium text-ink ${box}`}>
+  {size === "large" ? (
+    <>
+      <svg data-apple hidden width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.960-1.040-2.040.027-3.910 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.090 1.013 1.454 2.208 3.090 3.792 3.039 1.520-.065 2.090-.987 3.935-.987 1.831 0 2.350.987 3.960.948 1.637-.026 2.676-1.480 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.220-4.857-.026-3.040 2.480-4.494 2.597-4.559-1.429-2.090-3.623-2.324-4.390-2.376-2-.156-3.675 1.090-4.610 1.090zM15.530 3.830c.843-1.012 1.400-2.427 1.245-3.830-1.207.052-2.662.805-3.532 1.818-.780.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"></path></svg>
+      <span data-label>Download for Mac or Windows</span>
+    </>
+  ) : (
+    <span>Download</span>
+  )}
+</a>
