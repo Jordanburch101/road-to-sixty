@@ -18,7 +18,7 @@ push to `dev` that touches it. The design is
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
 - `src/link.ts`, `src/link.html` and `src/link-page.ts` link a PC: the
-  player types the app's code on `/link`, sees the PC's name the app sent
+  app's link fills its code in on `/link`, the player sees the PC's name the app sent
   in the code's `scope`, and approves it; the app trades it for a PC token
   (`src/devices.ts`, which keeps only the token's hash). The page's script
   is built once by `Bun.build`, draws the fog from `packages/ui` (so the
@@ -59,8 +59,10 @@ bun run dev               # port 3000, with .env copied from .env.example
   a file and line, storage down) makes `runMerge` throw, and the worker
   tries again for about a day with a doubling wait. A job left running past
   `STALE_SECONDS` is taken back by the next claim.
-- Never fill the link code in from the address: typing it is the
-  protection against a link with someone else's code.
+- The link page fills the code in from the app's link (Jordan's call), so
+  a link with someone else's code works too. Keep the PC's name and the
+  "check the code matches" note on the page; they are what's left of the
+  protection.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
