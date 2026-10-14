@@ -2,56 +2,50 @@
 <html lang="en">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Link this PC · Road to Sixty</title>
-<!-- Until the website is built (step 6), this page links PCs. -->
+<title>Link a PC · Road to Sixty</title>
+<!-- Look A from the mockups (#39); the website shares its fog. -->
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; background: #0a0a0a; color: #ededed; max-width: 28rem; margin: 4rem auto; padding: 0 1rem; }
-  input, button { font: inherit; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #333; background: #111; color: inherit; }
-  button { background: #2563eb; border: 0; cursor: pointer; }
-  .quiet { color: #a1a1a1; }
+  @font-face { font-family: Geist; src: url(/link/geist.woff2) format("woff2"); font-weight: 100 900; }
+  :root { --ground: #07060a; --panel: #0c0b10; --line: #1f1d26; --outline: #3a3746; --text: #ece9f2; --muted: #9a95a8; --faint: #6f6a7d; --cream: #f7f4ee; --ink: #17141d; }
+  body { margin: 0; min-height: 100vh; background: var(--ground); color: var(--text); font: 14px/1.5 Geist, system-ui, sans-serif; overflow-x: hidden; position: relative; }
+  #fog { position: absolute; left: 50%; top: 0; transform: translateX(-50%); pointer-events: none;
+         -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+  main { position: relative; max-width: 400px; margin: 0 auto; padding: 96px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
+  p { margin: 0; }
+  /* The script shows and hides parts; this beats the display rules below. */
+  [hidden] { display: none !important; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); font-size: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  label { font-weight: 500; }
+  input { height: 48px; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--outline); background: var(--ground); color: var(--text);
+          padding: 0 14px; font: 20px ui-monospace, monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+  .pc { border-radius: 10px; background: #12101a; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .pc strong { font-weight: 500; }
+  button { height: 42px; border-radius: 10px; border: 0; background: var(--cream); color: var(--ink); font: 500 14px Geist, system-ui, sans-serif; cursor: pointer; }
+  #result:empty { display: none; }
+  .note { font-size: 13px; color: var(--muted); }
 </style>
-<h1>Link this PC</h1>
-<p id="who" class="quiet"></p>
-<p>
-  Only continue if the Road to Sixty app on this computer opened this page just now. Linking lets
-  that PC read and change your journeys.
-</p>
-<button id="sign-in" hidden>Sign in with Battle.net</button>
-<form id="form" hidden>
-  <p class="quiet">Check that this code matches the one the app is showing.</p>
-  <input id="code" placeholder="Code from the app" autocomplete="off" required />
-  <button>Link</button>
-</form>
-<p id="result"></p>
-<script type="module">
-  const $ = (id) => document.getElementById(id);
-  const call = async (path, body) => {
-    const r = await fetch(`/api/auth${path}`, body
-      ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
-      : {});
-    return { ok: r.ok, data: await r.json().catch(() => null) };
-  };
-  const signedIn = (await call("/get-session")).data;
-  if (!signedIn) {
-    $("sign-in").hidden = false;
-    $("sign-in").onclick = async () => {
-      const r = await call("/sign-in/social", { provider: "battlenet", callbackURL: location.pathname + location.search });
-      if (r.data?.url) location.href = r.data.url;
-    };
-  } else {
-    $("who").textContent = `Signed in as ${signedIn.user.name}`;
-    $("form").hidden = false;
-    $("code").value = new URLSearchParams(location.search).get("user_code") ?? "";
-    $("form").onsubmit = async (e) => {
-      e.preventDefault();
-      const userCode = $("code").value.trim();
-      // Looking the code up ties it to this player; only then can they approve it.
-      const found = await call(`/device?user_code=${encodeURIComponent(userCode)}`);
-      const r = found.ok ? await call("/device/approve", { userCode }) : found;
-      $("result").textContent = r.ok
-        ? "Linked. You can close this page; the app takes it from here."
-        : `That didn't work: ${r.data?.message ?? "check the code and try again"}`;
-    };
-  }
-</script>
+<svg id="fog" aria-hidden="true" width="1400" height="360" viewBox="0 0 1400 360"></svg>
+<main>
+  <img src="/link/compass.png" alt="" width="48" height="48" style="border-radius: 10px" />
+  <div>
+    <h1>Link a PC</h1>
+    <p id="who" class="muted"></p>
+  </div>
+  <button id="sign-in" hidden>Sign in with Battle.net</button>
+  <form id="form" class="card" hidden>
+    <label for="code">Type the code Road to Sixty shows on your PC</label>
+    <input id="code" autocomplete="off" spellcheck="false" required />
+    <div id="pc" class="pc" hidden>
+      <span class="faint">This code belongs to</span>
+      <strong id="pc-name"></strong>
+    </div>
+    <button id="link">Link</button>
+  </form>
+  <p id="result"></p>
+  <p class="note">Only link a PC you're sitting at. A linked PC can read and change your journeys. If someone sent you here with a code, don't type it.</p>
+</main>
+<script type="module" src="/link.js"></script>
 </html>

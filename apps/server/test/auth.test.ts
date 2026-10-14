@@ -100,14 +100,33 @@ test("linking needs the device sign-in's token: not a cookie, and not twice", as
   expect((await link({ authorization: `Bearer ${access_token}` })).status).toBe(401);
 });
 
+test("the PC's name comes back with its code, but only to the player who typed the code in", async () => {
+  const scope = JSON.stringify({ pc: "Desk", platform: "darwin" });
+  const code = (await (await post("/api/auth/device/code", { client_id: APP_CLIENT_ID, scope })).json()) as { user_code: string };
+  const ann = await signIn({ id: 1, battletag: "Ann#1111" });
+  const bob = await signIn({ id: 2, battletag: "Bob#2222" });
+  const first = (await (await get(`/api/auth/device?user_code=${code.user_code}`, { cookie: ann })).json()) as { scope?: string };
+  expect(JSON.parse(first.scope!)).toEqual({ pc: "Desk", platform: "darwin" });
+  const second = (await (await get(`/api/auth/device?user_code=${code.user_code}`, { cookie: bob })).json()) as { scope?: string };
+  expect(second.scope).toBeUndefined();
+});
+
 test("only the app may ask for a device code", async () => {
   expect((await deviceCode("something-else")).status).toBe(400);
 });
 
-test("the link page is served", async () => {
-  const page = await get("/link");
+test("the link page, its script and its pictures are served, and the code is typed, never filled in", async () => {
+  const page = await get("/link?user_code=ABCD1234");
   expect(page.headers.get("content-type")).toContain("text/html");
   const text = await page.text();
-  expect(text).toContain("Link this PC");
-  expect(text).toContain("Only continue if the Road to Sixty app on this computer opened this page");
+  expect(text).toContain("Link a PC");
+  expect(text).toContain("If someone sent you here with a code, don't type it.");
+  expect(text).toContain("[hidden] { display: none !important; }"); // or the form shows before sign-in
+  const script = await get("/link.js");
+  expect(script.headers.get("content-type")).toContain("javascript");
+  const js = await script.text();
+  expect(js).toContain("rts-fog-road");
+  expect(js).not.toContain("URLSearchParams"); // the code is never read from the address
+  expect((await get("/link/compass.png")).headers.get("content-type")).toBe("image/png");
+  expect((await get("/link/geist.woff2")).status).toBe(200);
 });

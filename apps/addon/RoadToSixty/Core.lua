@@ -57,7 +57,8 @@ local defaults = {
 --      earlier are by that PC's clock before clockFrom.
 --   3  the counts the merge can't rebuild are tallies by PC (Tally.lua):
 --      people[guid] groups, seconds, raids, raidSeconds, dungeons and
---      raidRuns, and rares[key][1]. Older counts become this PC's.
+--      raidRuns, and rares[key][1]. Older counts become this PC's. class,
+--      the character's class (UnitClass's file name), set at each login.
 local DATA_VERSION = 3
 
 -- Brings a character file saved by an older layout up to DATA_VERSION.

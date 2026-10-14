@@ -14,6 +14,7 @@ export type MergeResult =
       level: number | null;
       played: number | null;
       lastSeen: number | null; // Unix seconds of the last event
+      class: string | null; // the class file name, such as WARRIOR
       journey: Uint8Array; // Parse.Write text
     }
   // The merge rules refused the upload. Faults (a crash, a limit, a bug)
@@ -53,7 +54,7 @@ export async function runMerge(
     if (proc.signalCode) throw new Error("the merge didn't finish in time and was stopped");
     const [word, from, ...rest] = (stdout.trim().split("\n").pop() ?? "").split(" ");
     if (word === "ok") {
-      const [layout, level, played, lastSeen] = rest;
+      const [layout, level, played, lastSeen, cls] = rest;
       return {
         ok: true,
         from: num(from),
@@ -61,6 +62,7 @@ export async function runMerge(
         level: num(level),
         played: num(played),
         lastSeen: num(lastSeen),
+        class: cls === undefined || cls === "-" ? null : cls,
         journey: new Uint8Array(await Bun.file(outPath).arrayBuffer()),
       };
     }

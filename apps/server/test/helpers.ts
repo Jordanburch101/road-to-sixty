@@ -1,9 +1,14 @@
 // Shared by the server tests: a clean database and bucket, and made-up
 // journeys in the game's saved format. Never a real save: those hold other
 // players' names.
+import type { CheckResponse } from "@road-to-sixty/api";
+import { app } from "../src/app";
 import { config } from "../src/config";
 import { client, db, migrateDb } from "../src/db";
+import { newDevice as linkDevice } from "../src/devices";
 import { user } from "../src/schema";
+import { pack } from "../src/storage";
+import { work } from "../src/worker";
 
 export async function reset() {
   await migrateDb();
@@ -66,3 +71,25 @@ export const savedFile = (j: object) => new TextEncoder().encode(`\r\nRoadToSixt
 // How many sessions a journey's text holds, by its "on" events.
 export const sessions = (text: Uint8Array | string) =>
   (typeof text === "string" ? text : new TextDecoder().decode(text)).split('"on"').length - 1;
+
+// Calls the server as a linked PC, as the app does.
+export const newDevice = async (userId: string, name: string) => linkDevice(await addUser(userId), name);
+
+export const CHAR = { game: "_classic_beta_", realm: "Test Realm", name: "Ann" };
+
+export function call(token: string, path: string, init: RequestInit = {}) {
+  return app.handle(
+    new Request(`http://local${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } }),
+  );
+}
+
+export async function upload(token: string, file: Uint8Array, extra: Record<string, string> = {}) {
+  const query = new URLSearchParams({ ...CHAR, addon: "1.9.0", ...extra });
+  return call(token, `/v1/upload?${query}`, { method: "POST", body: pack(file) });
+}
+
+export const check = async (token: string) => (await (await call(token, "/v1/check")).json()) as CheckResponse;
+
+export async function workAll() {
+  while (await work()) {}
+}

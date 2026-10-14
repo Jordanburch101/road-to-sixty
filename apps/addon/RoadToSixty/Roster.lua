@@ -138,6 +138,7 @@ ns.On("PLAYER_LOGIN", function()
     ns.char.rosterKey = key
     entry.name, entry.realm = UnitName("player"), GetRealmName()
     entry.class = select(2, UnitClass("player"))
+    ns.char.class = entry.class
     entry.level = UnitLevel("player")
     entry.seen = ns.Now()
     entry.played = ns.char.played or entry.played

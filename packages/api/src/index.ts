@@ -42,7 +42,11 @@ export type CheckEntry = {
   // has, or when the character has no merged version yet.
   version: number | null;
   fingerprint: string;
-  replace: boolean; // a restore: the addon replaces instead of merging
+  // The newest restore, while this PC hasn't shown (by an upload's received)
+  // that its addon took it in. The addon replaces its copy only when the
+  // version it last brought in is older than this, so play since stays.
+  restore: number | null;
+  replace: boolean; // restore !== null; read by app 0.1.1
   updateAddon: boolean;
   // Why the server refused this PC's newest upload of this character, or
   // null. The app shows it against the character until a newer upload goes in.
@@ -53,3 +57,46 @@ export type CheckResponse = { characters: CheckEntry[] };
 
 // GET /v1/versions/:id returns the journey as zstd-compressed Parse.Write
 // text: what the app puts in data.lua's journey string, after decompressing.
+
+// The account API: the app's window, with the PC token. Times are ISO 8601.
+
+// GET /v1/characters: each character with a merged journey.
+export type CharacterInfo = {
+  id: number;
+  game: string;
+  realm: string;
+  name: string;
+  class: string | null; // the class file name, such as WARRIOR
+  level: number | null;
+  played: number | null; // seconds
+  lastPlayedAt: string | null;
+  syncedAt: string; // when its current version was made
+  syncedFrom: string | null; // the PC whose upload made it; null for a restore
+};
+
+// GET /v1/characters/:id/versions: newest first, at most 100.
+export type VersionInfo = {
+  id: number;
+  kind: "merged" | "restore";
+  createdAt: string;
+  level: number | null;
+  from: string | null; // the PC whose upload made a merged version
+  restoredFrom: { id: number; createdAt: string } | null;
+  current: boolean;
+};
+
+// POST /v1/characters/:id/restore, body { version }: the version becomes
+// current again as a new restore version; every PC replaces its copy with
+// it at its next login, unless it already took the restore in.
+export type RestoreResponse = { version: number };
+
+// GET /v1/devices: the player's linked PCs, most recently seen first.
+// PATCH /v1/devices/:id, body { name }, renames one; DELETE unlinks it.
+export type DeviceInfo = {
+  id: string; // the app compares it with its own pc to mark "This PC"
+  name: string;
+  platform: string | null; // darwin, windows or linux
+  appVersion: string | null;
+  addonVersion: string | null;
+  lastSeenAt: string | null;
+};

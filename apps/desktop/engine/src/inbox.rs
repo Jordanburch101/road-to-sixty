@@ -16,8 +16,8 @@ pub struct Delivery {
     /// The server's version id; the addon takes it when it is higher than
     /// the one it last brought in.
     pub version: i64,
-    /// A restore: the addon replaces its copy instead of merging.
-    pub replace: bool,
+    /// The restore this PC hasn't taken in yet (Sync.lua's header).
+    pub restore: Option<i64>,
     /// The journey as Parse.Write text.
     pub journey: String,
 }
@@ -50,11 +50,12 @@ pub fn lua_quote(s: &str) -> String {
 pub fn data_lua(pc: &str, deliveries: &[Delivery]) -> String {
     let mut out = format!("RoadToSixtySync = {{\n    pc = {},\n    chars = {{\n", lua_quote(pc));
     for d in deliveries {
+        let restore = d.restore.map(|id| format!("restore = {id}, ")).unwrap_or_default();
         out.push_str(&format!(
-            "        [{}] = {{ version = {}, replace = {}, journey = {} }},\n",
+            "        [{}] = {{ version = {}, {}journey = {} }},\n",
             lua_quote(&d.key),
             d.version,
-            d.replace,
+            restore,
             lua_quote(&d.journey)
         ));
     }
@@ -117,7 +118,7 @@ mod tests {
         let d = vec![Delivery {
             key: "Ann-Test Realm".into(),
             version: 42,
-            replace: false,
+            restore: None,
             journey: "{}".into(),
         }];
         assert!(write(game.path(), "pc-1", &d).unwrap());
@@ -136,13 +137,13 @@ mod tests {
             Delivery {
                 key: "Zoë-Test Realm".into(),
                 version: 7,
-                replace: true,
+                restore: Some(6),
                 journey: TRICKY.into(),
             },
             Delivery {
                 key: "Ann-Test Realm".into(),
                 version: 8,
-                replace: false,
+                restore: None,
                 journey: "{}".into(),
             },
         ];
@@ -150,7 +151,8 @@ mod tests {
         let data = sync_folder(game.path()).join("data.lua");
         let script = format!(
             "dofile({}) local e = RoadToSixtySync.chars['Zo\\195\\171-Test Realm'] \
-             io.write(RoadToSixtySync.pc, '|', e.version, '|', tostring(e.replace), '|', e.journey)",
+             io.write(RoadToSixtySync.pc, '|', e.version, '|', tostring(e.restore), '|', e.journey, '|', \
+             tostring(RoadToSixtySync.chars['Ann-Test Realm'].restore))",
             lua_quote(&data.to_string_lossy())
         );
         let out = Command::new("luajit")
@@ -158,6 +160,6 @@ mod tests {
             .output()
             .expect("luajit must be on the path");
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        assert_eq!(out.stdout, format!("pc-1|7|true|{TRICKY}").into_bytes());
+        assert_eq!(out.stdout, format!("pc-1|7|6|{TRICKY}|nil").into_bytes());
     }
 }

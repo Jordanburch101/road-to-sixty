@@ -31,7 +31,10 @@ pub struct CheckEntry {
     /// version yet.
     pub version: Option<i64>,
     pub fingerprint: String,
-    pub replace: bool,
+    /// The restore this PC hasn't taken in yet; the addon replaces its copy
+    /// only if the version it last brought in is older.
+    #[serde(default)]
+    pub restore: Option<i64>,
     #[serde(rename = "updateAddon")]
     pub update_addon: bool,
     /// Why the server refused this PC's newest upload of this character.
@@ -188,11 +191,15 @@ impl Client {
         String::from_utf8(text).map_err(|_| ApiError::Status(200, "the journey isn't text".into()))
     }
 
-    pub fn device_code(&self) -> Result<DeviceCode, ApiError> {
+    /// Asks for a code to link with. The PC's name rides in `scope`, which
+    /// the server keeps with the code and shows only to the player who
+    /// types it in, so the link page can say which PC it is.
+    pub fn device_code(&self, name: &str, platform: &str) -> Result<DeviceCode, ApiError> {
+        let scope = serde_json::json!({ "pc": name, "platform": platform }).to_string();
         json(
             self.agent
                 .post(self.url("/api/auth/device/code"))
-                .send_json(serde_json::json!({ "client_id": APP_CLIENT_ID })),
+                .send_json(serde_json::json!({ "client_id": APP_CLIENT_ID, "scope": scope })),
         )
     }
 

@@ -1,4 +1,4 @@
-import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
+import type { CheckResponse, RestoreResponse, UploadResponse } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { app } from "../src/app";
@@ -8,31 +8,9 @@ import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
-import { journey, savedFile, session, sessions } from "./helpers";
-import { addUser, reset } from "./helpers";
-
-const newDevice = async (userId: string, name: string) => linkDevice(await addUser(userId), name);
+import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
-
-const CHAR = { game: "_classic_beta_", realm: "Test Realm", name: "Ann" };
-
-function call(token: string, path: string, init: RequestInit = {}) {
-  return app.handle(
-    new Request(`http://local${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } }),
-  );
-}
-
-async function upload(token: string, file: Uint8Array, extra: Record<string, string> = {}) {
-  const query = new URLSearchParams({ ...CHAR, addon: "1.9.0", ...extra });
-  return call(token, `/v1/upload?${query}`, { method: "POST", body: pack(file) });
-}
-
-const check = async (token: string) => (await (await call(token, "/v1/check")).json()) as CheckResponse;
-
-async function workAll() {
-  while (await work()) {}
-}
 
 test("a PC needs a token that is known and not revoked", async () => {
   expect((await app.handle(new Request("http://local/v1/check"))).status).toBe(401);
@@ -54,7 +32,7 @@ test("an upload is refused when it isn't zstd, is too large, or is compiled Lua"
 
 test("the first upload becomes the character's journey, and the same file again is known", async () => {
   const { token } = await newDevice("user-1", "Desk");
-  const file = savedFile(journey({ events: session(1000), levels: { 4: { t: 900 } }, played: 600 }));
+  const file = savedFile(journey({ events: session(1000), levels: { 4: { t: 900 } }, played: 600, class: "PRIEST" }));
   const first = (await (await upload(token, file)).json()) as UploadResponse;
   expect(first.status).toBe("queued");
   expect(((await (await upload(token, file)).json()) as UploadResponse).status).toBe("known");
@@ -64,7 +42,9 @@ test("the first upload becomes the character's journey, and the same file again 
   const [entry] = (await check(token)).characters;
   expect(entry).toMatchObject({ ...CHAR, replace: false, updateAddon: false });
   const [c] = await db.select().from(characters);
-  expect(c).toMatchObject({ level: 4, played: 600, headVersionId: entry!.version });
+  expect(c).toMatchObject({ level: 4, played: 600, class: "PRIEST", headVersionId: entry!.version });
+  const [merged] = await db.select().from(versions).where(eq(versions.id, entry!.version!));
+  expect(merged!.level).toBe(4);
 
   const download = await call(token, `/v1/versions/${entry!.version}`);
   expect(download.headers.get("content-type")).toBe("application/zstd");
@@ -117,33 +97,41 @@ test("a restore is delivered as a replace, and an upload made before it arrived 
   await upload(token, savedFile(journey({ events: session(1000) })));
   await workAll();
   const merged = (await check(token)).characters[0]!;
-  // The website's restore (a later step) adds a version like this.
-  const [c] = await db.select().from(characters);
-  const [restore] = await db
-    .insert(versions)
-    .values({ characterId: c!.id, kind: "restore", fingerprint: merged.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
-    .returning();
-  await db.update(characters).set({ headVersionId: restore!.id });
-  expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, replace: true });
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(3000)] })), { received: String(merged.version) });
+  await workAll();
+  const restore = { id: await restoreTo(token, merged.version!) };
+  expect((await check(token)).characters[0]).toMatchObject({ version: restore!.id, restore: restore!.id, replace: true });
 
   await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(merged.version) });
   await workAll();
   const [superseded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
   expect(superseded?.deviceId).toBe(device.id);
   expect((await check(token)).characters[0]!.version).toBe(restore!.id);
+
+  await upload(token, savedFile(journey({ events: session(9000) })), { received: String(restore!.id) });
+  await workAll();
+  expect((await check(token)).characters[0]).toMatchObject({ restore: null, replace: false });
 });
 
-// What the website's restore (a later step) does: a new head holding the
-// current head's text.
-async function restoreHead() {
+// Restores the given version, as the app's history screen does.
+async function restoreTo(token: string, version: number) {
   const [c] = await db.select().from(characters);
-  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
-  const [restore] = await db
-    .insert(versions)
-    .values({ characterId: c!.id, kind: "restore", fingerprint: head!.fingerprint, rawSize: 1, dataVersion: 3, status: "accepted" })
-    .returning();
-  await db.update(characters).set({ headVersionId: restore!.id });
-  return restore!.id;
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  return ((await r.json()) as RestoreResponse).version;
+}
+
+// One more session from token's PC, then a restore of the journey as it
+// was before it.
+async function restoreHead(token: string) {
+  const [c] = await db.select().from(characters);
+  const before = c!.headVersionId!;
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(20000)] })));
+  await workAll();
+  return restoreTo(token, before);
 }
 
 test("a PC that hasn't applied a restore gets a replace, even once new play is merged on top of it", async () => {
@@ -151,7 +139,7 @@ test("a PC that hasn't applied a restore gets a replace, even once new play is m
   const laptop = await newDevice("user-1", "Laptop");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
   await workAll();
-  const restore = await restoreHead();
+  const restore = await restoreHead(desk.token);
   await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })), { received: String(restore) });
   await workAll();
 
@@ -170,7 +158,7 @@ test("an upload from a PC that never received anything is set aside once there i
   const desk = await newDevice("user-1", "Desk");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
   await workAll();
-  const restore = await restoreHead();
+  const restore = await restoreHead(desk.token);
   const copied = await newDevice("user-1", "Copied WTF folder");
   await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(3000)] })));
   await workAll();

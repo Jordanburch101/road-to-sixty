@@ -98,6 +98,7 @@ Record({
 Fire("PLAYER_LOGIN")
 local e = ns.db.roster["Eagin-Test"]
 check(e.class == "MAGE" and e.level == 12 and e.zone == 1436, "entry has class, level and zone")
+check(ns.char.class == "MAGE", "the character's own file keeps its class, for the sync server")
 check(ns.char.rosterBuilt == 3, "journey copied on first login")
 check(ns.char.rosterKey == "Eagin-Test", "the journey records its roster key, for the app")
 check(e.path == nil and e.journey ~= nil, "old coarse path replaced by the journey copy")

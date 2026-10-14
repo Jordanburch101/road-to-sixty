@@ -54,6 +54,8 @@ export const versions = pgTable("versions", {
   fingerprint: text("fingerprint").notNull(),
   rawSize: integer("raw_size").notNull(),
   dataVersion: integer("data_version"),
+  // The character's level in this version, for the history the app shows.
+  level: integer("level"),
   addonVersion: text("addon_version"),
   receivedId: bigint("received_id", { mode: "number" }),
   status: text("status", { enum: ["pending", "accepted", "rejected", "superseded"] }).notNull(),
