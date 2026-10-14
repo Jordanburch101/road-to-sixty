@@ -14,8 +14,12 @@ button, blue only for status, fog of war background).
   or fogged for a set of roads, and how far along its road each lit dot is.
   It also holds the animation (`fogAnimation`, `fogDelay`): a lit stretch
   travelling along each road. Plain functions, tested in `dots.test.ts`.
+  Each lit dot also knows its road; `Timing` gives a road its own turn in
+  the loop, and `Fog`'s `colours` its own colour (the website's "one road"
+  band).
 - `src/Fog.tsx` draws that grid in React (`animate` makes it move; the app's
-  first run leaves it still); the server's link page draws it from
+  first run leaves it still; each animated dot carries its loop length
+  inline, so two fogs on one page keep their own speeds); the server's link page draws it from
   `dots.ts` without React, and the website will use it with `animate`.
   `src/Button.tsx` is the cream and outline button.
 - `compass.png` is Jordan's compass icon (256 px, used as is). If Blizzard

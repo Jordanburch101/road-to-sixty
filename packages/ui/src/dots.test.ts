@@ -33,3 +33,21 @@ test("the animation starts each dot as far into its loop as it is along the road
   expect(css).toContain("14s");
   expect(css).toContain("prefers-reduced-motion");
 });
+
+test("each lit dot knows which road it is on", () => {
+  const top: [number, number][] = [[0, 20], [200, 20]];
+  const bottom: [number, number][] = [[0, 180], [200, 180]];
+  const { lit } = fogDots(200, 200, 20, [top, bottom]);
+  expect(lit.find(([x, y]) => x === 90 && y === 10)![3]).toBe(0);
+  expect(lit.find(([x, y]) => x === 90 && y === 190)![3]).toBe(1);
+});
+
+test("a timed road lights only in its own share of the loop", () => {
+  const first: [number, number][] = [[0, 20], [200, 20]];
+  const then: [number, number][] = [[0, 180], [200, 180]];
+  const { lit } = fogDots(200, 200, 20, [first, then], [{ start: 0, share: 0.5 }, { start: 0.5, share: 0.5 }]);
+  for (const [, , at, road] of lit) {
+    if (road === 0) expect(at).toBeLessThanOrEqual(0.5);
+    else expect(at).toBeGreaterThanOrEqual(0.5);
+  }
+});
