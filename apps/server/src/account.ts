@@ -5,6 +5,8 @@ import { db } from "./db";
 import { type Device, pcName } from "./devices";
 import { pcRoutes } from "./pc";
 import { characters, devices, versionParents, versions } from "./schema";
+import { get } from "./storage";
+import { zip } from "./zip";
 
 const HISTORY = 100;
 
@@ -53,6 +55,9 @@ const info = (d: typeof devices.$inferSelect): DeviceInfo => ({
   addonVersion: d.addonVersion,
   lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
 });
+
+// Characters as folder names: no slashes or characters Windows refuses.
+const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
 
 const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
@@ -182,6 +187,26 @@ export const account = pcRoutes()
       return { error: "no such PC" };
     }
     return info(renamed);
+  })
+
+  // Each character's current journey as the game would save it, so a
+  // player can keep it, or put it back in their SavedVariables folder.
+  .get("/export", async ({ device }) => {
+    const rows = await db
+      .select({ c: characters, head: versions })
+      .from(characters)
+      .innerJoin(versions, eq(versions.id, characters.headVersionId))
+      .where(eq(characters.userId, device!.userId))
+      .orderBy(characters.id);
+    const files = [];
+    for (const { c, head } of rows) {
+      const journey = await get(c.userId, head.fingerprint);
+      const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
+      files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${safe(c.name)}.lua`, data: new Uint8Array(data) });
+    }
+    return new Response(zip(files), {
+      headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },
+    });
   })
 
   // The token stops working at once; the PC's journeys stay where they are.

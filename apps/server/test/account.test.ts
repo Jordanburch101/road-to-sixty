@@ -1,6 +1,9 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
-import { CHAR, call, check, journey, newDevice, reset, savedFile, session, upload, workAll } from "./helpers";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
 
@@ -138,4 +141,30 @@ test("unlinking a PC stops its token at once, from itself or another PC, but not
   expect((await json<DeviceInfo[]>(call(desk.token, "/v1/devices"))).map((d) => d.name)).toEqual(["Desk"]);
   expect((await call(desk.token, `/v1/devices/${desk.device.id}`, { method: "DELETE" })).status).toBe(200);
   expect((await call(desk.token, "/v1/check")).status).toBe(401);
+});
+
+test("the export is a zip of each character's journey that unzip accepts, accents and all", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await upload(desk.token, savedFile(journey({ events: session(2000) })), { realm: "Azjol-Nérub", name: "Zoë" });
+  await workAll();
+  const r = await call(desk.token, "/v1/export");
+  expect(r.headers.get("content-type")).toBe("application/zip");
+  const dir = await mkdtemp(join(tmpdir(), "rts-export-"));
+  try {
+    const path = join(dir, "export.zip");
+    await Bun.write(path, await r.arrayBuffer());
+    const tested = Bun.spawnSync(["unzip", "-t", path]);
+    expect(tested.exitCode).toBe(0);
+    // Apple's unzip ignores the UTF-8 flag and garbles accented names, so
+    // the names are read with Python's zipfile, which honours it.
+    const names = Bun.spawnSync(["python3", "-I", "-c", "import sys, zipfile; print('\\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))", path]);
+    const listed = names.stdout.toString().trim().split("\n").sort();
+    expect(listed).toEqual(["_classic_beta_/Azjol-Nérub/Zoë.lua", "_classic_beta_/Test Realm/Ann.lua"]);
+    const text = Bun.spawnSync(["unzip", "-p", path, "_classic_beta_/Test Realm/Ann.lua"]).stdout.toString();
+    expect(text.startsWith("RoadToSixtyCharDB = ")).toBe(true);
+    expect(sessions(text)).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
