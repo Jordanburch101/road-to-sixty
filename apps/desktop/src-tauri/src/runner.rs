@@ -84,6 +84,7 @@ pub struct Runner {
     find: Find,
     notifier: Notifier,
     stop: Arc<AtomicBool>,
+    busy: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -97,8 +98,14 @@ impl Runner {
             find,
             notifier,
             stop: Arc::default(),
+            busy: Arc::default(),
             thread: None,
         }
+    }
+
+    /// True while a pass runs, for the update to wait on.
+    pub fn busy(&self) -> Arc<AtomicBool> {
+        self.busy.clone()
     }
 
     pub fn is_running(&self) -> bool {
@@ -157,12 +164,13 @@ impl Runner {
 
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = stop.clone();
-        let (server, state_path, cache, notifier, find) = (
+        let (server, state_path, cache, notifier, find, busy) = (
             self.server.clone(),
             self.state_path.clone(),
             self.cache.clone(),
             self.notifier.clone(),
             self.find.clone(),
+            self.busy.clone(),
         );
         self.thread = Some(std::thread::spawn(move || {
             let client = Client::new(&server, token);
@@ -184,7 +192,7 @@ impl Runner {
                     apply(s, result, &local, now());
                 });
             };
-            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, report) {
+            if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, &busy, report) {
                 notifier.update(|s| s.problems = vec![format!("Couldn't watch the game folders: {e}")]);
             }
         }));

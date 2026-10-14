@@ -2,9 +2,10 @@
 //! been unchanged for 10 seconds; while its game runs, at most once every
 //! 15 minutes, so repeated /reloads don't flood the server; when the game
 //! closes, straight away. The server is also asked for new versions every
-//! few minutes.
+//! few minutes, and as soon as a game starts, so the newest journey is
+//! there before the player logs in.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -22,6 +23,24 @@ pub const WHILE_PLAYING: Duration = Duration::from_secs(15 * 60);
 pub const CHECK_EVERY: Duration = Duration::from_secs(5 * 60);
 /// After a failed pass (offline, server down), wait this long to try again.
 pub const RETRY: Duration = Duration::from_secs(60);
+/// How often to look for a game starting.
+pub const LOOK_FOR_GAME: Duration = Duration::from_secs(5);
+
+/// Notices a game starting, so other PCs' play is fetched before the player
+/// logs in rather than up to five minutes later.
+#[derive(Debug, Default)]
+pub struct Starts {
+    running: BTreeSet<PathBuf>,
+}
+
+impl Starts {
+    /// Takes the game folders running now; true when one of them wasn't before.
+    pub fn saw(&mut self, running: BTreeSet<PathBuf>) -> bool {
+        let started = running.iter().any(|g| !self.running.contains(g));
+        self.running = running;
+        started
+    }
+}
 
 /// Whether the game in `game` is running: some process's program file is
 /// inside it. Process names differ by version and processor, and on a Mac
@@ -142,6 +161,8 @@ fn watcher(games: &[GameFolder], tx: mpsc::Sender<PathBuf>, lost: Arc<AtomicBool
 /// appears or the watcher may have missed something, so WoW making its WTF
 /// folder after the app started is noticed. Every saved journey counts as
 /// changed at the start (an unchanged file is skipped by its fingerprint).
+/// `busy` is true while a pass runs, so the app never restarts in the middle
+/// of one.
 pub fn run(
     client: &Client,
     state: &mut State,
@@ -149,6 +170,7 @@ pub fn run(
     cache: &Path,
     find: &dyn Fn() -> Vec<GameFolder>,
     stop: &AtomicBool,
+    busy: &AtomicBool,
     mut report: impl FnMut(&Result<Report, ApiError>),
 ) -> notify::Result<()> {
     let (tx, rx) = mpsc::channel();
@@ -166,6 +188,8 @@ pub fn run(
     let mut system = sysinfo::System::new();
     let mut last_pass: Option<Instant> = None;
     let mut wait_until = start;
+    let mut starts = Starts::default();
+    let mut looked: Option<Instant> = None;
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
@@ -187,18 +211,30 @@ pub fn run(
         for path in rx.try_iter() {
             schedule.changed(path, now);
         }
-        let programs = if schedule.settled(now) {
+        let look = schedule.settled(now) || looked.is_none_or(|t| now.duration_since(t) >= LOOK_FOR_GAME);
+        let programs = if look {
+            looked = Some(now);
             running_programs(&mut system)
         } else {
             Vec::new()
         };
+        let started = look
+            && starts.saw(
+                games
+                    .iter()
+                    .filter(|g| game_running(&g.path, &programs))
+                    .map(|g| g.path.clone())
+                    .collect(),
+            );
         let playing = |file: &Path| games.iter().any(|g| file.starts_with(&g.path) && game_running(&g.path, &programs));
         let due = schedule.due(now, playing);
-        if now >= wait_until && (!due.is_empty() || check_due) {
+        if now >= wait_until && (!due.is_empty() || check_due || started) {
+            busy.store(true, Ordering::SeqCst);
             let result = sync::pass(client, state, state_path, &games, cache, |f| due.contains(&f.path)).map(|mut r| {
                 r.problems.extend(watch_problems.iter().cloned());
                 r
             });
+            busy.store(false, Ordering::SeqCst);
             match &result {
                 Ok(r) => {
                     schedule.sent(&due, now);
@@ -272,6 +308,65 @@ mod tests {
     }
 
     #[test]
+    fn a_game_starting_is_noticed_once() {
+        let mut s = Starts::default();
+        let beta = PathBuf::from("/wow/_classic_beta_");
+        assert!(!s.saw(BTreeSet::new()));
+        assert!(s.saw([beta.clone()].into()), "the game started");
+        assert!(!s.saw([beta.clone()].into()), "still running is not a start");
+        assert!(!s.saw(BTreeSet::new()));
+        assert!(s.saw([beta].into()), "started again");
+    }
+
+    #[test]
+    fn a_pass_shows_as_busy_while_it_runs() {
+        use crate::api::fake;
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("wow/_classic_beta_");
+        let toc = installs::addon_toc(&game);
+        std::fs::create_dir_all(toc.parent().unwrap()).unwrap();
+        std::fs::write(&toc, "## Interface: 16001\n## Version: 1.9.0\n").unwrap();
+        let fake = fake::serve(|_, _| {
+            std::thread::sleep(Duration::from_millis(800));
+            (200, br#"{"characters":[]}"#.to_vec())
+        });
+        let (stop, busy) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
+        let thread = {
+            let (stop, busy, url, data) = (stop.clone(), busy.clone(), fake.url.clone(), dir.path().join("data"));
+            std::thread::spawn(move || {
+                let mut state = State {
+                    pc: Some("pc-1".into()),
+                    ..State::default()
+                };
+                let find = || {
+                    vec![GameFolder {
+                        path: game.clone(),
+                        name: "_classic_beta_".into(),
+                    }]
+                };
+                run(
+                    &Client::new(&url, Some("t".into())),
+                    &mut state,
+                    &data.join("s.json"),
+                    &data.join("j"),
+                    &find,
+                    &stop,
+                    &busy,
+                    |_| {},
+                )
+            })
+        };
+        let until = Instant::now() + Duration::from_secs(5);
+        while !busy.load(Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(busy.load(Ordering::SeqCst), "busy while the check is out");
+        stop.store(true, Ordering::Relaxed);
+        thread.join().unwrap().unwrap();
+        assert!(!busy.load(Ordering::SeqCst), "not busy once the pass ended");
+    }
+
+    #[test]
     fn a_wtf_folder_made_after_the_start_is_watched_and_its_file_goes_up() {
         use crate::api::fake;
         let dir = tempfile::tempdir().unwrap();
@@ -307,6 +402,7 @@ mod tests {
                     &data.join("j"),
                     &find,
                     &stop,
+                    &AtomicBool::new(false),
                     |_| {},
                 )
             })

@@ -27,7 +27,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   - `sync.rs` is one sync pass; `watch.rs` decides when to upload. It
     looks for game folders and changed files again whenever a game or
     install folder changes and every five minutes, so WoW making its WTF
-    folder after the app started is noticed. A
+    folder after the app started is noticed. It also looks for a game starting
+    every five seconds and syncs at once when one does, so other PCs' play
+    is in the sync folder before the player logs in, and it sets `busy`
+    while a pass runs. A
     pass's `problems` name the character (`who`) and say what's wrong in
     words a player can read, with no codes or file paths.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
