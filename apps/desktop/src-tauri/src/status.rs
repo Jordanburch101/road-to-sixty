@@ -1,0 +1,234 @@
+//! What the app shows: the line in the tray menu and the window's state,
+//! worked out from the sync engine's reports. Plain functions, so the
+//! wording is tested without a window.
+
+use rts_sync::api::ApiError;
+use rts_sync::sync::Report;
+use serde::Serialize;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Status {
+    /// The BattleTag this PC is linked to. None before linking, and after
+    /// the server stops accepting the token.
+    pub linked_to: Option<String>,
+    pub games: Vec<Game>,
+    pub characters: Vec<Character>,
+    /// Unix seconds of the last pass that reached the server.
+    pub last_synced: Option<u64>,
+    pub paused: bool,
+    /// The last pass couldn't reach the server; the engine tries again.
+    pub offline: bool,
+    pub problems: Vec<String>,
+    /// While linking, the code the link page shows, to compare.
+    pub link_code: Option<String>,
+    /// The tray's status line, also shown in the window.
+    pub line: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Game {
+    pub path: String,
+    pub name: String,
+    pub addon: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Character {
+    /// `Name-Realm`, from the saved file's rosterKey or the server.
+    pub key: String,
+    /// Its saved file is on this PC.
+    pub here: bool,
+    pub update_addon: bool,
+    /// When this run of the app last uploaded it, in Unix seconds.
+    pub uploaded: Option<u64>,
+    /// The line under the name.
+    pub note: String,
+}
+
+pub fn ago(secs: u64) -> String {
+    match secs {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", secs / 60),
+        3600..86_400 => format!("{} h ago", secs / 3600),
+        86_400..172_800 => "yesterday".into(),
+        _ => format!("{} days ago", secs / 86_400),
+    }
+}
+
+/// Folds one engine report into the status. `local` is every character
+/// with a saved file on this PC.
+pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[String], now: u64) {
+    match result {
+        Ok(report) => {
+            status.offline = false;
+            status.last_synced = Some(now);
+            status.problems = report.problems.clone();
+            let mut keys: Vec<String> = report.characters.iter().chain(local).cloned().collect();
+            keys.sort();
+            keys.dedup();
+            let before = std::mem::take(&mut status.characters);
+            status.characters = keys
+                .into_iter()
+                .map(|key| Character {
+                    here: local.contains(&key),
+                    update_addon: report.update_addon.contains(&key),
+                    uploaded: if report.uploaded.contains(&key) {
+                        Some(now)
+                    } else {
+                        before.iter().find(|c| c.key == key).and_then(|c| c.uploaded)
+                    },
+                    note: String::new(),
+                    key,
+                })
+                .collect();
+        }
+        Err(ApiError::Unauthorized) => status.linked_to = None,
+        Err(ApiError::Network(_)) => status.offline = true,
+        Err(e) => status.problems = vec![e.to_string()],
+    }
+}
+
+/// Rewrites the words that depend on the clock: the tray line and each
+/// character's note. Runs after every change and every half minute.
+pub fn refresh(status: &mut Status, now: u64) {
+    for c in &mut status.characters {
+        c.note = if c.update_addon {
+            "Update the addon on this PC to get the newest journey".into()
+        } else if !c.here {
+            "Only on your other PCs so far".into()
+        } else if let Some(t) = c.uploaded {
+            format!("Backed up {}", ago(now.saturating_sub(t)))
+        } else {
+            "Up to date".into()
+        };
+    }
+    status.line = if status.linked_to.is_none() {
+        "Not linked".into()
+    } else if status.paused {
+        "Syncing paused".into()
+    } else if status.games.is_empty() {
+        "WoW not found".into()
+    } else if status.characters.iter().any(|c| c.update_addon) {
+        "Update the addon on this PC".into()
+    } else if status.offline {
+        "Can't reach the server, trying again".into()
+    } else if let Some(t) = status.last_synced {
+        format!("Synced {}", ago(now.saturating_sub(t)))
+    } else {
+        "Syncing…".into()
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rts_sync::api::ApiError;
+    use rts_sync::sync::Report;
+
+    fn linked() -> Status {
+        Status {
+            linked_to: Some("Ann#1234".into()),
+            games: vec![Game {
+                path: "/wow/_classic_beta_".into(),
+                name: "_classic_beta_".into(),
+                addon: Some("1.9.0".into()),
+            }],
+            ..Status::default()
+        }
+    }
+
+    fn report(characters: &[&str], uploaded: &[&str], update_addon: &[&str]) -> Result<Report, ApiError> {
+        let own = |v: &[&str]| v.iter().map(|s| s.to_string()).collect();
+        Ok(Report {
+            characters: own(characters),
+            uploaded: own(uploaded),
+            update_addon: own(update_addon),
+            ..Report::default()
+        })
+    }
+
+    #[test]
+    fn ago_reads_like_speech() {
+        assert_eq!(ago(5), "just now");
+        assert_eq!(ago(150), "2 min ago");
+        assert_eq!(ago(7200), "2 h ago");
+        assert_eq!(ago(90_000), "yesterday");
+        assert_eq!(ago(3 * 86_400), "3 days ago");
+    }
+
+    #[test]
+    fn a_pass_lists_characters_from_here_and_the_server_once_each() {
+        let mut s = linked();
+        apply(&mut s, &report(&["Ann-Test", "Bob-Test"], &["Ann-Test"], &[]), &["Ann-Test".into(), "Cy-Test".into()], 1000);
+        refresh(&mut s, 1000);
+        let keys: Vec<_> = s.characters.iter().map(|c| (c.key.as_str(), c.here, c.note.as_str())).collect();
+        assert_eq!(
+            keys,
+            [
+                ("Ann-Test", true, "Backed up just now"),
+                ("Bob-Test", false, "Only on your other PCs so far"),
+                ("Cy-Test", true, "Up to date"),
+            ]
+        );
+        assert_eq!(s.line, "Synced just now");
+    }
+
+    #[test]
+    fn an_upload_time_survives_later_passes_that_send_nothing() {
+        let mut s = linked();
+        apply(&mut s, &report(&["Ann-Test"], &["Ann-Test"], &[]), &["Ann-Test".into()], 1000);
+        apply(&mut s, &report(&["Ann-Test"], &[], &[]), &["Ann-Test".into()], 1300);
+        refresh(&mut s, 1300);
+        assert_eq!(s.characters[0].note, "Backed up 5 min ago");
+    }
+
+    #[test]
+    fn the_tray_line_puts_the_most_urgent_thing_first() {
+        let mut s = linked();
+        refresh(&mut s, 0);
+        assert_eq!(s.line, "Syncing…");
+        apply(&mut s, &report(&["Ann-Test"], &[], &["Ann-Test"]), &["Ann-Test".into()], 100);
+        refresh(&mut s, 100);
+        assert_eq!(s.line, "Update the addon on this PC");
+        assert_eq!(s.characters[0].note, "Update the addon on this PC to get the newest journey");
+        s.games.clear();
+        refresh(&mut s, 100);
+        assert_eq!(s.line, "WoW not found");
+        s.paused = true;
+        refresh(&mut s, 100);
+        assert_eq!(s.line, "Syncing paused");
+        s.linked_to = None;
+        refresh(&mut s, 100);
+        assert_eq!(s.line, "Not linked");
+    }
+
+    #[test]
+    fn no_answer_keeps_the_last_sync_and_says_it_will_try_again() {
+        let mut s = linked();
+        apply(&mut s, &report(&[], &[], &[]), &[], 100);
+        apply(&mut s, &Err(ApiError::Network("timed out".into())), &[], 200);
+        refresh(&mut s, 200);
+        assert_eq!((s.offline, s.last_synced), (true, Some(100)));
+        assert_eq!(s.line, "Can't reach the server, trying again");
+        apply(&mut s, &report(&[], &[], &[]), &[], 300);
+        assert!(!s.offline);
+    }
+
+    #[test]
+    fn a_refused_token_means_link_again() {
+        let mut s = linked();
+        apply(&mut s, &Err(ApiError::Unauthorized), &[], 100);
+        refresh(&mut s, 100);
+        assert_eq!(s.linked_to, None);
+        assert_eq!(s.line, "Not linked");
+    }
+
+    #[test]
+    fn the_window_gets_camel_case() {
+        let json = serde_json::to_string(&linked()).unwrap();
+        assert!(json.contains(r#""linkedTo":"Ann#1234""#), "{json}");
+        assert!(json.contains(r#""lastSynced":null"#), "{json}");
+    }
+}

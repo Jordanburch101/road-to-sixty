@@ -18,6 +18,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     Keychain or Credential Manager, never in the state file).
   - `sync.rs` is one sync pass; `watch.rs` decides when to upload.
   - `src/bin/rts-sync.rs` runs the engine from a terminal.
+- `src-tauri/` is the app around the engine (package `road-to-sixty-app`):
+  `tauri.conf.json` sets the window, bundles and icons (made from
+  `packages/ui/compass.png` by `bunx tauri icon`), `capabilities/` says what
+  the window may call, and `src/status.rs` words the tray line and each
+  character's note from the engine's reports, as plain tested functions.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
@@ -27,7 +32,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 ## Commands (from apps/desktop)
 
 ```
-cargo test                          # engine tests (one needs luajit on the path)
+cargo test --workspace              # engine and app tests (one needs luajit on the path; needs dist/, so build the window first)
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
 bun run build                       # the window into dist/
 bun run typecheck
