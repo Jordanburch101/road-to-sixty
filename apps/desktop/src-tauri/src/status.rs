@@ -12,6 +12,10 @@ pub struct Status {
     /// The BattleTag this PC is linked to. None before linking, and after
     /// the server stops accepting the token.
     pub linked_to: Option<String>,
+    /// This PC's id, to mark it in the PC list.
+    pub pc: Option<String>,
+    /// This app's version.
+    pub version: String,
     pub games: Vec<Game>,
     pub characters: Vec<Character>,
     /// Unix seconds of the last pass that reached the server.
@@ -32,6 +36,8 @@ pub struct Game {
     pub path: String,
     pub name: String,
     pub addon: Option<String>,
+    /// The characters with a saved file in it.
+    pub characters: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -157,6 +163,7 @@ mod tests {
                 path: "/wow/_classic_beta_".into(),
                 name: "_classic_beta_".into(),
                 addon: Some("1.9.0".into()),
+                characters: 1,
             }],
             ..Status::default()
         }

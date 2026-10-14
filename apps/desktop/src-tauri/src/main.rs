@@ -5,6 +5,7 @@
 //! and a small window for setup and status. Started at login with
 //! --hidden, it stays out of sight until the player opens it.
 
+mod account;
 mod commands;
 mod runner;
 mod status;
@@ -19,6 +20,9 @@ use rts_sync::state::data_dir;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 
 use runner::{Notifier, Runner};
+
+/// This build's version, which the server shows in the player's PC list.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The server this build talks to, set at build time for player builds.
 pub const SERVER: &str = match option_env!("RTS_SERVER") {
@@ -52,8 +56,10 @@ fn main() {
                 let _ = handle.emit("status", status);
             });
             let mut runner = Runner::new(SERVER, &data_dir(), Arc::new(rts_sync::sync::games), notifier.clone());
+            notifier.update(|s| s.version = VERSION.into());
             runner.start()?;
             app.manage(notifier.clone());
+            app.manage(account::Account::new(SERVER, &data_dir()));
             app.manage(runner::Links::default());
             app.manage(Mutex::new(runner));
 
@@ -102,6 +108,15 @@ fn main() {
             commands::status,
             commands::link,
             commands::pick_folder,
+            commands::host_name,
+            account::characters,
+            account::versions,
+            account::restore,
+            account::devices,
+            account::rename_device,
+            account::unlink_device,
+            account::export_data,
+            account::delete_account,
             commands::set_paused,
             commands::unlink,
             update::check_update,

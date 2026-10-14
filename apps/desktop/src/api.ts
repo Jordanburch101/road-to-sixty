@@ -31,7 +31,7 @@ export type Status = {
 
 export const getStatus = () => invoke<Status>("status");
 export const onStatus = (show: (s: Status) => void) => listen<Status>("status", (e) => show(e.payload));
-export const link = () => invoke("link");
+export const link = () => invoke("link", { name: "" });
 export const setPaused = (paused: boolean) => invoke("set_paused", { paused });
 
 export async function unlink() {
