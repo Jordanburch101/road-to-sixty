@@ -30,6 +30,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   window can ask (anything that restarts the sync thread runs on a thread
   of its own), and `src/main.rs` puts them together: closing the window
   only hides it, and only Quit in the menu ends the app.
+  `src/update.rs` checks the downloads bucket's `latest.json` at start and
+  every six hours; the tray offers the update and a second click installs
+  it. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
+  the per-user Run key on Windows), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx`, `Characters.tsx` and `Account.tsx` are
@@ -60,5 +64,10 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   `MemoryTokens`, so they never touch a real install or the real Keychain.
 - The request and response shapes mirror `packages/api`; change them
   together with the server.
+- Updates are signed: the private key is only in GitHub secrets
+  (`TAURI_SIGNING_PRIVATE_KEY` and its password) and in Jordan's
+  `~/.config/road-to-sixty/`; the public key is in `tauri.conf.json`.
+  Losing the private key means every installed copy has to be reinstalled
+  by hand, so never regenerate it.
 - Files the game reads are written to a temporary file and renamed over the
   old one, so the game never reads half a file.

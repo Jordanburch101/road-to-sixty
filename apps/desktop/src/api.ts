@@ -2,6 +2,7 @@
 // src-tauri/src/commands.rs and status.rs.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 
 export type Game = { path: string; name: string; addon: string | null };
@@ -32,3 +33,8 @@ export async function addFolder() {
   const path = await open({ directory: true, title: "Pick your World of Warcraft folder" });
   if (typeof path === "string") await invoke("add_folder", { path });
 }
+
+export const startsAtLogin = () => isEnabled();
+export const setStartsAtLogin = (on: boolean) => (on ? enable() : disable());
+export const checkUpdate = () => invoke<string | null>("check_update");
+export const installUpdate = () => invoke("install_update");

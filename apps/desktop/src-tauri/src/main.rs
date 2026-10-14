@@ -9,6 +9,7 @@ mod commands;
 mod runner;
 mod status;
 mod tray;
+mod update;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -28,6 +29,12 @@ fn main() {
     tauri::Builder::default()
         // Must come first: a second copy only shows this one's window.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| tray::show_window(app)))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--hidden"]),
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -35,6 +42,7 @@ fn main() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let tray = tray::build(app.handle())?;
+            app.manage(tray.clone());
             let handle = app.handle().clone();
             let notifier = Notifier::new(move |status| {
                 tray.show(status);
@@ -59,6 +67,20 @@ fn main() {
                 }
             });
 
+            // A quiet check at start and every six hours; the tray offers what it finds.
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    if let Ok(Some(version)) = tauri::async_runtime::block_on(update::check(&app_handle)) {
+                        let _ = app_handle
+                            .state::<tray::Tray>()
+                            .update
+                            .set_text(format!("Restart to update to {version}"));
+                    }
+                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                }
+            });
+
             if !std::env::args().any(|a| a == "--hidden") {
                 tray::show_window(app.handle());
             }
@@ -77,6 +99,8 @@ fn main() {
             commands::add_folder,
             commands::set_paused,
             commands::unlink,
+            update::check_update,
+            update::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("the app failed to start")

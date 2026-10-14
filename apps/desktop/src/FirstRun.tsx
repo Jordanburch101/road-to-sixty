@@ -3,7 +3,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
 import type { ReactNode } from "react";
-import { addFolder, link, type Status } from "./api";
+import { addFolder, link, setStartsAtLogin, type Status } from "./api";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
@@ -54,7 +54,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         <Step n={3} current={linked} title="Restart WoW once">
           <p className="text-[13px] leading-snug text-muted">So the game loads the sync folder. Your journeys stay where they are.</p>
           {linked && (
-            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={onDone}>
+            <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).finally(onDone)}>
               Done
             </Button>
           )}
