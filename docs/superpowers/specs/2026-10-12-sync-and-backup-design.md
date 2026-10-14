@@ -241,7 +241,7 @@ Tauri v2 in `apps/desktop`. It lives in the Mac menu bar and the Windows tray, w
 ### First run
 
 1. Find WoW installs: Battle.net's own install list (`C:\ProgramData\Battle.net\Agent\product.db` on Windows, `/Users/Shared/Battle.net/Agent/product.db` on Mac), the default locations (`C:\Program Files (x86)\World of Warcraft`, `/Applications/World of Warcraft`), then a folder picker. Inside each install, check every game folder matching `_*_` that has the addon, so the folder name Forever launches with doesn't matter. Each game folder's `.build.info` names its product.
-2. Link the PC through Better Auth's device sign-in. The token goes into the Mac Keychain or Windows Credential Manager.
+2. Link the PC through Better Auth's device sign-in. The token goes into a file of its own in the app's data folder, readable only by the player (Jordan, 2026-10-14). Not the Keychain or Credential Manager: an app without a paid Apple signature is asked for Keychain access after every update, players wouldn't know why, and Linux has no common store. The token can only sync this player's journeys and unlinking revokes it.
 3. Create `RoadToSixty_Sync` in every game folder with the addon, and ask the player to restart WoW once.
 
 ### While running
@@ -264,7 +264,7 @@ On macOS the app installs a LaunchAgent through tauri-plugin-autostart, which li
 
 The Mac build is unsigned at first, apart from the ad-hoc signature the Rust toolchain adds, which Apple Silicon needs to run any binary. The download page shows the System Settings, Privacy & Security, "Open Anyway" steps with screenshots. Windows ships as an unsigned per-user installer that needs no admin rights at first, with the "More info, Run anyway" steps on the download page, and moves to the free Microsoft Store individual account once stable.
 
-GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Windows installer. App releases use `app-v*` tags so they never trigger the addon's `v*` release workflow. The repo is private, so CI uploads the builds to a public R2 bucket, `road-to-sixty-downloads` at `dl.rts.everhold.online`: each version under `app/<version>/`, fixed names for the website, and `app/latest.json` for the updater. Each update makes the Mac Keychain ask once more for the PC token, because an ad-hoc signed build counts as a new app; a Developer ID would end that.
+GitHub Actions builds one universal Mac app (Intel and Apple Silicon) and the Windows installer. App releases use `app-v*` tags so they never trigger the addon's `v*` release workflow. The repo is private, so CI uploads the builds to a public R2 bucket, `road-to-sixty-downloads` at `dl.rts.everhold.online`: each version under `app/<version>/`, fixed names for the website, and `app/latest.json` for the updater.
 
 ## The website
 

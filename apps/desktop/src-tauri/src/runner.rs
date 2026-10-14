@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rts_sync::api::{ApiError, Client, LinkResponse};
 use rts_sync::installs::{self, GameFolder};
-use rts_sync::state::{State, Tokens};
+use rts_sync::state::{State, TokenFile};
 use rts_sync::sync::{self, Report};
 use rts_sync::watch;
 
@@ -80,7 +80,7 @@ pub struct Runner {
     server: String,
     state_path: PathBuf,
     cache: PathBuf,
-    tokens: Arc<dyn Tokens + Send + Sync>,
+    tokens: TokenFile,
     find: Find,
     notifier: Notifier,
     stop: Arc<AtomicBool>,
@@ -88,12 +88,12 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn new(server: &str, data: &Path, tokens: Arc<dyn Tokens + Send + Sync>, find: Find, notifier: Notifier) -> Runner {
+    pub fn new(server: &str, data: &Path, find: Find, notifier: Notifier) -> Runner {
         Runner {
             server: server.to_string(),
             state_path: data.join("state.json"),
             cache: data.join("journeys"),
-            tokens,
+            tokens: TokenFile::new(data.join("token")),
             find,
             notifier,
             stop: Arc::default(),
@@ -252,7 +252,6 @@ mod tests {
     use super::*;
     use rts_sync::api::fake;
     use rts_sync::installs::addon_toc;
-    use rts_sync::state::MemoryTokens;
     use std::time::{Duration, Instant};
 
     // A made-up character, as Forever writes the file.
@@ -265,7 +264,7 @@ mod tests {
         dir: tempfile::TempDir,
         runner: Runner,
         notifier: Notifier,
-        tokens: Arc<MemoryTokens>,
+        tokens: TokenFile,
         _fake: fake::Fake,
     }
 
@@ -282,7 +281,7 @@ mod tests {
             _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
         });
         let data = dir.path().join("data");
-        let tokens = Arc::new(MemoryTokens::default());
+        let tokens = TokenFile::new(data.join("token"));
         if linked {
             tokens.set("pc-token").unwrap();
             State {
@@ -306,7 +305,7 @@ mod tests {
             games
         });
         let notifier = Notifier::new(|_| {});
-        let runner = Runner::new(&fake.url, &data, tokens.clone(), find, notifier.clone());
+        let runner = Runner::new(&fake.url, &data, find, notifier.clone());
         Setup {
             dir,
             runner,

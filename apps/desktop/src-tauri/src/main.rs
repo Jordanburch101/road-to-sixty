@@ -14,7 +14,7 @@ mod update;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rts_sync::state::{Keychain, data_dir};
+use rts_sync::state::data_dir;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 
 use runner::{Notifier, Runner};
@@ -48,13 +48,7 @@ fn main() {
                 tray.show(status);
                 let _ = handle.emit("status", status);
             });
-            let mut runner = Runner::new(
-                SERVER,
-                &data_dir(),
-                Arc::new(Keychain),
-                Arc::new(rts_sync::sync::games),
-                notifier.clone(),
-            );
+            let mut runner = Runner::new(SERVER, &data_dir(), Arc::new(rts_sync::sync::games), notifier.clone());
             runner.start()?;
             app.manage(notifier.clone());
             app.manage(runner::Links::default());
