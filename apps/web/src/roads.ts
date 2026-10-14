@@ -27,11 +27,12 @@ function walk(rnd: () => number, width: number, height: number, x: number, y: nu
   return pts;
 }
 
-export const HERO = { width: 1440, height: 900 };
+// Wide enough for a 2560 px screen; narrower screens see its middle.
+export const HERO = { width: 2560, height: 900 };
 const rnd = seeded(11);
 export const HERO_ROADS: Point[][] = [
-  walk(rnd, HERO.width, HERO.height, -20, 640, -0.4, 60, 30),
-  walk(rnd, HERO.width, HERO.height, HERO.width + 20, 120, Math.PI + 0.3, 45, 30),
+  walk(rnd, HERO.width, HERO.height, -20, 640, -0.4, 110, 30),
+  walk(rnd, HERO.width, HERO.height, HERO.width + 20, 120, Math.PI + 0.3, 90, 30),
 ];
 export const HERO_MARKS: Point[] = HERO_ROADS.flatMap((road) => road.filter((_, i) => i >= 7 && (i - 7) % 10 === 0));
 
