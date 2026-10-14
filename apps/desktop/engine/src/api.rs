@@ -27,12 +27,16 @@ pub struct CheckEntry {
     pub game: String,
     pub realm: String,
     pub name: String,
-    /// None when it needs a newer addon than this PC has.
+    /// None when it needs a newer addon than this PC has, or has no merged
+    /// version yet.
     pub version: Option<i64>,
     pub fingerprint: String,
     pub replace: bool,
     #[serde(rename = "updateAddon")]
     pub update_addon: bool,
+    /// Why the server refused this PC's newest upload of this character.
+    #[serde(default)]
+    pub rejected: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

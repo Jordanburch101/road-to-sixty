@@ -223,6 +223,23 @@ test("a job left running, as after a crash, is taken back once it is stale, and 
   expect(job!.state).toBe("done");
 });
 
+test("a PC hears why its latest upload was refused, until it sends one that isn't", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000), seeded: true })));
+  await workAll();
+  const [refused] = (await check(token)).characters;
+  expect(refused).toMatchObject({ name: "Ann", version: null, rejected: expect.stringMatching(/seeded/) });
+
+  await upload(token, savedFile(journey({ events: session(5000) })));
+  await workAll();
+  const [fine] = (await check(token)).characters;
+  expect(fine!.rejected).toBeNull();
+  expect(fine!.version).not.toBeNull();
+
+  const other = await newDevice("user-1", "Laptop");
+  expect((await check(other.token)).characters[0]!.rejected).toBeNull(); // another PC's refusal isn't this one's
+});
+
 test("a merge-refused file sent again is known, not merged again", async () => {
   const { token } = await newDevice("user-1", "Desk");
   const seeded = savedFile(journey({ events: session(1000), seeded: true }));
