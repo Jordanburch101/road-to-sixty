@@ -4,7 +4,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,6 +25,9 @@ pub fn now() -> u64 {
 #[derive(Clone)]
 pub struct Notifier {
     status: Arc<Mutex<Status>>,
+    // Keeps the tray and window hearing changes in the order they happened.
+    // Only update takes it; Tauri's main thread never does.
+    in_order: Arc<Mutex<()>>,
     on_change: Arc<dyn Fn(&Status) + Send + Sync>,
 }
 
@@ -32,6 +35,7 @@ impl Notifier {
     pub fn new(on_change: impl Fn(&Status) + Send + Sync + 'static) -> Notifier {
         Notifier {
             status: Arc::default(),
+            in_order: Arc::default(),
             on_change: Arc::new(on_change),
         }
     }
@@ -41,11 +45,32 @@ impl Notifier {
     }
 
     /// Changes the status, rewrites its clock-dependent words, and passes it on.
+    /// The tray and window hear of it after the status is let go: the
+    /// tray's menu calls wait for the main thread, which reads the status.
     pub fn update(&self, change: impl FnOnce(&mut Status)) {
-        let mut status = self.status.lock().unwrap();
-        change(&mut status);
-        refresh(&mut status, now());
-        (self.on_change)(&status);
+        let _in_order = self.in_order.lock().unwrap();
+        let now_shown = {
+            let mut status = self.status.lock().unwrap();
+            change(&mut status);
+            refresh(&mut status, now());
+            status.clone()
+        };
+        (self.on_change)(&now_shown);
+    }
+}
+
+/// Numbers each press of Link, so pressing it again retires the attempt
+/// before it: that one stops polling and its outcome is dropped.
+#[derive(Default)]
+pub struct Links(AtomicU64);
+
+impl Links {
+    pub fn begin(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    pub fn is_current(&self, n: u64) -> bool {
+        self.0.load(Ordering::SeqCst) == n
     }
 }
 
@@ -300,6 +325,37 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
+    }
+
+    #[test]
+    fn the_tray_and_window_hear_of_a_change_without_the_status_held() {
+        // The tray's menu calls wait for Tauri's main thread, which reads
+        // the status: holding it while they run could freeze the app.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let notifier = Arc::new(Mutex::new(None::<Notifier>));
+        let inner = notifier.clone();
+        let n = Notifier::new(move |_| {
+            let other = inner.lock().unwrap().clone().unwrap();
+            let reader = std::thread::spawn(move || other.get());
+            tx.send(reader.join().is_ok()).unwrap();
+        });
+        *notifier.lock().unwrap() = Some(n.clone());
+        std::thread::spawn(move || n.update(|s| s.paused = true));
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)),
+            Ok(true),
+            "another thread could read the status"
+        );
+    }
+
+    #[test]
+    fn starting_a_link_over_makes_the_older_one_stale() {
+        let links = Links::default();
+        let first = links.begin();
+        assert!(links.is_current(first));
+        let second = links.begin();
+        assert!(!links.is_current(first));
+        assert!(links.is_current(second));
     }
 
     #[test]

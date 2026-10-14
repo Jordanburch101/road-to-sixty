@@ -65,6 +65,7 @@ fn main() -> ExitCode {
                     let _ = open(url);
                 },
                 std::thread::sleep,
+                || true,
             );
             match linked {
                 Ok(linked) => {

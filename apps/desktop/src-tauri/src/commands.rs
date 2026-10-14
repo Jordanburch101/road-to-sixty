@@ -9,7 +9,7 @@ use rts_sync::api::Client;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::runner::{Notifier, Runner};
+use crate::runner::{Links, Notifier, Runner};
 use crate::status::Status;
 
 #[tauri::command]
@@ -17,20 +17,32 @@ pub fn status(notifier: State<'_, Notifier>) -> Status {
     notifier.get()
 }
 
+/// Starts linking, or starts it over: an attempt already waiting on the
+/// browser is retired, so a double click or a closed tab never leaves the
+/// window stuck on the old code.
 #[tauri::command]
 pub fn link(app: AppHandle) {
     std::thread::spawn(move || {
         let notifier = app.state::<Notifier>().inner().clone();
+        let links = app.state::<Links>();
+        let this = links.begin();
         let name = sysinfo::System::host_name().unwrap_or_else(|| "This PC".into());
         let result = rts_sync::link::link(
             &Client::new(crate::SERVER, None),
             &name,
             |url, code| {
-                notifier.update(|s| s.link_code = Some(code.to_string()));
+                notifier.update(|s| {
+                    s.link_code = Some(code.to_string());
+                    s.problems.clear();
+                });
                 let _ = app.opener().open_url(url, None::<&str>);
             },
             std::thread::sleep,
+            || links.is_current(this),
         );
+        if !links.is_current(this) {
+            return;
+        }
         match result {
             Ok(linked) => with_runner(app.clone(), move |r| r.linked(linked)),
             Err(e) => notifier.update(|s| {

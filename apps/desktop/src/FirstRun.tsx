@@ -38,12 +38,12 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
           <p className="text-[13px] leading-snug text-muted">Sign in with Battle.net in your browser, check the code matches, and click Link.</p>
           {found && !linked && (
             <>
-              <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={link} disabled={status.linkCode !== null}>
-                {status.linkCode ? "Waiting for your browser…" : "Link this PC"}
+              <Button look={status.linkCode ? "outline" : "cream"} className="h-10 w-full rounded-[10px] text-sm" onClick={link}>
+                {status.linkCode ? "Start over" : "Link this PC"}
               </Button>
               {status.linkCode && (
                 <div className="text-xs text-muted">
-                  Your code: <span className="font-mono tracking-[0.08em] text-text">{status.linkCode}</span>
+                  Waiting for your browser. Your code: <span className="font-mono tracking-[0.08em] text-text">{status.linkCode}</span>
                 </div>
               )}
             </>

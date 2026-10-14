@@ -73,6 +73,13 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   `~/.config/road-to-sixty/`; the public key is in `tauri.conf.json`.
   Losing the private key means every installed copy has to be reinstalled
   by hand, so never regenerate it.
+- Tray menu calls (`set_text` and friends) from any thread but the main
+  one wait for the main thread. Never make them while holding a lock the
+  main thread also takes: `Notifier::update` lets go of the status before
+  it tells the tray, because the `status` command and the tray's own
+  handlers read it on the main thread.
+- Commands that aren't `async` run on the main thread. Anything slow
+  (linking, stopping the sync thread) goes to a thread of its own.
 - Files the game reads are written to a temporary file and renamed over the
   old one, so the game never reads half a file.
 - A release needs `version` raised in both `src-tauri/tauri.conf.json` and

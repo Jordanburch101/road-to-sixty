@@ -30,17 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: The tag matches the app's version
-        shell: bash
-        run: |
-          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' apps/desktop/src-tauri/tauri.conf.json)
-          test "app-v$version" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} but tauri.conf.json says $version"; exit 1; }
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
 
       # In apps/desktop, so the targets land on the toolchain rust-toolchain.toml picks.
+      - name: The tag matches the app's version
+        shell: bash
+        run: |
+          # Read as JSON: Windows checks files out with CRLF line endings.
+          version=$(bun -e 'console.log(require("./apps/desktop/src-tauri/tauri.conf.json").version)')
+          test "app-v$version" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} but tauri.conf.json says $version"; exit 1; }
+
       - name: Both Mac processors
         if: runner.os == 'macOS'
         working-directory: apps/desktop
