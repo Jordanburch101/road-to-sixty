@@ -78,7 +78,14 @@ mod tests {
         .unwrap();
         assert_eq!(linked.battletag, "Ann#1234");
         assert_eq!(*opened.borrow(), "https://api/link?user_code=ABCD1234 ABCD1234");
-        let asked = fake.seen.lock().unwrap().iter().find(|s| s.url == "/api/auth/device/code").unwrap().clone();
+        let asked = fake
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.url == "/api/auth/device/code")
+            .unwrap()
+            .clone();
         let body: serde_json::Value = serde_json::from_slice(&asked.body).unwrap();
         let scope: serde_json::Value = serde_json::from_str(body["scope"].as_str().unwrap()).unwrap();
         assert_eq!(scope["pc"], "Desk");
