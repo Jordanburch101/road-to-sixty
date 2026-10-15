@@ -57,6 +57,11 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
               {status.linkCode && (
                 <div className="text-xs text-muted">
                   Waiting for your browser. Your code: <span className="font-mono tracking-[0.08em] text-text">{status.linkCode}</span>
+                  {status.linkUrl && (
+                    <span className="mt-1 block select-text">
+                      No browser? Open <span className="break-all text-text">{status.linkUrl}</span>
+                    </span>
+                  )}
                 </div>
               )}
             </>

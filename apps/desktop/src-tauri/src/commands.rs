@@ -36,9 +36,12 @@ pub fn link(app: AppHandle, name: String) {
             |url, code| {
                 notifier.update(|s| {
                     s.link_code = Some(code.to_string());
+                    s.link_url = Some(url.to_string());
                     s.problems.clear();
                 });
-                let _ = app.opener().open_url(url, None::<&str>);
+                if !(cfg!(target_os = "linux") && crate::appimage::open_outside(url)) {
+                    let _ = app.opener().open_url(url, None::<&str>);
+                }
             },
             std::thread::sleep,
             || links.is_current(this),
@@ -50,6 +53,7 @@ pub fn link(app: AppHandle, name: String) {
             Ok(linked) => with_runner(app.clone(), move |r| r.linked(linked)),
             Err(e) => notifier.update(|s| {
                 s.link_code = None;
+                s.link_url = None;
                 s.problems = vec![format!("Linking didn't finish: {e}")];
             }),
         }
@@ -86,6 +90,19 @@ pub fn pick_folder(app: AppHandle) {
             with_runner(app, move |r| r.add_folder(path));
         }
     });
+}
+
+/// Start at login, here rather than from the window so that on Linux the
+/// autostart entry can be written again with the AppImage's path quoted.
+#[tauri::command]
+pub fn set_starts_at_login(app: AppHandle, on: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if on { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())?;
+    if cfg!(target_os = "linux") && on {
+        crate::appimage::fix_autostart(&app.package_info().name);
+    }
+    Ok(())
 }
 
 #[tauri::command]
