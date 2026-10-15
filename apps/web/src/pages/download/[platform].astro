@@ -21,6 +21,9 @@ const steps = mac
       "When Windows says it protected your PC, click More info.",
       "Click Run anyway. It installs for you only and needs no admin rights.",
     ];
+const note = mac
+  ? "On macOS 14 or earlier, right-click the app in Applications, choose Open, then click Open again."
+  : "If your browser says the file isn't commonly downloaded, choose Keep first.";
 ---
 <Layout title={`Download for ${mac ? "macOS" : "Windows"} · Road to Sixty`}>
   <meta slot="head" http-equiv="refresh" content={`1; url=${file}`} />
@@ -36,6 +39,7 @@ const steps = mac
       <ol class="flex list-decimal flex-col gap-2 pl-5 text-[15px] leading-relaxed text-muted">
         {steps.map((s) => <li>{s}</li>)}
       </ol>
+      <p class="text-[15px] text-muted">{note}</p>
     </section>
     <p class="text-[15px] leading-relaxed text-muted">Then give this PC a name, link it with Battle.net, and restart WoW once. The app does the rest.</p>
     <p class="text-sm text-muted">
