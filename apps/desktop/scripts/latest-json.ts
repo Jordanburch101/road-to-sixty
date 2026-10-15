@@ -6,13 +6,18 @@
 
 export type Built = { file: string; signature: string };
 
-export function latestJson(o: { version: string; base: string; pubDate: string; mac: Built; windows: Built }) {
+export function latestJson(o: { version: string; base: string; pubDate: string; mac: Built; windows: Built; linux: Built }) {
   const at = (b: Built) => ({ url: `${o.base}/app/${o.version}/${b.file}`, signature: b.signature });
   return {
     version: o.version,
     notes: `Road to Sixty ${o.version}`,
     pub_date: o.pubDate,
-    platforms: { "darwin-aarch64": at(o.mac), "darwin-x86_64": at(o.mac), "windows-x86_64": at(o.windows) },
+    platforms: {
+      "darwin-aarch64": at(o.mac),
+      "darwin-x86_64": at(o.mac),
+      "windows-x86_64": at(o.windows),
+      "linux-x86_64": at(o.linux),
+    },
   };
 }
 
@@ -26,6 +31,7 @@ if (import.meta.main) {
     pubDate: new Date().toISOString(),
     mac: await built("Road-to-Sixty.app.tar.gz"),
     windows: await built(`Road-to-Sixty_${version}_x64-setup.exe`),
+    linux: await built(`Road-to-Sixty_${version}_amd64.AppImage`),
   });
   console.log(JSON.stringify(json, null, 2));
 }

@@ -11,7 +11,14 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 
 - `engine/` is the sync engine, a Rust library with no window (package
   `rts-sync`):
-  - `installs.rs` finds WoW installs, game folders and saved journeys.
+  - `installs.rs` finds WoW installs, game folders and saved journeys. On
+    Linux the installs come from `wine.rs`: every Wine prefix under the
+    home folder (Proton's in each Steam library from `libraryfolders.vdf` and
+    `~/.steam/steam`,
+    SD cards included, Lutris's `~/Games`, Bottles, `~/.wine`), Battle.net's
+    list in each with drive letters turned into paths through `dosdevices`,
+    and the default folder. `wine.rs` is unix-only: a path joined with `c:`
+    on Windows replaces the whole path.
   - `inbox.rs` writes the `RoadToSixty_Sync` folder. A restore reaches the
     addon as `restore = <id>`, never as a yes or no: the addon replaces only
     a copy older than that restore (`Sync.lua`).
@@ -28,7 +35,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     looks for game folders and changed files again whenever a game or
     install folder changes and every five minutes, so WoW making its WTF
     folder after the app started is noticed. It also looks for a game starting
-    every five seconds and syncs at once when one does, so other PCs' play
+    every five seconds and syncs at once when one does (under Wine, by the
+    game's Windows path in the process's command line, since the program
+    file is Wine's own), so other PCs' play
     is in the sync folder before the player logs in, and it sets `busy`
     while a pass runs. A
     pass's `problems` name the character (`who`) and say what's wrong in
@@ -55,14 +64,19 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   them with `@road-to-sixty/api`'s types. Unlinking this PC revokes it on
   the server first, and still unlinks here when offline; and `src/main.rs` puts them together: closing the window
   only hides it, and only Quit in the menu ends the app.
-  `src/update.rs` checks the downloads bucket's `latest.json` at start and
+  `src/appimage.rs` is what running as a Linux AppImage changes: the browser
+  is started without the AppImage's library folders (they break the host's
+  programs), and the autostart entry's Exec line is written again quoted,
+  since the plugin leaves a path with spaces unquoted. While linking, the
+  window also shows the link page's address. `src/update.rs` checks the downloads bucket's `latest.json` at start and
   every six hours (never in debug builds), downloads a newer version at
   once, and restarts into it only while the window is hidden and the sync
   thread isn't busy, or when the player asks (the tray item or Restart
   now). Installing waits for the restart, because on Windows it ends the
   app. A `version` file in the data folder tells a start after an update,
   which stays hidden and says "Updated to X" for an hour. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
-  the per-user Run key on Windows), started with `--hidden`.
+  the per-user Run key on Windows, `~/.config/autostart` on Linux pointing
+  at the AppImage file itself, so moving the file breaks it), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
@@ -75,10 +89,18 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   list a thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
-  tags), which uploads the builds to the public R2 bucket
+  tags), which uploads the builds (the Mac app, the Windows installer and, from
+  Ubuntu 22.04, the Linux AppImage once `linux-smoke.sh` passes) to the public R2 bucket
   `road-to-sixty-downloads` at `https://dl.roadtosixty.online/app/`. The
   old `dl.rts.everhold.online` address is gone, so an app older than 0.1.3
   can no longer update itself; reinstall it from the website.
+- `scripts/linux-smoke.sh` starts the AppImage in a bare Arch Linux
+  container (no WebKitGTK, GTK or tray library, as SteamOS may lack them)
+  and saves a screenshot; `scripts/wine-check.sh` starts a stand-in
+  `WowClassic.exe` through Wine and checks `rts-sync status` sees it
+  running. CI's `desktop-app` job runs both on its Ubuntu 22.04 leg (#47). Tauri's AppImage packs the tray
+  library itself; adding it again in `tauri.conf.json` breaks builds on
+  Arch (#47).
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
@@ -88,6 +110,7 @@ bun run test                        # every Rust test (one needs luajit; build t
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
 bunx tauri dev                      # the app, using this PC's real link and WoW
 bun run build                       # the window into dist/
+bunx tauri build --bundles appimage # the Linux AppImage (on Linux, with the libraries in ci.yml's desktop-app job)
 bun run typecheck
 ```
 

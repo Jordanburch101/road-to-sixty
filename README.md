@@ -32,7 +32,8 @@ Open the map with `/rts` (or `/roadtosixty`) or the minimap button.
 
 The addon works on its own and keeps everything in your WoW folder. If you
 play one character on more than one computer, the free Road to Sixty app
-(Mac and Windows, from [roadtosixty.online](https://roadtosixty.online))
+(Mac, Windows, and Linux for the Steam Deck in Desktop Mode, from
+[roadtosixty.online](https://roadtosixty.online))
 backs your journeys up and merges them, so each PC shows the whole road:
 
 - It sends the journey up when you log out, and brings the newest one back
@@ -109,7 +110,7 @@ from the installed client.
   re-uploads an existing release.
 - **App:** set the version in `apps/desktop/src-tauri/tauri.conf.json` and
   `Cargo.toml`, then push a tag such as `app-v0.1.3`. The workflow builds the
-  Mac and Windows apps, signs the updates and uploads them to
+  Mac, Windows and Linux apps, signs the updates and uploads them to
   `dl.roadtosixty.online`, where installed apps pick them up.
 - **Server and website:** deploy from `main` on every push (Dokploy and
   Vercel). Work lands on `dev`; pushing `main` is what puts it live.

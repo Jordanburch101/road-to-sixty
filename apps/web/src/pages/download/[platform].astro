@@ -3,29 +3,57 @@ import Layout from "../../layouts/Layout.astro";
 import { addonUrl, fileUrl } from "../../config";
 
 export function getStaticPaths() {
-  return [{ params: { platform: "mac" } }, { params: { platform: "windows" } }];
+  return [{ params: { platform: "mac" } }, { params: { platform: "windows" } }, { params: { platform: "linux" } }];
 }
 
-const platform = Astro.params.platform as "mac" | "windows";
+type Platform = "mac" | "windows" | "linux";
+const platform = Astro.params.platform as Platform;
 const file = fileUrl(platform);
-const mac = platform === "mac";
-const steps = mac
-  ? [
+const pages = {
+  mac: {
+    name: "macOS",
+    heading: "Opening it the first time on a Mac",
+    intro: "The app isn't signed by Apple yet, so your computer asks once before it opens it.",
+    steps: [
       "Open Road-to-Sixty.dmg and drag the app into Applications.",
       "Open it. When macOS says it can't check the app, click Done.",
       "Open System Settings, then Privacy & Security, scroll down and click Open Anyway.",
       "Click Open Anyway once more and enter your password.",
-    ]
-  : [
+    ],
+    note: "On macOS 14 or earlier, right-click the app in Applications, choose Open, then click Open again.",
+    other: { text: "On Windows or Linux?", href: "/download", link: "Get it here" },
+  },
+  windows: {
+    name: "Windows",
+    heading: "Opening it the first time on Windows",
+    intro: "The app isn't signed by Microsoft yet, so your computer asks once before it opens it.",
+    steps: [
       "Run Road-to-Sixty-Setup.exe.",
       "When Windows says it protected your PC, click More info.",
       "Click Run anyway. It installs for you only and needs no admin rights.",
-    ];
-const note = mac
-  ? "On macOS 14 or earlier, right-click the app in Applications, choose Open, then click Open again."
-  : "If your browser says the file isn't commonly downloaded, choose Keep first.";
+    ],
+    note: "If your browser says the file isn't commonly downloaded, choose Keep first.",
+    other: { text: "On a Mac or Linux?", href: "/download", link: "Get it here" },
+  },
+  linux: {
+    name: "Linux",
+    heading: "Setting it up on a Steam Deck or Linux",
+    intro: "The Linux app is early: it runs in Desktop Mode, and we'd love to hear how it goes on your Deck.",
+    steps: [
+      "On a Steam Deck, switch to Desktop Mode.",
+      "Keep Road-to-Sixty.AppImage in your home folder. If you move it later, it stops opening at login.",
+      "Right-click it, choose Properties, then Permissions, and tick Allow executing as program.",
+      "Open it.",
+      "If it doesn't find WoW, click Add a game folder and pick the World of Warcraft folder inside your Proton or Lutris folder. Steam keeps Proton's folders under .local/share/Steam/steamapps/compatdata, which is hidden: press Ctrl+H in the folder picker to show it.",
+      "If no icon shows by the clock, open the file again to bring the window back.",
+    ],
+    note: "Play in Game Mode is backed up too: the app uploads it the next time you're in Desktop Mode.",
+    other: { text: "On a Mac or Windows?", href: "/download", link: "Get it here" },
+  },
+} satisfies Record<Platform, unknown>;
+const page = pages[platform];
 ---
-<Layout title={`Download for ${mac ? "macOS" : "Windows"} · Road to Sixty`}>
+<Layout title={`Download for ${page.name} · Road to Sixty`}>
   <meta slot="head" http-equiv="refresh" content={`1; url=${file}`} />
   <meta slot="head" name="robots" content="noindex" />
   <main class="mx-auto flex max-w-xl flex-col gap-8 px-4 py-20">
@@ -34,16 +62,16 @@ const note = mac
       <p class="text-muted">If it didn't, <a href={file} class="text-text underline underline-offset-2">download it again</a>.</p>
     </div>
     <section class="flex flex-col gap-4 rounded-xl border border-line bg-panel p-6">
-      <h2 class="text-lg font-medium">{mac ? "Opening it the first time on a Mac" : "Opening it the first time on Windows"}</h2>
-      <p class="text-[15px] text-muted">The app isn't signed by {mac ? "Apple" : "Microsoft"} yet, so your computer asks once before it opens it.</p>
+      <h2 class="text-lg font-medium">{page.heading}</h2>
+      <p class="text-[15px] text-muted">{page.intro}</p>
       <ol class="flex list-decimal flex-col gap-2 pl-5 text-[15px] leading-relaxed text-muted">
-        {steps.map((s) => <li>{s}</li>)}
+        {page.steps.map((s) => <li>{s}</li>)}
       </ol>
-      <p class="text-[15px] text-muted">{note}</p>
+      <p class="text-[15px] text-muted">{page.note}</p>
     </section>
     <p class="text-[15px] leading-relaxed text-muted">Then give this PC a name, link it with Battle.net, and restart WoW once. The app does the rest.</p>
     <p class="text-sm text-muted">
-      On {mac ? "Windows" : "a Mac"}? <a href={mac ? "/download/windows" : "/download/mac"} class="text-text underline underline-offset-2">Get it for {mac ? "Windows" : "macOS"}</a>.
+      {page.other.text} <a href={page.other.href} class="text-text underline underline-offset-2">{page.other.link}</a>.
       Just the addon? <a href={addonUrl()} class="text-text underline underline-offset-2">It works on its own</a>.
     </p>
   </main>

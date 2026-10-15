@@ -6,6 +6,7 @@
 //! --hidden, it stays out of sight until the player opens it.
 
 mod account;
+mod appimage;
 mod commands;
 mod runner;
 mod status;
@@ -47,6 +48,12 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            if cfg!(target_os = "linux") {
+                use tauri_plugin_autostart::ManagerExt;
+                if app.autolaunch().is_enabled().unwrap_or(false) {
+                    appimage::fix_autostart(&app.package_info().name);
+                }
+            }
             app.manage(window::Popover::default());
             let tray = tray::build(app.handle())?;
             app.manage(tray.clone());
@@ -129,6 +136,7 @@ fn main() {
             account::export_data,
             account::delete_account,
             commands::set_paused,
+            commands::set_starts_at_login,
             commands::unlink,
             update::check_update,
             update::install_update,
