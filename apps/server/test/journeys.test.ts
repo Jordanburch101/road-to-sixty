@@ -8,10 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
-import { characters, jobs } from "../src/schema";
+import { characters, jobs, versions } from "../src/schema";
 import { unpack } from "../src/storage";
 import { stampOf } from "../src/sync";
-import { CHAR, addUser, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
+import { CHAR, addUser, call, check, journey, newDevice, reset, savedFile, session, sessions, stored, upload, workAll } from "./helpers";
 
 beforeEach(reset);
 afterEach(() => mock.restore());
@@ -154,4 +154,63 @@ test("the export names an earlier journey apart from the current one", async () 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+const remove = (token: string, id: number) => call(token, `/v1/characters/${id}`, { method: "DELETE" });
+
+test("removing a character takes its rows and files, and frees its place", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await rows();
+  const files = (await db.select().from(versions).where(eq(versions.characterId, c!.id))).map((v) => v.fingerprint);
+  expect((await remove(token, c!.id)).status).toBe(200);
+  expect(await rows()).toEqual([]);
+  expect(await db.select().from(versions)).toEqual([]);
+  for (const fp of files) expect(await stored("user-1", fp)).toBe(false);
+  expect((await check(token)).characters).toEqual([]);
+});
+
+test("removing a character keeps a file another character shares", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const file = savedFile(journey({ events: session(1000) }));
+  await upload(token, file);
+  await upload(token, file, { name: "Bob" });
+  await workAll();
+  const [ann, bob] = await rows();
+  expect((await remove(token, ann!.id)).status).toBe(200);
+  expect(sessions(await download(token, bob!.headVersionId!))).toBe(1);
+});
+
+test("removing another player's character, or one that isn't there, is not found", async () => {
+  const mine = await newDevice("user-1", "Desk");
+  const theirs = await newDevice("user-2", "Elsewhere");
+  await upload(theirs.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await rows();
+  expect((await remove(mine.token, c!.id)).status).toBe(404);
+  expect((await remove(mine.token, 999)).status).toBe(404);
+  expect(await rows()).toHaveLength(1);
+});
+
+test("removing a character while its merge runs answers 409 and keeps it", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await db.update(jobs).set({ state: "running", claimedAt: new Date() });
+  const [c] = await rows();
+  const r = await remove(token, c!.id);
+  expect(r.status).toBe(409);
+  expect(((await r.json()) as { error: string }).error).toBe("Its latest upload is being merged; try again in a minute");
+  expect(await rows()).toHaveLength(1);
+});
+
+test("a removed character's place under the 100 frees at once", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await db
+    .insert(characters)
+    .values(Array.from({ length: 100 }, (_, i) => ({ userId: device.userId, game: CHAR.game, realm: CHAR.realm, name: `Alt${i}` })));
+  expect((await upload(token, savedFile(journey({ events: session(1000) })))).status).toBe(422);
+  const [first] = await rows();
+  expect((await remove(token, first!.id)).status).toBe(200);
+  expect((await upload(token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
 });

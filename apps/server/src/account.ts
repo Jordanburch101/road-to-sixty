@@ -1,5 +1,5 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
@@ -7,7 +7,7 @@ import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
-import { get, removeAll } from "./storage";
+import { get, remove, removeAll } from "./storage";
 import { currentIds } from "./sync";
 import { zip } from "./zip";
 
@@ -225,6 +225,46 @@ export const account = pcRoutes()
     } finally {
       restoreSlot.give();
     }
+  })
+
+  // Spec 2026-10-15 journeys, "Removing a character". Its files go after its
+  // rows, each only when no other version of the account has it.
+  // ponytail: an upload storing the same file for another character at
+  // that moment can lose it, as with the clean-up; its merge fails and the
+  // app sends it again.
+  .delete("/characters/:id", async ({ device, params, set }) => {
+    const c = await own(device!, params.id);
+    if (!c) {
+      set.status = 404;
+      return { error: "no such character" };
+    }
+    const files = await db.transaction(async (tx) => {
+      // Locked, so the worker's claim skips them; a job it already took
+      // shows as running, and its commit would meet a deleted row.
+      const held = await tx.select({ state: jobs.state }).from(jobs).where(eq(jobs.characterId, c.id)).for("update");
+      if (held.some((j) => j.state === "running")) return null;
+      const theirs = tx.select({ id: versions.id }).from(versions).where(eq(versions.characterId, c.id));
+      const fps = await tx.selectDistinct({ fp: versions.fingerprint }).from(versions).where(eq(versions.characterId, c.id));
+      await tx.delete(jobs).where(eq(jobs.characterId, c.id));
+      await tx.delete(versionParents).where(or(inArray(versionParents.versionId, theirs), inArray(versionParents.parentId, theirs)));
+      await tx.delete(versions).where(eq(versions.characterId, c.id));
+      await tx.delete(characters).where(eq(characters.id, c.id));
+      return fps.map((f) => f.fp);
+    });
+    if (files === null) {
+      set.status = 409;
+      return { error: "Its latest upload is being merged; try again in a minute" };
+    }
+    for (const fp of files) {
+      const [shared] = await db
+        .select({ id: versions.id })
+        .from(versions)
+        .innerJoin(characters, eq(characters.id, versions.characterId))
+        .where(and(eq(characters.userId, c.userId), eq(versions.fingerprint, fp)))
+        .limit(1);
+      if (!shared) await remove(c.userId, fp);
+    }
+    return { ok: true };
   })
 
   .get("/devices", async ({ device }): Promise<DeviceInfo[]> =>

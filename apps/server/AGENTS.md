@@ -13,8 +13,8 @@ push to `main` that touches it. The design is
   lists.
 - `src/sync.ts` is the API the desktop app calls with its PC token:
   upload, check, download. `src/account.ts` is the account API the app's
-  window calls (characters, history, restore, PCs, export, delete
-  everything). Both start from `src/pc.ts`, the PC token check.
+  window calls (characters, history, restore, remove one character, PCs,
+  export, delete everything). Both start from `src/pc.ts`, the PC token check.
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
 - `src/link.ts`, `src/link.html` and `src/link-page.ts` link a PC: the
@@ -93,5 +93,15 @@ bun run dev               # port 3000, with .env copied from .env.example
   version's file must skip pruned versions, and a restore must lock its
   source `FOR SHARE` and check it isn't pruned. `PRUNE` is `dry` by
   default: read its log before setting `on` in Dokploy.
+- A name has a row per journey (spec 2026-10-15, journeys): the addon's
+  stamp, `journeyId`, is read from each upload (`stampOf`) and kept on the
+  row and the upload. The newest row of a name is its current journey;
+  check offers only that, so a PC is never handed an earlier one. A stamped
+  upload queued against a row from before stamps joins it only when
+  `runner.lua`'s `same` mode says it continues it; otherwise the worker
+  moves it to its own row. An upload without a stamp never goes to a newer
+  journey than the oldest.
+- Removing a character locks its jobs and answers 409 while one runs;
+  its files go only when no other version of the account shares them.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.
