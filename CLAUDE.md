@@ -6,8 +6,8 @@ Zelda's Hero's Path. Forever launches 2026-11-04 (cap 60); until then it is in
 beta (client folder `_classic_beta_`, interface 16001). The recorder matters
 most: journey data lost at launch cannot be recreated.
 
-Private repo, all rights reserved (LICENSE). It may go public again, so
-never commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
+Public repo (since 2026-10-15), all rights reserved (LICENSE), so never
+commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 
 ## Layout
 
@@ -68,7 +68,7 @@ opens the window under the icon, `update.rs` is self-update. `src/` is the windo
 and React), styled from `packages/ui`, the look the website shares. App
 releases come from `app-v*` tags: CI uploads them to the public R2 bucket
 `road-to-sixty-downloads` (`https://dl.roadtosixty.online/app/`), with
-`latest.json` for the updater, because this repo is private.
+`latest.json` for the updater.
 `packages/api/` holds the request and response types the server, website
 and app share.
 `apps/web/` is the website (Astro, static, on Vercel): the download for
@@ -164,7 +164,7 @@ Treat them as the shared memory of what is planned, decided and done.
   Issues without commits in the release stay open.
 - Anything that can only be checked once Forever is live goes on the
   launch day checklist, issue #23, with a link to its own issue.
-- Issues go public with the repo: no secrets, personal paths or email addresses.
+- Issues are public: no secrets, personal paths or email addresses.
 
 ## Conventions
 

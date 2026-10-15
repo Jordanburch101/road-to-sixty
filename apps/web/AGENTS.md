@@ -32,7 +32,7 @@ bun run build
 ## Rules that bite
 
 - The contact email, the addon's address and the site's address are
-  build settings (`.env.example`), never in the repo, which may go public.
+  build settings (`.env.example`), never in the public repo.
   A missing one stops the build, and so does an address without https://.
 - The shared React components render at build time; no React is sent to
   the browser. Keep every animation in CSS, still under reduced motion.
