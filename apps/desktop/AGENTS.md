@@ -87,6 +87,13 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   `road-to-sixty-downloads` at `https://dl.roadtosixty.online/app/`. The
   old `dl.rts.everhold.online` address is gone, so an app older than 0.1.3
   can no longer update itself; reinstall it from the website.
+- `scripts/linux-smoke.sh` starts the AppImage in a bare Arch Linux
+  container (no WebKitGTK, GTK or tray library, as SteamOS may lack them)
+  and saves a screenshot; `scripts/wine-check.sh` starts a stand-in
+  `WowClassic.exe` through Wine and checks `rts-sync status` sees it
+  running. CI's `desktop-linux` job runs both (#47). The tray library is
+  loaded at run time, so Tauri wouldn't pack it and the app would panic
+  without it: `bundle.linux.appimage.files` in `tauri.conf.json` carries it.
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
@@ -96,6 +103,7 @@ bun run test                        # every Rust test (one needs luajit; build t
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
 bunx tauri dev                      # the app, using this PC's real link and WoW
 bun run build                       # the window into dist/
+bunx tauri build --bundles appimage # the Linux AppImage (on Linux, with the libraries in ci.yml's desktop-linux job)
 bun run typecheck
 ```
 

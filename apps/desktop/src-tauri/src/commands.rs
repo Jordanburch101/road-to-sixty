@@ -73,10 +73,14 @@ fn pc_name(host: Option<String>) -> String {
 pub fn pick_folder(app: AppHandle) {
     std::thread::spawn(move || {
         let picked = crate::window::holding(&app, || {
-            app.dialog()
-                .file()
-                .set_title("Pick your World of Warcraft folder")
-                .blocking_pick_folder()
+            let dialog = app.dialog().file().set_title("Pick your World of Warcraft folder");
+            // WoW is somewhere under the home folder, inside a Wine prefix.
+            #[cfg(target_os = "linux")]
+            let dialog = match std::env::var_os("HOME") {
+                Some(home) => dialog.set_directory(home),
+                None => dialog,
+            };
+            dialog.blocking_pick_folder()
         });
         if let Some(path) = picked.and_then(|p| p.into_path().ok()) {
             with_runner(app, move |r| r.add_folder(path));
