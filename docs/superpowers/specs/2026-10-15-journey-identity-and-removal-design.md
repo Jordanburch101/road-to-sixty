@@ -55,10 +55,14 @@ At `PLAYER_LOGIN`, in Core.lua, before Sync.lua's handler:
   runs `ns.ResetCharacter`, which resets those modules mid-session and
   reloads; at login they haven't started yet.) The old journey isn't lost:
   it is on the server if it was ever synced.
-- Erase gives `<same GUID>:<now>`.
+- Erase gives `<same GUID>:<now>`. Both ways to erase (the Options
+  button and `/rts reset confirm`) go through `ns.ResetCharacter`, so the
+  stamp is written there: the GUID read again, or the old stamp's GUID if
+  the read fails.
 
-`DATA_VERSION` goes from 3 to 4; `Upgrade` sets nothing (the login sets
-the stamp). The Erase popup gains: "Your backup keeps the old journey as an
+`DATA_VERSION` goes from 3 to 4, and `Merge.VERSION` with it (a test keeps
+them equal); `Upgrade` sets nothing (the login sets the stamp) and
+`Merge.Prepare` brings a layout 3 journey up by its number alone. The Erase popup gains: "Your backup keeps the old journey as an
 earlier one; remove it in the Road to Sixty app."
 
 ### Bringing in a synced journey
@@ -74,7 +78,8 @@ earlier one; remove it in the Road to Sixty app."
 
 `Merge.Merge` refuses two journeys whose stamps both exist and differ
 ("these are two different journeys"). When only one has a stamp, the
-merged journey keeps it.
+merged journey keeps it (`journeyId` merges by `Join`, not from the copy
+seen last).
 
 ## The server
 
@@ -87,8 +92,11 @@ Migration 0009.
 
 The upload route reads the stamp from the uploaded file itself (it already
 unpacks it), with the same pattern the app uses for `rosterKey`: a
-top-level `["journeyId"] = "..."`, at most 64 characters, or none. So apps
-need no change for it. The upload's row:
+top-level `["journeyId"] = "..."`, at most 64 characters, or none; one
+that isn't `<letters, digits, hyphens>:<digits>` answers 400. So apps
+need no change for it. The upload's version keeps the stamp
+(`versions.journey`, in the same migration), for the worker. The upload's
+row:
 
 1. A stamped upload goes to the row with that stamp.
 2. Else, if the name has an unstamped row, the upload is queued against it
@@ -105,9 +113,13 @@ checks they are the same journey: they share their first event (same kind
 and time), or the head has no events. The same journey: it merges as
 today, and the row takes the stamp. Not the same (a namesake remade before
 this change ever reached the server): the worker makes a row for the stamp,
-moves the upload and its job there, and merges it as that row's first
-version. The check lives in `Merge.lua` (`Merge.SameJourney`), so the
-runner and its tests use the addon's own code.
+moves the upload and its job there, and the job runs again on that row.
+The check lives in `Merge.lua` (`Merge.SameJourney(head, upload)`), and
+`runner.lua` runs it in a mode of its own (`same`), so the server uses the
+addon's own code. Two uploads with the same stamp can both be queued
+against the unstamped row before the worker gets to them: the second
+finds the row the first made and moves there. That row is made without
+the 100-character cap (at most one per name from before stamps).
 
 The **current** journey of a name is its newest row (highest id). An
 Erase or a remade namesake makes a new row; a PC behind on either keeps
@@ -127,7 +139,8 @@ then its files, each only when no other version of the account has the
 same fingerprint (as the clean-up decides). 404 for a character that isn't
 the account's. 409 "Its latest upload is being merged; try again in a
 minute" while one of its jobs is running, since the worker's commit would
-otherwise meet a deleted row. Counted in `accountRequests`; a slot under
+otherwise meet a deleted row. The route locks the character's jobs in its
+transaction, so the worker can't take one meanwhile. Counted in `accountRequests`; a slot under
 the 100 frees at once.
 
 A removed character that is played again comes back: the app's next upload
@@ -137,11 +150,15 @@ is still played therefore resets its backup, which the app says.
 ### Limits
 
 - An earlier journey can be removed, not brought back as the current one.
-  It can still be downloaded in the export.
-- A namesake remade before 1.10.0, whose PC still held the old character's
-  file, can't be told apart: that file has no GUID, so the new character
-  adopts it at login, and the shared first event makes the server agree.
-  From 1.10.0 on it can't happen.
+  It can still be downloaded in the export, as `Name (earlier <id>).lua`
+  beside the current `Name.lua`.
+- A namesake can't be told apart from the old character while the old
+  journey has no stamp: a PC still holding the old character's file (that
+  file has no GUID, so the new character adopts it at login), or a server
+  copy from before 1.10.0 that the sync folder brings in (a journey with no
+  stamp merges as today). The shared first event then makes the server
+  agree. Every character at launch is new, so this reaches only beta
+  characters.
 
 ## The app
 
@@ -156,6 +173,9 @@ is still played therefore resets its backup, which the app says.
 - **Earlier journeys.** A character's History screen lists its earlier
   journeys (level, last played), each with "Remove".
 - A 409 from removing shows its text and leaves the character listed.
+- The Beta tag comes from the server's `game`. A beta character whose
+  saved file is on this PC but that the server no longer has stays in the
+  main list: the app's own list doesn't know which game a file is in.
 - Version 0.1.7.
 
 ## The website
@@ -189,6 +209,10 @@ or every beta character can be removed in the app.
 ## Rollout
 
 Server first (it reads stamps when files carry them and takes unstamped
-uploads as today), then addon 1.10.0 and app 0.1.7 in either order: the
-stamp travels inside the file, so any app carries it; an old addon writes
-none, so its uploads go to the unstamped or oldest row.
+uploads as today), then addon 1.10.0 the same day, and app 0.1.7 in
+either order: the stamp travels inside the file, so any app carries it;
+an old addon writes none, so its uploads go to the unstamped or oldest
+row. Same day because the server merges at layout 4 from then on: every
+PC on addon 1.9.x is told to update the addon and gets no journeys until
+it does. A 1.10.0 upload reaching a server still on layout 3 would be
+refused as a newer layout, so the server can't go second.
