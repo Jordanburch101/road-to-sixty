@@ -6,6 +6,7 @@ import { deviceAuthorization } from "better-auth/plugins/device-authorization";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { config } from "./config";
 import { db } from "./db";
+import { TRUSTED_PROXIES } from "./proxies";
 import * as schema from "./schema";
 
 // The Battle.net account ID, kept only as a keyed hash (spec, "Privacy").
@@ -24,12 +25,14 @@ export const auth = betterAuth({
   baseURL: config.auth.url,
   secret: config.auth.secret,
   database: drizzleAdapter(db, { provider: "pg", schema }),
+  // Each call for a link code makes a database row, and needs no account.
+  rateLimit: { customRules: { "/device/code": { window: 60, max: 10 } } },
   advanced: {
-    // Rate limits count by visitor. Dokploy's proxy adds the visitor's real
-    // address at the right end of X-Forwarded-For, after anything the
-    // visitor sent; naming the private ranges it runs in makes Better Auth
-    // read from the right.
-    ipAddress: { trustedProxies: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] },
+    // Rate limits count by visitor (see proxies.ts). If Dokploy's proxy
+    // leaves only Cloudflare's address in X-Forwarded-For, Cloudflare's own
+    // header names the visitor; it is read only when X-Forwarded-For gives
+    // no visitor, so a direct caller can't use it.
+    ipAddress: { trustedProxies: TRUSTED_PROXIES, ipAddressHeaders: ["x-forwarded-for", "cf-connecting-ip"] },
   },
   databaseHooks: {
     // The spec's privacy list has no IP addresses or browser details.
