@@ -140,7 +140,11 @@ same fingerprint (as the clean-up decides). 404 for a character that isn't
 the account's. 409 "Its latest upload is being merged; try again in a
 minute" while one of its jobs is running, since the worker's commit would
 otherwise meet a deleted row. The route locks the character's jobs in its
-transaction, so the worker can't take one meanwhile. Counted in `accountRequests`; a slot under
+transaction, so the worker can't take one meanwhile. A name's current
+journey is removed last: while earlier journeys of the name remain, it
+answers 409 "Remove this character's earlier journeys first", since the
+newest earlier one would otherwise become current and be handed to every
+PC. "Remove all beta characters" removes oldest first. Counted in `accountRequests`; a slot under
 the 100 frees at once.
 
 A removed character that is played again comes back: the app's next upload

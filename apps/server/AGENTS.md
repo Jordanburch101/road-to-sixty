@@ -101,7 +101,10 @@ bun run dev               # port 3000, with .env copied from .env.example
   `runner.lua`'s `same` mode says it continues it; otherwise the worker
   moves it to its own row. An upload without a stamp never goes to a newer
   journey than the oldest.
-- Removing a character locks its jobs and answers 409 while one runs;
-  its files go only when no other version of the account shares them.
+- Removing a character locks its jobs and answers 409 while one runs, and
+  while it is a name's current journey with earlier ones left (removed
+  first, an earlier one would become current again); its files go only
+  when no other version of the account shares them. The app's "Remove all
+  beta characters" removes oldest first, so it never meets that 409.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.

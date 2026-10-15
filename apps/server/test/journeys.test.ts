@@ -214,3 +214,19 @@ test("a removed character's place under the 100 frees at once", async () => {
   expect((await remove(token, first!.id)).status).toBe(200);
   expect((await upload(token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
 });
+
+test("a name's current journey can't be removed before its earlier ones, which would become current again", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, stamped(`${A}:0`, session(1000)));
+  await workAll();
+  await upload(token, stamped(`${A}:7000`, session(8000)));
+  await workAll();
+  const [old, erased] = await rows();
+  const refused = await remove(token, erased!.id);
+  expect(refused.status).toBe(409);
+  expect(((await refused.json()) as { error: string }).error).toBe("Remove this character's earlier journeys first");
+  expect((await check(token)).characters.map((c) => c.version)).toEqual([erased!.headVersionId]);
+  expect((await remove(token, old!.id)).status).toBe(200);
+  expect((await remove(token, erased!.id)).status).toBe(200);
+  expect(await rows()).toEqual([]);
+});

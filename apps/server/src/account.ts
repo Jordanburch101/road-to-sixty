@@ -238,6 +238,17 @@ export const account = pcRoutes()
       set.status = 404;
       return { error: "no such character" };
     }
+    // The current journey goes last: removed first, the earlier one would
+    // become current again and be handed to every PC, where a journey from
+    // before stamps merges into whatever character has the name now.
+    const named = await db
+      .select({ id: characters.id })
+      .from(characters)
+      .where(and(eq(characters.userId, c.userId), eq(characters.game, c.game), eq(characters.realm, c.realm), eq(characters.name, c.name)));
+    if (named.every((r) => r.id <= c.id) && named.some((r) => r.id < c.id)) {
+      set.status = 409;
+      return { error: "Remove this character's earlier journeys first" };
+    }
     const files = await db.transaction(async (tx) => {
       // Locked, so the worker's claim skips them; a job it already took
       // shows as running, and its commit would meet a deleted row.
