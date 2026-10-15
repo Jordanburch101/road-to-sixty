@@ -79,6 +79,9 @@ pub fn find_installs(picked: &[PathBuf]) -> Vec<PathBuf> {
     all.extend(picked.iter().cloned());
     let mut found: Vec<PathBuf> = Vec::new();
     for path in all {
+        if !path.is_dir() {
+            continue;
+        }
         // By its real path: file watching reports real paths, so an install
         // reached through a link would never match. Not on Windows, where
         // the real path gains a \\?\ prefix the game's process path lacks.
@@ -87,7 +90,7 @@ pub fn find_installs(picked: &[PathBuf]) -> Vec<PathBuf> {
         } else {
             fs::canonicalize(&path).unwrap_or(path)
         };
-        if path.is_dir() && !found.contains(&path) {
+        if !found.contains(&path) {
             found.push(path);
         }
     }
@@ -109,8 +112,26 @@ pub fn game_folders(install: &Path) -> Vec<GameFolder> {
     found
 }
 
+/// The game's AddOns folder, whatever the case of its name: Wine loads
+/// `Interface/Addons` too, and Linux's disks care about case.
+pub fn addons_folder(game: &Path) -> PathBuf {
+    child(&child(game, "Interface"), "AddOns")
+}
+
 pub fn addon_toc(game: &Path) -> PathBuf {
-    game.join("Interface").join("AddOns").join("RoadToSixty").join("RoadToSixty.toc")
+    child(&child(&addons_folder(game), "RoadToSixty"), "RoadToSixty.toc")
+}
+
+/// `name` in `dir` matched without regard to case, or the game's own
+/// spelling while there's nothing there yet.
+fn child(dir: &Path, name: &str) -> PathBuf {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name))
+        .map(|e| e.path())
+        .unwrap_or_else(|| dir.join(name))
 }
 
 /// The addon version the game folder has, from its toc; None for a
@@ -142,7 +163,7 @@ pub fn saved_files(game: &GameFolder) -> Vec<SavedFile> {
     found
 }
 
-fn dirs_in(path: &Path) -> Vec<PathBuf> {
+pub(crate) fn dirs_in(path: &Path) -> Vec<PathBuf> {
     fs::read_dir(path)
         .into_iter()
         .flatten()
@@ -237,6 +258,21 @@ mod tests {
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let found = find_installs(&[link]);
         assert_eq!(found.last(), Some(&fs::canonicalize(&real).unwrap()));
+    }
+
+    // Wine loads addons from Interface/Addons as well, but Linux's disks care
+    // about case, so the folder is looked up whatever its spelling.
+    #[test]
+    fn the_addon_is_found_whatever_the_case_of_its_folders() {
+        let install = tempfile::tempdir().unwrap();
+        let game = install.path().join("_classic_beta_");
+        touch(&game.join("interface/Addons/RoadToSixty/RoadToSixty.toc"), "## Interface: 16001\n");
+        assert!(addon_toc(&game).ends_with("interface/Addons/RoadToSixty/RoadToSixty.toc"));
+        assert_eq!(addons_folder(&game), game.join("interface/Addons"));
+        assert_eq!(game_folders(install.path()).len(), 1);
+        // Nothing there yet: the game's own spelling.
+        let empty = install.path().join("_classic_");
+        assert_eq!(addons_folder(&empty), empty.join("Interface/AddOns"));
     }
 
     #[test]

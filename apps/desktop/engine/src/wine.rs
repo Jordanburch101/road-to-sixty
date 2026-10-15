@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::installs;
+use crate::installs::{self, dirs_in};
 
 /// Every WoW install in the prefixes under `home`: Battle.net's list in
 /// each prefix and its default install folder. The caller keeps those
@@ -17,7 +17,10 @@ pub fn installs(home: &Path) -> Vec<PathBuf> {
 /// The Wine prefixes under `home`: Proton's in every Steam library (an SD
 /// card's included), Lutris's `~/Games`, Bottles' and `~/.wine`.
 pub fn prefixes(home: &Path) -> Vec<PathBuf> {
+    // ~/.steam/steam is the link every native Steam keeps to its data, the
+    // only way to reach Debian's ~/.steam/debian-installation.
     let steams = [
+        home.join(".steam/steam"),
         home.join(".local/share/Steam"),
         home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
     ];
@@ -67,11 +70,12 @@ pub fn windows_path(prefix: &Path, path: &str) -> Option<PathBuf> {
     if drive.len() != 1 || !drive.chars().all(|c| c.is_ascii_alphabetic()) {
         return None;
     }
+    // A path joined with an absolute part would leave the prefix.
     Some(
         prefix
             .join("dosdevices")
             .join(format!("{}:", drive.to_ascii_lowercase()))
-            .join(rest),
+            .join(rest.trim_start_matches('/')),
     )
 }
 
@@ -85,18 +89,6 @@ pub fn installs_in_prefix(prefix: &Path) -> Vec<PathBuf> {
         .filter_map(|p| windows_path(prefix, &p.to_string_lossy()))
         .collect();
     found.push(prefix.join("drive_c/Program Files (x86)/World of Warcraft"));
-    found
-}
-
-fn dirs_in(path: &Path) -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = fs::read_dir(path)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    found.sort();
     found
 }
 
@@ -147,6 +139,11 @@ mod tests {
             windows_path(p, "d:\\Games\\WoW"),
             Some(PathBuf::from("/pfx/dosdevices/d:/Games/WoW"))
         );
+        assert_eq!(
+            windows_path(p, "C://Games/World of Warcraft"),
+            Some(PathBuf::from("/pfx/dosdevices/c:/Games/World of Warcraft")),
+            "a doubled slash stays inside the prefix"
+        );
         assert_eq!(windows_path(p, "/home/deck/WoW"), None);
         assert_eq!(windows_path(p, "ab:/x"), None);
     }
@@ -181,6 +178,18 @@ mod tests {
             assert_eq!(found.iter().filter(|f| f == &p).count(), 1, "{} once", p.display());
         }
         assert_eq!(found.len(), 6, "no folder without drive_c: {found:?}");
+    }
+
+    #[test]
+    fn steam_from_debians_package_is_found_through_its_link() {
+        // Debian's and Ubuntu's Steam keeps its data in ~/.steam/debian-installation
+        // and links ~/.steam/steam to it; ~/.local/share/Steam doesn't exist.
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        let p = prefix(&h.join(".steam/debian-installation/steamapps/compatdata/42/pfx"));
+        symlink(h.join(".steam/debian-installation"), h.join(".steam/steam")).unwrap();
+        let found: Vec<PathBuf> = prefixes(h).iter().map(|f| fs::canonicalize(f).unwrap()).collect();
+        assert_eq!(found, [fs::canonicalize(p).unwrap()]);
     }
 
     #[test]

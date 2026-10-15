@@ -44,26 +44,38 @@ impl Starts {
 
 /// Whether the game in `game` is running: some process's program file is
 /// inside it. Process names differ by version and processor, and on a Mac
-/// the program is inside the .app in the game folder. Under Wine the program
-/// file is Wine's own and the game shows only as a Windows path in the
-/// command line, so a program there counts when its install and game folder
-/// names match ours. Two prefixes with the same names could fool it; that
-/// costs one sync, and uploads for that game at most every 15 minutes while
-/// the other one runs.
+/// the program is inside the .app in the game folder. On Linux, under Wine,
+/// the program file is Wine's own and the game shows only as a Windows path
+/// in the command line, so it is matched by its folder names instead.
 pub fn game_running(game: &Path, programs: &[PathBuf]) -> bool {
-    let last_two = |p: &Path| -> Vec<String> { p.iter().rev().take(2).map(|c| c.to_string_lossy().to_lowercase()).collect() };
-    programs.iter().any(|p| {
-        p.starts_with(game)
-            || (p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-                && p.parent().is_some_and(|dir| last_two(dir) == last_two(game)))
-    })
+    let names = folder_names(game);
+    programs
+        .iter()
+        .any(|p| p.starts_with(game) || (cfg!(target_os = "linux") && wine_runs(&names, p)))
+}
+
+/// The last two folder names, in lower case, such as `_classic_beta_` and
+/// `world of warcraft`.
+pub fn folder_names(path: &Path) -> Vec<String> {
+    path.iter().rev().take(2).map(|c| c.to_string_lossy().to_lowercase()).collect()
+}
+
+/// Whether a program from Wine's command line is the game whose folder names
+/// are `names`. Two prefixes with the same names could fool it; that costs
+/// one sync, and uploads for that game at most every 15 minutes while the
+/// other one runs.
+pub fn wine_runs(names: &[String], program: &Path) -> bool {
+    program.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) && program.parent().is_some_and(|dir| folder_names(dir) == names)
 }
 
 pub fn running_programs(system: &mut sysinfo::System) -> Vec<PathBuf> {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
-    let kind = ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet);
+    // Threads aren't programs; on Linux sysinfo lists each as its own process.
+    let kind = ProcessRefreshKind::nothing().without_tasks().with_exe(UpdateKind::OnlyIfNotSet);
+    // Read every time: a process seen between Wine's fork and its exec keeps
+    // its number, and would keep Battle.net's command line for good.
     #[cfg(target_os = "linux")]
-    let kind = kind.with_cmd(UpdateKind::OnlyIfNotSet);
+    let kind = kind.with_cmd(UpdateKind::Always);
     system.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
     let mut programs = Vec::new();
     for process in system.processes().values() {
@@ -336,27 +348,38 @@ mod tests {
         let game = Path::new(
             "/home/deck/.local/share/Steam/steamapps/compatdata/1/pfx/drive_c/Program Files (x86)/World of Warcraft/_classic_beta_",
         );
-        let wine = |arg: &str| vec![PathBuf::from("/usr/bin/wine64-preloader"), PathBuf::from(arg)];
-        assert!(game_running(
-            game,
-            &wine("C:/Program Files (x86)/World of Warcraft/_classic_beta_/WowClassic.exe")
-        ));
+        let names = folder_names(game);
+        let run = |arg: &str| wine_runs(&names, Path::new(arg));
+        assert!(run("C:/Program Files (x86)/World of Warcraft/_classic_beta_/WowClassic.exe"));
         assert!(
-            game_running(game, &wine("Z:/run/media/card/world of warcraft/_CLASSIC_BETA_/wowclassic.EXE")),
+            run("Z:/run/media/card/world of warcraft/_CLASSIC_BETA_/wowclassic.EXE"),
             "any case, any drive"
         );
         assert!(
-            !game_running(game, &wine("C:/Program Files (x86)/World of Warcraft/_retail_/Wow.exe")),
+            !run("C:/Program Files (x86)/World of Warcraft/_retail_/Wow.exe"),
             "another game folder"
         );
         assert!(
-            !game_running(game, &wine("C:/Program Files (x86)/World of Warcraft/_classic_beta_/Data")),
+            !run("C:/Program Files (x86)/World of Warcraft/_classic_beta_/Data"),
             "not a program"
         );
         assert!(
-            !game_running(game, &wine("C:/Program Files (x86)/Other/_classic_beta_/WowClassic.exe")),
+            !run("C:/Program Files (x86)/Other/_classic_beta_/WowClassic.exe"),
             "another install's name"
         );
+        assert!(!run("/usr/bin/wine64-preloader"));
+    }
+
+    // On Windows every program ends in .exe, so a second install with the same
+    // folder names must not make this one look running.
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn only_linux_matches_by_folder_names() {
+        let game = Path::new("C:/Program Files (x86)/World of Warcraft/_classic_beta_");
+        assert!(!game_running(
+            game,
+            &[PathBuf::from("D:/Games/World of Warcraft/_classic_beta_/WowClassic.exe")]
+        ));
     }
 
     #[test]
