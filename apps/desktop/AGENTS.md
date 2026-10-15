@@ -34,7 +34,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     looks for game folders and changed files again whenever a game or
     install folder changes and every five minutes, so WoW making its WTF
     folder after the app started is noticed. It also looks for a game starting
-    every five seconds and syncs at once when one does, so other PCs' play
+    every five seconds and syncs at once when one does (under Wine, by the
+    game's Windows path in the process's command line, since the program
+    file is Wine's own), so other PCs' play
     is in the sync folder before the player logs in, and it sets `busy`
     while a pass runs. A
     pass's `problems` name the character (`who`) and say what's wrong in
