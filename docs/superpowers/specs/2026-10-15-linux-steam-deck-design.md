@@ -122,7 +122,7 @@ Gains one line per game folder saying whether the game is running, so the
 smoke test can check game-start detection. It is a developer tool, not in
 the AppImage.
 
-## CI (`ci.yml`, new job `desktop-linux`)
+## CI (`ci.yml`, `ubuntu-22.04` in the `desktop-app` matrix)
 
 On `ubuntu-22.04` (the oldest base we support, so the AppImage runs on
 older and newer systems alike):

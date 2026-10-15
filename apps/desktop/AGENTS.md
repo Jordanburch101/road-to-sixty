@@ -98,7 +98,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   container (no WebKitGTK, GTK or tray library, as SteamOS may lack them)
   and saves a screenshot; `scripts/wine-check.sh` starts a stand-in
   `WowClassic.exe` through Wine and checks `rts-sync status` sees it
-  running. CI's `desktop-linux` job runs both (#47). Tauri's AppImage packs the tray
+  running. CI's `desktop-app` job runs both on its Ubuntu 22.04 leg (#47). Tauri's AppImage packs the tray
   library itself; adding it again in `tauri.conf.json` breaks builds on
   Arch (#47).
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
@@ -110,7 +110,7 @@ bun run test                        # every Rust test (one needs luajit; build t
 cargo run --bin rts-sync -- status  # what the engine finds on this PC; also link, once, run, unlink
 bunx tauri dev                      # the app, using this PC's real link and WoW
 bun run build                       # the window into dist/
-bunx tauri build --bundles appimage # the Linux AppImage (on Linux, with the libraries in ci.yml's desktop-linux job)
+bunx tauri build --bundles appimage # the Linux AppImage (on Linux, with the libraries in ci.yml's desktop-app job)
 bun run typecheck
 ```
 
