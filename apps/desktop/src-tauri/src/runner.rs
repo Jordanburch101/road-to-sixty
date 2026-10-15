@@ -211,14 +211,16 @@ impl Runner {
     /// forget what was uploaded under any old link, and start again.
     pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
         self.stop();
-        self.tokens.set(&linked.token)?;
         let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
         state.pc = Some(linked.pc);
         state.battletag = Some(linked.battletag);
         state.uploaded.clear();
         // Another link's version ids mean other journeys.
         let _ = fs::remove_dir_all(&self.cache);
+        // The token last: if the app stops in between, it is unlinked, not
+        // linked with the old link's list of files already sent.
         state.save(&self.state_path).map_err(|e| e.to_string())?;
+        self.tokens.set(&linked.token)?;
         self.notifier.update(|s| {
             s.link_code = None;
             s.link_url = None;
@@ -489,6 +491,24 @@ mod tests {
         assert_eq!(t.notifier.get().linked_to.as_deref(), Some("Ann#1234"));
         assert!(t.runner.is_running());
         t.runner.stop();
+    }
+
+    #[test]
+    fn a_link_whose_state_cant_be_saved_keeps_no_token() {
+        let mut t = setup(false);
+        let data = t.dir.path().join("data");
+        State::default().save(&data.join("state.json")).unwrap();
+        // A folder where the state's temporary file goes makes the save fail.
+        std::fs::create_dir_all(data.join("state.tmp")).unwrap();
+        let linked = t.runner.linked(LinkResponse {
+            token: "new-token".into(),
+            pc: "pc-2".into(),
+            battletag: "Ann#1234".into(),
+        });
+        assert!(linked.is_err());
+        // With the token but not the new PC id and cleared uploads, the app
+        // would think the old link's files were already sent.
+        assert_eq!(t.tokens.get(), None);
     }
 
     #[test]
