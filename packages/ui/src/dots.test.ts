@@ -30,7 +30,7 @@ test("the animation starts each dot as far into its loop as it is along the road
   expect(fogDelay(0, 14)).toBe("-14.00s");
   const css = fogAnimation(14);
   expect(css).toContain("rts-fog-road");
-  expect(css).toContain("14s");
+  expect(css).toContain("var(--rts-fog-s,14s)");
   expect(css).toContain("prefers-reduced-motion");
 });
 

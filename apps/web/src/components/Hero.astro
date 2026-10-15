@@ -2,11 +2,15 @@
 import { Fog } from "@road-to-sixty/ui/Fog";
 import { addonUrl } from "../config";
 import { HERO, HERO_MARKS, HERO_ROADS } from "../roads";
+
+// The mask below hides everything from 68% of the height down, so the fog
+// stops there. HERO.height stays 900, which keeps the roads' shape.
+const HERO_SHOWN = Math.round(HERO.height * 0.68);
 import DownloadButton from "./DownloadButton.astro";
 ---
 <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-[900px] overflow-hidden [mask-image:linear-gradient(to_bottom,#000_0%,#000_45%,transparent_68%)]">
   <div class="absolute left-1/2 top-0 -translate-x-1/2" style={`width:${HERO.width}px;height:${HERO.height}px`}>
-    <Fog width={HERO.width} height={HERO.height} step={18} roads={HERO_ROADS} marks={HERO_MARKS} animate={22} />
+    <Fog width={HERO.width} height={HERO_SHOWN} step={18} roads={HERO_ROADS} marks={HERO_MARKS} animate={22} />
   </div>
   <div class="absolute inset-0 bg-[radial-gradient(ellipse_620px_300px_at_50%_300px,rgba(7,6,10,0.94)_0%,rgba(7,6,10,0.6)_55%,transparent_100%)]"></div>
 </div>
@@ -21,6 +25,9 @@ import DownloadButton from "./DownloadButton.astro";
     <DownloadButton />
     <a href={addonUrl()} class="inline-flex h-11 items-center justify-center rounded-[10px] border border-outline bg-panel/85 px-[18px] text-[15px] font-medium text-text">Get the addon</a>
   </div>
-  <p data-also hidden class="mt-3.5 text-[13px] text-muted">Free · also for <a href="/download" class="text-muted hover:text-text">Windows</a></p>
+  {/* The script shows this line once it knows the computer. Its space is kept, so the page doesn't jump; phones never get it. */}
+  <div class="mt-3.5 hidden h-5 md:block">
+    <p data-also hidden class="text-[13px] leading-5 text-muted">Free · also for <a href="/download" class="text-text underline underline-offset-2">Windows</a></p>
+  </div>
   <p class="mt-3 max-w-sm text-[13px] leading-normal text-muted md:hidden">The app runs on your computer, not your phone. Open this page there, or send yourself the link.</p>
 </section>

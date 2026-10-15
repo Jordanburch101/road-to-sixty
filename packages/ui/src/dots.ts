@@ -46,12 +46,14 @@ export function fogDots(width: number, height: number, step: number, roads: Poin
 }
 
 // The CSS for lit and half-lit dots with the class rts-fog-road. Every dot
-// runs the same loop; fogDelay starts each one partway in.
+// runs the same loop; fogDelay starts each one partway in. A parent's
+// --rts-fog-s overrides the length, so fogs with different loops can share
+// a page (Fog sets it).
 export function fogAnimation(seconds: number): string {
   return [
     "@keyframes rts-fog{0%{opacity:0;transform:scale(.4)}5%{opacity:1;transform:scale(1.9)}12%{opacity:1;transform:scale(1)}" +
       "40%{opacity:1;transform:scale(1)}55%{opacity:0;transform:scale(.6)}100%{opacity:0;transform:scale(.6)}}",
-    `.rts-fog-road{opacity:0;transform-box:fill-box;transform-origin:center;animation:rts-fog ${seconds}s linear infinite}`,
+    `.rts-fog-road{opacity:0;transform-box:fill-box;transform-origin:center;animation:rts-fog var(--rts-fog-s,${seconds}s) linear infinite}`,
     "@media (prefers-reduced-motion:reduce){.rts-fog-road{animation:none;opacity:1}}",
   ].join("\n");
 }

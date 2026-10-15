@@ -20,7 +20,11 @@ const email = contactEmail();
     <ul>
       <li>Your BattleTag, to show which account a PC is linked to.</li>
       <li>Your Battle.net account number, scrambled with a secret key before it is stored, so the number itself is never kept.</li>
-      <li>Each character's name, realm and journey: where it went, quests, kills, levels, gear, and the names of other players it grouped with.</li>
+      <li>Each character's name, realm and journey: where it went, quests, kills, levels and gear.</li>
+      <li>
+        The players each character grouped with: their name, race, class, level and guild, where and when you first met, and the time and dungeons
+        you shared.
+      </li>
       <li>For each linked PC: the name you gave it, whether it's a Mac or Windows, and its app and addon versions.</li>
     </ul>
   </section>
@@ -32,14 +36,17 @@ const email = contactEmail();
 
   <section>
     <h2>Who can see it</h2>
-    <p>Only you, through the app on a PC you linked. Nothing is shown publicly, and nothing is sold or shared with anyone.</p>
+    <p>
+      You, through the app on a PC you linked. Jordan runs the server and the storage, so the files can be reached to keep the service working, but
+      they aren't looked at otherwise. Nothing is shown publicly, and nothing is sold or shared with anyone.
+    </p>
   </section>
 
   <section>
     <h2>Deleting it</h2>
     <p>
       In the app, open Account and choose Delete everything. Your account and every journey are removed from the server at once, and from backups
-      within 30 days. Journeys on your own PCs stay. You can download everything first, from the same screen.
+      within 30 days. Journeys on your own PCs stay. You can download each character's latest journey first, from the same screen.
     </p>
     <p>You can also ask by email at <a href={`mailto:${email}`}>{email}</a>, for a copy, a correction or deletion.</p>
   </section>
@@ -47,6 +54,10 @@ const email = contactEmail();
   <section>
     <h2>Cookies</h2>
     <p>This site sets none. The sign-in page on the sync server sets one when you link a PC. Only that page uses it, and it expires within a week.</p>
+    <p>
+      This site is hosted by Vercel and the downloads by Cloudflare. Like any web host, they see your IP address and browser when you visit, and keep
+      their own logs.
+    </p>
   </section>
 
   <section>
