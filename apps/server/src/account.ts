@@ -8,6 +8,7 @@ import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
 import { get, removeAll } from "./storage";
+import { currentIds } from "./sync";
 import { zip } from "./zip";
 
 const HISTORY = 100;
@@ -65,6 +66,16 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
 
 const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
+// Which of the player's rows are current, counting rows with nothing merged yet.
+async function current(userId: string): Promise<Set<number>> {
+  return currentIds(
+    await db
+      .select({ id: characters.id, game: characters.game, realm: characters.realm, name: characters.name })
+      .from(characters)
+      .where(eq(characters.userId, userId)),
+  );
+}
+
 // The account API (spec, "Account API"), for the app's window.
 export const account = pcRoutes()
   .get("/characters", async ({ device }): Promise<CharacterInfo[]> => {
@@ -75,6 +86,7 @@ export const account = pcRoutes()
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
     const from = await madeBy(rows.map((r) => r.head.id));
+    const now = await current(device!.userId);
     return rows.map(({ c, head }) => ({
       id: c.id,
       game: c.game,
@@ -86,6 +98,7 @@ export const account = pcRoutes()
       lastPlayedAt: c.lastPlayedAt?.toISOString() ?? null,
       syncedAt: head.createdAt.toISOString(),
       syncedFrom: from.get(head.id) ?? null,
+      earlier: !now.has(c.id),
     }));
   })
 
@@ -252,6 +265,7 @@ export const account = pcRoutes()
       .innerJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
+    const now = await current(device!.userId);
     if (rows.reduce((sum, r) => sum + r.head.rawSize, 0) > MAX_EXPORT) {
       set.status = 413;
       return { error: "too big to download in one go" };
@@ -266,7 +280,9 @@ export const account = pcRoutes()
       for (const { c, head } of rows) {
         const journey = await get(c.userId, head.fingerprint);
         const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
-        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${safe(c.name)}.lua`, data: new Uint8Array(data) });
+        // An earlier journey of a name sits beside the current one.
+        const file = now.has(c.id) ? safe(c.name) : `${safe(c.name)} (earlier ${c.id})`;
+        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${file}.lua`, data: new Uint8Array(data) });
       }
       return new Response(zip(files), {
         headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },

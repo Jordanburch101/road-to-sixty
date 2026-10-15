@@ -45,6 +45,17 @@ async function rowFor(userId: string, game: string, realm: string, name: string,
   return journeyRow(userId, game, realm, name, stamp);
 }
 
+// The id of each name's current journey: its newest row (spec 2026-10-15
+// journeys). Older rows are earlier journeys.
+export function currentIds(rows: { id: number; game: string; realm: string; name: string }[]): Set<number> {
+  const newest = new Map<string, number>();
+  for (const r of rows) {
+    const key = JSON.stringify([r.game, r.realm, r.name]);
+    newest.set(key, Math.max(newest.get(key) ?? 0, r.id));
+  }
+  return new Set(newest.values());
+}
+
 // The sync API the app calls with its PC token (spec, "Sync API").
 export const sync = pcRoutes()
   // A character's SavedVariables file, zstd-compressed. Stored at once; a
@@ -190,6 +201,7 @@ export const sync = pcRoutes()
       .leftJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
+    const current = currentIds(rows.map((r) => r.c));
     // A restore replaces until this PC shows, by an upload's received, that
     // its addon took in the restore or a version after it. Merging instead
     // would bring back what the restore took out.
@@ -229,8 +241,9 @@ export const sync = pcRoutes()
     );
     return {
       characters: rows
-        // One with nothing merged yet is listed only to say why it was refused.
-        .filter(({ c, head }) => head !== null || newest.get(c.id)?.status === "rejected")
+        // Only a name's current journey, so a PC is never handed an earlier
+        // one. One with nothing merged yet is listed only to say why it was refused.
+        .filter(({ c, head }) => current.has(c.id) && (head !== null || newest.get(c.id)?.status === "rejected"))
         .map(({ c, head }) => {
           // Never a layout newer than this PC's addon writes (spec, "Mismatched
           // addon versions"). A PC that hasn't uploaded yet is unknown; its

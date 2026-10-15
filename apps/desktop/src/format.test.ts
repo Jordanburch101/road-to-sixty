@@ -27,7 +27,7 @@ test("a version's time says today, yesterday or the date", () => {
 
 const ann: CharacterInfo = {
   id: 1, game: "_classic_beta_", realm: "Classic Beta PvE 2", name: "Ann", class: "WARRIOR", level: 42,
-  played: 3600, lastPlayedAt: null, syncedAt: at(2026, 9, 14, 20, 0), syncedFrom: "Laptop",
+  played: 3600, lastPlayedAt: null, syncedAt: at(2026, 9, 14, 20, 0), syncedFrom: "Laptop", earlier: false,
 };
 
 test("a character's lines: level and class, then realm, PC and when", () => {

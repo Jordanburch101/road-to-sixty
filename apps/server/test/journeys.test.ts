@@ -1,7 +1,11 @@
 // One journey per character (spec 2026-10-15, journeys): stamps, which row
 // an upload goes to, current and earlier journeys, removing a character.
 // GUIDs here are made up.
+import type { CharacterInfo } from "@road-to-sixty/api";
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { characters, jobs } from "../src/schema";
@@ -114,4 +118,40 @@ test("a new journey of a name counts toward the 100", async () => {
   const refused = await upload(token, stamped(`${A}:7000`, session(8000)));
   expect(refused.status).toBe(422);
   expect(await refused.text()).toBe("This account has reached 100 characters");
+});
+
+test("check offers only a name's current journey, and the list marks the earlier one", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, stamped(`${B}:0`, session(9000)));
+  await workAll();
+  const [old, made] = await rows();
+  expect((await check(token)).characters.map((c) => c.version)).toEqual([made!.headVersionId]);
+  const list = (await (await call(token, "/v1/characters")).json()) as CharacterInfo[];
+  expect(list.map((c) => [c.id, c.earlier])).toEqual([
+    [old!.id, true],
+    [made!.id, false],
+  ]);
+});
+
+test("the export names an earlier journey apart from the current one", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, stamped(`${B}:0`, session(9000)));
+  await workAll();
+  const [old] = await rows();
+  const dir = await mkdtemp(join(tmpdir(), "rts-export-"));
+  try {
+    const path = join(dir, "export.zip");
+    await Bun.write(path, await (await call(token, "/v1/export")).arrayBuffer());
+    const names = Bun.spawnSync(["python3", "-I", "-c", "import sys, zipfile; print('\\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))", path]);
+    expect(names.stdout.toString().trim().split("\n").sort()).toEqual([
+      `_classic_beta_/Test Realm/Ann (earlier ${old!.id}).lua`,
+      "_classic_beta_/Test Realm/Ann.lua",
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
