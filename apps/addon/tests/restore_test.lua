@@ -18,7 +18,7 @@ local Merge = ns.Merge
 
 local function Journey(fields)
     local j = {
-        version = 3, segments = {}, events = {}, levels = {}, recipes = {}, people = {},
+        version = 4, segments = {}, events = {}, levels = {}, recipes = {}, people = {},
         kills = { d = "", last = 0, names = {} },
         totals = { kills = 0, killXP = 0, questXP = 0, deaths = 0, quests = 0, instances = 0, distance = 0, flown = 0 },
     }

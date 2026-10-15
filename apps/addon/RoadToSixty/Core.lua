@@ -59,7 +59,10 @@ local defaults = {
 --      people[guid] groups, seconds, raids, raidSeconds, dungeons and
 --      raidRuns, and rares[key][1]. Older counts become this PC's. class,
 --      the character's class (UnitClass's file name), set at each login.
-local DATA_VERSION = 3
+--   4  journeyId, the journey's stamp: "<GUID>:<start>", start 0 for an
+--      ordinary journey or the time of an Erase. Set at each login (see
+--      PLAYER_LOGIN below) and by ns.ResetCharacter.
+local DATA_VERSION = 4
 
 -- Brings a character file saved by an older layout up to DATA_VERSION.
 local function Upgrade(char)

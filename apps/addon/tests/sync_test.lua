@@ -59,9 +59,9 @@ local Sync, Write = ns.Sync, ns.Parse.Write
 
 local function Same(a, b) return Write(a) == Write(b) end
 
--- A journey at layout 3, with the defaults and the fields given.
+-- A journey at layout 4, with the defaults and the fields given.
 local function Journey(fields)
-    local j = { version = 3 }
+    local j = { version = 4 }
     ns.CharDefaults(j)
     for k, v in pairs(fields or {}) do j[k] = v end
     return j
@@ -110,7 +110,7 @@ check(Problem({ version = 7 }), "an entry without a journey")
 check(Problem({ version = 7, journey = "{ [1] = 1" }), "a cut-off journey")
 check(Problem({ version = 7, journey = '{ ["x"] = os.exit() }' }), "a journey holding code")
 check(Problem({ version = 7, journey = '"just a string"' }), "a journey that isn't a table")
-local newer = Problem({ version = 7, journey = Write(Journey({ version = 4 })) })
+local newer = Problem({ version = 7, journey = Write(Journey({ version = 5 })) })
 check(newer and newer:find("Update the addon on this PC"), "a newer layout asks for an update: " .. tostring(newer))
 check(Problem({ version = 7, journey = Write(Journey({ version = 1 })) }), "a layout from before the realm's clock")
 local seeded = Journey({ events = Session(1000), seeded = true })
@@ -129,7 +129,7 @@ for _, bad in ipairs({
     { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1, 2 } }, { events = { { "t", "on" } } },
     { totals = { kills = "many" } }, { kills = { d = 5 } },
 }) do
-    local journey = { version = 3, events = Session(5000) }
+    local journey = { version = 4, events = Session(5000) }
     for k, v in pairs(bad) do journey[k] = v end
     local why = Problem({ version = 7, replace = true, journey = Write(journey) })
     check(why, "a restore with the wrong shape is refused: " .. Write(bad))
@@ -182,7 +182,7 @@ ns = Load(saved, folder)
 Login()
 check(Write(saved) == after and ns.Sync:Describe():find("already brought in"), "the same version again changes nothing")
 saved.lastZone = 1429
-local restore = Folder({ version = 6, replace = true, journey = Write({ version = 3, events = Session(1000) }) })
+local restore = Folder({ version = 6, replace = true, journey = Write({ version = 4, events = Session(1000) }) })
 ns = Load(saved, restore)
 Login()
 check(ns.char == saved and Same(saved.events, here) and saved.syncedVersion == 6, "a restore replaces, in the same table")

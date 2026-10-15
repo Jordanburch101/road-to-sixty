@@ -14,11 +14,12 @@ local _, ns = ...
 --   second come from one PC, and a copy that is behind holds the start of
 --   what the other holds. Open runs and groups are the exception: they are
 --   kept until the events show them ended.
--- - Both copies are at layout 3 (Prepare brings a layout 2 upload up) and
+-- - Both copies are at layout 4 (Prepare brings older uploads up) and
 --   tidied as a login would (Tidy.lua). The caller does both.
--- - Both are copies of the same character. The data doesn't say whose it
---   is, so the caller checks that: the server from the WTF path, the addon
---   from the sync folder's character key.
+-- - Both are copies of the same character: the caller checks the name (the
+--   server from the upload's, the addon from the sync folder's key). Two
+--   journeys of one name that are stamped differently (journeyId, Core.lua)
+--   are refused here.
 --
 -- Merge never changes its inputs; the result may share tables with them.
 -- distance and flown come out in whole yards: sums of decimals added in
@@ -28,7 +29,7 @@ local _, ns = ...
 local Merge = {}
 ns.Merge = Merge
 
-Merge.VERSION = 3   -- the layout it merges, DATA_VERSION in Core.lua
+Merge.VERSION = 4   -- the layout it merges, DATA_VERSION in Core.lua
 
 local RANK = { boolean = 1, number = 2, string = 3, table = 4 }
 
@@ -111,6 +112,7 @@ local RULES = {
     played = Join,
     skills = Join,      -- profession -> { rank, max, icon }: the higher rank
     recipes = Join,
+    journeyId = Join,   -- the stamp, kept from whichever copy has one (Merge refuses two that differ)
 }
 
 -- The items of list grouped by keyOf(item): groups[key] holds them in list
@@ -479,6 +481,9 @@ end
 function Merge.Merge(a, b)
     local refused = Refused(a) or Refused(b)
     if refused then return nil, refused end
+    if a.journeyId and b.journeyId and a.journeyId ~= b.journeyId then
+        return nil, "these are two different journeys"
+    end
     local out, latest = {}, Latest(a, b)
     EachKey(a, b, function(k)
         local rule = RULES[k]
@@ -679,7 +684,18 @@ function Merge.Prepare(char, pc)
         ns.Tally.Upgrade(char, pc)
         char.version = 3
     end
+    -- Layout 4 only adds the stamp, which the login writes.
+    if version < 4 then char.version = 4 end
     return char
+end
+
+-- Whether upload continues head, a journey from before stamps, when upload
+-- has a stamp: head has nothing yet, or both begin with the same event. A
+-- namesake made later begins later. Both prepared and tidied first.
+function Merge.SameJourney(head, upload)
+    local h, u = (head.events or {})[1], (upload.events or {})[1]
+    if not h then return true end
+    return u ~= nil and h[1] == u[1] and h[2] == u[2]
 end
 
 local function Sessions(char)

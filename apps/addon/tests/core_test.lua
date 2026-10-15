@@ -41,7 +41,7 @@ end
 -- 1. A new character starts on the current layout, all by the realm's clock.
 local ns = Load(nil)
 local current = ns.char.version
-check(current == 3, "a new character is on layout 3, got " .. tostring(current))
+check(current == 4, "a new character is on layout 4, got " .. tostring(current))
 check(ns.char.clockFrom == nil, "a new journey has no PC clock part")
 check(ns.char.addon == "9.9.9", "the addon version is saved")
 check(ns.Now() == 2000, "ns.Now reads the realm's clock")
@@ -72,7 +72,7 @@ ns = Load({
     rares = { [522] = { 2, 100, "Mor'Ladim" } },
 }, db)
 local p, r = ns.char.people.g, ns.char.rares[522]
-check(ns.char.version == 3, "a layout 2 file is brought up to layout 3")
+check(ns.char.version == 4, "a layout 2 file is brought up to layout 4")
 check(p.groups[pc] == 3 and p.seconds[pc] == 600 and p.raids == nil and p.name == "A", "a player's counts become tallies")
 check(r[1][pc] == 2 and r[3] == "Mor'Ladim", "a rare's count becomes a tally")
 check(ns.char.clockFrom == nil, "a layout 2 file was already on the realm's clock")
@@ -97,9 +97,9 @@ ns = Load(nil, db)
 check(ns.pc == "app-000000000001", "the ID is kept without the folder")
 
 -- 8. CharDefaults fills in a journey's missing parts, keeping what it has.
-local bare = { version = 3, events = { { 1, "on" } } }
+local bare = { version = 4, events = { { 1, "on" } } }
 ns.CharDefaults(bare)
-check(bare.totals.kills == 0 and bare.kills.d == "" and bare.people and #bare.events == 1 and bare.version == 3,
+check(bare.totals.kills == 0 and bare.kills.d == "" and bare.people and #bare.events == 1 and bare.version == 4,
     "CharDefaults fills in a journey")
 
 if failures == 0 then
