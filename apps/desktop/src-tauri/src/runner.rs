@@ -85,6 +85,10 @@ pub struct Runner {
     notifier: Notifier,
     stop: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
+    /// The server refused this PC's token. Linking or unlinking clears it,
+    /// and so does restarting the app, in case the refusal was the server's
+    /// mistake.
+    refused: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -99,6 +103,7 @@ impl Runner {
             notifier,
             stop: Arc::default(),
             busy: Arc::default(),
+            refused: Arc::default(),
             thread: None,
         }
     }
@@ -115,7 +120,11 @@ impl Runner {
     /// Looks for game folders again when nothing is syncing (not linked, or
     /// no WoW found yet); a running sync looks for itself.
     pub fn rescan(&mut self) -> Result<(), String> {
-        if self.is_running() { Ok(()) } else { self.start() }
+        if self.is_running() || self.refused.load(Ordering::Relaxed) {
+            Ok(())
+        } else {
+            self.start()
+        }
     }
 
     /// Brings the status up to date, then syncs if this PC is linked and
@@ -165,13 +174,14 @@ impl Runner {
 
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = stop.clone();
-        let (server, state_path, cache, notifier, find, busy) = (
+        let (server, state_path, cache, notifier, find, busy, refused) = (
             self.server.clone(),
             self.state_path.clone(),
             self.cache.clone(),
             self.notifier.clone(),
             self.find.clone(),
             self.busy.clone(),
+            self.refused.clone(),
         );
         self.thread = Some(std::thread::spawn(move || {
             let client = Client::new(&server, token).app(crate::VERSION);
@@ -184,6 +194,9 @@ impl Runner {
                 })
             };
             let report = |result: &Result<Report, ApiError>| {
+                if matches!(result, Err(ApiError::Unauthorized)) {
+                    refused.store(true, Ordering::Relaxed);
+                }
                 let games = result.as_ref().map(|r| r.games.clone()).unwrap_or_default();
                 let local = local_keys(&games);
                 notifier.update(|s| {
@@ -211,6 +224,7 @@ impl Runner {
     /// forget what was uploaded under any old link, and start again.
     pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
         self.stop();
+        self.refused.store(false, Ordering::Relaxed);
         let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
         state.pc = Some(linked.pc);
         state.battletag = Some(linked.battletag);
@@ -231,6 +245,7 @@ impl Runner {
 
     pub fn unlink(&mut self) -> Result<(), String> {
         self.stop();
+        self.refused.store(false, Ordering::Relaxed);
         // Revoked on the server first, so the token stops working there too.
         // Offline, this PC still unlinks; the player can remove it from
         // another PC's list.
@@ -534,6 +549,23 @@ mod tests {
         assert!(t.notifier.get().paused);
         assert!(!pausing.is_finished(), "the pass was meant to still be running");
         pausing.join().unwrap().stop();
+    }
+
+    #[test]
+    fn a_refused_token_isnt_asked_again_by_the_regular_look_for_wow() {
+        let mut t = setup_with(true, fake::serve(|_, _| (401, br#"{"error":"unknown or unlinked PC"}"#.to_vec())));
+        t.runner.start().unwrap();
+        let until = Instant::now() + Duration::from_secs(5);
+        while t.runner.is_running() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!t.runner.is_running(), "the loop ends on a refused token");
+        let asked = t._fake.seen.lock().unwrap().len();
+        t.runner.rescan().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(!t.runner.is_running());
+        assert_eq!(t._fake.seen.lock().unwrap().len(), asked);
+        assert_eq!(t.notifier.get().linked_to, None);
     }
 
     #[test]
