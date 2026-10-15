@@ -269,14 +269,17 @@ test("history lists the newest 100 versions, then each older week's kept one, an
     .insert(versions)
     .values(Array.from({ length: 105 }, () => ({ ...head!, id: undefined })))
     .returning({ id: versions.id });
-  const ids = made.map((m) => m.id); // oldest first
-  await db.update(versions).set({ weekly: true }).where(inArray(versions.id, [ids[0]!, ids[2]!]));
-  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, ids[1]!));
+  const ids = made.map((m) => m.id).sort((x, y) => x - y); // oldest first
+  // Weekly ones below the newest 100 are added; one inside them isn't listed twice.
+  await db.update(versions).set({ weekly: true }).where(inArray(versions.id, [ids[0]!, ids[2]!, ids[50]!]));
+  // Pruned ones never show, inside the newest 100 or below them.
+  await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, [ids[1]!, ids[104]!]));
   const history = await json<VersionInfo[]>(call(token, `/v1/characters/${c!.id}/versions`));
   const listed = history.map((v) => v.id);
-  expect(listed.slice(0, 100)).toEqual([...ids].reverse().slice(0, 100));
+  const unpruned = [...ids].reverse().filter((id) => id !== ids[104] && id !== ids[1]);
+  expect(listed.slice(0, 100)).toEqual(unpruned.slice(0, 100));
   expect(listed.slice(100)).toEqual([ids[2]!, ids[0]!]);
-  expect(listed).not.toContain(ids[1]!);
+  expect(new Set(listed).size).toBe(listed.length);
 });
 
 test("a pruned version can't be restored", async () => {

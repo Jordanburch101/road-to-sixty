@@ -43,12 +43,16 @@ test("versions from the last 30 days stay; older, the newest of each week and th
   await at(a!, "2025-01-06T10:00Z"); // Monday
   await at(b!, "2025-01-08T10:00Z"); // same week, newer: kept
   await at(c!, "2025-01-13T10:00Z"); // the next week's only one: kept
-  await at(head!, "2025-01-01T10:00Z"); // the head stays at any age
+  // The head, in a week whose kept version is already chosen, so only the
+  // rule that never prunes a head can keep it.
+  await at(head!, "2025-01-14T10:00Z");
+  await db.update(versions).set({ weekly: true }).where(eq(versions.id, c!));
   await prune("on");
   expect((await row(a!)).prunedAt).not.toBeNull();
   expect(await stored(device.userId, (await row(a!)).fingerprint)).toBe(false);
   for (const id of [b!, c!, d!, head!]) expect((await row(id)).prunedAt).toBeNull();
   expect([(await row(b!)).weekly, (await row(c!)).weekly]).toEqual([true, true]);
+  expect([(await row(d!)).weekly, (await row(head!)).weekly]).toEqual([false, false]); // d's week is still under way
 });
 
 test("weeks are counted in UTC: Sunday 23:00 and Monday 01:00 are different weeks", async () => {
@@ -76,7 +80,6 @@ test("dry deletes nothing and says what it would; a second run finds nothing; a 
   const { device, token } = await newDevice("user-1", "Desk");
   const [a] = await play(token, 2);
   await at(a!, "2025-01-06T10:00Z");
-  await db.update(versions).set({ weekly: true }).where(eq(versions.id, a!)); // not the one tested here
   const uploads = await db.select().from(versions).where(eq(versions.kind, "upload"));
   const dry = await prune("dry");
   expect(dry).toEqual([{ characterId: expect.any(Number), versions: 2, files: 2, bytes: expect.any(Number) }]);
@@ -98,12 +101,13 @@ test("old finished jobs and expired sign-in rows go; recent ones and dry runs le
   const [old, recent] = await db.select().from(jobs).orderBy(jobs.id);
   await client`UPDATE jobs SET finished_at = now() - interval '31 days' WHERE id = ${old!.id}`;
   await db.insert(verification).values({ id: "v-old", identifier: "x", value: "x", expiresAt: new Date(Date.now() - 1000) });
+  await db.insert(verification).values({ id: "v-live", identifier: "x", value: "x", expiresAt: new Date(Date.now() + 3600_000) });
   await prune("dry");
   expect((await db.select().from(jobs)).length).toBe(2);
-  expect((await db.select().from(verification)).length).toBe(1);
+  expect((await db.select().from(verification)).length).toBe(2);
   await prune("on");
   expect((await db.select().from(jobs)).map((j) => j.id)).toEqual([recent!.id]);
-  expect(await db.select().from(verification)).toEqual([]);
+  expect((await db.select().from(verification)).map((v) => v.id)).toEqual(["v-live"]);
 });
 
 test("a version is marked pruned before its file is deleted, so a restore can't pick it up in between", async () => {
