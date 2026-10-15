@@ -9,7 +9,7 @@ import { db } from "../src/db";
 import * as lua from "../src/lua";
 import { characters, devices, jobs, user, versions } from "../src/schema";
 import * as storage from "../src/storage";
-import { exports } from "../src/limits";
+import { exportSlot, exports, restoreSlot, restores } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -316,4 +316,39 @@ test("a restore whose source is pruned while it works is refused, and the journe
   expect(r.status).toBe(404);
   const [after] = await db.select().from(characters);
   expect(after!.headVersionId).toBe(c!.headVersionId);
+});
+
+async function oldAndHead(token: string) {
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  return { c: c!, old: old! };
+}
+
+test("an account can restore 10 times an hour, and one restore runs at a time on the server", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  const { c, old } = await oldAndHead(token);
+  expect(restoreSlot.take()).toBe(true);
+  const busy = await restore(token, c.id, old.id);
+  expect(busy.status).toBe(429);
+  expect(busy.headers.get("retry-after")).not.toBeNull();
+  restoreSlot.give();
+  for (let i = 0; i < 10; i++) restores.take(device.userId);
+  expect((await restore(token, c.id, old.id)).status).toBe(429);
+});
+
+test("an export over 512 MB in all is refused, and one export runs at a time on the server", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await oldAndHead(token);
+  expect(exportSlot.take()).toBe(true);
+  expect((await call(token, "/v1/export")).status).toBe(429);
+  exportSlot.give();
+  await db.update(versions).set({ rawSize: 513 * 1024 * 1024 });
+  const big = await call(token, "/v1/export");
+  expect(big.status).toBe(413);
+  expect(exportSlot.take()).toBe(true); // the refusals gave the slot back
+  exportSlot.give();
 });

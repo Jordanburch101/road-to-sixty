@@ -6,11 +6,13 @@ import { type Device, pcName } from "./devices";
 import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
-import { exports } from "./limits";
+import { exportSlot, exports, restoreSlot, restores } from "./limits";
 import { get, removeAll } from "./storage";
 import { zip } from "./zip";
 
 const HISTORY = 100;
+// The export holds every journey uncompressed, so it is refused past this.
+const MAX_EXPORT = 512 * 1024 * 1024;
 
 export type Character = typeof characters.$inferSelect;
 
@@ -120,6 +122,11 @@ export const account = pcRoutes()
   })
 
   .post("/characters/:id/restore", async ({ device, params, body, set }): Promise<RestoreResponse | { error: string }> => {
+    if (!restores.take(device!.userId)) {
+      set.status = 429;
+      set.headers["retry-after"] = String(restores.retryAfter(device!.userId));
+      return { error: "too many restores; try again later" };
+    }
     const c = await own(device!, params.id);
     const id = Number((body as { version?: unknown } | null)?.version);
     const [source] =
@@ -139,60 +146,69 @@ export const account = pcRoutes()
       set.status = 400;
       return { error: "that is already the current version" };
     }
-    // Worked out before anything is written: a fault here answers 500 and
-    // leaves the journey as it was.
-    const [current] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
-    const removed = await runWindows(await get(c.userId, current!.fingerprint), await get(c.userId, source.fingerprint));
-    // The restore, its parent and the head move are one change: a merge
-    // finishing in between must either see all of it or none.
-    const version = await db
-      .transaction(async (tx) => {
-        // The clean-up marks a version pruned before deleting its file, and
-        // waits on this lock: so either it sees the restore's new row, which
-        // shares the source's file, and keeps the file, or the source is
-        // already marked and the restore is refused.
-        const [still] = await tx
-          .select({ id: versions.id })
-          .from(versions)
-          .where(and(eq(versions.id, source.id), isNull(versions.prunedAt)))
-          .for("share");
-        if (!still) return "gone" as const;
-        const [made] = await tx
-          .insert(versions)
-          .values({
-            characterId: c.id,
-            deviceId: device!.id,
-            kind: "restore",
-            fingerprint: source.fingerprint,
-            rawSize: source.rawSize,
-            dataVersion: source.dataVersion,
-            level: source.level,
-            removed: JSON.stringify(removed),
-            status: "accepted",
-          })
-          .returning({ id: versions.id });
-        await tx.insert(versionParents).values({ versionId: made!.id, parentId: source.id });
-        const moved = await tx
-          .update(characters)
-          .set({ headVersionId: made!.id, level: source.level, updatedAt: new Date() })
-          .where(and(eq(characters.id, c.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${c.headVersionId}::bigint`))
-          .returning({ id: characters.id });
-        if (moved.length === 0) tx.rollback();
-        return made!.id;
-      })
-      .catch((e) => {
-        if (e instanceof TransactionRollbackError) return null;
-        throw e;
-      });
-    if (version === "gone") {
-      set.status = 404;
-      return { error: "no such version" };
+    if (!restoreSlot.take()) {
+      set.status = 429;
+      set.headers["retry-after"] = "5";
+      return { error: "the server is busy; try again in a moment" };
     }
-    if (version === null) {
-      set.status = 409;
-      return { error: "the journey changed just now; try again" };
+    try {
+      // Worked out before anything is written: a fault here answers 500 and
+      // leaves the journey as it was.
+      const [current] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
+      const removed = await runWindows(await get(c.userId, current!.fingerprint), await get(c.userId, source.fingerprint));
+      // The restore, its parent and the head move are one change: a merge
+      // finishing in between must either see all of it or none.
+      const version = await db
+        .transaction(async (tx) => {
+          // The clean-up marks a version pruned before deleting its file, and
+          // waits on this lock: so either it sees the restore's new row, which
+          // shares the source's file, and keeps the file, or the source is
+          // already marked and the restore is refused.
+          const [still] = await tx
+            .select({ id: versions.id })
+            .from(versions)
+            .where(and(eq(versions.id, source.id), isNull(versions.prunedAt)))
+            .for("share");
+          if (!still) return "gone" as const;
+          const [made] = await tx
+            .insert(versions)
+            .values({
+              characterId: c.id,
+              deviceId: device!.id,
+              kind: "restore",
+              fingerprint: source.fingerprint,
+              rawSize: source.rawSize,
+              dataVersion: source.dataVersion,
+              level: source.level,
+              removed: JSON.stringify(removed),
+              status: "accepted",
+            })
+            .returning({ id: versions.id });
+          await tx.insert(versionParents).values({ versionId: made!.id, parentId: source.id });
+          const moved = await tx
+            .update(characters)
+            .set({ headVersionId: made!.id, level: source.level, updatedAt: new Date() })
+            .where(and(eq(characters.id, c.id), sql`${characters.headVersionId} IS NOT DISTINCT FROM ${c.headVersionId}::bigint`))
+            .returning({ id: characters.id });
+          if (moved.length === 0) tx.rollback();
+          return made!.id;
+        })
+        .catch((e) => {
+          if (e instanceof TransactionRollbackError) return null;
+          throw e;
+        });
+      if (version === "gone") {
+        set.status = 404;
+        return { error: "no such version" };
+      }
+      if (version === null) {
+        set.status = 409;
+        return { error: "the journey changed just now; try again" };
+      }
+      return { version };
+    } finally {
+      restoreSlot.give();
     }
-    return { version };
   })
 
   .get("/devices", async ({ device }): Promise<DeviceInfo[]> =>
@@ -233,15 +249,28 @@ export const account = pcRoutes()
       .innerJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
-    const files = [];
-    for (const { c, head } of rows) {
-      const journey = await get(c.userId, head.fingerprint);
-      const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
-      files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${safe(c.name)}.lua`, data: new Uint8Array(data) });
+    if (rows.reduce((sum, r) => sum + r.head.rawSize, 0) > MAX_EXPORT) {
+      set.status = 413;
+      return { error: "too big to download in one go" };
     }
-    return new Response(zip(files), {
-      headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },
-    });
+    if (!exportSlot.take()) {
+      set.status = 429;
+      set.headers["retry-after"] = "30";
+      return { error: "the server is busy; try again in a moment" };
+    }
+    try {
+      const files = [];
+      for (const { c, head } of rows) {
+        const journey = await get(c.userId, head.fingerprint);
+        const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
+        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${safe(c.name)}.lua`, data: new Uint8Array(data) });
+      }
+      return new Response(zip(files), {
+        headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },
+      });
+    } finally {
+      exportSlot.give();
+    }
   })
 
   // The token stops working at once; the PC's journeys stay where they are.

@@ -63,6 +63,32 @@ export const accountDaily = new Window(500, 24 * 3600);
 // The export builds every character's journey into one zip in memory.
 export const exports = new Window(5, 3600);
 
+// Restores run the merge program inline, so at most 10 per account an hour.
+export const restores = new Window(10, 3600);
+
+// How many of a costly thing may run at once across the server. Taken
+// without waiting: a caller that finds none free is told to try again.
+export class Slot {
+  private used = 0;
+  constructor(readonly max: number) {}
+  take(): boolean {
+    if (this.used >= this.max) return false;
+    this.used++;
+    return true;
+  }
+  give() {
+    this.used = Math.max(0, this.used - 1);
+  }
+  clear() {
+    this.used = 0;
+  }
+}
+
+// A restore's merge program can use 512 MB, and the worker may be running
+// one too; an export holds every journey it zips in memory.
+export const restoreSlot = new Slot(1);
+export const exportSlot = new Slot(1);
+
 export function clearLimits() {
-  for (const w of [uploads, requests, accountUploads, accountDaily, exports]) w.clear();
+  for (const w of [uploads, requests, accountUploads, accountDaily, exports, restores, restoreSlot, exportSlot]) w.clear();
 }
