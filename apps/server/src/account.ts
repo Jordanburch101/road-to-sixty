@@ -1,5 +1,5 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
@@ -92,12 +92,19 @@ export const account = pcRoutes()
       set.status = 404;
       return { error: "no such character" };
     }
-    const rows = await db
-      .select()
-      .from(versions)
-      .where(and(eq(versions.characterId, c.id), inArray(versions.kind, ["merged", "restore"])))
-      .orderBy(desc(versions.id))
-      .limit(HISTORY);
+    const shown = and(eq(versions.characterId, c.id), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt));
+    const recent = await db.select().from(versions).where(shown).orderBy(desc(versions.id)).limit(HISTORY);
+    // Past the newest 100, the one version kept for each week, so the
+    // clean-up never keeps a version the player can't get back to.
+    const older =
+      recent.length === HISTORY
+        ? await db
+            .select()
+            .from(versions)
+            .where(and(shown, eq(versions.weekly, true), lt(versions.id, recent.at(-1)!.id)))
+            .orderBy(desc(versions.id))
+        : [];
+    const rows = [...recent, ...older];
     const from = await madeBy(rows.filter((v) => v.kind === "merged").map((v) => v.id));
     const restored = await restoredFrom(rows.filter((v) => v.kind === "restore").map((v) => v.id));
     return rows.map((v) => ({
@@ -119,7 +126,9 @@ export const account = pcRoutes()
         ? await db
             .select()
             .from(versions)
-            .where(and(eq(versions.id, id), eq(versions.characterId, c.id), inArray(versions.kind, ["merged", "restore"])))
+            .where(
+              and(eq(versions.id, id), eq(versions.characterId, c.id), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt)),
+            )
         : [];
     if (!c || !source) {
       set.status = 404;

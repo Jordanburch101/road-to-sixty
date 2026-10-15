@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { config } from "../src/config";
 import { db } from "../src/db";
 import * as lua from "../src/lua";
@@ -256,4 +256,37 @@ test("a merge that finishes after the account is gone leaves no file behind", as
   });
   await workAll();
   expect(await s3Files("user-1/")).toEqual([]);
+});
+
+test("history lists the newest 100 versions, then each older week's kept one, and never a pruned one", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  const made = await db
+    .insert(versions)
+    .values(Array.from({ length: 105 }, () => ({ ...head!, id: undefined })))
+    .returning({ id: versions.id });
+  const ids = made.map((m) => m.id); // oldest first
+  await db.update(versions).set({ weekly: true }).where(inArray(versions.id, [ids[0]!, ids[2]!]));
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, ids[1]!));
+  const history = await json<VersionInfo[]>(call(token, `/v1/characters/${c!.id}/versions`));
+  const listed = history.map((v) => v.id);
+  expect(listed.slice(0, 100)).toEqual([...ids].reverse().slice(0, 100));
+  expect(listed.slice(100)).toEqual([ids[2]!, ids[0]!]);
+  expect(listed).not.toContain(ids[1]!);
+});
+
+test("a pruned version can't be restored", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, old!.id));
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, { method: "POST", body: JSON.stringify({ version: old!.id }), headers: { "content-type": "application/json" } });
+  expect(r.status).toBe(404);
 });

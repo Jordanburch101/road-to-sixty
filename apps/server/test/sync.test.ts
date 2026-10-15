@@ -395,3 +395,27 @@ test("an upload isn't folded once its merge started, or from another PC, or acro
     expect(v!.status).toBe("pending");
   }
 });
+
+test("a pruned version downloads as not found", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [entry] = (await check(token)).characters;
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, entry!.version!));
+  expect((await call(token, `/v1/versions/${entry!.version}`)).status).toBe(404);
+});
+
+test("a restore whose file was pruned still keeps what it took out of a stale upload", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await restoreHead(desk.token);
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.kind, "restore"));
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(20000), ...session(30000)] })));
+  await workAll();
+  const [entry] = (await check(desk.token)).characters;
+  const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
+  expect(text).toContain("30000");
+  expect(text).not.toContain("20000");
+});

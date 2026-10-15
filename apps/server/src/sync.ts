@@ -1,5 +1,5 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
@@ -218,7 +218,7 @@ export const sync = pcRoutes()
       .select({ v: versions, userId: characters.userId })
       .from(versions)
       .innerJoin(characters, eq(characters.id, versions.characterId))
-      .where(and(eq(versions.id, Number(params.id)), inArray(versions.kind, ["merged", "restore"])));
+      .where(and(eq(versions.id, Number(params.id)), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt)));
     if (!row || row.userId !== device!.userId) {
       set.status = 404;
       return { error: "no such version" };
