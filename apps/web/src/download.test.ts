@@ -14,10 +14,14 @@ test("a Mac gets the Mac download and Windows the Windows one", () => {
   expect(pick({ userAgent: "", platform: "macOS", maxTouchPoints: 0 })).toBe("mac");
 });
 
-test("phones, tablets, Linux and anything unknown are offered both", () => {
+test("a Linux computer gets the Linux download", () => {
+  expect(pick({ userAgent: linux })).toBe("linux");
+  expect(pick({ userAgent: "", platform: "Linux x86_64" })).toBe("linux");
+});
+
+test("phones, tablets and anything unknown are offered every download", () => {
   expect(pick({ userAgent: iphone })).toBe("choose");
   expect(pick({ userAgent: android })).toBe("choose");
-  expect(pick({ userAgent: linux })).toBe("choose");
   expect(pick({ userAgent: "" })).toBe("choose");
 });
 
