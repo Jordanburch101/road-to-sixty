@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, notInArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { client, db } from "./db";
 import { characters, deviceCode, session, verification, versions } from "./schema";
 import { remove } from "./storage";
@@ -30,61 +30,14 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
             AND date_trunc('week', w.created_at, 'UTC') = date_trunc('week', v.created_at, 'UTC'))
       ORDER BY character_id, date_trunc('week', created_at, 'UTC'), id DESC)`;
 
-  const rows = await client`
-    SELECT v.id, v.fingerprint, v.raw_size, v.character_id, c.user_id
-    FROM versions v JOIN characters c ON c.id = v.character_id
-    WHERE v.pruned_at IS NULL AND (
-      (v.kind = 'upload' AND v.status IN ('accepted', 'rejected', 'superseded')
-        AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.version_id = v.id AND j.state IN ('queued', 'running')))
-      OR (v.kind IN ('merged', 'restore') AND NOT v.weekly
-        AND v.created_at < now() - interval '30 days'
-        AND v.id IS DISTINCT FROM c.head_version_id))
-    ORDER BY v.id`;
-  const chosen: { id: number; fingerprint: string; rawSize: number; characterId: number; userId: string }[] = rows.map((r: Record<string, unknown>) => ({
-    id: Number(r.id),
-    fingerprint: String(r.fingerprint),
-    rawSize: Number(r.raw_size),
-    characterId: Number(r.character_id),
-    userId: String(r.user_id),
-  }));
-
   const pruned: Pruned[] = [];
-  for (const userId of Array.from(new Set<string>(chosen.map((c) => c.userId)))) {
+  // One account at a time, so each query uses the character and version
+  // indexes and the whole candidate list is never held at once.
+  for (const { id: userId } of await client`SELECT id FROM "user" ORDER BY id`) {
     // One account failing (storage down for its files, say) doesn't stop
     // the clean-up for everyone after it.
     try {
-      const theirs = chosen.filter((c) => c.userId === userId);
-      const ids = theirs.map((c) => c.id);
-      // Marked before anything is deleted: a restore locks its source and
-      // checks it isn't pruned, so it either finishes first (and its new row,
-      // sharing the file, is counted as kept below) or is refused.
-      if (mode === "on") await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, ids));
-      // Identical files are stored once, so a file goes only when no version
-      // that stays has it.
-      const kept = new Set(
-        (
-          await db
-            .selectDistinct({ fp: versions.fingerprint })
-            .from(versions)
-            .innerJoin(characters, eq(characters.id, versions.characterId))
-            .where(and(eq(characters.userId, userId), isNull(versions.prunedAt), notInArray(versions.id, ids)))
-        ).map((k) => k.fp),
-      );
-      const files = new Map<string, number>();
-      for (const c of theirs) if (!kept.has(c.fingerprint)) files.set(c.fingerprint, c.rawSize);
-      // ponytail: a crash here leaves files no row needs, which is only
-      // storage; a sweep of unreferenced files would find them.
-      if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
-      for (const characterId of Array.from(new Set<number>(theirs.map((c) => c.characterId)))) {
-        const mine = theirs.filter((c) => c.characterId === characterId);
-        const myFiles = Array.from(new Set<string>(mine.map((c) => c.fingerprint))).filter((fp) => files.has(fp));
-        pruned.push({
-          characterId,
-          versions: mine.length,
-          files: myFiles.length,
-          bytes: myFiles.reduce((sum, fp) => sum + files.get(fp)!, 0),
-        });
-      }
+      pruned.push(...(await pruneAccount(String(userId), mode)));
     } catch (e) {
       console.error("prune: an account failed, carrying on:", e);
     }
@@ -95,10 +48,76 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
     // Better Auth checks expiry when a row is used but never clears these.
     for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
   }
-  for (const p of pruned) {
-    console.log(`prune (${mode}): character ${p.characterId}: ${p.versions} versions, ${p.files} files, ${(p.bytes / 1e6).toFixed(1)} MB`);
-  }
+  const total = pruned.reduce((t, p) => ({ versions: t.versions + p.versions, files: t.files + p.files, bytes: t.bytes + p.bytes }), {
+    versions: 0,
+    files: 0,
+    bytes: 0,
+  });
+  console.log(
+    `prune (${mode}): ${total.versions} versions, ${total.files} files, ${(total.bytes / 1e6).toFixed(1)} MB, across ${pruned.length} characters`,
+  );
   return pruned;
+}
+
+type Row = { id: number; fingerprint: string; rawSize: number; characterId: number; chosen: boolean };
+
+async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[]> {
+  const rows: Row[] = (
+    await client`
+      SELECT v.id, v.fingerprint, v.raw_size, v.character_id,
+        (v.kind = 'upload' AND v.status IN ('accepted', 'rejected', 'superseded')
+          AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.version_id = v.id AND j.state IN ('queued', 'running')))
+        OR (v.kind IN ('merged', 'restore') AND NOT v.weekly
+          AND v.created_at < now() - interval '30 days'
+          AND v.id IS DISTINCT FROM c.head_version_id) AS chosen
+      FROM characters c JOIN versions v ON v.character_id = c.id
+      WHERE c.user_id = ${userId} AND v.pruned_at IS NULL`
+  ).map((r: Record<string, unknown>) => ({
+    id: Number(r.id),
+    fingerprint: String(r.fingerprint),
+    rawSize: Number(r.raw_size),
+    characterId: Number(r.character_id),
+    chosen: r.chosen === true,
+  }));
+  const chosen = rows.filter((r) => r.chosen);
+  if (chosen.length === 0) return [];
+  // Marked before anything is deleted: a restore locks its source and
+  // checks it isn't pruned, so it either finishes first (and its new row,
+  // sharing the file, is counted as kept below) or is refused.
+  if (mode === "on") {
+    for (let i = 0; i < chosen.length; i += 5000) {
+      await db
+        .update(versions)
+        .set({ prunedAt: new Date() })
+        .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
+    }
+  }
+  // Identical files are stored once, so a file goes only when no version
+  // that stays has it. Read again after marking, so a restore that finished
+  // in between is counted.
+  const kept = new Set<string>(
+    mode === "on"
+      ? (
+          await db
+            .selectDistinct({ fp: versions.fingerprint })
+            .from(versions)
+            .innerJoin(characters, eq(characters.id, versions.characterId))
+            .where(and(eq(characters.userId, userId), isNull(versions.prunedAt)))
+        ).map((k) => k.fp)
+      : rows.filter((r) => !r.chosen).map((r) => r.fingerprint),
+  );
+  const files = new Map<string, number>();
+  for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
+  // ponytail: a crash here leaves files no row needs, which is only
+  // storage; a sweep of unreferenced files would find them.
+  if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
+
+  const byCharacter = new Map<number, Row[]>();
+  for (const r of chosen) byCharacter.set(r.characterId, [...(byCharacter.get(r.characterId) ?? []), r]);
+  return [...byCharacter].map(([characterId, mine]) => {
+    const myFiles = [...new Set<string>(mine.map((r) => r.fingerprint))].filter((fp) => files.has(fp));
+    return { characterId, versions: mine.length, files: myFiles.length, bytes: myFiles.reduce((sum, fp) => sum + files.get(fp)!, 0) };
+  });
 }
 
 const DAY = 24 * 3600 * 1000;
