@@ -5,11 +5,19 @@ export function need(name: string, value: string | undefined): string {
   return value;
 }
 
+// A link setting without https:// would turn into a link within the site,
+// and a trailing slash into a double one in the download addresses.
+export function link(name: string, value: string | undefined): string {
+  const url = need(name, value);
+  if (!URL.canParse(url)) throw new Error(`${name} must be a full address, like https://...`);
+  return url.replace(/\/+$/, "");
+}
+
 const env = import.meta.env ?? {};
-export const DOWNLOADS: string = env.PUBLIC_DOWNLOADS || "https://dl.rts.everhold.online";
+export const DOWNLOADS: string = link("PUBLIC_DOWNLOADS", env.PUBLIC_DOWNLOADS || "https://dl.rts.everhold.online");
 
 // Read when a page uses them, so the tests can load this file without them.
-export const addonUrl = () => need("PUBLIC_ADDON_URL", env.PUBLIC_ADDON_URL);
+export const addonUrl = () => link("PUBLIC_ADDON_URL", env.PUBLIC_ADDON_URL);
 export const contactEmail = () => need("PUBLIC_CONTACT_EMAIL", env.PUBLIC_CONTACT_EMAIL);
 
 // The fixed names the app's release workflow uploads (desktop-release.yml).

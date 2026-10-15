@@ -1,2 +1,4 @@
 # Types Astro generates on each build or dev run.
 .astro/
+# The link to the Vercel project, made by vercel link.
+.vercel/
