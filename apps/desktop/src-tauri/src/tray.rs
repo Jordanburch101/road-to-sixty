@@ -6,7 +6,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands::with_runner;
-use crate::runner::Notifier;
+use crate::runner::{Notifier, Runner};
 use crate::status::Status;
 
 #[derive(Clone)]
@@ -42,10 +42,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Tray> {
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::window::show(app),
-            "pause" => {
-                let paused = app.state::<Notifier>().get().paused;
-                with_runner(app.clone(), move |r| r.set_paused(!paused));
-            }
+            "pause" => with_runner(app.clone(), Runner::toggle_paused),
             "update" => {
                 if matches!(app.state::<Notifier>().get().update, crate::status::UpdateState::Ready { .. }) {
                     crate::update::restart_now(app);

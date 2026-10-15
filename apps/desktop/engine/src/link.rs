@@ -119,7 +119,13 @@ mod tests {
             )
         });
         let opened = RefCell::new(false);
-        let result = link(&Client::new(&fake.url, None), "Desk", |_, _| *opened.borrow_mut() = true, |_| {}, || true);
+        let result = link(
+            &Client::new(&fake.url, None),
+            "Desk",
+            |_, _| *opened.borrow_mut() = true,
+            |_| {},
+            || true,
+        );
         assert!(matches!(result, Err(ApiError::Status(0, _))), "{result:?}");
         assert!(!*opened.borrow());
     }

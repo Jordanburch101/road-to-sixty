@@ -276,10 +276,17 @@ impl Runner {
         Ok(())
     }
 
+    /// Shown before the wait for a pass to stop, so a second click sees it.
     pub fn set_paused(&mut self, paused: bool) -> Result<(), String> {
-        self.stop();
         self.notifier.update(|s| s.paused = paused);
+        self.stop();
         self.start()
+    }
+
+    /// Read under the runner's lock, so each of two quick clicks flips it.
+    pub fn toggle_paused(&mut self) -> Result<(), String> {
+        let paused = self.notifier.get().paused;
+        self.set_paused(!paused)
     }
 }
 
@@ -327,6 +334,16 @@ mod tests {
     }
 
     fn setup(linked: bool) -> Setup {
+        setup_with(
+            linked,
+            fake::serve(|_, url| match url {
+                u if u.starts_with("/v1/check") => (200, CHECK.as_bytes().to_vec()),
+                _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
+            }),
+        )
+    }
+
+    fn setup_with(linked: bool, fake: fake::Fake) -> Setup {
         let dir = tempfile::tempdir().unwrap();
         let game = dir.path().join("wow/_classic_beta_");
         std::fs::create_dir_all(addon_toc(&game).parent().unwrap()).unwrap();
@@ -334,10 +351,6 @@ mod tests {
         let saved = game.join("WTF/Account/ACCOUNT1/70/Ann-Stormfist/SavedVariables");
         std::fs::create_dir_all(&saved).unwrap();
         std::fs::write(saved.join("RoadToSixty.lua"), FILE).unwrap();
-        let fake = fake::serve(|_, url| match url {
-            u if u.starts_with("/v1/check") => (200, CHECK.as_bytes().to_vec()),
-            _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
-        });
         let data = dir.path().join("data");
         let tokens = TokenFile::new(data.join("token"));
         if linked {
@@ -490,6 +503,46 @@ mod tests {
         assert!(!data.join("journeys").exists());
         assert_eq!(t.notifier.get().linked_to.as_deref(), Some("Ann#1234"));
         assert!(t.runner.is_running());
+        t.runner.stop();
+    }
+
+    #[test]
+    fn pausing_shows_at_once_while_a_slow_pass_finishes() {
+        let mut t = setup_with(
+            true,
+            fake::serve(|_, _| {
+                std::thread::sleep(Duration::from_millis(1500));
+                (200, br#"{"characters":[]}"#.to_vec())
+            }),
+        );
+        t.runner.start().unwrap();
+        let busy = t.runner.busy();
+        let until = Instant::now() + Duration::from_secs(5);
+        while !busy.load(std::sync::atomic::Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let mut runner = t.runner;
+        let pausing = std::thread::spawn(move || {
+            runner.set_paused(true).unwrap();
+            runner
+        });
+        // A second click reads this, so it must not wait for the pass.
+        let until = Instant::now() + Duration::from_millis(500);
+        while !t.notifier.get().paused && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(t.notifier.get().paused);
+        assert!(!pausing.is_finished(), "the pass was meant to still be running");
+        pausing.join().unwrap().stop();
+    }
+
+    #[test]
+    fn two_toggles_end_where_they_started() {
+        let mut t = setup(true);
+        t.runner.toggle_paused().unwrap();
+        assert!(t.notifier.get().paused);
+        t.runner.toggle_paused().unwrap();
+        assert!(!t.notifier.get().paused);
         t.runner.stop();
     }
 
