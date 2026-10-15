@@ -1,5 +1,5 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, count, desc, eq, inArray, max } from "drizzle-orm";
+import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
@@ -82,6 +82,42 @@ export const sync = pcRoutes()
         : [];
       await put(userId, fp, packed);
       const id = await db.transaction(async (tx) => {
+        // The newer file holds everything the older one did, so this PC's
+        // older upload of the character still waiting in the queue is
+        // dropped. Not across a restore (a different received id): those
+        // two were made against different journeys. A job the worker has
+        // started is no longer queued, so it is left alone.
+        const receivedId = last?.id ?? null;
+        const folded = await tx
+          .update(jobs)
+          .set({ state: "done", error: "folded into a newer upload", finishedAt: new Date() })
+          .where(
+            and(
+              eq(jobs.state, "queued"),
+              inArray(
+                jobs.versionId,
+                tx
+                  .select({ id: versions.id })
+                  .from(versions)
+                  .where(
+                    and(
+                      eq(versions.characterId, character!.id),
+                      eq(versions.deviceId, device!.id),
+                      eq(versions.kind, "upload"),
+                      eq(versions.status, "pending"),
+                      sql`${versions.receivedId} IS NOT DISTINCT FROM ${receivedId}::bigint`,
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .returning({ versionId: jobs.versionId });
+        if (folded.length > 0) {
+          await tx
+            .update(versions)
+            .set({ status: "superseded", rejectReason: "folded into a newer upload" })
+            .where(inArray(versions.id, folded.map((f) => f.versionId)));
+        }
         const [version] = await tx
           .insert(versions)
           .values({
@@ -91,7 +127,7 @@ export const sync = pcRoutes()
             fingerprint: fp,
             rawSize: raw.length,
             addonVersion: addon ?? null,
-            receivedId: last?.id ?? null,
+            receivedId,
             status: "pending",
           })
           .returning({ id: versions.id });

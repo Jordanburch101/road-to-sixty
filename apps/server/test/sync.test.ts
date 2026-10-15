@@ -362,3 +362,36 @@ test("an account can have 100 characters; a new one after that is refused, the o
   expect(await refused.text()).toBe("This account has reached 100 characters");
   expect((await upload(token, savedFile(journey({ events: session(2000) })), { name: "Alt5" })).status).toBe(200);
 });
+
+test("a newer upload from the same PC replaces its older one still waiting in the queue", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const older = (await (await upload(desk.token, savedFile(journey({ events: session(1000) })))).json()) as UploadResponse;
+  const newer = (await (await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })))).json()) as UploadResponse;
+  const [o] = await db.select().from(versions).where(eq(versions.id, older.version));
+  expect(o).toMatchObject({ status: "superseded", rejectReason: "folded into a newer upload" });
+  expect((await db.select().from(jobs).where(eq(jobs.versionId, older.version)))[0]!.state).toBe("done");
+  await workAll();
+  const [n] = await db.select().from(versions).where(eq(versions.id, newer.version));
+  expect(n!.status).toBe("accepted");
+  const [entry] = (await check(desk.token)).characters;
+  expect(sessions(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())))).toBe(2);
+});
+
+test("an upload isn't folded once its merge started, or from another PC, or across a restore", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const head = (await check(desk.token)).characters[0]!.version!;
+
+  const running = (await (await upload(desk.token, savedFile(journey({ events: session(2000) })))).json()) as UploadResponse;
+  await db.update(jobs).set({ state: "running" }).where(eq(jobs.versionId, running.version));
+  const other = (await (await upload(laptop.token, savedFile(journey({ events: session(3000) })))).json()) as UploadResponse;
+  const before = (await (await upload(desk.token, savedFile(journey({ events: session(4000) })))).json()) as UploadResponse;
+  await upload(desk.token, savedFile(journey({ events: session(5000) })), { received: String(head) });
+
+  for (const id of [running.version, other.version, before.version]) {
+    const [v] = await db.select().from(versions).where(eq(versions.id, id));
+    expect(v!.status).toBe("pending");
+  }
+});
