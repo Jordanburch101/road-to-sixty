@@ -26,8 +26,10 @@ One file the player marks as runnable and opens. Tauri builds it without
 extra tools, and the updater replaces it in place, so self-update keeps
 working. SteamOS's system folders are read-only and wiped on each update,
 so the AppImage has to carry what it needs; Tauri's carries the web view.
-The tray library (libayatana-appindicator) may be missing on SteamOS. If
-the tray doesn't show, opening the AppImage again shows the window, since
+The tray library (libayatana-appindicator) may be missing on SteamOS, and
+the app panics without it (it is loaded at run time, so Tauri's AppImage
+doesn't pack it), so `bundle.linux.appimage.files` carries it. If the tray
+still doesn't show, opening the AppImage again shows the window, since
 tauri-plugin-single-instance already brings the running copy forward.
 
 `tauri-plugin-autostart` 2.7.0 writes `~/.config/autostart` with the
@@ -121,8 +123,8 @@ older and newer systems alike):
 3. `apps/desktop/scripts/linux-smoke.sh <AppImage>` in an `archlinux`
    container with only Xvfb, ImageMagick (for the screenshot) and Wine, and
    deliberately not WebKitGTK, so a library the AppImage forgot fails here.
-   It runs the AppImage with `--appimage-extract-and-run` (no FUSE in a
-   container) under a made-up home, waits 20 seconds, fails if the app
+   It unpacks the AppImage with `--appimage-extract` and runs its `AppRun`
+   (no FUSE in a container) under a made-up home, waits 20 seconds, fails if the app
    died, and saves a screenshot. Then, with `WINEPREFIX=<home>/Games/wow`
    (Wine makes `drive_c` and `dosdevices`), it copies one of Wine's own
    small programs to `drive_c/Program Files (x86)/World of

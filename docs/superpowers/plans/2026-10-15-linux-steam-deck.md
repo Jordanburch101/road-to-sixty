@@ -305,8 +305,8 @@ Update `product_db` and `default_installs` doc comments to start with `/// On a 
 
 - [ ] **Step 4: Run the engine's tests, clippy and fmt**
 
-Run (from `apps/desktop`): `cargo test -p rts-sync && cargo clippy -p rts-sync --all-targets -- -D warnings && cargo fmt --check`
-Expected: all pass (the LuaJIT test needs `luajit` on the path; it is on Jordan's Mac).
+Run (from `apps/desktop`): `cargo fmt && cargo test -p rts-sync && cargo clippy -p rts-sync --all-targets -- -D warnings`
+Expected: all pass (the LuaJIT test needs `luajit` on the path; it is on Jordan's Mac). The snippets above aren't laid out the way `rustfmt.toml` wants, so `cargo fmt` rewrites them.
 
 Then the Linux branch for real, in Docker (Jordan's Mac is arm64, so this is native):
 
@@ -449,7 +449,7 @@ In the header comment change `//!   rts-sync status     the installs, game folde
 
 - [ ] **Step 6: Check, then the Linux build in Docker**
 
-Run (from `apps/desktop`): `cargo test -p rts-sync && cargo clippy -p rts-sync --all-targets -- -D warnings && cargo fmt --check && cargo run -q --bin rts-sync -- status`
+Run (from `apps/desktop`): `cargo fmt && cargo test -p rts-sync && cargo clippy -p rts-sync --all-targets -- -D warnings && cargo run -q --bin rts-sync -- status`
 Expected: tests pass, no warnings, and `status` prints this Mac's installs as before.
 
 Run: `docker run --rm -v <worktree>:/w -w /w/apps/desktop rust:1.99 bash -c 'apt-get update -qq && apt-get install -y -qq luajit >/dev/null && cargo test -p rts-sync && cargo clippy -p rts-sync --all-targets -- -D warnings'`
@@ -478,6 +478,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Create: `apps/desktop/scripts/wine-check.sh`
 - Modify: `.github/workflows/ci.yml` (replace the `desktop` job with `desktop-linux`)
 - Modify: `apps/desktop/src-tauri/src/commands.rs:73-85` (picker opens in the home folder on Linux)
+- Modify: `apps/desktop/src-tauri/tauri.conf.json` (`bundle.linux.appimage.files`: carry the tray library)
 - Modify: `apps/desktop/AGENTS.md` (Commands and the CI note)
 
 **Interfaces:**
@@ -501,6 +502,22 @@ In `apps/desktop/src-tauri/src/commands.rs`, replace the dialog chain in `pick_f
         });
 ```
 
+- [ ] **Step 1b: The AppImage carries the tray library**
+
+`libappindicator-sys` loads `libayatana-appindicator3.so.1` at run time and panics when it is missing, which stops the app at `tray::build`; Tauri's AppImage only packs what `ldd` shows, so the library isn't in it, and SteamOS may not have it. In `apps/desktop/src-tauri/tauri.conf.json`, inside `"bundle"`, after `"windows": {...},` add:
+
+```json
+    "linux": {
+      "appimage": {
+        "files": {
+          "/usr/lib/libayatana-appindicator3.so.1": "/usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1"
+        }
+      }
+    },
+```
+
+linuxdeploy then packs what that library needs (ayatana-indicator3, dbusmenu). The smoke test in Step 2 is what proves it: the container has no tray library.
+
 - [ ] **Step 2: The start check**
 
 Create `apps/desktop/scripts/linux-smoke.sh` (and `chmod +x` it):
@@ -522,7 +539,7 @@ mkdir -p "$out"
 
 # What any Linux desktop has, and the AppImage leaves to it (fonts, X,
 # OpenGL): linuxdeploy's exclude list.
-pacman -Sy --noconfirm --needed xorg-server-xvfb imagemagick mesa libx11 libxcb fontconfig ttf-dejavu >/dev/null
+pacman -Syu --noconfirm --needed xorg-server-xvfb imagemagick mesa libx11 libxcb fontconfig ttf-dejavu >/dev/null
 
 home=$(mktemp -d)
 cd "$(mktemp -d)"
@@ -539,12 +556,19 @@ LD_LIBRARY_PATH=$(find "$PWD/squashfs-root/usr/lib" -type d | paste -sd:) \
 Xvfb :99 -screen 0 1280x800x24 &
 export DISPLAY=:99
 sleep 2
-HOME=$home squashfs-root/AppRun >"$out/app.log" 2>&1 &
+# Under Xvfb there is no GPU to share buffers with; without this the web
+# view may draw white while the app itself keeps running.
+HOME=$home WEBKIT_DISABLE_DMABUF_RENDERER=1 squashfs-root/AppRun >"$out/app.log" 2>&1 &
 app=$!
 sleep 20
 import -window root "$out/screenshot.png" || true
 if ! kill -0 "$app" 2>/dev/null; then
   echo "The app quit or crashed:"
+  cat "$out/app.log"
+  exit 1
+fi
+if grep -qi "WebKitWebProcess.*crash\|web process crashed" "$out/app.log"; then
+  echo "The web view crashed:"
   cat "$out/app.log"
   exit 1
 fi
@@ -574,13 +598,19 @@ work=$(mktemp -d)
 printf '#include <windows.h>\nint main(void) { Sleep(120000); return 0; }\n' >"$work/wait.c"
 x86_64-w64-mingw32-gcc -o "$work/WowClassic.exe" "$work/wait.c"
 
-xvfb-run -a wine wineboot --init
+# Wine won't make the prefix when the folder above it is missing. One
+# display for every Wine call: wineboot leaves wineserver tied to it.
+mkdir -p "$WINEPREFIX"
+Xvfb :99 -screen 0 1024x768x24 &
+export DISPLAY=:99
+sleep 2
+wine wineboot --init
 game="$WINEPREFIX/drive_c/Program Files (x86)/World of Warcraft/_classic_beta_"
 mkdir -p "$game/Interface/AddOns/RoadToSixty"
 echo "## Interface: 16001" >"$game/Interface/AddOns/RoadToSixty/RoadToSixty.toc"
 cp "$work/WowClassic.exe" "$game/"
 
-xvfb-run -a wine "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\WowClassic.exe" &
+wine "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\WowClassic.exe" &
 sleep 10
 status=$(RTS_DATA_DIR="$work/data" "$rts" status)
 echo "$status"
@@ -633,6 +663,7 @@ In `.github/workflows/ci.yml`, replace the whole `desktop:` job (from its commen
       - name: AppImage
         run: bunx tauri build --bundles appimage -c '{"bundle":{"createUpdaterArtifacts":false}}'
 
+      # From the repo root, which the container sees as /w.
       - name: It starts on a bare Arch Linux
         working-directory: .
         run: >
@@ -655,7 +686,7 @@ In the `desktop-app` job's comment, `(LuaJIT's is left to the Linux job)` stays 
 
 - [ ] **Step 5: Local checks**
 
-Run (from `apps/desktop`): `bash -n scripts/linux-smoke.sh && bash -n scripts/wine-check.sh && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check`
+Run (from `apps/desktop`): `bash -n scripts/linux-smoke.sh && bash -n scripts/wine-check.sh && cargo fmt && cargo clippy --workspace --all-targets -- -D warnings`
 Expected: no output from `bash -n`, clippy and fmt clean (the Linux-only picker code is checked in CI).
 
 Run (from the worktree root): `bunx js-yaml .github/workflows/ci.yml >/dev/null && echo ok`
@@ -679,7 +710,7 @@ In Commands, add: `bunx tauri build --bundles appimage   # the Linux AppImage (o
 
 ```bash
 cd <worktree>
-git add .github/workflows/ci.yml apps/desktop/scripts/linux-smoke.sh apps/desktop/scripts/wine-check.sh apps/desktop/src-tauri/src/commands.rs apps/desktop/AGENTS.md
+git add .github/workflows/ci.yml apps/desktop/scripts/linux-smoke.sh apps/desktop/scripts/wine-check.sh apps/desktop/src-tauri/src/commands.rs apps/desktop/src-tauri/tauri.conf.json apps/desktop/AGENTS.md
 git commit -m "App: build the Linux AppImage in CI and start it on a bare Arch Linux (#47)
 
 The folder picker opens in the home folder on Linux, where the Wine
@@ -1044,7 +1075,7 @@ In `apps/web/src/pages/download/index.astro`, change the paragraph to `<p class=
 
 - [ ] **Step 6: Build the site**
 
-Run (from `apps/web`): `PUBLIC_ADDON_URL=https://example.test PUBLIC_CONTACT_EMAIL=x@example.test bun run build && ls dist/download/linux/index.html && grep -c "Road-to-Sixty.AppImage" dist/download/linux/index.html`
+Run (from `apps/web`): `PUBLIC_SITE_URL=https://example.test PUBLIC_ADDON_URL=https://example.test PUBLIC_CONTACT_EMAIL=x@example.test bun run build && ls dist/download/linux/index.html && grep -c "Road-to-Sixty.AppImage" dist/download/linux/index.html`
 Expected: the build passes, the file exists, the count is at least 1.
 
 - [ ] **Step 7: AGENTS.md**
