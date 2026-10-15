@@ -50,37 +50,43 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
 
   const pruned: Pruned[] = [];
   for (const userId of Array.from(new Set<string>(chosen.map((c) => c.userId)))) {
-    const theirs = chosen.filter((c) => c.userId === userId);
-    const ids = theirs.map((c) => c.id);
-    // Marked before anything is deleted: a restore locks its source and
-    // checks it isn't pruned, so it either finishes first (and its new row,
-    // sharing the file, is counted as kept below) or is refused.
-    if (mode === "on") await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, ids));
-    // Identical files are stored once, so a file goes only when no version
-    // that stays has it.
-    const kept = new Set(
-      (
-        await db
-          .selectDistinct({ fp: versions.fingerprint })
-          .from(versions)
-          .innerJoin(characters, eq(characters.id, versions.characterId))
-          .where(and(eq(characters.userId, userId), isNull(versions.prunedAt), notInArray(versions.id, ids)))
-      ).map((k) => k.fp),
-    );
-    const files = new Map<string, number>();
-    for (const c of theirs) if (!kept.has(c.fingerprint)) files.set(c.fingerprint, c.rawSize);
-    // ponytail: a crash here leaves files no row needs, which is only
-    // storage; a sweep of unreferenced files would find them.
-    if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
-    for (const characterId of Array.from(new Set<number>(theirs.map((c) => c.characterId)))) {
-      const mine = theirs.filter((c) => c.characterId === characterId);
-      const myFiles = Array.from(new Set<string>(mine.map((c) => c.fingerprint))).filter((fp) => files.has(fp));
-      pruned.push({
-        characterId,
-        versions: mine.length,
-        files: myFiles.length,
-        bytes: myFiles.reduce((sum, fp) => sum + files.get(fp)!, 0),
-      });
+    // One account failing (storage down for its files, say) doesn't stop
+    // the clean-up for everyone after it.
+    try {
+      const theirs = chosen.filter((c) => c.userId === userId);
+      const ids = theirs.map((c) => c.id);
+      // Marked before anything is deleted: a restore locks its source and
+      // checks it isn't pruned, so it either finishes first (and its new row,
+      // sharing the file, is counted as kept below) or is refused.
+      if (mode === "on") await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, ids));
+      // Identical files are stored once, so a file goes only when no version
+      // that stays has it.
+      const kept = new Set(
+        (
+          await db
+            .selectDistinct({ fp: versions.fingerprint })
+            .from(versions)
+            .innerJoin(characters, eq(characters.id, versions.characterId))
+            .where(and(eq(characters.userId, userId), isNull(versions.prunedAt), notInArray(versions.id, ids)))
+        ).map((k) => k.fp),
+      );
+      const files = new Map<string, number>();
+      for (const c of theirs) if (!kept.has(c.fingerprint)) files.set(c.fingerprint, c.rawSize);
+      // ponytail: a crash here leaves files no row needs, which is only
+      // storage; a sweep of unreferenced files would find them.
+      if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
+      for (const characterId of Array.from(new Set<number>(theirs.map((c) => c.characterId)))) {
+        const mine = theirs.filter((c) => c.characterId === characterId);
+        const myFiles = Array.from(new Set<string>(mine.map((c) => c.fingerprint))).filter((fp) => files.has(fp));
+        pruned.push({
+          characterId,
+          versions: mine.length,
+          files: myFiles.length,
+          bytes: myFiles.reduce((sum, fp) => sum + files.get(fp)!, 0),
+        });
+      }
+    } catch (e) {
+      console.error("prune: an account failed, carrying on:", e);
     }
   }
   if (mode === "on") {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { client, db } from "../src/db";
 import { prune } from "../src/prune";
 import { characters, jobs, verification, versions } from "../src/schema";
@@ -120,4 +120,25 @@ test("a version is marked pruned before its file is deleted, so a restore can't 
   await prune("on");
   expect(seen.length).toBeGreaterThan(0);
   expect(seen.every((t) => t !== null)).toBe(true);
+});
+
+test("one account the clean-up fails on doesn't stop it for the others", async () => {
+  const ann = await newDevice("user-1", "Desk");
+  const bob = await newDevice("user-2", "Desk");
+  await upload(ann.token, savedFile(journey({ events: session(1000) })));
+  await upload(bob.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const real = storage.remove;
+  spyOn(storage, "remove").mockImplementation(async (userId, fp) => {
+    if (userId === ann.device.userId) throw new Error("storage said no");
+    return real(userId, fp);
+  });
+  await prune("on");
+  const [bobUpload] = await db
+    .select()
+    .from(versions)
+    .innerJoin(characters, eq(characters.id, versions.characterId))
+    .where(and(eq(characters.userId, bob.device.userId), eq(versions.kind, "upload")));
+  expect(bobUpload!.versions.prunedAt).not.toBeNull();
+  expect(await stored(bob.device.userId, bobUpload!.versions.fingerprint)).toBe(false);
 });
