@@ -5,10 +5,45 @@ import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
 import { accountBytes, accountDaily, accountUploads, uploads } from "./limits";
 import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
-import { SERVER_FAILED } from "./worker";
+import { SERVER_FAILED, journeyRow } from "./worker";
 
 const MAX_FIELD = 64;
 const MAX_CHARACTERS = 100;
+const STAMP = '["journeyId"] = "';
+
+// The journey's stamp the addon saved (Core.lua): null when the file has
+// none (addon before 1.10.0), undefined when it isn't one.
+export function stampOf(raw: Uint8Array): string | null | undefined {
+  const text = Buffer.from(raw.buffer, raw.byteOffset, raw.length);
+  const at = text.indexOf(STAMP);
+  if (at < 0) return null;
+  const from = at + STAMP.length;
+  const to = text.indexOf('"', from);
+  if (to < 0 || to - from > MAX_FIELD) return undefined;
+  const stamp = text.toString("utf8", from, to);
+  return /^[A-Za-z0-9-]+:\d+$/.test(stamp) ? stamp : undefined;
+}
+
+type Character = typeof characters.$inferSelect;
+
+// The row an upload goes to (spec 2026-10-15 journeys, "Characters"): its
+// journey's own row; else the name's row from before stamps, for the
+// worker to check; else a new one, within the cap. An upload without a
+// stamp goes to the row from before stamps or the oldest, never a newer
+// journey. Null when the cap is reached.
+async function rowFor(userId: string, game: string, realm: string, name: string, stamp: string | null): Promise<Character | null> {
+  const rows = await db
+    .select()
+    .from(characters)
+    .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)))
+    .orderBy(characters.id);
+  const bare = rows.find((r) => r.journey === null);
+  const found = stamp ? (rows.find((r) => r.journey === stamp) ?? bare) : (bare ?? rows[0]);
+  if (found) return found;
+  const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
+  if (held!.n >= MAX_CHARACTERS) return null;
+  return journeyRow(userId, game, realm, name, stamp);
+}
 
 // The sync API the app calls with its PC token (spec, "Sync API").
 export const sync = pcRoutes()
@@ -60,21 +95,15 @@ export const sync = pcRoutes()
         set.status = 400;
         return { error: "compiled Lua is refused" };
       }
-      const userId = device!.userId;
-      const [existing] = await db
-        .select({ id: characters.id })
-        .from(characters)
-        .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)));
-      if (!existing) {
-        const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
-        // Plain text: the app shows the body as the reason on the character's row.
-        if (held!.n >= MAX_CHARACTERS) return new Response(`This account has reached ${MAX_CHARACTERS} characters`, { status: 422 });
-        await db.insert(characters).values({ userId, game, realm, name }).onConflictDoNothing();
+      const stamp = stampOf(raw);
+      if (stamp === undefined) {
+        set.status = 400;
+        return { error: "the journey's stamp isn't one the addon writes" };
       }
-      const [character] = await db
-        .select()
-        .from(characters)
-        .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)));
+      const userId = device!.userId;
+      const character = await rowFor(userId, game, realm, name, stamp);
+      // Plain text: the app shows the body as the reason on the character's row.
+      if (!character) return new Response(`This account has reached ${MAX_CHARACTERS} characters`, { status: 422 });
       const fp = fingerprint(raw);
       // A file the server failed to merge (storage down, say) gets another
       // try; one the merge refused stays refused.
@@ -82,7 +111,7 @@ export const sync = pcRoutes()
         await db
           .select({ id: versions.id, status: versions.status, rejectReason: versions.rejectReason })
           .from(versions)
-          .where(and(eq(versions.characterId, character!.id), eq(versions.fingerprint, fp)))
+          .where(and(eq(versions.characterId, character.id), eq(versions.fingerprint, fp)))
       ).find((v) => !(v.status === "rejected" && v.rejectReason === SERVER_FAILED));
       if (known) return { version: known.id, status: "known" };
 
@@ -90,7 +119,7 @@ export const sync = pcRoutes()
         ? await db
             .select({ id: versions.id })
             .from(versions)
-            .where(and(eq(versions.characterId, character!.id), eq(versions.id, Number(received) || 0)))
+            .where(and(eq(versions.characterId, character.id), eq(versions.id, Number(received) || 0)))
         : [];
       await put(userId, fp, packed);
       const id = await db.transaction(async (tx) => {
@@ -113,7 +142,7 @@ export const sync = pcRoutes()
                   .from(versions)
                   .where(
                     and(
-                      eq(versions.characterId, character!.id),
+                      eq(versions.characterId, character.id),
                       eq(versions.deviceId, device!.id),
                       eq(versions.kind, "upload"),
                       eq(versions.status, "pending"),
@@ -133,17 +162,18 @@ export const sync = pcRoutes()
         const [version] = await tx
           .insert(versions)
           .values({
-            characterId: character!.id,
+            characterId: character.id,
             deviceId: device!.id,
             kind: "upload",
             fingerprint: fp,
             rawSize: raw.length,
             addonVersion: addon ?? null,
+            journey: stamp,
             receivedId,
             status: "pending",
           })
           .returning({ id: versions.id });
-        await tx.insert(jobs).values({ characterId: character!.id, versionId: version!.id });
+        await tx.insert(jobs).values({ characterId: character.id, versionId: version!.id });
         return version!.id;
       });
       return { version: id, status: "queued" };

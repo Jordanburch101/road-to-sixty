@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
-import { LIMITS, runMerge, type Window } from "./lua";
+import { LIMITS, runMerge, runSame, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { MAX_RAW, fingerprint, get, pack, put, remove } from "./storage";
 
@@ -18,6 +18,28 @@ const STALE_SECONDS = LIMITS.seconds + 240;
 // Why an upload was rejected when the server, not the merge, failed: the
 // same file sent again gets another try.
 export const SERVER_FAILED = "the server couldn't merge it";
+
+type Character = typeof characters.$inferSelect;
+
+// The row of this name for this journey, made if there is none. Two
+// uploads may race to make it, hence the insert that does nothing on a
+// clash and the read after.
+export async function journeyRow(userId: string, game: string, realm: string, name: string, journey: string | null): Promise<Character> {
+  await db.insert(characters).values({ userId, game, realm, name, journey }).onConflictDoNothing();
+  const [row] = await db
+    .select()
+    .from(characters)
+    .where(
+      and(
+        eq(characters.userId, userId),
+        eq(characters.game, game),
+        eq(characters.realm, realm),
+        eq(characters.name, name),
+        sql`${characters.journey} IS NOT DISTINCT FROM ${journey}::text`,
+      ),
+    );
+  return row!;
+}
 
 // A due job's id, now marked running, or null: the oldest of the account the
 // worker served least recently, so one account's queue can't hold up
@@ -56,6 +78,41 @@ async function runJob(job: Job) {
   const [upload] = await db.select().from(versions).where(eq(versions.id, job.versionId));
   const [character] = await db.select().from(characters).where(eq(characters.id, job.characterId));
   if (!upload || !character) throw new Error(`job ${job.id} has no upload or character`);
+  const [head] = character.headVersionId
+    ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))
+    : [];
+
+  // A stamped upload queued against a journey from before stamps joins it
+  // only if it continues it; otherwise (a namesake remade before the old
+  // journey had a stamp) it moves to its journey's own row and runs again
+  // there. A second upload of that namesake finds the row the first made.
+  // ponytail: that row skips the 100-character cap; at most one per name
+  // from before stamps.
+  if (upload.journey && character.journey === null) {
+    const [own] = await db
+      .select()
+      .from(characters)
+      .where(
+        and(
+          eq(characters.userId, character.userId),
+          eq(characters.game, character.game),
+          eq(characters.realm, character.realm),
+          eq(characters.name, character.name),
+          eq(characters.journey, upload.journey),
+        ),
+      );
+    const apart =
+      own !== undefined ||
+      (head !== undefined && !(await runSame(await get(character.userId, head.fingerprint), await get(character.userId, upload.fingerprint))));
+    if (apart) {
+      const row = own ?? (await journeyRow(character.userId, character.game, character.realm, character.name, upload.journey));
+      await db.transaction(async (tx) => {
+        await tx.update(versions).set({ characterId: row.id }).where(eq(versions.id, upload.id));
+        await tx.update(jobs).set({ characterId: row.id, state: "queued", runAfter: new Date() }).where(eq(jobs.id, job.id));
+      });
+      return;
+    }
+  }
 
   // An upload from a PC that hadn't yet taken in the latest restore (or
   // never received anything, like a copied WTF folder) may still hold what
@@ -74,9 +131,6 @@ async function runJob(job: Job) {
   }
   const windows: Window[] = stale ? restores.flatMap((r) => JSON.parse(r.removed!) as Window[]) : [];
 
-  const [head] = character.headVersionId
-    ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))
-    : [];
   const result = await runMerge(
     await get(character.userId, upload.fingerprint),
     head ? await get(character.userId, head.fingerprint) : null,
@@ -120,6 +174,8 @@ async function runJob(job: Job) {
         .update(characters)
         .set({
           headVersionId: merged!.id,
+          // A journey from before stamps takes its first stamped upload's.
+          ...(character.journey === null && upload.journey ? { journey: upload.journey } : {}),
           level: result.level,
           // A file from before the addon recorded the class doesn't forget it.
           ...(result.class ? { class: result.class } : {}),
