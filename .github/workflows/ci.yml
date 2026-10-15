@@ -60,6 +60,7 @@ jobs:
       - name: Build
         working-directory: apps/web
         env:
+          PUBLIC_SITE_URL: https://example.test
           PUBLIC_ADDON_URL: https://example.test/addon
           PUBLIC_CONTACT_EMAIL: test@example.test
         run: bun run build
