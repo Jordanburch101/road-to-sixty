@@ -44,7 +44,7 @@ Top to bottom, as in `Site-Home` and `Site-Below-2`:
    - Every version kept
    - Works without the app
    - Yours: download it all, or delete it all, nothing public, nothing sold
-7. **"Ready for launch day."** An airport-style flip board counts down the days, hours, minutes and seconds to 3 pm Pacific on 4 November (23:00 UTC); at zero the heading reads "WoW Forever is live." Under it: WoW Forever launches on 4 November at 3 pm Pacific; install the addon now so the road starts at level 1. Both buttons again. This section goes after launch.
+7. **"Ready for launch day."** WoW Forever launches on 4 November; install the addon now so the road starts at level 1. Both buttons again. This section goes after launch.
 8. **Footer:** "Road to Sixty, made by Jordan Burch" (linked), Privacy, Terms, and "Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft is a trademark of Blizzard Entertainment, Inc."
 
 At phone width (`Site-Phone`), the same sections stack:
