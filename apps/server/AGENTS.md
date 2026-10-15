@@ -75,18 +75,23 @@ bun run dev               # port 3000, with .env copied from .env.example
   protection.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
-- Limits (spec 2026-10-15): 30 uploads per PC in 15 minutes, 600
-  requests an hour, 60 uploads per account in 15 minutes and 500 a day,
-  and 5 exports an hour answer 429, which the app retries; 20 linked PCs
-  per account (409 on the 21st); 8 MB compressed and 64-character names
-  answer 413 and 400; a 101st character answers 422 in plain text, which
-  the app shows on the row. The counts are in memory.
+- Limits (spec 2026-10-15, `src/limits.ts`): per PC, 120 uploads in 15
+  minutes and 600 requests an hour; per account, 240 uploads in 15
+  minutes, 500 and 200 MB a day, 2,000 requests an hour, 10 links a day, 5
+  exports and 10 restores an hour; 200 new players an hour; one export and
+  one restore at a time. All answer 429. 20 linked PCs per account (409),
+  100 characters (422, plain text the app shows on the row), 8 MB uploads
+  and 16 KB for any other body (413), 64-character names (400). The counts
+  are in memory, so a restart forgets them.
 - `api.roadtosixty.online` is behind Cloudflare's proxy. When
   Cloudflare changes its ranges (https://www.cloudflare.com/ips/), update
   `src/proxies.ts`, or sign-in limits count Cloudflare instead of visitors.
 - The clean-up never deletes a version row, only files, and sets
-  `pruned_at`. Anything that reads a version's file must skip pruned
-  versions. `PRUNE` is `dry` by default: read its log before setting `on`
-  in Dokploy.
+  `pruned_at` before deleting. It keeps each character's newest 100
+  versions, the head, and those marked `weekly` (each finished week's
+  newest, and any version a restore replaced). Anything that reads a
+  version's file must skip pruned versions, and a restore must lock its
+  source `FOR SHARE` and check it isn't pruned. `PRUNE` is `dry` by
+  default: read its log before setting `on` in Dokploy.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.
