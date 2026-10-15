@@ -1,4 +1,4 @@
-<p align="center"><img src="branding/road-to-sixty-header.png" alt="Road to Sixty: your road from 1 to 60, replayed on the map" width="720"></p>
+<p align="center"><img src="branding/readme-banner.jpg" alt="Road to Sixty: track your level 1 to 60 journey. A painted map with a road from level 1 to 60, beside the journey's history and stats"></p>
 
 <p align="center">
   <a href="https://www.curseforge.com/wow/addons/road-to-sixty">Get the addon</a> ·
