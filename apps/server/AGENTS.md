@@ -61,8 +61,10 @@ bun run dev               # port 3000, with .env copied from .env.example
 - The runner tells a refusal from a fault. Only an `error(why, 0)` from the
   merge rules rejects an upload. Anything else (a limit, a crash, a bug with
   a file and line, storage down) makes `runMerge` throw, and the worker
-  tries again for about a day with a doubling wait. A job left running past
-  `STALE_SECONDS` is taken back by the next claim.
+  tries again for about a day with a doubling wait; a time or memory limit
+  gets one more try only. A job left running past `STALE_SECONDS` is taken
+  back by the next claim. The worker takes the next job from the account it
+  served least recently.
 - An upload made before the latest restore reached its PC is merged
   without the play inside every restore's windows (`versions.removed`,
   worked out by the restore route with `runWindows`). Only a restore made

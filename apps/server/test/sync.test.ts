@@ -1,9 +1,10 @@
 import type { CheckResponse, RestoreResponse, UploadResponse } from "@road-to-sixty/api";
-import { beforeEach, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { eq, sql } from "drizzle-orm";
 import { app } from "../src/app";
 import { config } from "../src/config";
 import { client, db } from "../src/db";
+import * as lua from "../src/lua";
 import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { MAX_PACKED, pack, unpack } from "../src/storage";
@@ -12,6 +13,7 @@ import { accountDaily, accountUploads, requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
+afterEach(() => mock.restore());
 
 test("a PC needs a token that is known and not revoked", async () => {
   expect((await app.handle(new Request("http://local/v1/check"))).status).toBe(401);
@@ -442,4 +444,38 @@ test("a PC's last visit is written at most every 10 minutes, unless its versions
   await call(desk.token, "/v1/check?app=0.1.4");
   const [third] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
   expect(third!.appVersion).toBe("0.1.4");
+});
+
+test("the worker takes turns between accounts, not only oldest first", async () => {
+  const ann = await newDevice("user-1", "Desk");
+  const bob = await newDevice("user-2", "Desk");
+  for (const name of ["A1", "A2", "A3"]) await upload(ann.token, savedFile(journey({ events: session(1000) })), { name });
+  await upload(bob.token, savedFile(journey({ events: session(1000) })), { name: "B1" });
+  const order: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    await work();
+    const [last] = await db
+      .select({ name: characters.name })
+      .from(jobs)
+      .innerJoin(characters, eq(characters.id, jobs.characterId))
+      .orderBy(sql`${jobs.claimedAt} DESC NULLS LAST`)
+      .limit(1);
+    order.push(last!.name);
+  }
+  expect(order.slice(0, 2)).toEqual(["A1", "B1"]);
+});
+
+test("a merge that hits its time or memory limit is tried once more, then given up", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const sent = (await (await upload(desk.token, savedFile(journey({ events: session(1000) })))).json()) as UploadResponse;
+  spyOn(lua, "runMerge").mockImplementation(async () => {
+    throw new Error("the merge failed: over the time limit");
+  });
+  await work();
+  expect((await db.select().from(jobs))[0]!.state).toBe("queued");
+  await db.update(jobs).set({ runAfter: new Date(0) });
+  await work();
+  expect((await db.select().from(jobs))[0]!.state).toBe("failed");
+  const [v] = await db.select().from(versions).where(eq(versions.id, sent.version));
+  expect(v).toMatchObject({ status: "rejected", rejectReason: SERVER_FAILED });
 });
