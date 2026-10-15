@@ -6,6 +6,31 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.9.0
+
+### New
+- Play one character on more than one computer? The free Road to Sixty
+  app (Mac and Windows, from roadtosixty.online) now backs your journeys
+  up and joins them together. When you log in, the addon brings in the
+  journey the app put together from your other PCs, so each one shows the
+  whole road. Without the app, nothing changes: the addon keeps working
+  on its own.
+- `/rts check` shows whether the journey from the app came in at login,
+  and if it couldn't, why.
+
+### Fixed
+- Times are now taken from the realm's clock instead of your computer's,
+  so a PC whose clock is off no longer puts your sessions out of order.
+- Teleports the addon couldn't name, such as one from a quest or an NPC,
+  are now drawn as portals and listed under Teleports, instead of a plain
+  dotted line.
+- The map opens faster when nothing new has been recorded, terrain comes
+  in without a pause, starting from the middle, and long journeys with
+  many kills replay more smoothly.
+
+This version moves your saved journey to a new layout the first time you
+log in. Going back to 1.8.0 afterwards isn't supported.
+
 ## 1.8.0
 
 ### New
