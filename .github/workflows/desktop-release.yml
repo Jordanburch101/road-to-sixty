@@ -114,6 +114,18 @@ jobs:
           path: out
           merge-multiple: true
 
+      # A file signed with the wrong key would be refused by every installed
+      # app, so it must never reach the bucket.
+      - name: Each signature matches the updater's key
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y minisign
+          jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json | base64 -d > "$RUNNER_TEMP/updater.pub"
+          ls out/*.sig
+          for sig in out/*.sig; do
+            base64 -d "$sig" > "$RUNNER_TEMP/check.sig"
+            minisign -V -q -p "$RUNNER_TEMP/updater.pub" -x "$RUNNER_TEMP/check.sig" -m "${sig%.sig}"
+          done
+
       - name: latest.json
         run: bun apps/desktop/scripts/latest-json.ts "${GITHUB_REF_NAME#app-v}" "$DOWNLOADS" out > latest.json
 

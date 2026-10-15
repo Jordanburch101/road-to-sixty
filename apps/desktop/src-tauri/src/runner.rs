@@ -85,6 +85,10 @@ pub struct Runner {
     notifier: Notifier,
     stop: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
+    /// The server refused this PC's token. Linking or unlinking clears it,
+    /// and so does restarting the app, in case the refusal was the server's
+    /// mistake.
+    refused: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -99,6 +103,7 @@ impl Runner {
             notifier,
             stop: Arc::default(),
             busy: Arc::default(),
+            refused: Arc::default(),
             thread: None,
         }
     }
@@ -115,7 +120,11 @@ impl Runner {
     /// Looks for game folders again when nothing is syncing (not linked, or
     /// no WoW found yet); a running sync looks for itself.
     pub fn rescan(&mut self) -> Result<(), String> {
-        if self.is_running() { Ok(()) } else { self.start() }
+        if self.is_running() || self.refused.load(Ordering::Relaxed) {
+            Ok(())
+        } else {
+            self.start()
+        }
     }
 
     /// Brings the status up to date, then syncs if this PC is linked and
@@ -165,13 +174,14 @@ impl Runner {
 
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = stop.clone();
-        let (server, state_path, cache, notifier, find, busy) = (
+        let (server, state_path, cache, notifier, find, busy, refused) = (
             self.server.clone(),
             self.state_path.clone(),
             self.cache.clone(),
             self.notifier.clone(),
             self.find.clone(),
             self.busy.clone(),
+            self.refused.clone(),
         );
         self.thread = Some(std::thread::spawn(move || {
             let client = Client::new(&server, token).app(crate::VERSION);
@@ -184,6 +194,9 @@ impl Runner {
                 })
             };
             let report = |result: &Result<Report, ApiError>| {
+                if matches!(result, Err(ApiError::Unauthorized)) {
+                    refused.store(true, Ordering::Relaxed);
+                }
                 let games = result.as_ref().map(|r| r.games.clone()).unwrap_or_default();
                 let local = local_keys(&games);
                 notifier.update(|s| {
@@ -211,14 +224,17 @@ impl Runner {
     /// forget what was uploaded under any old link, and start again.
     pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
         self.stop();
-        self.tokens.set(&linked.token)?;
+        self.refused.store(false, Ordering::Relaxed);
         let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
         state.pc = Some(linked.pc);
         state.battletag = Some(linked.battletag);
         state.uploaded.clear();
         // Another link's version ids mean other journeys.
         let _ = fs::remove_dir_all(&self.cache);
+        // The token last: if the app stops in between, it is unlinked, not
+        // linked with the old link's list of files already sent.
         state.save(&self.state_path).map_err(|e| e.to_string())?;
+        self.tokens.set(&linked.token)?;
         self.notifier.update(|s| {
             s.link_code = None;
             s.link_url = None;
@@ -229,6 +245,7 @@ impl Runner {
 
     pub fn unlink(&mut self) -> Result<(), String> {
         self.stop();
+        self.refused.store(false, Ordering::Relaxed);
         // Revoked on the server first, so the token stops working there too.
         // Offline, this PC still unlinks; the player can remove it from
         // another PC's list.
@@ -274,10 +291,17 @@ impl Runner {
         Ok(())
     }
 
+    /// Shown before the wait for a pass to stop, so a second click sees it.
     pub fn set_paused(&mut self, paused: bool) -> Result<(), String> {
-        self.stop();
         self.notifier.update(|s| s.paused = paused);
+        self.stop();
         self.start()
+    }
+
+    /// Read under the runner's lock, so each of two quick clicks flips it.
+    pub fn toggle_paused(&mut self) -> Result<(), String> {
+        let paused = self.notifier.get().paused;
+        self.set_paused(!paused)
     }
 }
 
@@ -325,6 +349,16 @@ mod tests {
     }
 
     fn setup(linked: bool) -> Setup {
+        setup_with(
+            linked,
+            fake::serve(|_, url| match url {
+                u if u.starts_with("/v1/check") => (200, CHECK.as_bytes().to_vec()),
+                _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
+            }),
+        )
+    }
+
+    fn setup_with(linked: bool, fake: fake::Fake) -> Setup {
         let dir = tempfile::tempdir().unwrap();
         let game = dir.path().join("wow/_classic_beta_");
         std::fs::create_dir_all(addon_toc(&game).parent().unwrap()).unwrap();
@@ -332,10 +366,6 @@ mod tests {
         let saved = game.join("WTF/Account/ACCOUNT1/70/Ann-Stormfist/SavedVariables");
         std::fs::create_dir_all(&saved).unwrap();
         std::fs::write(saved.join("RoadToSixty.lua"), FILE).unwrap();
-        let fake = fake::serve(|_, url| match url {
-            u if u.starts_with("/v1/check") => (200, CHECK.as_bytes().to_vec()),
-            _ => (200, br#"{"version":8,"status":"queued"}"#.to_vec()),
-        });
         let data = dir.path().join("data");
         let tokens = TokenFile::new(data.join("token"));
         if linked {
@@ -489,6 +519,81 @@ mod tests {
         assert_eq!(t.notifier.get().linked_to.as_deref(), Some("Ann#1234"));
         assert!(t.runner.is_running());
         t.runner.stop();
+    }
+
+    #[test]
+    fn pausing_shows_at_once_while_a_slow_pass_finishes() {
+        let mut t = setup_with(
+            true,
+            fake::serve(|_, _| {
+                std::thread::sleep(Duration::from_millis(1500));
+                (200, br#"{"characters":[]}"#.to_vec())
+            }),
+        );
+        t.runner.start().unwrap();
+        let busy = t.runner.busy();
+        let until = Instant::now() + Duration::from_secs(5);
+        while !busy.load(std::sync::atomic::Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let mut runner = t.runner;
+        let pausing = std::thread::spawn(move || {
+            runner.set_paused(true).unwrap();
+            runner
+        });
+        // A second click reads this, so it must not wait for the pass.
+        let until = Instant::now() + Duration::from_millis(500);
+        while !t.notifier.get().paused && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(t.notifier.get().paused);
+        assert!(!pausing.is_finished(), "the pass was meant to still be running");
+        pausing.join().unwrap().stop();
+    }
+
+    #[test]
+    fn a_refused_token_isnt_asked_again_by_the_regular_look_for_wow() {
+        let mut t = setup_with(true, fake::serve(|_, _| (401, br#"{"error":"unknown or unlinked PC"}"#.to_vec())));
+        t.runner.start().unwrap();
+        let until = Instant::now() + Duration::from_secs(5);
+        while t.runner.is_running() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!t.runner.is_running(), "the loop ends on a refused token");
+        let asked = t._fake.seen.lock().unwrap().len();
+        t.runner.rescan().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(!t.runner.is_running());
+        assert_eq!(t._fake.seen.lock().unwrap().len(), asked);
+        assert_eq!(t.notifier.get().linked_to, None);
+    }
+
+    #[test]
+    fn two_toggles_end_where_they_started() {
+        let mut t = setup(true);
+        t.runner.toggle_paused().unwrap();
+        assert!(t.notifier.get().paused);
+        t.runner.toggle_paused().unwrap();
+        assert!(!t.notifier.get().paused);
+        t.runner.stop();
+    }
+
+    #[test]
+    fn a_link_whose_state_cant_be_saved_keeps_no_token() {
+        let mut t = setup(false);
+        let data = t.dir.path().join("data");
+        State::default().save(&data.join("state.json")).unwrap();
+        // A folder where the state's temporary file goes makes the save fail.
+        std::fs::create_dir_all(data.join("state.tmp")).unwrap();
+        let linked = t.runner.linked(LinkResponse {
+            token: "new-token".into(),
+            pc: "pc-2".into(),
+            battletag: "Ann#1234".into(),
+        });
+        assert!(linked.is_err());
+        // With the token but not the new PC id and cleared uploads, the app
+        // would think the old link's files were already sent.
+        assert_eq!(t.tokens.get(), None);
     }
 
     #[test]

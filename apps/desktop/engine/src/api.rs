@@ -146,6 +146,11 @@ impl Client {
         }
     }
 
+    /// Whether `url` is a page on this server.
+    pub fn is_own(&self, url: &str) -> bool {
+        url.starts_with(&format!("{}/", self.server))
+    }
+
     pub fn app(mut self, version: &str) -> Self {
         self.app = Some(version.to_string());
         self

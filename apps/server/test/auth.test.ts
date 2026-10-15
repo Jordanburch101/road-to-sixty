@@ -195,3 +195,9 @@ test("an account links at most 10 PCs a day, and the server takes at most 200 ne
   await signIn({ id: 999, battletag: "Late#9999" });
   expect((await db.select().from(user)).map((u) => u.name)).not.toContain("Late#9999");
 });
+
+test("the link page can't be shown inside another site", async () => {
+  const page = await app.handle(new Request("http://localhost:3000/link"));
+  expect(page.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+  expect(page.headers.get("x-frame-options")).toBe("DENY");
+});
