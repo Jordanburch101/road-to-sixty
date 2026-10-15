@@ -22,7 +22,7 @@ pub struct SavedFile {
     pub path: PathBuf,
 }
 
-/// Where Battle.net keeps its list of installed games.
+/// On a Mac or Windows, where Battle.net keeps its list of installed games.
 pub fn product_db() -> PathBuf {
     if cfg!(windows) {
         PathBuf::from(r"C:\ProgramData\Battle.net\Agent\product.db")
@@ -31,7 +31,7 @@ pub fn product_db() -> PathBuf {
     }
 }
 
-/// Where WoW installs itself when nobody picks a folder.
+/// On a Mac or Windows, where WoW installs itself when nobody picks a folder.
 pub fn default_installs() -> Vec<PathBuf> {
     if cfg!(windows) {
         vec![PathBuf::from(r"C:\Program Files (x86)\World of Warcraft")]
@@ -64,11 +64,19 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
     found
 }
 
-/// Every install that exists: Battle.net's list, the default locations, and
-/// folders the player picked, without repeats.
+/// Every install that exists: Battle.net's list and the default locations
+/// (on Linux, those inside each Wine prefix), and folders the player picked,
+/// without repeats.
 pub fn find_installs(picked: &[PathBuf]) -> Vec<PathBuf> {
-    let mut all: Vec<PathBuf> = fs::read(product_db()).map(|b| installs_in_product_db(&b)).unwrap_or_default();
-    all.extend(default_installs());
+    let mut all: Vec<PathBuf> = Vec::new();
+    // dirs reads $HOME; without one, only the picked folders count.
+    #[cfg(target_os = "linux")]
+    all.extend(dirs::home_dir().map(|home| crate::wine::installs(&home)).unwrap_or_default());
+    #[cfg(not(target_os = "linux"))]
+    {
+        all.extend(fs::read(product_db()).map(|b| installs_in_product_db(&b)).unwrap_or_default());
+        all.extend(default_installs());
+    }
     all.extend(picked.iter().cloned());
     let mut found: Vec<PathBuf> = Vec::new();
     for path in all {

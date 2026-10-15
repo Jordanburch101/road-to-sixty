@@ -11,7 +11,13 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
 
 - `engine/` is the sync engine, a Rust library with no window (package
   `rts-sync`):
-  - `installs.rs` finds WoW installs, game folders and saved journeys.
+  - `installs.rs` finds WoW installs, game folders and saved journeys. On
+    Linux the installs come from `wine.rs`: every Wine prefix under the
+    home folder (Proton's in each Steam library from `libraryfolders.vdf`,
+    SD cards included, Lutris's `~/Games`, Bottles, `~/.wine`), Battle.net's
+    list in each with drive letters turned into paths through `dosdevices`,
+    and the default folder. `wine.rs` is unix-only: a path joined with `c:`
+    on Windows replaces the whole path.
   - `inbox.rs` writes the `RoadToSixty_Sync` folder. A restore reaches the
     addon as `restore = <id>`, never as a yes or no: the addon replaces only
     a copy older than that restore (`Sync.lua`).

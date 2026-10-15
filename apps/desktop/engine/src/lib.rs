@@ -11,3 +11,5 @@ pub mod link;
 pub mod state;
 pub mod sync;
 pub mod watch;
+#[cfg(unix)]
+pub mod wine;
