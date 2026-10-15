@@ -14,7 +14,7 @@ export function link(name: string, value: string | undefined): string {
 }
 
 const env = import.meta.env ?? {};
-export const DOWNLOADS: string = link("PUBLIC_DOWNLOADS", env.PUBLIC_DOWNLOADS || "https://dl.rts.everhold.online");
+export const DOWNLOADS: string = link("PUBLIC_DOWNLOADS", env.PUBLIC_DOWNLOADS || "https://dl.roadtosixty.online");
 
 // Read when a page uses them, so the tests can load this file without them.
 export const addonUrl = () => link("PUBLIC_ADDON_URL", env.PUBLIC_ADDON_URL);

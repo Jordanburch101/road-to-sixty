@@ -12,7 +12,7 @@ on:
 
 env:
   BUCKET: road-to-sixty-downloads
-  DOWNLOADS: https://dl.rts.everhold.online
+  DOWNLOADS: https://dl.roadtosixty.online
 
 jobs:
   build:
@@ -55,7 +55,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          RTS_SERVER: https://api.rts.everhold.online
+          RTS_SERVER: https://api.roadtosixty.online
         run: bunx tauri build ${{ matrix.args }}
 
       # Fixed names without spaces, which latest-json.ts and the website expect.

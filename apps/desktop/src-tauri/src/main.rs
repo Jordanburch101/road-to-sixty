@@ -27,7 +27,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The server this build talks to, set at build time for player builds.
 pub const SERVER: &str = match option_env!("RTS_SERVER") {
     Some(server) => server,
-    None => rts_sync::api::TEST_SERVER,
+    None => rts_sync::api::DEFAULT_SERVER,
 };
 
 fn main() {

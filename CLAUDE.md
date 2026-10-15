@@ -67,7 +67,7 @@ go through `account.rs`, so the window never holds the token), `window.rs`
 opens the window under the icon, `update.rs` is self-update. `src/` is the window (Vite
 and React), styled from `packages/ui`, the look the website shares. App
 releases come from `app-v*` tags: CI uploads them to the public R2 bucket
-`road-to-sixty-downloads` (`https://dl.rts.everhold.online/app/`), with
+`road-to-sixty-downloads` (`https://dl.roadtosixty.online/app/`), with
 `latest.json` for the updater, because this repo is private.
 `packages/api/` holds the request and response types the server, website
 and app share.

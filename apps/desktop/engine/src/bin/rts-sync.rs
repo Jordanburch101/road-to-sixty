@@ -20,7 +20,7 @@ use rts_sync::sync::Report;
 use rts_sync::{installs, link, sync, watch};
 
 fn main() -> ExitCode {
-    let server = std::env::var("RTS_SERVER").unwrap_or_else(|_| rts_sync::api::TEST_SERVER.to_string());
+    let server = std::env::var("RTS_SERVER").unwrap_or_else(|_| rts_sync::api::DEFAULT_SERVER.to_string());
     let data = std::env::var_os("RTS_DATA_DIR").map(PathBuf::from).unwrap_or_else(state::data_dir);
     let state_path = data.join("state.json");
     let cache = data.join("journeys");
