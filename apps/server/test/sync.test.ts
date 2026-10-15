@@ -320,7 +320,9 @@ test("a merge never overwrites a head that moved while it ran", async () => {
 test("a PC that uploads too often is told to wait, and other PCs aren't", async () => {
   const desk = await newDevice("user-1", "Desk");
   const laptop = await newDevice("user-1", "Laptop");
-  for (let i = 0; i < 30; i++) uploads.take(desk.device.id);
+  // Room for every character to go up at once after a relink, which sends them all again.
+  expect(uploads.max).toBeGreaterThanOrEqual(100);
+  for (let i = 0; i < uploads.max; i++) uploads.take(desk.device.id);
   const refused = await upload(desk.token, savedFile(journey({ events: session(1000) })));
   expect(refused.status).toBe(429);
   expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
@@ -426,7 +428,8 @@ test("an account's PCs share its upload allowance", async () => {
   const desk = await newDevice("user-1", "Desk");
   const laptop = await newDevice("user-1", "Laptop");
   const other = await newDevice("user-2", "Elsewhere");
-  for (let i = 0; i < 60; i++) accountUploads.take(desk.device.userId);
+  expect(accountUploads.max).toBeGreaterThanOrEqual(2 * uploads.max); // two PCs relinking at once
+  for (let i = 0; i < accountUploads.max; i++) accountUploads.take(desk.device.userId);
   expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
   expect((await upload(other.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
   accountUploads.clear();

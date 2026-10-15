@@ -1,6 +1,7 @@
-// How often one PC may call the server (spec, "Limits"). The app uploads a
-// character at most every 15 minutes while the game runs, so these only
-// stop a runaway app or someone scripting the API.
+// How often one PC or account may call the server, upload, restore and
+// export (spec, "Limits"). The app uploads a character at most every 15
+// minutes while the game runs, so these only stop a runaway app or someone
+// scripting the API.
 // ponytail: counted in memory by one server process, so a restart forgets
 // them and a second instance wouldn't share them; move to Postgres if the
 // server ever runs twice.
@@ -55,10 +56,12 @@ export class Window {
   }
 }
 
-export const uploads = new Window(30, 15 * 60);
+// Relinking a PC sends every character again, up to the 100 an account may
+// have, so a PC gets room for all of them at once.
+export const uploads = new Window(120, 15 * 60);
 export const requests = new Window(600, 3600);
 // Per account, so linking more PCs doesn't multiply what one account can send.
-export const accountUploads = new Window(60, 15 * 60);
+export const accountUploads = new Window(240, 15 * 60);
 export const accountDaily = new Window(500, 24 * 3600);
 // The export builds every character's journey into one zip in memory.
 export const exports = new Window(5, 3600);
