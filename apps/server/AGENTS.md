@@ -3,7 +3,7 @@
 The backend for sync and backup (#1): Elysia on Bun, Postgres through
 Drizzle, journeys in an S3 store (Cloudflare R2 in production), sign-in with
 Battle.net through Better Auth. Dokploy builds it from `Dockerfile` on every
-push to `dev` that touches it. The design is
+push to `main` that touches it. The design is
 `docs/superpowers/specs/2026-10-12-sync-and-backup-design.md`.
 
 ## Layout
