@@ -152,3 +152,15 @@ test("an account can link 20 PCs; the 21st is refused until one is unlinked", as
   await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.id, one!.id));
   expect((await linkOnce(cookie)).status).toBe(200);
 });
+
+test("one sign-in links one PC, even when the app asks several times at once", async () => {
+  const cookie = await signIn();
+  const code = (await (await deviceCode()).json()) as { device_code: string; user_code: string };
+  await approve(code.user_code, cookie);
+  const tokenRequest = { grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: code.device_code, client_id: APP_CLIENT_ID };
+  const { access_token } = (await (await post("/api/auth/device/token", tokenRequest)).json()) as { access_token: string };
+  const link = () => app.handle(new Request("http://localhost:3000/v1/link?name=Desk", { method: "POST", headers: { authorization: `Bearer ${access_token}` } }));
+  const answers = await Promise.all(Array.from({ length: 5 }, link));
+  expect(answers.filter((r) => r.status === 200).length).toBe(1);
+  expect((await db.select().from(devices)).length).toBe(1);
+});

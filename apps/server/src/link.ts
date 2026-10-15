@@ -36,7 +36,10 @@ export const link = new Elysia()
     const signedIn = headers.authorization
       ? await auth.api.getSession({ headers: new Headers({ authorization: headers.authorization }) })
       : null;
-    if (!signedIn) {
+    // The sign-in is used up first, so asking several times at once with
+    // one token links one PC.
+    const used = signedIn ? await db.delete(session).where(eq(session.id, signedIn.session.id)).returning({ id: session.id }) : [];
+    if (!signedIn || used.length === 0) {
       set.status = 401;
       return { error: "sign in on the link page first" };
     }
@@ -49,6 +52,5 @@ export const link = new Elysia()
     const name = pcName(query.name) ?? "PC";
     const platform = query.platform?.slice(0, 20);
     const { device, token } = await newDevice(signedIn.user.id, name, platform);
-    await db.delete(session).where(eq(session.id, signedIn.session.id));
     return { token, pc: device.id, battletag: signedIn.user.name };
   });
