@@ -355,3 +355,11 @@ test("an export over 512 MB in all is refused, and one export runs at a time on 
   expect(exportSlot.take()).toBe(true); // the refusals gave the slot back
   exportSlot.give();
 });
+
+test("the version a restore replaces is kept for good, so the player can switch back", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const { c, old } = await oldAndHead(token);
+  expect((await restore(token, c.id, old.id)).status).toBe(200);
+  const [replaced] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
+  expect(replaced!.weekly).toBe(true);
+});

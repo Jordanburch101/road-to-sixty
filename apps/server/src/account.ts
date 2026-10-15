@@ -170,6 +170,9 @@ export const account = pcRoutes()
             .where(and(eq(versions.id, source.id), isNull(versions.prunedAt)))
             .for("share");
           if (!still) return "gone" as const;
+        // The version being replaced is kept for good, so the player can
+        // always switch back.
+        await tx.update(versions).set({ weekly: true }).where(eq(versions.id, c.headVersionId!));
           const [made] = await tx
             .insert(versions)
             .values({

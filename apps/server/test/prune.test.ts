@@ -24,6 +24,18 @@ async function play(token: string, n: number) {
   return ids;
 }
 
+// n more merged versions of the one character, made now, with files of
+// their own that aren't stored (the clean-up treats a missing file as gone).
+async function pile(n: number) {
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  const made = await db
+    .insert(versions)
+    .values(Array.from({ length: n }, (_, i) => ({ ...head!, id: undefined, weekly: false, fingerprint: `pile-${i}`, createdAt: new Date() })))
+    .returning({ id: versions.id });
+  return made.map((m) => m.id);
+}
+
 test("an upload's file goes once its merge is done, not while it waits", async () => {
   const { device, token } = await newDevice("user-1", "Desk");
   await upload(token, savedFile(journey({ events: session(1000) })));
@@ -37,7 +49,7 @@ test("an upload's file goes once its merge is done, not while it waits", async (
   expect(await stored(device.userId, waiting!.fingerprint)).toBe(false);
 });
 
-test("versions from the last 30 days stay; older, the newest of each week and the head stay", async () => {
+test("the newest 100 versions stay at any age; past them, each finished week's newest and the head", async () => {
   const { device, token } = await newDevice("user-1", "Desk");
   const [a, b, c, d, head] = await play(token, 5);
   await at(a!, "2025-01-06T10:00Z"); // Monday
@@ -48,11 +60,16 @@ test("versions from the last 30 days stay; older, the newest of each week and th
   await at(head!, "2025-01-14T10:00Z");
   await db.update(versions).set({ weekly: true }).where(eq(versions.id, c!));
   await prune("on");
+  for (const id of [a!, b!, c!, d!, head!]) expect((await row(id)).prunedAt).toBeNull(); // all in the newest 100
+
+  await pile(100);
+  await prune("on");
   expect((await row(a!)).prunedAt).not.toBeNull();
   expect(await stored(device.userId, (await row(a!)).fingerprint)).toBe(false);
-  for (const id of [b!, c!, d!, head!]) expect((await row(id)).prunedAt).toBeNull();
+  expect((await row(d!)).prunedAt).not.toBeNull(); // past the newest 100, in a week still under way
+  for (const id of [b!, c!, head!]) expect((await row(id)).prunedAt).toBeNull();
   expect([(await row(b!)).weekly, (await row(c!)).weekly]).toEqual([true, true]);
-  expect([(await row(d!)).weekly, (await row(head!)).weekly]).toEqual([false, false]); // d's week is still under way
+  expect([(await row(d!)).weekly, (await row(head!)).weekly]).toEqual([false, false]);
 });
 
 test("weeks are counted in UTC: Sunday 23:00 and Monday 01:00 are different weeks", async () => {
@@ -68,12 +85,27 @@ test("a file another kept version shares stays", async () => {
   const { device, token } = await newDevice("user-1", "Desk");
   const [a, b] = await play(token, 3);
   await at(a!, "2025-01-06T10:00Z");
-  await at(b!, "2025-01-07T10:00Z"); // b is that week's keeper, a is pruned
+  await at(b!, "2025-01-07T10:00Z"); // b is that week's keeper, a goes once past the newest 100
+  await pile(100);
   const shared = await row(a!);
   await db.insert(versions).values({ ...shared, id: undefined, weekly: false, createdAt: new Date() });
   await prune("on");
   expect((await row(a!)).prunedAt).not.toBeNull();
   expect(await stored(device.userId, shared.fingerprint)).toBe(true);
+});
+
+test("a refused or replaced upload is kept 30 days, as the app won't send it again", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] }))); // replaces the first in the queue
+  await workAll();
+  const [folded] = await db.select().from(versions).where(eq(versions.status, "superseded"));
+  await prune("on");
+  expect((await row(folded!.id)).prunedAt).toBeNull();
+  expect(await stored(device.userId, folded!.fingerprint)).toBe(true);
+  await at(folded!.id, "2025-01-06T10:00Z");
+  await prune("on");
+  expect((await row(folded!.id)).prunedAt).not.toBeNull();
 });
 
 test("dry deletes nothing and says what it would; a second run finds nothing; a missing file doesn't stop it", async () => {

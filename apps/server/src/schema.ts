@@ -64,8 +64,8 @@ export const versions = pgTable("versions", {
   receivedId: bigint("received_id", { mode: "number" }),
   status: text("status", { enum: ["pending", "accepted", "rejected", "superseded"] }).notNull(),
   rejectReason: text("reject_reason"),
-  // Set on the newest merged or restored version of each finished week, the
-  // one the clean-up keeps for that week.
+  // Kept for good by the clean-up: the newest merged or restored version of
+  // each finished week, and any version a restore replaced.
   weekly: boolean("weekly").notNull().default(false),
   // When the clean-up deleted this version's file. The row stays: restores'
   // windows, parents and the known-file check still need it.
@@ -74,6 +74,8 @@ export const versions = pgTable("versions", {
 }, (t) => [
   // Check, history, the known-file check and the clean-up read a character's versions.
   index("versions_character").on(t.characterId, t.id),
+  // Every upload asks whether the server already has the file.
+  index("versions_fingerprint").on(t.characterId, t.fingerprint),
   // Check, folding and a PC's latest upload read one PC's uploads of a character.
   index("versions_device_upload").on(t.deviceId, t.characterId, t.id).where(sql`${t.kind} = 'upload'`),
 ]);

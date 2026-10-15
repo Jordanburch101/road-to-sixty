@@ -5,9 +5,10 @@ import { remove } from "./storage";
 
 export type Pruned = { characterId: number; versions: number; files: number; bytes: number };
 
-// The daily clean-up (spec, "Version clean-up"): every merged and restored
-// version from the last 30 days stays, then the newest of each finished
-// week; an upload's file goes once its merge is done. Rows stay, with
+// The daily clean-up (spec, "Version clean-up"): each character keeps its
+// newest 100 merged and restored versions, the head, and the ones kept for
+// good (the newest of each finished week, and any version a restore
+// replaced); an upload's file goes once its merge is done. Rows stay, with
 // pruned_at set, because restores' windows, parents and the known-file
 // check still need them.
 // ponytail: a merge whose result is identical to a file being deleted here
@@ -65,11 +66,18 @@ async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[
   const rows: Row[] = (
     await client`
       SELECT v.id, v.fingerprint, v.raw_size, v.character_id,
-        (v.kind = 'upload' AND v.status IN ('accepted', 'rejected', 'superseded')
-          AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.version_id = v.id AND j.state IN ('queued', 'running')))
-        OR (v.kind IN ('merged', 'restore') AND NOT v.weekly
-          AND v.created_at < now() - interval '30 days'
-          AND v.id IS DISTINCT FROM c.head_version_id) AS chosen
+        CASE WHEN v.kind = 'upload' THEN
+          -- A merged upload's file is done with. A refused or replaced one
+          -- is held 30 days: the app never sends a file twice, so it may be
+          -- the only copy of that session.
+          (v.status = 'accepted' OR (v.status IN ('rejected', 'superseded') AND v.created_at < now() - interval '30 days'))
+          AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.version_id = v.id AND j.state IN ('queued', 'running'))
+        ELSE
+          -- History offers the newest 100 and the ones kept for good, so
+          -- anything else can't be reached.
+          NOT v.weekly AND v.id IS DISTINCT FROM c.head_version_id
+          AND row_number() OVER (PARTITION BY v.character_id, v.kind = 'upload' ORDER BY v.id DESC) > 100
+        END AS chosen
       FROM characters c JOIN versions v ON v.character_id = c.id
       WHERE c.user_id = ${userId} AND v.pruned_at IS NULL`
   ).map((r: Record<string, unknown>) => ({

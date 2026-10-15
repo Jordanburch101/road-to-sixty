@@ -50,6 +50,13 @@
       "when": 1792034776002,
       "tag": "0006_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792035119058,
+      "tag": "0007_fingerprint_index",
+      "breakpoints": true
     }
   ]
 }
