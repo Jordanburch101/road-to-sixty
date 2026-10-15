@@ -1,16 +1,19 @@
 import type { CheckResponse, RestoreResponse, UploadResponse } from "@road-to-sixty/api";
-import { beforeEach, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { eq, sql } from "drizzle-orm";
 import { app } from "../src/app";
 import { config } from "../src/config";
 import { client, db } from "../src/db";
+import * as lua from "../src/lua";
 import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
-import { pack, unpack } from "../src/storage";
+import { MAX_PACKED, pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
+import { accountBytes, accountDaily, accountRequests, accountUploads, requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
+afterEach(() => mock.restore());
 
 test("a PC needs a token that is known and not revoked", async () => {
   expect((await app.handle(new Request("http://local/v1/check"))).status).toBe(401);
@@ -312,4 +315,180 @@ test("a merge never overwrites a head that moved while it ran", async () => {
   expect(after!.headVersionId).toBe(moved!.id);
   const [job] = await db.select().from(jobs).where(eq(jobs.state, "queued"));
   expect(job).toBeDefined();
+});
+
+test("a PC that uploads too often is told to wait, and other PCs aren't", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  // Room for every character to go up at once after a relink, which sends them all again.
+  expect(uploads.max).toBeGreaterThanOrEqual(100);
+  for (let i = 0; i < uploads.max; i++) uploads.take(desk.device.id);
+  const refused = await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  expect(refused.status).toBe(429);
+  expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+});
+
+test("a PC that calls the server too often is told to wait on every route", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  for (let i = 0; i < 600; i++) requests.take(desk.device.id);
+  const refused = await call(desk.token, "/v1/check");
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get("retry-after")).not.toBeNull();
+  expect((await call(desk.token, "/v1/characters")).status).toBe(429);
+});
+
+test("an upload over 8 MB compressed is refused before it is unpacked", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const r = await call(token, `/v1/upload?${new URLSearchParams(CHAR)}`, { method: "POST", body: new Uint8Array(MAX_PACKED + 1) });
+  expect(r.status).toBe(413);
+  expect(await r.json()).toEqual({ error: "over 8 MB compressed" });
+});
+
+test("a character, realm, game or addon name over 64 characters is refused", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const file = savedFile(journey({ events: session(1000) }));
+  for (const field of ["game", "realm", "name", "addon"]) {
+    expect((await upload(token, file, { [field]: "x".repeat(65) })).status).toBe(400);
+  }
+  expect((await upload(token, file, { name: "x".repeat(64) })).status).toBe(200);
+});
+
+test("an account can have 100 characters; a new one after that is refused, the others still upload", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await db
+    .insert(characters)
+    .values(Array.from({ length: 99 }, (_, i) => ({ userId: device.userId, game: CHAR.game, realm: CHAR.realm, name: `Alt${i}` })));
+  const file = savedFile(journey({ events: session(1000) }));
+  expect((await upload(token, file)).status).toBe(200); // the 100th
+  const refused = await upload(token, file, { name: "OneTooMany" });
+  expect(refused.status).toBe(422);
+  expect(await refused.text()).toBe("This account has reached 100 characters");
+  expect((await upload(token, savedFile(journey({ events: session(2000) })), { name: "Alt5" })).status).toBe(200);
+});
+
+test("a newer upload from the same PC replaces its older one still waiting in the queue", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const older = (await (await upload(desk.token, savedFile(journey({ events: session(1000) })))).json()) as UploadResponse;
+  const newer = (await (await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000)] })))).json()) as UploadResponse;
+  const [o] = await db.select().from(versions).where(eq(versions.id, older.version));
+  expect(o).toMatchObject({ status: "superseded", rejectReason: "folded into a newer upload" });
+  expect((await db.select().from(jobs).where(eq(jobs.versionId, older.version)))[0]!.state).toBe("done");
+  await workAll();
+  const [n] = await db.select().from(versions).where(eq(versions.id, newer.version));
+  expect(n!.status).toBe("accepted");
+  const [entry] = (await check(desk.token)).characters;
+  expect(sessions(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())))).toBe(2);
+});
+
+test("an upload isn't folded once its merge started, or from another PC, or across a restore", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const head = (await check(desk.token)).characters[0]!.version!;
+
+  const running = (await (await upload(desk.token, savedFile(journey({ events: session(2000) })))).json()) as UploadResponse;
+  await db.update(jobs).set({ state: "running" }).where(eq(jobs.versionId, running.version));
+  const other = (await (await upload(laptop.token, savedFile(journey({ events: session(3000) })))).json()) as UploadResponse;
+  const before = (await (await upload(desk.token, savedFile(journey({ events: session(4000) })))).json()) as UploadResponse;
+  await upload(desk.token, savedFile(journey({ events: session(5000) })), { received: String(head) });
+
+  for (const id of [running.version, other.version, before.version]) {
+    const [v] = await db.select().from(versions).where(eq(versions.id, id));
+    expect(v!.status).toBe("pending");
+  }
+});
+
+test("a pruned version downloads as not found", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [entry] = (await check(token)).characters;
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, entry!.version!));
+  expect((await call(token, `/v1/versions/${entry!.version}`)).status).toBe(404);
+});
+
+test("a restore whose file was pruned still keeps what it took out of a stale upload", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await restoreHead(desk.token);
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.kind, "restore"));
+  const copied = await newDevice("user-1", "Copied WTF folder");
+  await upload(copied.token, savedFile(journey({ events: [...session(1000), ...session(20000), ...session(30000)] })));
+  await workAll();
+  const [entry] = (await check(desk.token)).characters;
+  const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
+  expect(text).toContain("30000");
+  expect(text).not.toContain("20000");
+});
+
+test("an account's PCs share its upload allowance", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  const other = await newDevice("user-2", "Elsewhere");
+  expect(accountUploads.max).toBeGreaterThanOrEqual(2 * uploads.max); // two PCs relinking at once
+  for (let i = 0; i < accountUploads.max; i++) accountUploads.take(desk.device.userId);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
+  expect((await upload(other.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+  accountUploads.clear();
+  for (let i = 0; i < 500; i++) accountDaily.take(desk.device.userId);
+  expect((await upload(desk.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
+});
+
+test("a PC's last visit is written at most every 10 minutes, unless its versions change", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await call(desk.token, "/v1/check?app=0.1.3");
+  const [first] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  await call(desk.token, "/v1/check?app=0.1.3");
+  const [second] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  expect(second!.lastSeenAt).toEqual(first!.lastSeenAt);
+  await call(desk.token, "/v1/check?app=0.1.4");
+  const [third] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  expect(third!.appVersion).toBe("0.1.4");
+});
+
+test("the worker takes turns between accounts, not only oldest first", async () => {
+  const ann = await newDevice("user-1", "Desk");
+  const bob = await newDevice("user-2", "Desk");
+  for (const name of ["A1", "A2", "A3"]) await upload(ann.token, savedFile(journey({ events: session(1000) })), { name });
+  await upload(bob.token, savedFile(journey({ events: session(1000) })), { name: "B1" });
+  const order: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    await work();
+    const [last] = await db
+      .select({ name: characters.name })
+      .from(jobs)
+      .innerJoin(characters, eq(characters.id, jobs.characterId))
+      .orderBy(sql`${jobs.claimedAt} DESC NULLS LAST`)
+      .limit(1);
+    order.push(last!.name);
+  }
+  expect(order.slice(0, 2)).toEqual(["A1", "B1"]);
+});
+
+test("a merge that hits its time or memory limit is tried once more, then given up", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const sent = (await (await upload(desk.token, savedFile(journey({ events: session(1000) })))).json()) as UploadResponse;
+  spyOn(lua, "runMerge").mockImplementation(async () => {
+    throw new Error("the merge failed: over the time limit");
+  });
+  await work();
+  expect((await db.select().from(jobs))[0]!.state).toBe("queued");
+  await db.update(jobs).set({ runAfter: new Date(0) });
+  await work();
+  expect((await db.select().from(jobs))[0]!.state).toBe("failed");
+  const [v] = await db.select().from(versions).where(eq(versions.id, sent.version));
+  expect(v).toMatchObject({ status: "rejected", rejectReason: SERVER_FAILED });
+});
+
+test("an account's PCs share a request allowance and a daily upload size", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  for (let i = 0; i < accountRequests.max; i++) accountRequests.take(desk.device.userId);
+  expect((await call(laptop.token, "/v1/check")).status).toBe(429);
+  accountRequests.clear();
+  expect(accountBytes.take(desk.device.userId, accountBytes.max)).toBe(true);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
 });

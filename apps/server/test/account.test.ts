@@ -3,12 +3,13 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { config } from "../src/config";
 import { db } from "../src/db";
 import * as lua from "../src/lua";
 import { characters, devices, jobs, user, versions } from "../src/schema";
 import * as storage from "../src/storage";
+import { exportSlot, exports, restoreSlot, restores } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -256,4 +257,109 @@ test("a merge that finishes after the account is gone leaves no file behind", as
   });
   await workAll();
   expect(await s3Files("user-1/")).toEqual([]);
+});
+
+test("history lists the newest 100 versions, then each older week's kept one, and never a pruned one", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  const made = await db
+    .insert(versions)
+    .values(Array.from({ length: 105 }, () => ({ ...head!, id: undefined })))
+    .returning({ id: versions.id });
+  const ids = made.map((m) => m.id).sort((x, y) => x - y); // oldest first
+  // Weekly ones below the newest 100 are added; one inside them isn't listed twice.
+  await db.update(versions).set({ weekly: true }).where(inArray(versions.id, [ids[0]!, ids[2]!, ids[50]!]));
+  // Pruned ones never show, inside the newest 100 or below them.
+  await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, [ids[1]!, ids[104]!]));
+  const history = await json<VersionInfo[]>(call(token, `/v1/characters/${c!.id}/versions`));
+  const listed = history.map((v) => v.id);
+  const unpruned = [...ids].reverse().filter((id) => id !== ids[104] && id !== ids[1]);
+  expect(listed.slice(0, 100)).toEqual(unpruned.slice(0, 100));
+  expect(listed.slice(100)).toEqual([ids[2]!, ids[0]!]);
+  expect(new Set(listed).size).toBe(listed.length);
+});
+
+test("a pruned version can't be restored", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, old!.id));
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, { method: "POST", body: JSON.stringify({ version: old!.id }), headers: { "content-type": "application/json" } });
+  expect(r.status).toBe(404);
+});
+
+test("an account can download its data 5 times an hour", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  for (let i = 0; i < 5; i++) exports.take(device.userId);
+  const refused = await call(token, "/v1/export");
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get("retry-after")).not.toBeNull();
+});
+
+test("a restore whose source is pruned while it works is refused, and the journey stays as it was", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  spyOn(lua, "runWindows").mockImplementation(async () => {
+    await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, old!.id));
+    return [];
+  });
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, { method: "POST", body: JSON.stringify({ version: old!.id }), headers: { "content-type": "application/json" } });
+  expect(r.status).toBe(404);
+  const [after] = await db.select().from(characters);
+  expect(after!.headVersionId).toBe(c!.headVersionId);
+});
+
+async function oldAndHead(token: string) {
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  return { c: c!, old: old! };
+}
+
+test("an account can restore 10 times an hour, and one restore runs at a time on the server", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  const { c, old } = await oldAndHead(token);
+  expect(restoreSlot.take()).toBe(true);
+  const busy = await restore(token, c.id, old.id);
+  expect(busy.status).toBe(429);
+  expect(busy.headers.get("retry-after")).not.toBeNull();
+  restoreSlot.give();
+  for (let i = 0; i < 10; i++) restores.take(device.userId);
+  expect((await restore(token, c.id, old.id)).status).toBe(429);
+});
+
+test("an export over 512 MB in all is refused, and one export runs at a time on the server", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await oldAndHead(token);
+  expect(exportSlot.take()).toBe(true);
+  expect((await call(token, "/v1/export")).status).toBe(429);
+  exportSlot.give();
+  await db.update(versions).set({ rawSize: 513 * 1024 * 1024 });
+  const big = await call(token, "/v1/export");
+  expect(big.status).toBe(413);
+  expect(exportSlot.take()).toBe(true); // the refusals gave the slot back
+  exportSlot.give();
+});
+
+test("the version a restore replaces is kept for good, so the player can switch back", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const { c, old } = await oldAndHead(token);
+  expect((await restore(token, c.id, old.id)).status).toBe(200);
+  const [replaced] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
+  expect(replaced!.weekly).toBe(true);
 });

@@ -1,10 +1,13 @@
 import { app } from "./app";
 import { config } from "./config";
 import { migrateDb } from "./db";
+import { MAX_PACKED } from "./storage";
+import { startPrune } from "./prune";
 import { startWorker } from "./worker";
 
 await migrateDb();
 startWorker();
-// 32 MB uncompressed is the most an upload may hold; compressed it is smaller.
-app.listen({ port: config.port, maxRequestBodySize: 33 * 1024 * 1024 });
+startPrune(config.prune);
+// Bun refuses a bigger body before reading it (413).
+app.listen({ port: config.port, maxRequestBodySize: MAX_PACKED });
 console.log(`Road to Sixty server on port ${config.port}`);

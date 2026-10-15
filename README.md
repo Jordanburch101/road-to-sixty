@@ -111,8 +111,8 @@ from the installed client.
   `Cargo.toml`, then push a tag such as `app-v0.1.3`. The workflow builds the
   Mac and Windows apps, signs the updates and uploads them to
   `dl.roadtosixty.online`, where installed apps pick them up.
-- **Server and website:** deploy from `dev` on every push (Dokploy and
-  Vercel).
+- **Server and website:** deploy from `main` on every push (Dokploy and
+  Vercel). Work lands on `dev`; pushing `main` is what puts it live.
 
 CI (`.github/workflows/ci.yml`) runs every check on pushes to `main` and
 `dev` and on pull requests.

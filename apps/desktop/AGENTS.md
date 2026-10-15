@@ -95,6 +95,10 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
 
 ## Rules that bite
 
+- The server limits how often a PC and an account may call it (429, see
+  `apps/server/AGENTS.md`). `api.rs` turns a 429 into `ApiError::Busy`; a
+  busy upload is skipped until a later pass and the pass carries on, so
+  journeys are still delivered. Never treat Busy as offline or a refusal.
 - A character is named by the `rosterKey` in its saved file, never by the
   game's folder names, which don't give the realm the addon uses.
 - `installs::find_installs` scans this machine's real WoW installs. Tests

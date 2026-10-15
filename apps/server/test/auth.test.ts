@@ -5,6 +5,8 @@ import { app } from "../src/app";
 import { accountHash } from "../src/auth";
 import { db } from "../src/db";
 import { account, deviceCode as deviceCodes, devices, session, user } from "../src/schema";
+import { newDevice } from "../src/devices";
+import { links, signUps } from "../src/limits";
 import { signIn } from "./battlenet";
 import { reset } from "./helpers";
 
@@ -129,4 +131,67 @@ test("the link page, its script and its pictures are served, and the code comes 
   expect(js).toContain("URLSearchParams"); // the app's link fills the code in
   expect((await get("/link/compass.png")).headers.get("content-type")).toBe("image/png");
   expect((await get("/link/geist.woff2")).status).toBe(200);
+});
+
+// The app's whole link: a code, the player's approval, the token, then /v1/link.
+async function linkOnce(cookie: string) {
+  const code = (await (await deviceCode()).json()) as { device_code: string; user_code: string };
+  await approve(code.user_code, cookie);
+  const tokenRequest = { grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: code.device_code, client_id: APP_CLIENT_ID };
+  const { access_token } = (await (await post("/api/auth/device/token", tokenRequest)).json()) as { access_token: string };
+  return app.handle(new Request("http://localhost:3000/v1/link?name=Desk", { method: "POST", headers: { authorization: `Bearer ${access_token}` } }));
+}
+
+test("an account can link 20 PCs; the 21st is refused until one is unlinked", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  for (let i = 0; i < 20; i++) await newDevice(player!.id, `PC ${i}`);
+  const linked = await linkOnce(cookie);
+  expect(linked.status).toBe(409);
+  expect(await linked.text()).toBe("This account already has 20 PCs linked. Unlink one in the app first.");
+  const [one] = await db.select().from(devices);
+  await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.id, one!.id));
+  expect((await linkOnce(cookie)).status).toBe(200);
+});
+
+test("one sign-in links one PC, even when the app asks several times at once", async () => {
+  const cookie = await signIn();
+  const code = (await (await deviceCode()).json()) as { device_code: string; user_code: string };
+  await approve(code.user_code, cookie);
+  const tokenRequest = { grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: code.device_code, client_id: APP_CLIENT_ID };
+  const { access_token } = (await (await post("/api/auth/device/token", tokenRequest)).json()) as { access_token: string };
+  const link = () => app.handle(new Request("http://localhost:3000/v1/link?name=Desk", { method: "POST", headers: { authorization: `Bearer ${access_token}` } }));
+  const answers = await Promise.all(Array.from({ length: 5 }, link));
+  expect(answers.filter((r) => r.status === 200).length).toBe(1);
+  expect((await db.select().from(devices)).length).toBe(1);
+});
+
+test("a body over 16 KB is refused before anything reads it, except an upload", async () => {
+  const big = { client_id: APP_CLIENT_ID, scope: "x".repeat(17 * 1024) };
+  expect((await post("/api/auth/device/code", big)).status).toBe(413);
+  expect(await db.select().from(deviceCodes)).toEqual([]);
+  const patch = await app.handle(
+    new Request("http://localhost:3000/v1/devices/x", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x".repeat(17 * 1024) }) }),
+  );
+  expect(patch.status).toBe(413);
+  const unsized = await app.handle(
+    new Request("http://localhost:3000/api/auth/device/code", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      body: new ReadableStream({ start: (c) => (c.enqueue(new Uint8Array(20 * 1024)), c.close()) }),
+      duplex: "half",
+    } as RequestInit),
+  );
+  expect(unsized.status).toBe(413);
+  expect((await post("/api/auth/device/code", { client_id: APP_CLIENT_ID })).status).toBe(200);
+});
+
+test("an account links at most 10 PCs a day, and the server takes at most 200 new players an hour", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  for (let i = 0; i < links.max; i++) links.take(player!.id);
+  expect((await linkOnce(cookie)).status).toBe(429);
+  for (let i = 0; i < signUps.max; i++) signUps.take("all");
+  await signIn({ id: 999, battletag: "Late#9999" });
+  expect((await db.select().from(user)).map((u) => u.name)).not.toContain("Late#9999");
 });

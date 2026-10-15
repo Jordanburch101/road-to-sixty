@@ -7,6 +7,14 @@ function env(name: string, fallback?: string): string {
   return value;
 }
 
+// The daily clean-up: "dry" only logs what it would delete, so a deploy
+// never deletes anything until someone has read that log and set "on".
+export function pruneMode(value: string | undefined): "dry" | "on" | "off" {
+  const mode = value || "dry";
+  if (mode !== "dry" && mode !== "on" && mode !== "off") throw new Error(`PRUNE must be dry, on or off, not ${mode}`);
+  return mode;
+}
+
 export const config = {
   port: Number(env("PORT", "3000")),
   databaseUrl: env("DATABASE_URL"),
@@ -29,6 +37,7 @@ export const config = {
     clientId: env("BATTLENET_CLIENT_ID"),
     clientSecret: env("BATTLENET_CLIENT_SECRET"),
   },
+  prune: pruneMode(process.env.PRUNE),
   lua51: env("LUA51", "lua5.1"),
   luaDir: env("LUA_DIR", `${import.meta.dir}/../../addon/RoadToSixty`),
 };

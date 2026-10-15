@@ -36,6 +36,34 @@
       "when": 1792007027803,
       "tag": "0004_restore_removed",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792033178701,
+      "tag": "0005_version_prune",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792034776002,
+      "tag": "0006_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792035119058,
+      "tag": "0007_fingerprint_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792035276391,
+      "tag": "0008_auth_indexes",
+      "breakpoints": true
     }
   ]
 }

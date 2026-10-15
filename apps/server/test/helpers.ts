@@ -8,9 +8,11 @@ import { client, db, migrateDb } from "../src/db";
 import { newDevice as linkDevice } from "../src/devices";
 import { user } from "../src/schema";
 import { pack } from "../src/storage";
+import { clearLimits } from "../src/limits";
 import { work } from "../src/worker";
 
 export async function reset() {
+  clearLimits();
   await migrateDb();
   await client`TRUNCATE jobs, version_parents, versions, characters, devices, "user", session, account, verification, device_code RESTART IDENTITY CASCADE`;
   // SeaweedFS makes a bucket on an unsigned PUT (409 once it exists); it
@@ -93,3 +95,7 @@ export const check = async (token: string) => (await (await call(token, "/v1/che
 export async function workAll() {
   while (await work()) {}
 }
+
+const s3 = new Bun.S3Client(config.s3);
+// Whether a journey file is in the bucket.
+export const stored = (userId: string, fp: string) => s3.exists(`${userId}/${fp}.zst`);

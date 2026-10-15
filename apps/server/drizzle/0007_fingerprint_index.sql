@@ -1,0 +1,1 @@
+CREATE INDEX "versions_fingerprint" ON "versions" USING btree ("character_id","fingerprint");

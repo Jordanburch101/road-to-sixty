@@ -3,7 +3,7 @@
 The backend for sync and backup (#1): Elysia on Bun, Postgres through
 Drizzle, journeys in an S3 store (Cloudflare R2 in production), sign-in with
 Battle.net through Better Auth. Dokploy builds it from `Dockerfile` on every
-push to `dev` that touches it. The design is
+push to `main` that touches it. The design is
 `docs/superpowers/specs/2026-10-12-sync-and-backup-design.md`.
 
 ## Layout
@@ -24,6 +24,10 @@ push to `dev` that touches it. The design is
   is built once by `Bun.build`, draws the fog from `packages/ui` (so the
   image copies that package), and is typechecked with the browser's types
   by `tsconfig.page.json`, kept apart so they don't clash with Bun's.
+- `src/limits.ts` counts each PC's and account's requests, uploads and
+  exports; `src/proxies.ts` lists the proxies sign-in trusts (Dokploy's and
+  Cloudflare's); `src/prune.ts` is the daily clean-up of old versions,
+  finished jobs and expired sign-in rows.
 - `src/worker.ts` runs merge jobs one at a time per character; it fills
   each character's level, class and time played, and each merged
   version's level, from the runner's `ok` line;
@@ -57,8 +61,10 @@ bun run dev               # port 3000, with .env copied from .env.example
 - The runner tells a refusal from a fault. Only an `error(why, 0)` from the
   merge rules rejects an upload. Anything else (a limit, a crash, a bug with
   a file and line, storage down) makes `runMerge` throw, and the worker
-  tries again for about a day with a doubling wait. A job left running past
-  `STALE_SECONDS` is taken back by the next claim.
+  tries again for about a day with a doubling wait; a time or memory limit
+  gets one more try only. A job left running past `STALE_SECONDS` is taken
+  back by the next claim. The worker takes the next job from the account it
+  served least recently.
 - An upload made before the latest restore reached its PC is merged
   without the play inside every restore's windows (`versions.removed`,
   worked out by the restore route with `runWindows`). Only a restore made
@@ -69,5 +75,23 @@ bun run dev               # port 3000, with .env copied from .env.example
   protection.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
+- Limits (spec 2026-10-15, `src/limits.ts`): per PC, 120 uploads in 15
+  minutes and 600 requests an hour; per account, 240 uploads in 15
+  minutes, 500 and 200 MB a day, 2,000 requests an hour, 10 links a day, 5
+  exports and 10 restores an hour; 200 new players an hour; one export and
+  one restore at a time. All answer 429. 20 linked PCs per account (409),
+  100 characters (422, plain text the app shows on the row), 8 MB uploads
+  and 16 KB for any other body (413), 64-character names (400). The counts
+  are in memory, so a restart forgets them.
+- `api.roadtosixty.online` is behind Cloudflare's proxy. When
+  Cloudflare changes its ranges (https://www.cloudflare.com/ips/), update
+  `src/proxies.ts`, or sign-in limits count Cloudflare instead of visitors.
+- The clean-up never deletes a version row, only files, and sets
+  `pruned_at` before deleting. It keeps each character's newest 100
+  versions, the head, and those marked `weekly` (each finished week's
+  newest, and any version a restore replaced). Anything that reads a
+  version's file must skip pruned versions, and a restore must lock its
+  source `FOR SHARE` and check it isn't pruned. `PRUNE` is `dry` by
+  default: read its log before setting `on` in Dokploy.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.

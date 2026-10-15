@@ -1,10 +1,14 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
-import { fingerprint, getPacked, put, unpack } from "./storage";
+import { accountBytes, accountDaily, accountUploads, uploads } from "./limits";
+import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
+
+const MAX_FIELD = 64;
+const MAX_CHARACTERS = 100;
 
 // The sync API the app calls with its PC token (spec, "Sync API").
 export const sync = pcRoutes()
@@ -12,13 +16,39 @@ export const sync = pcRoutes()
   // job merges it.
   .post(
     "/upload",
-    async ({ device, query, request, set }): Promise<UploadResponse | { error: string }> => {
+    async ({ device, query, request, set }): Promise<UploadResponse | { error: string } | Response> => {
+      if (!uploads.take(device!.id)) {
+        set.status = 429;
+        set.headers["retry-after"] = String(uploads.retryAfter(device!.id));
+        return { error: "too many uploads" };
+      }
+      for (const w of [accountUploads, accountDaily]) {
+        if (!w.take(device!.userId)) {
+          set.status = 429;
+          set.headers["retry-after"] = String(w.retryAfter(device!.userId));
+          return { error: "too many uploads from this account" };
+        }
+      }
       const { game, realm, name, addon, received } = query;
       if (!game || !realm || !name) {
         set.status = 400;
         return { error: "game, realm and name are required" };
       }
+      if ([game, realm, name, addon].some((v) => v !== undefined && v.length > MAX_FIELD)) {
+        set.status = 400;
+        return { error: `game, realm, name and addon are at most ${MAX_FIELD} characters` };
+      }
       const packed = new Uint8Array(await request.arrayBuffer());
+      // Bun stops a bigger body in production; this also covers a body sent without its length.
+      if (packed.length > MAX_PACKED) {
+        set.status = 413;
+        return { error: "over 8 MB compressed" };
+      }
+      if (!accountBytes.take(device!.userId, packed.length)) {
+        set.status = 429;
+        set.headers["retry-after"] = String(accountBytes.retryAfter(device!.userId));
+        return { error: "this account has sent too much today" };
+      }
       let raw: Uint8Array;
       try {
         raw = unpack(packed);
@@ -31,7 +61,16 @@ export const sync = pcRoutes()
         return { error: "compiled Lua is refused" };
       }
       const userId = device!.userId;
-      await db.insert(characters).values({ userId, game, realm, name }).onConflictDoNothing();
+      const [existing] = await db
+        .select({ id: characters.id })
+        .from(characters)
+        .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)));
+      if (!existing) {
+        const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
+        // Plain text: the app shows the body as the reason on the character's row.
+        if (held!.n >= MAX_CHARACTERS) return new Response(`This account has reached ${MAX_CHARACTERS} characters`, { status: 422 });
+        await db.insert(characters).values({ userId, game, realm, name }).onConflictDoNothing();
+      }
       const [character] = await db
         .select()
         .from(characters)
@@ -55,6 +94,42 @@ export const sync = pcRoutes()
         : [];
       await put(userId, fp, packed);
       const id = await db.transaction(async (tx) => {
+        // The newer file holds everything the older one did, so this PC's
+        // older upload of the character still waiting in the queue is
+        // dropped. Not across a restore (a different received id): those
+        // two were made against different journeys. A job the worker has
+        // started is no longer queued, so it is left alone.
+        const receivedId = last?.id ?? null;
+        const folded = await tx
+          .update(jobs)
+          .set({ state: "done", error: "folded into a newer upload", finishedAt: new Date() })
+          .where(
+            and(
+              eq(jobs.state, "queued"),
+              inArray(
+                jobs.versionId,
+                tx
+                  .select({ id: versions.id })
+                  .from(versions)
+                  .where(
+                    and(
+                      eq(versions.characterId, character!.id),
+                      eq(versions.deviceId, device!.id),
+                      eq(versions.kind, "upload"),
+                      eq(versions.status, "pending"),
+                      sql`${versions.receivedId} IS NOT DISTINCT FROM ${receivedId}::bigint`,
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .returning({ versionId: jobs.versionId });
+        if (folded.length > 0) {
+          await tx
+            .update(versions)
+            .set({ status: "superseded", rejectReason: "folded into a newer upload" })
+            .where(inArray(versions.id, folded.map((f) => f.versionId)));
+        }
         const [version] = await tx
           .insert(versions)
           .values({
@@ -64,7 +139,7 @@ export const sync = pcRoutes()
             fingerprint: fp,
             rawSize: raw.length,
             addonVersion: addon ?? null,
-            receivedId: last?.id ?? null,
+            receivedId,
             status: "pending",
           })
           .returning({ id: versions.id });
@@ -155,7 +230,7 @@ export const sync = pcRoutes()
       .select({ v: versions, userId: characters.userId })
       .from(versions)
       .innerJoin(characters, eq(characters.id, versions.characterId))
-      .where(and(eq(versions.id, Number(params.id)), inArray(versions.kind, ["merged", "restore"])));
+      .where(and(eq(versions.id, Number(params.id)), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt)));
     if (!row || row.userId !== device!.userId) {
       set.status = 404;
       return { error: "no such version" };

@@ -5,6 +5,10 @@ import { config } from "./config";
 // journey is 2 to 3 MB.
 export const MAX_RAW = 32 * 1024 * 1024;
 
+// The most an upload may send compressed. A 32 MB journey compresses far
+// below this, so anything bigger isn't a journey.
+export const MAX_PACKED = 8 * 1024 * 1024;
+
 const s3 = new Bun.S3Client(config.s3);
 
 const key = (userId: string, fingerprint: string) => `${userId}/${fingerprint}.zst`;

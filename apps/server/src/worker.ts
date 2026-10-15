@@ -19,8 +19,10 @@ const STALE_SECONDS = LIMITS.seconds + 240;
 // same file sent again gets another try.
 export const SERVER_FAILED = "the server couldn't merge it";
 
-// The oldest due job's id, now marked running, or null. A job left running
-// longer than STALE_SECONDS counts as due again.
+// A due job's id, now marked running, or null: the oldest of the account the
+// worker served least recently, so one account's queue can't hold up
+// everyone else's. A job left running longer than STALE_SECONDS counts as
+// due again.
 // ponytail: one worker taking one job at a time, which also keeps two
 // uploads of one character from merging at once; take a lock per
 // character if more workers ever run.
@@ -28,10 +30,13 @@ async function claim(): Promise<number | null> {
   const [row] = await client`
     UPDATE jobs SET state = 'running', attempts = attempts + 1, claimed_at = now()
     WHERE id = (
-      SELECT id FROM jobs
-      WHERE (state = 'queued' AND run_after <= now())
-         OR (state = 'running' AND (claimed_at IS NULL OR claimed_at < now() - ${STALE_SECONDS} * interval '1 second'))
-      ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+      SELECT j.id FROM jobs j JOIN characters c ON c.id = j.character_id
+      WHERE (j.state = 'queued' AND j.run_after <= now())
+         OR (j.state = 'running' AND (j.claimed_at IS NULL OR j.claimed_at < now() - ${STALE_SECONDS} * interval '1 second'))
+      ORDER BY (
+        SELECT max(j2.claimed_at) FROM jobs j2 JOIN characters c2 ON c2.id = j2.character_id WHERE c2.user_id = c.user_id
+      ) NULLS FIRST, j.id
+      LIMIT 1 FOR UPDATE OF j SKIP LOCKED)
     RETURNING id`;
   return row ? Number(row.id) : null;
 }
@@ -149,7 +154,10 @@ export async function work(): Promise<boolean> {
       await runJob(job!);
     } catch (e) {
       const error = String(e);
-      if (job!.attempts >= MAX_ATTEMPTS) {
+      // The same file hits the same limit again, so it gets one more try
+      // (the server may just have been busy), not a day of them.
+      const limit = /over the (memory|time) limit|didn't finish in time/.test(error);
+      if (job!.attempts >= (limit ? 2 : MAX_ATTEMPTS)) {
         await db.update(jobs).set({ state: "failed", error, finishedAt: new Date() }).where(eq(jobs.id, id));
         await db
           .update(versions)
