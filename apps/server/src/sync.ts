@@ -3,7 +3,7 @@ import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
-import { accountDaily, accountUploads, uploads } from "./limits";
+import { accountBytes, accountDaily, accountUploads, uploads } from "./limits";
 import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
 
@@ -43,6 +43,11 @@ export const sync = pcRoutes()
       if (packed.length > MAX_PACKED) {
         set.status = 413;
         return { error: "over 8 MB compressed" };
+      }
+      if (!accountBytes.take(device!.userId, packed.length)) {
+        set.status = 429;
+        set.headers["retry-after"] = String(accountBytes.retryAfter(device!.userId));
+        return { error: "this account has sent too much today" };
       }
       let raw: Uint8Array;
       try {

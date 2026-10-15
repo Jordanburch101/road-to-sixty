@@ -35,3 +35,13 @@ test("a key whose window has emptied is dropped", () => {
   w.take("a");
   expect(w.size).toBe(1);
 });
+
+test("a hit can weigh more than one, so a window can count bytes", () => {
+  let now = 0;
+  const w = new Window(100, 60, () => now);
+  expect(w.take("a", 60)).toBe(true);
+  expect(w.take("a", 50)).toBe(false);
+  expect(w.take("a", 40)).toBe(true);
+  now = 60_001;
+  expect(w.take("a", 100)).toBe(true);
+});

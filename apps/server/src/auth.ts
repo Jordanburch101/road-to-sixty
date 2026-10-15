@@ -6,6 +6,7 @@ import { deviceAuthorization } from "better-auth/plugins/device-authorization";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { config } from "./config";
 import { db } from "./db";
+import { signUps } from "./limits";
 import { TRUSTED_PROXIES } from "./proxies";
 import * as schema from "./schema";
 
@@ -35,6 +36,8 @@ export const auth = betterAuth({
     ipAddress: { trustedProxies: TRUSTED_PROXIES, ipAddressHeaders: ["x-forwarded-for", "cf-connecting-ip"] },
   },
   databaseHooks: {
+    // Battle.net accounts are free, so new players come in at a steady rate.
+    user: { create: { before: async () => (signUps.take("all") ? undefined : false) } },
     // The spec's privacy list has no IP addresses or browser details.
     session: { create: { before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }) } },
     account: {

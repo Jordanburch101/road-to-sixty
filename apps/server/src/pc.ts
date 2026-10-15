@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { db } from "./db";
 import { deviceFor } from "./devices";
-import { requests } from "./limits";
+import { accountRequests, requests } from "./limits";
 import { devices } from "./schema";
 
 // Every route the app calls with its PC token starts from this: an unknown
@@ -18,10 +18,15 @@ export const pcRoutes = () =>
     })
     // A runaway app is told to wait instead of keeping the server busy.
     .onBeforeHandle(({ device, set }) => {
-      if (!requests.take(device!.id)) {
-        set.status = 429;
-        set.headers["retry-after"] = String(requests.retryAfter(device!.id));
-        return { error: "too many requests" };
+      for (const [w, key] of [
+        [requests, device!.id],
+        [accountRequests, device!.userId],
+      ] as const) {
+        if (!w.take(key)) {
+          set.status = 429;
+          set.headers["retry-after"] = String(w.retryAfter(key));
+          return { error: "too many requests" };
+        }
       }
     })
     // Written at most every 10 minutes, or when a version changes: the app

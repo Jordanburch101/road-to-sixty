@@ -5,6 +5,7 @@ import { Elysia } from "elysia";
 import { auth } from "./auth";
 import { db } from "./db";
 import { newDevice, pcName } from "./devices";
+import { links } from "./limits";
 import { devices, session } from "./schema";
 
 const MAX_PCS = 20;
@@ -42,6 +43,11 @@ export const link = new Elysia()
     if (!signedIn || used.length === 0) {
       set.status = 401;
       return { error: "sign in on the link page first" };
+    }
+    if (!links.take(signedIn.user.id)) {
+      set.status = 429;
+      set.headers["retry-after"] = String(links.retryAfter(signedIn.user.id));
+      return { error: "too many PCs linked today; try again tomorrow" };
     }
     const [linked] = await db
       .select({ n: count() })

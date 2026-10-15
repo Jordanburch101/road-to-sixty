@@ -9,7 +9,7 @@ import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { MAX_PACKED, pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
-import { accountDaily, accountUploads, requests, uploads } from "../src/limits";
+import { accountBytes, accountDaily, accountRequests, accountUploads, requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -481,4 +481,14 @@ test("a merge that hits its time or memory limit is tried once more, then given 
   expect((await db.select().from(jobs))[0]!.state).toBe("failed");
   const [v] = await db.select().from(versions).where(eq(versions.id, sent.version));
   expect(v).toMatchObject({ status: "rejected", rejectReason: SERVER_FAILED });
+});
+
+test("an account's PCs share a request allowance and a daily upload size", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  for (let i = 0; i < accountRequests.max; i++) accountRequests.take(desk.device.userId);
+  expect((await call(laptop.token, "/v1/check")).status).toBe(429);
+  accountRequests.clear();
+  expect(accountBytes.take(desk.device.userId, accountBytes.max)).toBe(true);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
 });

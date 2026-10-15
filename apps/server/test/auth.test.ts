@@ -6,6 +6,7 @@ import { accountHash } from "../src/auth";
 import { db } from "../src/db";
 import { account, deviceCode as deviceCodes, devices, session, user } from "../src/schema";
 import { newDevice } from "../src/devices";
+import { links, signUps } from "../src/limits";
 import { signIn } from "./battlenet";
 import { reset } from "./helpers";
 
@@ -183,4 +184,14 @@ test("a body over 16 KB is refused before anything reads it, except an upload", 
   );
   expect(unsized.status).toBe(413);
   expect((await post("/api/auth/device/code", { client_id: APP_CLIENT_ID })).status).toBe(200);
+});
+
+test("an account links at most 10 PCs a day, and the server takes at most 200 new players an hour", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  for (let i = 0; i < links.max; i++) links.take(player!.id);
+  expect((await linkOnce(cookie)).status).toBe(429);
+  for (let i = 0; i < signUps.max; i++) signUps.take("all");
+  await signIn({ id: 999, battletag: "Late#9999" });
+  expect((await db.select().from(user)).map((u) => u.name)).not.toContain("Late#9999");
 });
