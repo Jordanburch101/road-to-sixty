@@ -77,8 +77,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
   tags), which uploads the builds to the public R2 bucket
   `road-to-sixty-downloads` at `https://dl.roadtosixty.online/app/`. The
-  0.1.2 app and older check `https://dl.rts.everhold.online/app/`, the
-  same bucket, so keep that address until every PC has updated.
+  old `dl.rts.everhold.online` address is gone, so an app older than 0.1.3
+  can no longer update itself; reinstall it from the website.
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
