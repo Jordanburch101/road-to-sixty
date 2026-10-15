@@ -70,7 +70,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   now). Installing waits for the restart, because on Windows it ends the
   app. A `version` file in the data folder tells a start after an update,
   which stays hidden and says "Updated to X" for an hour. Start at login is tauri-plugin-autostart (a LaunchAgent on the Mac,
-  the per-user Run key on Windows), started with `--hidden`.
+  the per-user Run key on Windows, `~/.config/autostart` on Linux pointing
+  at the AppImage file itself, so moving the file breaks it), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
@@ -83,7 +84,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   list a thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
-  tags), which uploads the builds to the public R2 bucket
+  tags), which uploads the builds (the Mac app, the Windows installer and, from
+  Ubuntu 22.04, the Linux AppImage once `linux-smoke.sh` passes) to the public R2 bucket
   `road-to-sixty-downloads` at `https://dl.roadtosixty.online/app/`. The
   old `dl.rts.everhold.online` address is gone, so an app older than 0.1.3
   can no longer update itself; reinstall it from the website.
