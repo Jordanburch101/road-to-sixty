@@ -43,9 +43,34 @@ several alts can send a burst.
    character is refused with 422 and the plain-text body "This account
    has reached 100 characters". Existing characters keep uploading.
 
-The rate limits are counted in memory on the one server process, by PC id,
-with the clock passed in so tests can move it. A restart forgets them,
-which is fine for limits this loose.
+6. **Uploads per account.** Across all its PCs, at most 60 uploads in any
+   15 minutes and 500 in a day, so linking more PCs doesn't multiply what
+   one account can send. Also 429.
+7. **PCs per account.** At most 20 linked (not unlinked) PCs. Linking a
+   21st is refused on the link page with "This account already has 20
+   PCs linked. Unlink one in the app first."
+8. **Exports.** "Download all my data" builds the whole zip in memory, so
+   at most 5 per account an hour. Also 429.
+9. **Starting a link without an account.** Better Auth's own limit is on in
+   production (100 requests per 10 seconds per address). The endpoint that
+   hands the app a link code makes a database row per call, so it gets a
+   stricter rule: 10 a minute per address.
+
+The rate limits are counted in memory on the one server process, by PC
+id, by account and (for sign-in) by address, with the clock passed in so
+tests can move it. A restart forgets them, which is fine for limits this
+loose. A key whose window is empty is dropped, so the counts don't grow
+with every PC ever seen.
+
+### The visitor's address behind Cloudflare
+
+`api.roadtosixty.online` goes behind Cloudflare's proxy, so floods stop at
+Cloudflare. Every request then reaches Dokploy's proxy from a Cloudflare
+address. The server takes the address Dokploy's proxy saw (the right end
+of `X-Forwarded-For`, as today); when that is one of Cloudflare's
+published ranges, it uses `CF-Connecting-IP` instead. A request that goes
+around Cloudflare to the server directly can't set the address that way.
+Sign-in's limits use this address.
 
 ### Folding queued uploads
 
@@ -118,6 +143,12 @@ hours, one character at a time:
 A setting `PRUNE` controls it: `dry` logs, per character, how many versions
 and bytes it would prune and does nothing else; `on` prunes; `off` skips
 the job. The default is `dry`.
+
+### Other rows
+
+The same daily job deletes merge jobs that finished more than 30 days ago,
+and Better Auth's expired link codes, sessions and verifications. Version
+rows stay (see above); the upload limits bound how fast they grow.
 
 ### History
 
