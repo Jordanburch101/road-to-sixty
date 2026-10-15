@@ -21,6 +21,24 @@ body { font-family: var(--font-sans); color: var(--color-text); }
   .shot-2, .shot-3, .cap-1, .cap-2, .cap-3 { animation: none; }
 }
 
+/* The launch countdown's flip board (Launch.astro, countdown.ts). Each half
+   clips a full-height copy of the digit, so the two halves line up at any size. */
+.board { --w: 34px; --h: 48px; }
+@media (min-width: 768px) { .board { --w: 56px; --h: 78px; } }
+.tile { position: relative; width: var(--w); height: var(--h); perspective: 300px; font-family: var(--font-mono); font-size: calc(var(--h) * 0.7); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--color-cream); }
+.tile .half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; background: var(--color-tab); backface-visibility: hidden; }
+.tile .half > span { position: absolute; left: 0; right: 0; height: var(--h); line-height: var(--h); text-align: center; }
+.tile .top { top: 0; border-radius: 6px 6px 0 0; transform-origin: bottom; background: linear-gradient(#24212c, var(--color-tab)); }
+.tile .bottom { bottom: 0; border-radius: 0 0 6px 6px; transform-origin: top; border-top: 1px solid var(--color-ground); }
+.tile .bottom > span { top: -100%; }
+.tile .fold { visibility: hidden; }
+.tile.flip .fold { visibility: visible; }
+.tile.flip .top.fold { animation: fold-top 0.25s ease-in both; }
+.tile.flip .bottom.fold { animation: fold-bottom 0.25s ease-out 0.25s both; }
+@keyframes fold-top { from { transform: rotateX(0deg) } to { transform: rotateX(-90deg) } }
+@keyframes fold-bottom { from { transform: rotateX(90deg) } to { transform: rotateX(0deg) } }
+@media (prefers-reduced-motion: reduce) { .tile .fold { display: none; } }
+
 /* Privacy and Terms (Prose.astro). */
 .prose-rts section { display: flex; flex-direction: column; gap: 10px; padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--color-line-soft); }
 .prose-rts h2 { font-size: 18px; font-weight: 500; }
