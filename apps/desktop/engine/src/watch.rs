@@ -48,7 +48,8 @@ impl Starts {
 /// file is Wine's own and the game shows only as a Windows path in the
 /// command line, so a program there counts when its install and game folder
 /// names match ours. Two prefixes with the same names could fool it; that
-/// costs one sync.
+/// costs one sync, and uploads for that game at most every 15 minutes while
+/// the other one runs.
 pub fn game_running(game: &Path, programs: &[PathBuf]) -> bool {
     let last_two = |p: &Path| -> Vec<String> { p.iter().rev().take(2).map(|c| c.to_string_lossy().to_lowercase()).collect() };
     programs.iter().any(|p| {

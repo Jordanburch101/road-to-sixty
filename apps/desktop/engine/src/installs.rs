@@ -69,7 +69,6 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
 /// without repeats.
 pub fn find_installs(picked: &[PathBuf]) -> Vec<PathBuf> {
     let mut all: Vec<PathBuf> = Vec::new();
-    // dirs reads $HOME; without one, only the picked folders count.
     #[cfg(target_os = "linux")]
     all.extend(dirs::home_dir().map(|home| crate::wine::installs(&home)).unwrap_or_default());
     #[cfg(not(target_os = "linux"))]
