@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: rts
       POSTGRES_PASSWORD: rts
       POSTGRES_DB: rts
-    ports: ["55432:5432"]
+    ports: ["127.0.0.1:55432:5432"]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "rts"]
       interval: 2s
@@ -18,4 +18,4 @@ services:
   s3:
     image: chrislusf/seaweedfs:4.48
     command: server -s3
-    ports: ["58333:8333"]
+    ports: ["127.0.0.1:58333:8333"]

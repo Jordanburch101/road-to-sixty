@@ -28,7 +28,19 @@ function pageScript(): Promise<string> {
 // poll of /api/auth/device/token returns a session. The app trades that
 // session here for a PC token of its own, and the session ends.
 export const link = new Elysia()
-  .get("/link", () => new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } }))
+  // Never inside another site's frame, where a player could be tricked
+  // into clicking Approve.
+  .get(
+    "/link",
+    () =>
+      new Response(PAGE, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-security-policy": "frame-ancestors 'none'",
+          "x-frame-options": "DENY",
+        },
+      }),
+  )
   .get("/link.js", async () => new Response(await pageScript(), { headers: { "content-type": "text/javascript; charset=utf-8" } }))
   .get("/link/compass.png", () => new Response(Bun.file(COMPASS), { headers: { "content-type": "image/png" } }))
   .get("/link/geist.woff2", () => new Response(Bun.file(GEIST), { headers: { "content-type": "font/woff2" } }))

@@ -7,7 +7,7 @@ import { client, db } from "../src/db";
 import * as lua from "../src/lua";
 import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
-import { MAX_PACKED, pack, unpack } from "../src/storage";
+import { MAX_PACKED, MAX_RAW, pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
 import { accountBytes, accountDaily, accountRequests, accountUploads, requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
@@ -481,6 +481,25 @@ test("a merge that hits its time or memory limit is tried once more, then given 
   expect((await db.select().from(jobs))[0]!.state).toBe("failed");
   const [v] = await db.select().from(versions).where(eq(versions.id, sent.version));
   expect(v).toMatchObject({ status: "rejected", rejectReason: SERVER_FAILED });
+});
+
+test("a merged journey too big to read back is refused, not stored", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const sent = (await (await upload(desk.token, savedFile(journey({ events: session(1000) })))).json()) as UploadResponse;
+  spyOn(lua, "runMerge").mockImplementation(async () => ({
+    ok: true,
+    from: null,
+    layout: 1,
+    level: 10,
+    class: null,
+    played: null,
+    lastSeen: null,
+    journey: new Uint8Array(MAX_RAW + 1),
+  }));
+  await work();
+  const [v] = await db.select().from(versions).where(eq(versions.id, sent.version));
+  expect(v).toMatchObject({ status: "rejected", rejectReason: "the merged journey would be too big to store" });
+  expect(await db.select().from(versions).where(eq(versions.kind, "merged"))).toHaveLength(0);
 });
 
 test("an account's PCs share a request allowance and a daily upload size", async () => {

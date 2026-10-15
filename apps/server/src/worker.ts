@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db } from "./db";
 import { LIMITS, runMerge, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
-import { fingerprint, get, pack, put, remove } from "./storage";
+import { MAX_RAW, fingerprint, get, pack, put, remove } from "./storage";
 
 type Job = typeof jobs.$inferSelect;
 type Version = typeof versions.$inferSelect;
@@ -93,6 +93,9 @@ async function runJob(job: Job) {
       .where(eq(devices.id, upload.deviceId));
   }
 
+  // Stored, it could never be unpacked again, and every later merge of
+  // this character would fail on it.
+  if (result.journey.length > MAX_RAW) return settle(job, upload, "rejected", "the merged journey would be too big to store");
   const fp = fingerprint(result.journey);
   if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
   await put(character.userId, fp, pack(result.journey));
