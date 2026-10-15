@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, notInArray } from "drizzle-orm";
 import { client, db } from "./db";
-import { characters, versions } from "./schema";
+import { characters, deviceCode, session, verification, versions } from "./schema";
 import { remove } from "./storage";
 
 export type Pruned = { characterId: number; versions: number; files: number; bytes: number };
@@ -80,6 +80,12 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
         bytes: myFiles.reduce((sum, fp) => sum + files.get(fp)!, 0),
       });
     }
+  }
+  if (mode === "on") {
+    // Nothing reads a finished job once its version is settled.
+    await client`DELETE FROM jobs WHERE state IN ('done', 'failed') AND finished_at < now() - interval '30 days'`;
+    // Better Auth checks expiry when a row is used but never clears these.
+    for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
   }
   for (const p of pruned) {
     console.log(`prune (${mode}): character ${p.characterId}: ${p.versions} versions, ${p.files} files, ${(p.bytes / 1e6).toFixed(1)} MB`);

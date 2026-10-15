@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { client, db } from "../src/db";
 import { prune } from "../src/prune";
-import { characters, versions } from "../src/schema";
+import { characters, jobs, verification, versions } from "../src/schema";
 import { remove } from "../src/storage";
 import { journey, newDevice, reset, savedFile, session, stored, upload, workAll } from "./helpers";
 
@@ -85,4 +85,21 @@ test("dry deletes nothing and says what it would; a second run finds nothing; a 
   expect((await prune("on")).length).toBe(1);
   expect((await db.select().from(versions).where(inArray(versions.id, uploads.map((u) => u.id)))).every((v) => v.prunedAt !== null)).toBe(true);
   expect(await prune("on")).toEqual([]);
+});
+
+test("old finished jobs and expired sign-in rows go; recent ones and dry runs leave them", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [old, recent] = await db.select().from(jobs).orderBy(jobs.id);
+  await client`UPDATE jobs SET finished_at = now() - interval '31 days' WHERE id = ${old!.id}`;
+  await db.insert(verification).values({ id: "v-old", identifier: "x", value: "x", expiresAt: new Date(Date.now() - 1000) });
+  await prune("dry");
+  expect((await db.select().from(jobs)).length).toBe(2);
+  expect((await db.select().from(verification)).length).toBe(1);
+  await prune("on");
+  expect((await db.select().from(jobs)).map((j) => j.id)).toEqual([recent!.id]);
+  expect(await db.select().from(verification)).toEqual([]);
 });
