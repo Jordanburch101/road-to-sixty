@@ -27,15 +27,25 @@ extra tools, and the updater replaces it in place, so self-update keeps
 working. SteamOS's system folders are read-only and wiped on each update,
 so the AppImage has to carry what it needs; Tauri's carries the web view.
 The tray library (libayatana-appindicator) may be missing on SteamOS, and
-the app panics without it (it is loaded at run time, so Tauri's AppImage
-doesn't pack it), so `bundle.linux.appimage.files` carries it. If the tray
-still doesn't show, opening the AppImage again shows the window, since
+the app panics without it; Tauri's AppImage packs it whenever the app uses
+a tray (tauri-cli 2.12.2), so nothing is added for it. If the tray still
+doesn't show, opening the AppImage again shows the window, since
 tauri-plugin-single-instance already brings the running copy forward.
+
+Programs the app starts, the browser for linking above all, would inherit
+the AppImage's own library folders and fail to load against its older
+libraries, so on Linux the app starts `xdg-open` with every variable
+pointing inside the AppImage (`APPDIR`) taken out (`appimage.rs`). The
+window also shows the link page's address while linking, for when no
+browser opens.
 
 `tauri-plugin-autostart` 2.7.0 writes `~/.config/autostart` with the
 AppImage's own path (`app.env().appimage`), not the temporary mount it
 runs from, so start at login survives a reboot as long as the file isn't
-moved.
+moved. It doesn't quote that path, so a file named
+`Road-to-Sixty (1).AppImage` would never start; the app writes the Exec
+line again, quoted, whenever start at login is turned on and at every
+start while it is on, which also follows a moved file once it's opened.
 
 Flatpak was weighed and dropped: a manifest, its own CI and Flathub review,
 the self-updater doesn't work in its sandbox, and the sandbox needs the
@@ -53,7 +63,9 @@ folder as an argument, so tests hand it a made-up home.
      from `libraryfolders.vdf` (only its `"path"` lines are read) in
      `~/.local/share/Steam/steamapps` and in Flatpak Steam's
      `~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps`,
-     plus those two Steam folders themselves. Non-Steam games (Battle.net
+     plus those two Steam folders themselves and `~/.steam/steam`, the
+     link every native Steam keeps to its data (the only way to reach
+     Debian's and Ubuntu's `~/.steam/debian-installation`). Non-Steam games (Battle.net
      added to Steam, NonSteamLaunchers' shared `NonSteamLaunchers` prefix)
      sit here under long random names, and on an SD card under
      `/run/media/<card>/steamapps/compatdata`.
@@ -74,7 +86,9 @@ folder as an argument, so tests hand it a made-up home.
    "Add a folder", which on Linux opens in the home folder.
 
 Game folders, saved files, watching and the five-minute rescan are
-unchanged once an install is found.
+unchanged once an install is found, except that the addon's folders are
+matched without regard to case: Wine loads `Interface/Addons` too, and
+Linux's disks care about case. The sync folder goes in the same spelling.
 
 ## Noticing the game start (`watch.rs`)
 
@@ -120,20 +134,20 @@ older and newer systems alike):
 2. Build the AppImage with the updater files switched off by a config
    override (`-c '{"bundle":{"createUpdaterArtifacts":false}}'`), since
    pull requests have no signing key.
-3. `apps/desktop/scripts/linux-smoke.sh <AppImage>` in an `archlinux`
-   container with only Xvfb, ImageMagick (for the screenshot) and Wine, and
-   deliberately not WebKitGTK, so a library the AppImage forgot fails here.
-   It unpacks the AppImage with `--appimage-extract` and runs its `AppRun`
-   (no FUSE in a container) under a made-up home, waits 20 seconds, fails if the app
-   died, and saves a screenshot. Then, with `WINEPREFIX=<home>/Games/wow`
-   (Wine makes `drive_c` and `dosdevices`), it copies one of Wine's own
-   small programs to `drive_c/Program Files (x86)/World of
-   Warcraft/_classic_beta_/WowClassic.exe`, adds
-   `_classic_beta_/Interface/AddOns/RoadToSixty/RoadToSixty.toc`, starts
-   the program through Wine, and checks that `rts-sync status` (built in
-   the same job; a binary built on Ubuntu 22.04 runs on Arch) finds the
-   install and says the game is running.
-4. Upload the screenshot and the AppImage as the run's artifacts.
+3. `apps/desktop/scripts/linux-smoke.sh <AppImage> <out>` in an
+   `archlinux` container with only Xvfb, ImageMagick (for the screenshot)
+   and what any desktop has (fonts, X, OpenGL), deliberately not WebKitGTK,
+   GTK or the tray library. It unpacks the AppImage with
+   `--appimage-extract` (no FUSE in a container) and fails if any program
+   or library inside needs one this system lacks. Then it runs `AppRun`
+   under a made-up home, waits 20 seconds, fails if the app died or its log
+   shows part of it couldn't load, and saves a screenshot.
+4. `apps/desktop/scripts/wine-check.sh <rts-sync>` on the Ubuntu runner:
+   it builds a stand-in `WowClassic.exe` with mingw, puts it in a made-up
+   Lutris prefix (`<home>/Games/wow`) beside the addon's toc, starts it
+   through Wine, and checks that `rts-sync status` finds the install and
+   says the game is running.
+5. Upload the screenshot and the AppImage as the run's artifacts.
 
 ## Release (`desktop-release.yml`)
 
@@ -151,7 +165,9 @@ older and newer systems alike):
 ## Website (`apps/web`)
 
 - `download.ts`: `Choice` gains `linux`. A Linux computer that isn't a
-  phone gets "Download for Linux (early)"; Android stays "choose". Tests in
+  phone gets "Download for Linux (early)". Android, including big
+  tablets that send a Linux desktop browser's name, and ARM Linux stay
+  "choose": the AppImage is x86 only. Tests in
   `download.test.ts` follow.
 - `/download/linux` (through `[platform].astro`): the steps.
   1. Switch to Desktop Mode.
@@ -159,7 +175,7 @@ older and newer systems alike):
      breaks start at login).
   3. Right-click it, Properties, "Allow executing as program".
   4. Open it and link it as on any other computer.
-  5. If WoW isn't found, "Add a folder" and pick the World of Warcraft
+  5. If WoW isn't found, "Add a game folder" and pick the World of Warcraft
      folder inside your Proton or Lutris folder.
   6. No tray icon? Open the file again to bring up the window.
   7. Games played in Game Mode back up the next time you're in Desktop
