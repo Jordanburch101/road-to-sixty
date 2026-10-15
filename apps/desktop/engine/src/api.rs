@@ -90,6 +90,9 @@ pub enum ApiError {
     Status(u16, String),
     /// No answer: offline, or the server is down. Try again later.
     Network(String),
+    /// The server asked this PC to slow down (429). Try again on a later
+    /// pass; nothing is wrong with the file or the link.
+    Busy,
 }
 
 impl std::fmt::Display for ApiError {
@@ -97,7 +100,15 @@ impl std::fmt::Display for ApiError {
         match self {
             ApiError::Unauthorized => write!(f, "this PC isn't linked"),
             ApiError::Status(0, why) => write!(f, "{why}"),
-            ApiError::Status(code, body) => write!(f, "the server answered {code}: {body}"),
+            // The server words its refusals as {"error": "..."}; show just the words.
+            ApiError::Status(code, body) => match serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v["error"].as_str().map(str::to_string))
+            {
+                Some(why) => write!(f, "{why}"),
+                None => write!(f, "the server answered {code}: {body}"),
+            },
+            ApiError::Busy => write!(f, "the server is busy; trying again shortly"),
             ApiError::Network(why) => write!(f, "couldn't reach the server: {why}"),
         }
     }
@@ -289,6 +300,7 @@ fn ok(reply: Result<Reply, ureq::Error>) -> Result<Reply, ApiError> {
     match reply.status().as_u16() {
         200..=299 => Ok(reply),
         401 => Err(ApiError::Unauthorized),
+        429 => Err(ApiError::Busy),
         // The server is down or failing: like no answer, try again later.
         code @ 500..=599 => Err(ApiError::Network(format!("the server answered {code}"))),
         code => Err(ApiError::Status(code, reply.body_mut().read_to_string().unwrap_or_default())),
@@ -482,5 +494,17 @@ mod tests {
             ApiError::Status(413, "too big".into()).to_string(),
             "the server answered 413: too big"
         );
+        assert_eq!(
+            ApiError::Status(409, r#"{"error":"the journey changed just now; try again"}"#.into()).to_string(),
+            "the journey changed just now; try again"
+        );
+    }
+
+    #[test]
+    fn a_429_is_busy_not_a_refusal_or_offline() {
+        let fake = fake::serve(|_, _| (429, br#"{"error":"too many requests"}"#.to_vec()));
+        let result = Client::new(&fake.url, Some("t".into())).check();
+        assert!(matches!(result, Err(ApiError::Busy)), "{result:?}");
+        assert_eq!(ApiError::Busy.to_string(), "the server is busy; trying again shortly");
     }
 }

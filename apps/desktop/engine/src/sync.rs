@@ -288,6 +288,8 @@ pub fn pass(
                 }
                 Ok(Sent::Unchanged | Sent::Refused) => {}
                 Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
+                // Not sent, so it goes up on a later pass; the rest carry on.
+                Err(ApiError::Busy) => {}
                 Err(e) => report.problems.push(Problem::general(e.to_string())),
             }
         }
@@ -470,6 +472,35 @@ mod tests {
             }]
         );
         assert!(fake.seen.lock().unwrap().iter().all(|s| !s.url.starts_with("/v1/upload")));
+    }
+
+    #[test]
+    fn a_busy_server_skips_that_upload_but_the_pass_still_delivers() {
+        let (dir, game) = game();
+        let busy = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (429, br#"{"error":"too many uploads"}"#.to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&busy.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            std::slice::from_ref(&game),
+            &dir.path().join("j"),
+            |_| true,
+        )
+        .unwrap();
+        assert!(report.uploaded.is_empty());
+        assert!(state.uploaded.is_empty(), "the file goes up on a later pass");
+        assert!(state.refused.is_empty(), "busy isn't a refusal");
+        assert!(busy.seen.lock().unwrap().iter().any(|s| s.url.starts_with("/v1/check")));
     }
 
     #[test]
