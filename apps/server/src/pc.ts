@@ -24,13 +24,15 @@ export const pcRoutes = () =>
         return { error: "too many requests" };
       }
     })
+    // Written at most every 10 minutes, or when a version changes: the app
+    // checks in every few minutes, and a write per request adds up.
     .onBeforeHandle(async ({ device, query }) => {
+      const addon = query.addon ? String(query.addon).slice(0, 20) : null;
+      const app = query.app ? String(query.app).slice(0, 20) : null;
+      const stale = !device!.lastSeenAt || Date.now() - device!.lastSeenAt.getTime() > 10 * 60 * 1000;
+      if (!stale && (addon ?? device!.addonVersion) === device!.addonVersion && (app ?? device!.appVersion) === device!.appVersion) return;
       await db
         .update(devices)
-        .set({
-          lastSeenAt: new Date(),
-          ...(query.addon ? { addonVersion: String(query.addon).slice(0, 20) } : {}),
-          ...(query.app ? { appVersion: String(query.app).slice(0, 20) } : {}),
-        })
+        .set({ lastSeenAt: new Date(), ...(addon ? { addonVersion: addon } : {}), ...(app ? { appVersion: app } : {}) })
         .where(eq(devices.id, device!.id));
     });

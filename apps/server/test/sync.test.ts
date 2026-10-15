@@ -431,3 +431,15 @@ test("an account's PCs share its upload allowance", async () => {
   for (let i = 0; i < 500; i++) accountDaily.take(desk.device.userId);
   expect((await upload(desk.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
 });
+
+test("a PC's last visit is written at most every 10 minutes, unless its versions change", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  await call(desk.token, "/v1/check?app=0.1.3");
+  const [first] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  await call(desk.token, "/v1/check?app=0.1.3");
+  const [second] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  expect(second!.lastSeenAt).toEqual(first!.lastSeenAt);
+  await call(desk.token, "/v1/check?app=0.1.4");
+  const [third] = await db.select().from(devices).where(eq(devices.id, desk.device.id));
+  expect(third!.appVersion).toBe("0.1.4");
+});
