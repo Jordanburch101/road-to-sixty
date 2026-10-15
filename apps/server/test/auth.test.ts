@@ -164,3 +164,23 @@ test("one sign-in links one PC, even when the app asks several times at once", a
   expect(answers.filter((r) => r.status === 200).length).toBe(1);
   expect((await db.select().from(devices)).length).toBe(1);
 });
+
+test("a body over 16 KB is refused before anything reads it, except an upload", async () => {
+  const big = { client_id: APP_CLIENT_ID, scope: "x".repeat(17 * 1024) };
+  expect((await post("/api/auth/device/code", big)).status).toBe(413);
+  expect(await db.select().from(deviceCodes)).toEqual([]);
+  const patch = await app.handle(
+    new Request("http://localhost:3000/v1/devices/x", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x".repeat(17 * 1024) }) }),
+  );
+  expect(patch.status).toBe(413);
+  const unsized = await app.handle(
+    new Request("http://localhost:3000/api/auth/device/code", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      body: new ReadableStream({ start: (c) => (c.enqueue(new Uint8Array(20 * 1024)), c.close()) }),
+      duplex: "half",
+    } as RequestInit),
+  );
+  expect(unsized.status).toBe(413);
+  expect((await post("/api/auth/device/code", { client_id: APP_CLIENT_ID })).status).toBe(200);
+});
