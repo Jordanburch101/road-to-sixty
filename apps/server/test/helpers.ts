@@ -96,3 +96,7 @@ export const check = async (token: string) => (await (await call(token, "/v1/che
 export async function workAll() {
   while (await work()) {}
 }
+
+const s3 = new Bun.S3Client(config.s3);
+// Whether a journey file is in the bucket.
+export const stored = (userId: string, fp: string) => s3.exists(`${userId}/${fp}.zst`);

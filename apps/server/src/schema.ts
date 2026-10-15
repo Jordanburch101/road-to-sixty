@@ -1,4 +1,4 @@
-import { bigint, bigserial, integer, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, integer, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
 
 export * from "./auth-schema";
@@ -63,6 +63,12 @@ export const versions = pgTable("versions", {
   receivedId: bigint("received_id", { mode: "number" }),
   status: text("status", { enum: ["pending", "accepted", "rejected", "superseded"] }).notNull(),
   rejectReason: text("reject_reason"),
+  // Set on the newest merged or restored version of each finished week, the
+  // one the clean-up keeps for that week.
+  weekly: boolean("weekly").notNull().default(false),
+  // When the clean-up deleted this version's file. The row stays: restores'
+  // windows, parents and the known-file check still need it.
+  prunedAt: timestamp("pruned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
