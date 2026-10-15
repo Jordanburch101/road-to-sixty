@@ -140,9 +140,10 @@ hours, one character at a time:
    `pruned_at`. If the job stops between the two, the next run deletes
    again; a missing file counts as deleted.
 
-A setting `PRUNE` controls it: `dry` logs, per character, how many versions
-and bytes it would prune and does nothing else; `on` prunes; `off` skips
-the job. The default is `dry`.
+A setting `PRUNE` controls it: `dry` marks each week's kept version (which
+deletes nothing) and logs, per character, how many versions, files and
+bytes it would prune; `on` prunes; `off` skips the job. The default is
+`dry`.
 
 ### Other rows
 

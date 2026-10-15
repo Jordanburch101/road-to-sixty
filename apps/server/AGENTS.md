@@ -24,6 +24,10 @@ push to `main` that touches it. The design is
   is built once by `Bun.build`, draws the fog from `packages/ui` (so the
   image copies that package), and is typechecked with the browser's types
   by `tsconfig.page.json`, kept apart so they don't clash with Bun's.
+- `src/limits.ts` counts each PC's and account's requests, uploads and
+  exports; `src/proxies.ts` lists the proxies sign-in trusts (Dokploy's and
+  Cloudflare's); `src/prune.ts` is the daily clean-up of old versions,
+  finished jobs and expired sign-in rows.
 - `src/worker.ts` runs merge jobs one at a time per character; it fills
   each character's level, class and time played, and each merged
   version's level, from the runner's `ok` line;
@@ -69,5 +73,18 @@ bun run dev               # port 3000, with .env copied from .env.example
   protection.
 - Test journeys are made up (`test/helpers.ts`). Real saved files hold other
   players' names and never go into a test.
+- Limits (spec 2026-10-15): 30 uploads per PC in 15 minutes, 600
+  requests an hour, 60 uploads per account in 15 minutes and 500 a day,
+  and 5 exports an hour answer 429, which the app retries; 20 linked PCs
+  per account (409 on the 21st); 8 MB compressed and 64-character names
+  answer 413 and 400; a 101st character answers 422 in plain text, which
+  the app shows on the row. The counts are in memory.
+- `api.roadtosixty.online` is behind Cloudflare's proxy. When
+  Cloudflare changes its ranges (https://www.cloudflare.com/ips/), update
+  `src/proxies.ts`, or sign-in limits count Cloudflare instead of visitors.
+- The clean-up never deletes a version row, only files, and sets
+  `pruned_at`. Anything that reads a version's file must skip pruned
+  versions. `PRUNE` is `dry` by default: read its log before setting `on`
+  in Dokploy.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.
