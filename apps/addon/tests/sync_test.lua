@@ -99,6 +99,28 @@ char = Journey({ events = Session(1000), syncedVersion = 6 })
 check(Sync.Apply(char, { version = 6, journey = "not even read" }) == "same", "the version already brought in")
 check(Sync.Apply(char, { version = 4, replace = true, journey = "not even read" }) == "same", "an older version")
 
+-- 3b. The journey stamp (Core.lua): only this journey merges; an erase on
+-- another PC replaces; another GUID's, or the journey before an erase, is
+-- left alone.
+do
+    local mine = "Player-1-0A:0"
+    local function Entry(stamp, events)
+        return { version = 8, journey = Write(Journey({ journeyId = stamp, events = events or Session(5000) })) }
+    end
+    local w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry(mine))
+    check(w == "merged" and #o.events == 6 and o.journeyId == mine, "the same journey merges: " .. tostring(w))
+    w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry("Player-1-0A:7000", Session(8000)))
+    check(w == "replaced" and Same(o.events, Session(8000)) and o.journeyId == "Player-1-0A:7000",
+        "an erase on another PC replaces this copy: " .. tostring(w))
+    check(Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry("Player-1-0B:0")) == "same",
+        "another character's journey is left alone")
+    check(Sync.Apply(Journey({ journeyId = "Player-1-0A:7000", events = Session(8000) }), Entry(mine)) == "same",
+        "the journey from before this PC's erase is left alone")
+    w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }),
+        { version = 8, journey = Write(Journey({ events = Session(5000) })) })
+    check(w == "merged" and o.journeyId == mine, "a server copy from before stamps merges and takes this stamp: " .. tostring(w))
+end
+
 -- 4. Entries that can't be used, each with a reason.
 local function Problem(entry, local_)
     local w, why = Sync.Apply(local_ or Journey({ events = Session(1000) }), entry)
