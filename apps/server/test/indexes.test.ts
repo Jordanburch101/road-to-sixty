@@ -18,6 +18,10 @@ test("the tables that grow have indexes on the columns requests read them by", a
     "version_parents_parent",
     "devices_user",
     "versions_fingerprint",
+    "session_user",
+    "verification_identifier",
+    "device_code_device_code_unique",
+    "device_code_user_code_unique",
   ]) {
     expect(names).toContain(name);
   }

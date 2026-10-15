@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 // Better Auth's tables (users, sessions, accounts, verifications, device
 // codes), with the fields its version 1.7 expects. Its CLI can't load this
@@ -29,7 +29,7 @@ export const session = pgTable("session", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-});
+}, (t) => [index("session_user").on(t.userId)]);
 
 // A Battle.net sign-in. accountId is the keyed hash of the Battle.net
 // account ID, never the ID itself; the tokens are dropped (auth.ts).
@@ -60,13 +60,14 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: created(),
   updatedAt: updated(),
-});
+}, (t) => [index("verification_identifier").on(t.identifier)]);
 
 // The code the app shows while a PC is being linked.
 export const deviceCode = pgTable("device_code", {
   id: text("id").primaryKey(),
-  deviceCode: text("device_code").notNull(),
-  userCode: text("user_code").notNull(),
+  // Polling, approving and the link page look a code up by these.
+  deviceCode: text("device_code").notNull().unique(),
+  userCode: text("user_code").notNull().unique(),
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   status: text("status").notNull(),
