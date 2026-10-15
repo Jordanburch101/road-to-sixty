@@ -38,4 +38,7 @@ bun run build
   the browser. Keep every animation in CSS, still under reduced motion.
 - The screenshots show only Jordan's own characters. Blur any other
   player's name before adding one.
-- No analytics, cookies, or fonts and scripts from other sites.
+- No cookies, and no fonts or scripts from other sites. The one exception
+  to "no tracking" is Vercel Web Analytics (`<Analytics />` in Layout.astro),
+  which sets no cookies and loads from the site's own address; the Privacy
+  page says so. Add nothing else that counts visitors.

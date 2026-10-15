@@ -1,5 +1,6 @@
 ---
 import "../styles/site.css";
+import Analytics from "@vercel/analytics/astro";
 import compass from "@road-to-sixty/ui/compass.png";
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
@@ -21,6 +22,7 @@ const { title, description = "The Road to Sixty app backs up your WoW Forever jo
     <Header />
     <slot />
     <Footer />
+    <Analytics />
     <script>
       import { wireDownloads } from "../download";
       wireDownloads();
