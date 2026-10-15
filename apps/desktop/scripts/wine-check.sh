@@ -12,6 +12,7 @@ home=$(mktemp -d)
 export HOME=$home WINEPREFIX=$home/Games/wow WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
 
 work=$(mktemp -d)
+trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$home" "$work"' EXIT
 printf '#include <windows.h>\nint main(void) { Sleep(120000); return 0; }\n' >"$work/wait.c"
 x86_64-w64-mingw32-gcc -o "$work/WowClassic.exe" "$work/wait.c"
 

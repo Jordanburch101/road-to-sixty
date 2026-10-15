@@ -13,7 +13,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   `rts-sync`):
   - `installs.rs` finds WoW installs, game folders and saved journeys. On
     Linux the installs come from `wine.rs`: every Wine prefix under the
-    home folder (Proton's in each Steam library from `libraryfolders.vdf`,
+    home folder (Proton's in each Steam library from `libraryfolders.vdf` and
+    `~/.steam/steam`,
     SD cards included, Lutris's `~/Games`, Bottles, `~/.wine`), Battle.net's
     list in each with drive letters turned into paths through `dosdevices`,
     and the default folder. `wine.rs` is unix-only: a path joined with `c:`
@@ -63,7 +64,11 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   them with `@road-to-sixty/api`'s types. Unlinking this PC revokes it on
   the server first, and still unlinks here when offline; and `src/main.rs` puts them together: closing the window
   only hides it, and only Quit in the menu ends the app.
-  `src/update.rs` checks the downloads bucket's `latest.json` at start and
+  `src/appimage.rs` is what running as a Linux AppImage changes: the browser
+  is started without the AppImage's library folders (they break the host's
+  programs), and the autostart entry's Exec line is written again quoted,
+  since the plugin leaves a path with spaces unquoted. While linking, the
+  window also shows the link page's address. `src/update.rs` checks the downloads bucket's `latest.json` at start and
   every six hours (never in debug builds), downloads a newer version at
   once, and restarts into it only while the window is hidden and the sync
   thread isn't busy, or when the player asks (the tray item or Restart
@@ -93,9 +98,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   container (no WebKitGTK, GTK or tray library, as SteamOS may lack them)
   and saves a screenshot; `scripts/wine-check.sh` starts a stand-in
   `WowClassic.exe` through Wine and checks `rts-sync status` sees it
-  running. CI's `desktop-linux` job runs both (#47). The tray library is
-  loaded at run time, so Tauri wouldn't pack it and the app would panic
-  without it: `bundle.linux.appimage.files` in `tauri.conf.json` carries it.
+  running. CI's `desktop-linux` job runs both (#47). Tauri's AppImage packs the tray
+  library itself; adding it again in `tauri.conf.json` breaks builds on
+  Arch (#47).
 - `Cargo.toml` is the Rust workspace; `rust-toolchain.toml` pins Rust.
 
 ## Commands (from apps/desktop)
