@@ -1,12 +1,14 @@
-import { beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { client, db } from "../src/db";
 import { prune } from "../src/prune";
 import { characters, jobs, verification, versions } from "../src/schema";
+import * as storage from "../src/storage";
 import { remove } from "../src/storage";
 import { journey, newDevice, reset, savedFile, session, stored, upload, workAll } from "./helpers";
 
 beforeEach(reset);
+afterEach(() => mock.restore());
 
 const at = (id: number, when: string) => client`UPDATE versions SET created_at = ${when}::timestamptz WHERE id = ${id}`;
 const row = async (id: number) => (await db.select().from(versions).where(eq(versions.id, id)))[0]!;
@@ -102,4 +104,20 @@ test("old finished jobs and expired sign-in rows go; recent ones and dry runs le
   await prune("on");
   expect((await db.select().from(jobs)).map((j) => j.id)).toEqual([recent!.id]);
   expect(await db.select().from(verification)).toEqual([]);
+});
+
+test("a version is marked pruned before its file is deleted, so a restore can't pick it up in between", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const [a] = await play(token, 3);
+  await at(a!, "2025-01-06T10:00Z");
+  const seen: (Date | null)[] = [];
+  const real = storage.remove;
+  spyOn(storage, "remove").mockImplementation(async (userId, fp) => {
+    const rows = await db.select().from(versions).where(eq(versions.fingerprint, fp));
+    seen.push(...rows.map((r) => r.prunedAt));
+    return real(userId, fp);
+  });
+  await prune("on");
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.every((t) => t !== null)).toBe(true);
 });

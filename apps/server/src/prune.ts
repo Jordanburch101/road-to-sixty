@@ -10,9 +10,10 @@ export type Pruned = { characterId: number; versions: number; files: number; byt
 // week; an upload's file goes once its merge is done. Rows stay, with
 // pruned_at set, because restores' windows, parents and the known-file
 // check still need them.
-// ponytail: an upload or merge storing a file identical to one being
-// deleted here can lose it; its merge then fails and the app sends the
-// file again. Lock per account if that is ever seen.
+// ponytail: a merge whose result is identical to a file being deleted here
+// can still lose it (put skips a file that exists); an upload in the same
+// spot fails its merge and the app sends it again. Lock per account if
+// that is ever seen.
 export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
   // A week still under way is left alone, so the mark lands on the week's
   // last version and each finished week gets exactly one. Weeks are UTC.
@@ -51,6 +52,10 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
   for (const userId of Array.from(new Set<string>(chosen.map((c) => c.userId)))) {
     const theirs = chosen.filter((c) => c.userId === userId);
     const ids = theirs.map((c) => c.id);
+    // Marked before anything is deleted: a restore locks its source and
+    // checks it isn't pruned, so it either finishes first (and its new row,
+    // sharing the file, is counted as kept below) or is refused.
+    if (mode === "on") await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, ids));
     // Identical files are stored once, so a file goes only when no version
     // that stays has it.
     const kept = new Set(
@@ -64,12 +69,9 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
     );
     const files = new Map<string, number>();
     for (const c of theirs) if (!kept.has(c.fingerprint)) files.set(c.fingerprint, c.rawSize);
-    if (mode === "on") {
-      // Files first: if this stops part way, the next run deletes again,
-      // and a file already gone is no error.
-      for (const fp of files.keys()) await remove(userId, fp);
-      await db.update(versions).set({ prunedAt: new Date() }).where(inArray(versions.id, ids));
-    }
+    // ponytail: a crash here leaves files no row needs, which is only
+    // storage; a sweep of unreferenced files would find them.
+    if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
     for (const characterId of Array.from(new Set<number>(theirs.map((c) => c.characterId)))) {
       const mine = theirs.filter((c) => c.characterId === characterId);
       const myFiles = Array.from(new Set<string>(mine.map((c) => c.fingerprint))).filter((fp) => files.has(fp));

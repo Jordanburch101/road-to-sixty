@@ -147,6 +147,16 @@ export const account = pcRoutes()
     // finishing in between must either see all of it or none.
     const version = await db
       .transaction(async (tx) => {
+        // The clean-up marks a version pruned before deleting its file, and
+        // waits on this lock: so either it sees the restore's new row, which
+        // shares the source's file, and keeps the file, or the source is
+        // already marked and the restore is refused.
+        const [still] = await tx
+          .select({ id: versions.id })
+          .from(versions)
+          .where(and(eq(versions.id, source.id), isNull(versions.prunedAt)))
+          .for("share");
+        if (!still) return "gone" as const;
         const [made] = await tx
           .insert(versions)
           .values({
@@ -174,6 +184,10 @@ export const account = pcRoutes()
         if (e instanceof TransactionRollbackError) return null;
         throw e;
       });
+    if (version === "gone") {
+      set.status = 404;
+      return { error: "no such version" };
+    }
     if (version === null) {
       set.status = 409;
       return { error: "the journey changed just now; try again" };

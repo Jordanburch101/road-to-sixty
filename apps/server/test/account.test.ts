@@ -299,3 +299,21 @@ test("an account can download its data 5 times an hour", async () => {
   expect(refused.status).toBe(429);
   expect(refused.headers.get("retry-after")).not.toBeNull();
 });
+
+test("a restore whose source is pruned while it works is refused, and the journey stays as it was", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [old] = await db.select().from(versions).where(and(eq(versions.kind, "merged"), ne(versions.id, c!.headVersionId!)));
+  spyOn(lua, "runWindows").mockImplementation(async () => {
+    await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, old!.id));
+    return [];
+  });
+  const r = await call(token, `/v1/characters/${c!.id}/restore`, { method: "POST", body: JSON.stringify({ version: old!.id }), headers: { "content-type": "application/json" } });
+  expect(r.status).toBe(404);
+  const [after] = await db.select().from(characters);
+  expect(after!.headVersionId).toBe(c!.headVersionId);
+});
