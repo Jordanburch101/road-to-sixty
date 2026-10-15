@@ -1,11 +1,14 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, count, desc, eq, inArray, max } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
 import { uploads } from "./limits";
-import { fingerprint, getPacked, put, unpack } from "./storage";
+import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
+
+const MAX_FIELD = 64;
+const MAX_CHARACTERS = 100;
 
 // The sync API the app calls with its PC token (spec, "Sync API").
 export const sync = pcRoutes()
@@ -13,7 +16,7 @@ export const sync = pcRoutes()
   // job merges it.
   .post(
     "/upload",
-    async ({ device, query, request, set }): Promise<UploadResponse | { error: string }> => {
+    async ({ device, query, request, set }): Promise<UploadResponse | { error: string } | Response> => {
       if (!uploads.take(device!.id)) {
         set.status = 429;
         set.headers["retry-after"] = String(uploads.retryAfter(device!.id));
@@ -24,7 +27,16 @@ export const sync = pcRoutes()
         set.status = 400;
         return { error: "game, realm and name are required" };
       }
+      if ([game, realm, name, addon].some((v) => v !== undefined && v.length > MAX_FIELD)) {
+        set.status = 400;
+        return { error: `game, realm, name and addon are at most ${MAX_FIELD} characters` };
+      }
       const packed = new Uint8Array(await request.arrayBuffer());
+      // Bun stops a bigger body in production; this also covers a body sent without its length.
+      if (packed.length > MAX_PACKED) {
+        set.status = 413;
+        return { error: "over 8 MB compressed" };
+      }
       let raw: Uint8Array;
       try {
         raw = unpack(packed);
@@ -37,7 +49,16 @@ export const sync = pcRoutes()
         return { error: "compiled Lua is refused" };
       }
       const userId = device!.userId;
-      await db.insert(characters).values({ userId, game, realm, name }).onConflictDoNothing();
+      const [existing] = await db
+        .select({ id: characters.id })
+        .from(characters)
+        .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)));
+      if (!existing) {
+        const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
+        // Plain text: the app shows the body as the reason on the character's row.
+        if (held!.n >= MAX_CHARACTERS) return new Response(`This account has reached ${MAX_CHARACTERS} characters`, { status: 422 });
+        await db.insert(characters).values({ userId, game, realm, name }).onConflictDoNothing();
+      }
       const [character] = await db
         .select()
         .from(characters)

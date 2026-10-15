@@ -6,7 +6,7 @@ import { config } from "../src/config";
 import { client, db } from "../src/db";
 import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
-import { pack, unpack } from "../src/storage";
+import { MAX_PACKED, pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
 import { requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
@@ -332,4 +332,33 @@ test("a PC that calls the server too often is told to wait on every route", asyn
   expect(refused.status).toBe(429);
   expect(refused.headers.get("retry-after")).not.toBeNull();
   expect((await call(desk.token, "/v1/characters")).status).toBe(429);
+});
+
+test("an upload over 8 MB compressed is refused before it is unpacked", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const r = await call(token, `/v1/upload?${new URLSearchParams(CHAR)}`, { method: "POST", body: new Uint8Array(MAX_PACKED + 1) });
+  expect(r.status).toBe(413);
+  expect(await r.json()).toEqual({ error: "over 8 MB compressed" });
+});
+
+test("a character, realm, game or addon name over 64 characters is refused", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const file = savedFile(journey({ events: session(1000) }));
+  for (const field of ["game", "realm", "name", "addon"]) {
+    expect((await upload(token, file, { [field]: "x".repeat(65) })).status).toBe(400);
+  }
+  expect((await upload(token, file, { name: "x".repeat(64) })).status).toBe(200);
+});
+
+test("an account can have 100 characters; a new one after that is refused, the others still upload", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await db
+    .insert(characters)
+    .values(Array.from({ length: 99 }, (_, i) => ({ userId: device.userId, game: CHAR.game, realm: CHAR.realm, name: `Alt${i}` })));
+  const file = savedFile(journey({ events: session(1000) }));
+  expect((await upload(token, file)).status).toBe(200); // the 100th
+  const refused = await upload(token, file, { name: "OneTooMany" });
+  expect(refused.status).toBe(422);
+  expect(await refused.text()).toBe("This account has reached 100 characters");
+  expect((await upload(token, savedFile(journey({ events: session(2000) })), { name: "Alt5" })).status).toBe(200);
 });
