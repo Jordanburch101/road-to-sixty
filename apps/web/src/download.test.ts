@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { pick } from "./download";
+import { ALSO, LABEL, pick } from "./download";
 
 const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
@@ -27,4 +27,9 @@ test("phones, tablets and anything unknown are offered every download", () => {
 
 test("an iPad, whose browser says it is a Mac, is offered both", () => {
   expect(pick({ userAgent: mac, maxTouchPoints: 5 })).toBe("choose");
+});
+
+test("the line under the button names the other two systems, and the fallback names all three", () => {
+  expect(ALSO).toEqual({ mac: "Windows and Linux", windows: "Mac and Linux", linux: "Mac and Windows" });
+  expect(LABEL.choose).toBe("Download for Mac, Windows or Linux");
 });

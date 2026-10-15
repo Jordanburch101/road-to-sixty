@@ -18,7 +18,14 @@ export const LABEL: Record<Choice, string> = {
   mac: "Download for macOS",
   windows: "Download for Windows",
   linux: "Download for Linux (early)",
-  choose: "Download for Mac or Windows",
+  choose: "Download for Mac, Windows or Linux",
+};
+
+// The line under the button: the two other systems, on the page with every download.
+export const ALSO: Record<Exclude<Choice, "choose">, string> = {
+  mac: "Windows and Linux",
+  windows: "Mac and Linux",
+  linux: "Mac and Windows",
 };
 
 export const PAGE: Record<Choice, string> = {
@@ -29,7 +36,7 @@ export const PAGE: Record<Choice, string> = {
 };
 
 // Points every [data-download] button at this computer's download, and the
-// "also for" line at the other one. Without this, the page offers both.
+// "also for" line at the other two. Without this, the page offers all three.
 export function wireDownloads() {
   const data = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
   const choice = pick({ userAgent: navigator.userAgent, platform: data?.platform ?? navigator.platform, maxTouchPoints: navigator.maxTouchPoints });
@@ -41,11 +48,9 @@ export function wireDownloads() {
   }
   for (const line of document.querySelectorAll<HTMLElement>("[data-also]")) {
     if (choice === "choose") continue;
-    // Linux points at the page with every download.
-    const other: Choice = choice === "mac" ? "windows" : choice === "windows" ? "mac" : "choose";
     const link = line.querySelector<HTMLAnchorElement>("a")!;
-    link.href = PAGE[other];
-    link.textContent = { mac: "Mac", windows: "Windows", linux: "Linux", choose: "Mac or Windows" }[other];
+    link.href = PAGE.choose;
+    link.textContent = ALSO[choice];
     line.hidden = false;
   }
 }
