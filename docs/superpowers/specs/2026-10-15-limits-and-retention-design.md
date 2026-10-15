@@ -40,8 +40,8 @@ several alts can send a burst.
 4. **All requests per PC.** At most 600 requests an hour per PC across
    `/v1/*`, to catch an app stuck in a loop. Also 429.
 5. **Characters per account.** At most 100. An upload for a 101st new
-   character is refused with 409 and `{ "error": "character limit" }`.
-   Existing characters keep uploading.
+   character is refused with 422 and the plain-text body "This account
+   has reached 100 characters". Existing characters keep uploading.
 
 The rate limits are counted in memory on the one server process, by PC id,
 with the clock passed in so tests can move it. A restart forgets them,
@@ -59,12 +59,12 @@ This bounds any one account's queue to about one job per character per PC,
 which is the fairness the shared worker needs. The worker's order is
 unchanged.
 
-### App change (0.1.4)
+### No app change
 
-Only the character limit needs the app: today only 413 shows as a refusal
-on the row. The app treats 409 the same way, with the message "This
-account has reached 100 characters". The shape lives in `packages/api`
-and the Rust mirror, so it changes in both.
+The app already keeps a 400 or 422 as a refusal on the character's row,
+showing the body as the reason ("The server refused it: This account has
+reached 100 characters"), and retries anything else but 413. So the limits
+need no app release.
 
 ## Version clean-up
 
@@ -152,12 +152,11 @@ Server tests (Bun, against the Docker Postgres and S3):
   100 plus the weekly ones; a pruned version downloads as 404; a stale
   upload still has a pruned restore's stretches stripped.
 
-App: a Rust test that a 409 is a refusal with the message, like 413.
+App: none. `engine/src/sync.rs` already keeps a 400 or 422 as a refusal with the body as its reason.
 
 ## Rollout
 
 1. Merge to `dev`; Dokploy deploys with `PRUNE` unset, so `dry`.
 2. Read the next day's log of what it would prune for Jordan's characters.
 3. Set `PRUNE=on` in Dokploy and redeploy.
-4. Release app 0.1.4 for the character limit message.
-5. Comment on #40 and update the website wording in the same merge.
+4. Comment on #40 and update the website wording in the same merge.
