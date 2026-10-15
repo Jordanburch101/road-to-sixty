@@ -1,8 +1,10 @@
-/* Content rising into place as it reaches the screen. The script at the end
-   of Layout.astro adds .reveal, then .in once the element is in view, so a
-   page without scripts, or with reduced motion, never hides anything.
-   The transition sits on .in only: on .reveal, the hiding would animate too. */
-.reveal:not(.in) { opacity: 0; transform: translateY(24px) scale(0.98); }
-.reveal[data-grow]:not(.in) { transform: translateY(32px) scale(0.94); }
-.reveal.in { transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
-@media print { .reveal:not(.in) { opacity: 1; transform: none; } }
+/* Content rising into place as it reaches the screen: each child of a
+   [data-reveal] element, once it is in view (the scripts in Layout.astro).
+   html.motion is set from <head>, so the parts are hidden from the first
+   paint, and never without scripts or under reduced motion. The transition
+   is on .rising only, which comes off once the part is in place, so it
+   doesn't take over the part's own transitions. */
+.motion [data-reveal] > :not([data-reveal], script, style, .in) { opacity: 0; transform: translateY(24px) scale(0.98); }
+.motion [data-reveal] > [data-grow]:not(.in) { transform: translateY(32px) scale(0.94); }
+.rising { transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+@media print { .motion [data-reveal] > * { opacity: 1 !important; transform: none !important; } }

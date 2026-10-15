@@ -15,8 +15,8 @@ Static pages built by Astro, hosted on Vercel. The design is
   and download button. `src/layouts/Layout.astro` wraps every page.
 - `src/download.ts` picks the download for the visitor's computer, and
   `src/countdown.ts` runs the flip board counting down to launch: the
-  only scripts the site sends, besides the short one at the end of
-  `Layout.astro` that starts the load-in animation (`src/styles/reveal.css`).
+  only scripts the site sends, besides the two short ones in `Layout.astro`
+  for the load-in animation (`src/styles/reveal.css`).
   `src/config.ts` reads the build settings.
 - `src/roads.ts` holds the fog's roads. The fog itself and the theme come
   from `packages/ui`.
@@ -41,11 +41,12 @@ bun run build
 - The shared React components render at build time; no React is sent to
   the browser. Keep every animation in CSS, still under reduced motion.
 - Content rises into place as it reaches the screen: each child of a
-  `[data-reveal]` element on its own, looking through `display: contents`
-  wrappers and nested `[data-reveal]`. `<body>` has it, so a new section
-  rises as one block; give it `data-reveal` to bring in its pieces one by
-  one, or `data-grow` to grow in like the map. Anything with its own
-  `transition` loses it while rising (`.reveal.in` sets one).
+  `[data-reveal]` element that isn't `[data-reveal]` itself. `<body>` has
+  it, so a new section rises as one block; give it `data-reveal` to bring
+  in its pieces one by one, or `data-grow` to grow in like the map. A
+  `display: contents` wrapper needs `data-reveal` too (Launch's), or it is
+  a part that can't fade. A part's own `transition` is set aside only
+  while it rises.
 - The screenshots show only Jordan's own characters. Blur any other
   player's name before adding one.
 - No cookies, and no fonts or scripts from other sites. The one exception

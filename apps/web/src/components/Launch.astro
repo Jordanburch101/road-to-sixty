@@ -10,7 +10,7 @@ const launched = Date.now() >= LAUNCH;
 const groups = ["Days", "Hours", "Minutes", "Seconds"];
 ---
 <section data-reveal class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-4 px-4 text-center md:mt-[150px]">
-  <div data-before-launch hidden={launched} class="contents">
+  <div data-before-launch data-reveal hidden={launched} class="contents">
     <h2 class="text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Try it on the beta.</h2>
     {/* The script fills the tiles; the sentence under the board says the same for screen readers. */}
     <div data-countdown aria-hidden="true" class="board mt-4 flex gap-3 md:gap-5">
@@ -32,7 +32,7 @@ const groups = ["Days", "Hours", "Minutes", "Seconds"];
     </div>
     <p class="mt-2 max-w-[520px] text-balance text-base leading-relaxed text-muted">WoW Forever launches on 4 November. Until then, help test the addon and the app on the beta.</p>
   </div>
-  <div data-after-launch hidden={!launched} class="contents">
+  <div data-after-launch data-reveal hidden={!launched} class="contents">
     <h2 class="text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Start recording your journey.</h2>
     <p class="max-w-[520px] text-balance text-base leading-relaxed text-muted">Install the addon before you log in. The app keeps every step safe on every PC you play.</p>
   </div>
