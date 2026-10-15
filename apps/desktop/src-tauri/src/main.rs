@@ -130,6 +130,7 @@ fn main() {
             account::characters,
             account::versions,
             account::restore,
+            account::remove_character,
             account::devices,
             account::rename_device,
             account::unlink_device,

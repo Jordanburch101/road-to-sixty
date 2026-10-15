@@ -50,6 +50,7 @@ export const pickFolder = () => invoke("pick_folder");
 export const characters = () => invoke<CharacterInfo[]>("characters");
 export const versions = (id: number) => invoke<VersionInfo[]>("versions", { id });
 export const restore = (id: number, version: number) => invoke<RestoreResponse>("restore", { id, version });
+export const removeCharacter = (id: number) => invoke("remove_character", { id });
 export const devices = () => invoke<DeviceInfo[]>("devices");
 export const renameDevice = (id: string, name: string) => invoke<DeviceInfo>("rename_device", { id, name });
 export const unlinkDevice = (id: string) => invoke("unlink_device", { id });

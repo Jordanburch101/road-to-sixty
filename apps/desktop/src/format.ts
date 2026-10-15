@@ -81,3 +81,27 @@ export function updateWords(update: Update, checked: string | null | undefined):
   if (update.state === "updated") return `Updated to ${update.version}. ${auto}`;
   return checked === null ? `Up to date. ${auto}` : auto;
 }
+
+// The beta's game folder: its characters are tagged and removed together.
+export const BETA = "_classic_beta_";
+
+// The list's rows, this game's first and the beta's apart, by the server's
+// game for each. A row the server doesn't have stays in the main list.
+export function byGame<T extends { key: string }>(rows: T[], info: Map<string, CharacterInfo>): { main: T[]; beta: T[] } {
+  const beta = rows.filter((r) => info.get(r.key)?.game === BETA);
+  return { main: rows.filter((r) => !beta.includes(r)), beta };
+}
+
+export const betaWords = (n: number) => `Remove ${n} beta ${n === 1 ? "journey" : "journeys"} from the backup? Journeys on your PCs stay.`;
+
+// A character's earlier journeys: the same game, realm and name, newest first.
+export function earlierOf(all: CharacterInfo[], c: CharacterInfo): CharacterInfo[] {
+  return all.filter((e) => e.earlier && e.game === c.game && e.realm === c.realm && e.name === c.name).sort((a, b) => b.id - a.id);
+}
+
+export function earlierLine(c: CharacterInfo, now: Date): string {
+  return [c.level !== null ? `Level ${c.level}` : "", c.lastPlayedAt ? `last played ${ago(c.lastPlayedAt, now)}` : ""].filter(Boolean).join(" · ");
+}
+
+export const removeWords = (name: string) =>
+  `Removes ${name}'s journey from the backup. Journeys on your PCs stay. If you play ${name} again, its journey is backed up again from that PC.`;

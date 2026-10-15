@@ -78,6 +78,13 @@ pub async fn restore(account: State<'_, Account>, id: i64, version: i64) -> Resu
         .await
 }
 
+/// Removes one journey from the backup. A 409 while its merge runs comes
+/// back as the server's own words.
+#[tauri::command]
+pub async fn remove_character(account: State<'_, Account>, id: i64) -> Result<Value, String> {
+    account.call("DELETE", format!("/v1/characters/{id}"), None).await
+}
+
 #[tauri::command]
 pub async fn devices(account: State<'_, Account>) -> Result<Value, String> {
     account.call("GET", "/v1/devices".into(), None).await
