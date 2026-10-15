@@ -43,12 +43,11 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
       console.error("prune: an account failed, carrying on:", e);
     }
   }
-  if (mode === "on") {
-    // Nothing reads a finished job once its version is settled.
-    await client`DELETE FROM jobs WHERE state IN ('done', 'failed') AND finished_at < now() - interval '30 days'`;
-    // Better Auth checks expiry when a row is used but never clears these.
-    for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
-  }
+  // These aren't journeys, so a dry run clears them too. Nothing reads a
+  // finished job once its version is settled; Better Auth checks expiry
+  // when a row is used but never clears these.
+  await client`DELETE FROM jobs WHERE state IN ('done', 'failed') AND finished_at < now() - interval '30 days'`;
+  for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
   const total = pruned.reduce((t, p) => ({ versions: t.versions + p.versions, files: t.files + p.files, bytes: t.bytes + p.bytes }), {
     versions: 0,
     files: 0,
