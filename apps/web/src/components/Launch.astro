@@ -9,7 +9,7 @@ import DownloadButton from "./DownloadButton.astro";
 const launched = Date.now() >= LAUNCH;
 const groups = ["Days", "Hours", "Minutes", "Seconds"];
 ---
-<section class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-4 px-4 text-center md:mt-[150px]">
+<section data-reveal class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-4 px-4 text-center md:mt-[150px]">
   <div data-before-launch hidden={launched} class="contents">
     <h2 class="text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Try it on the beta.</h2>
     {/* The script fills the tiles; the sentence under the board says the same for screen readers. */}

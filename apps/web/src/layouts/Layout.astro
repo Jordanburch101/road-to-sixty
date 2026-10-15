@@ -1,5 +1,6 @@
 ---
 import "../styles/site.css";
+import "../styles/reveal.css";
 import Analytics from "@vercel/analytics/astro";
 import compass from "@road-to-sixty/ui/compass.png";
 import Footer from "../components/Footer.astro";
@@ -18,10 +19,35 @@ const { title, description = "The Road to Sixty app backs up your WoW Forever jo
     <link rel="icon" type="image/png" href={compass.src} />
     <slot name="head" />
   </head>
-  <body class="min-h-screen overflow-x-hidden bg-ground antialiased">
+  <body data-reveal class="min-h-screen overflow-x-hidden bg-ground antialiased">
     <Header />
     <slot />
     <Footer />
+    {/* Inline so it runs before the first paint: a bundled script would show the page, then hide it to animate. */}
+    <script is:inline>
+      (() => {
+        if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        // A [data-reveal] element rises in pieces: each child on its own, looking
+        // through display:contents wrappers and into children marked [data-reveal] too.
+        const parts = (el) => [...el.children].flatMap((c) =>
+          c.tagName === "SCRIPT" ? [] : c.hasAttribute("data-reveal") || getComputedStyle(c).display === "contents" ? parts(c) : [c]);
+        const seen = new IntersectionObserver((entries) => {
+          let i = 0;
+          for (const e of entries) {
+            if (!e.isIntersecting) continue;
+            e.target.style.transitionDelay = `${Math.min(i++, 8) * 80}ms`;
+            e.target.classList.add("in");
+            seen.unobserve(e.target);
+          }
+        }, { rootMargin: "0px 0px -8% 0px" });
+        const all = parts(document.body);
+        for (const el of all) el.classList.add("reveal");
+        // Without this the hidden look is never worked out before what's
+        // already on screen gets .in, so the top of the page snaps in unanimated.
+        document.body.offsetHeight;
+        for (const el of all) seen.observe(el);
+      })();
+    </script>
     <Analytics />
     <script>
       import { wireDownloads } from "../download";
