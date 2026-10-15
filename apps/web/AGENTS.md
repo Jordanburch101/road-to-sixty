@@ -16,7 +16,9 @@ Static pages built by Astro, hosted on Vercel. The design is
   one script the site sends); `src/config.ts` reads the build settings.
 - `src/roads.ts` holds the fog's roads. The fog itself and the theme come
   from `packages/ui`.
-- `public/journey/` holds the in-game screenshots of the journey map.
+- `src/assets/journey/` holds the in-game screenshots of the journey map,
+  at 2000 px. The build makes AVIF, WebP and JPEG copies at 1040 and 2000
+  px with sharp (Astro's `<Picture>`), so keep only the full-size originals.
 
 ## Commands (from apps/web)
 
