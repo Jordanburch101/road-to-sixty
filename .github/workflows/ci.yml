@@ -1,12 +1,19 @@
 # On every push to main or dev and every pull request: checks, the addon's
 # tests under LuaJIT and standard Lua 5.1, and a release build, uploaded as
-# an artifact you can download and install to try.
+# an artifact you can download and install to try. Also the website and the
+# server. The desktop app has its own workflow (desktop-ci.yml), which runs
+# only when the app or what it uses changes.
 name: CI
 
 on:
   push:
     branches: [main, dev]
   pull_request:
+
+# A new push to a pull request stops its older run; pushes to main and dev finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -102,77 +109,3 @@ jobs:
           -e BETTER_AUTH_URL=unused -e BETTER_AUTH_SECRET=unused -e ACCOUNT_HASH_KEY=unused
           -e BATTLENET_CLIENT_ID=unused -e BATTLENET_CLIENT_SECRET=unused
           rts-server bun apps/server/scripts/smoke.ts
-
-  # The app on the systems it ships for: the window builds, every Rust test
-  # passes (LuaJIT's, which reads back the sync folder, on Linux only). On
-  # Linux also formatting, then the AppImage, started in a bare Arch Linux
-  # like SteamOS, and the game-start check under Wine. Ubuntu 22.04, the
-  # oldest base the AppImage supports. The screenshot and the AppImage are
-  # kept with the run.
-  desktop-app:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: apps/desktop
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-
-      - name: Install the build libraries, LuaJIT and Wine
-        if: runner.os == 'Linux'
-        run: >
-          sudo apt-get update && sudo apt-get install -y
-          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
-          luajit wine wine64 gcc-mingw-w64-x86-64 xvfb
-
-      - name: Install
-        run: bun install --frozen-lockfile
-
-      - name: Window
-        run: bun run build && bun run typecheck
-
-      - name: Tests
-        run: cargo test --workspace -- ${{ runner.os != 'Linux' && '--skip luajit_reads_the_journey_back_unchanged' || '' }}
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      # Windows checks files out with CRLF line endings.
-      - name: Formatting
-        if: runner.os == 'Linux'
-        run: cargo fmt --check
-
-      - name: Script and UI tests
-        run: bun test scripts && cd ../../packages/ui && bun test
-
-      # No signing key on pull requests, so no updater files.
-      - name: AppImage
-        if: runner.os == 'Linux'
-        run: bunx tauri build --bundles appimage -c '{"bundle":{"createUpdaterArtifacts":false}}'
-
-      # From the repo root, which the container sees as /w.
-      - name: It starts on a bare Arch Linux
-        if: runner.os == 'Linux'
-        working-directory: .
-        run: >
-          docker run --rm -v "$PWD":/w archlinux bash /w/apps/desktop/scripts/linux-smoke.sh
-          "/w/$(ls apps/desktop/target/release/bundle/appimage/*.AppImage | head -1)" /w/smoke
-
-      - name: Wine
-        if: runner.os == 'Linux'
-        run: cargo build --bin rts-sync && scripts/wine-check.sh target/debug/rts-sync
-
-      - uses: actions/upload-artifact@v4
-        if: always() && runner.os == 'Linux'
-        with:
-          name: linux
-          path: |
-            smoke/
-            apps/desktop/target/release/bundle/appimage/*.AppImage
