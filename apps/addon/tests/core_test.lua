@@ -29,6 +29,10 @@ time = function() return 1000 end
 GetServerTime = function() return 2000 end
 C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "9.9.9" or nil end }
 
+local guid = "Player-1-0A"
+UnitGUID = function() return guid end
+issecretvalue = function(v) return v == "secret" end
+
 local function Load(saved, db)
     RoadToSixtyDB, RoadToSixtyCharDB = db, saved
     local ns = {}
@@ -101,6 +105,47 @@ local bare = { version = 4, events = { { 1, "on" } } }
 ns.CharDefaults(bare)
 check(bare.totals.kills == 0 and bare.kills.d == "" and bare.people and #bare.events == 1 and bare.version == 4,
     "CharDefaults fills in a journey")
+
+-- 9. Login stamps a file from before stamps as this character's.
+ns = Load({ version = 3, events = { { 500, "on" } } }, db)
+script(nil, "PLAYER_LOGIN")
+check(ns.char.journeyId == "Player-1-0A:0", "a file without a stamp becomes this character's: " .. tostring(ns.char.journeyId))
+check(#ns.char.events == 1, "and keeps its journey")
+
+-- 10. This character's own stamp is kept, an erased one too.
+ns = Load({ version = 4, journeyId = "Player-1-0A:3000", events = { { 500, "on" } } }, db)
+script(nil, "PLAYER_LOGIN")
+check(ns.char.journeyId == "Player-1-0A:3000" and #ns.char.events == 1, "the character's own stamp stays")
+
+-- 11. Another GUID's file belongs to a deleted namesake: a fresh start.
+ns = Load({ version = 4, journeyId = "Player-1-0B:0", events = { { 500, "on" } }, totals = { kills = 9 } }, db)
+script(nil, "PLAYER_LOGIN")
+check(ns.char.journeyId == "Player-1-0A:0", "a namesake's file starts again for this character: " .. tostring(ns.char.journeyId))
+check(#ns.char.events == 0 and ns.char.totals.kills == 0 and ns.char.version == 4, "with nothing of the old journey")
+check(ns.char.addon == "9.9.9", "and the addon version kept")
+
+-- 12. A GUID the client won't give leaves the file as it is.
+for _, broken in ipairs({ function() error("blocked") end, function() return "secret" end, function() return nil end }) do
+    UnitGUID = broken
+    ns = Load({ version = 4, journeyId = "Player-1-0B:0", events = { { 500, "on" } } }, db)
+    script(nil, "PLAYER_LOGIN")
+    check(ns.char.journeyId == "Player-1-0B:0" and #ns.char.events == 1, "an unreadable GUID changes nothing")
+end
+UnitGUID = function() return guid end
+
+-- 13. Erase keeps the GUID with a later start, read again or from the old stamp.
+local function Erase(char)
+    ns = Load(char, db)
+    ns.Recorder, ns.Journal, ns.Roster = { Reset = function() end }, { Reset = function() end }, { Rebuild = function() end }
+    ns.ResetCharacter()
+    return ns.char
+end
+local erased = Erase({ version = 4, journeyId = "Player-1-0A:0", events = { { 500, "on" } } })
+check(erased.journeyId == "Player-1-0A:2000" and #erased.events == 0, "Erase gives the same GUID, starting now: " .. tostring(erased.journeyId))
+UnitGUID = function() error("blocked") end
+erased = Erase({ version = 4, journeyId = "Player-1-0A:0" })
+check(erased.journeyId == "Player-1-0A:2000", "Erase without a GUID read keeps the old stamp's GUID")
+UnitGUID = function() return guid end
 
 if failures == 0 then
     print("Core tests passed.")
