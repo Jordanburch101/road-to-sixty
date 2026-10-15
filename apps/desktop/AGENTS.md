@@ -150,4 +150,5 @@ If `cargo` isn't found, run `. ~/.cargo/env` first.
   old one, so the game never reads half a file.
 - A release needs `version` raised in both `src-tauri/tauri.conf.json` and
   `src-tauri/Cargo.toml`, and a tag `app-v<that version>`; the workflow
-  refuses a tag that doesn't match.
+  refuses a tag that doesn't match. It also checks every `.sig` against the
+  updater key in `tauri.conf.json` before uploading anything.
