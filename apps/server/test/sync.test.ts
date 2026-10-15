@@ -8,6 +8,7 @@ import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
+import { requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -312,4 +313,23 @@ test("a merge never overwrites a head that moved while it ran", async () => {
   expect(after!.headVersionId).toBe(moved!.id);
   const [job] = await db.select().from(jobs).where(eq(jobs.state, "queued"));
   expect(job).toBeDefined();
+});
+
+test("a PC that uploads too often is told to wait, and other PCs aren't", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  for (let i = 0; i < 30; i++) uploads.take(desk.device.id);
+  const refused = await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  expect(refused.status).toBe(429);
+  expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+});
+
+test("a PC that calls the server too often is told to wait on every route", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  for (let i = 0; i < 600; i++) requests.take(desk.device.id);
+  const refused = await call(desk.token, "/v1/check");
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get("retry-after")).not.toBeNull();
+  expect((await call(desk.token, "/v1/characters")).status).toBe(429);
 });

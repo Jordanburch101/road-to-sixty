@@ -8,9 +8,12 @@ import { client, db, migrateDb } from "../src/db";
 import { newDevice as linkDevice } from "../src/devices";
 import { user } from "../src/schema";
 import { pack } from "../src/storage";
+import { requests, uploads } from "../src/limits";
 import { work } from "../src/worker";
 
 export async function reset() {
+  uploads.clear();
+  requests.clear();
   await migrateDb();
   await client`TRUNCATE jobs, version_parents, versions, characters, devices, "user", session, account, verification, device_code RESTART IDENTITY CASCADE`;
   // SeaweedFS makes a bucket on an unsigned PUT (409 once it exists); it

@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
+import { uploads } from "./limits";
 import { fingerprint, getPacked, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
 
@@ -13,6 +14,11 @@ export const sync = pcRoutes()
   .post(
     "/upload",
     async ({ device, query, request, set }): Promise<UploadResponse | { error: string }> => {
+      if (!uploads.take(device!.id)) {
+        set.status = 429;
+        set.headers["retry-after"] = String(uploads.retryAfter(device!.id));
+        return { error: "too many uploads" };
+      }
       const { game, realm, name, addon, received } = query;
       if (!game || !realm || !name) {
         set.status = 400;
