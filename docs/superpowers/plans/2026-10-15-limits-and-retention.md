@@ -20,6 +20,9 @@
 - Never delete: a character's head, an upload with a `queued` or `running` job, a file an unpruned version of the same account shares.
 - Rows are never deleted by the clean-up; `pruned_at` marks a version whose file is gone.
 - `PRUNE` setting: `dry` (default), `on`, `off`.
+- Per account: 60 uploads in 15 minutes and 500 a day across its PCs (429); 5 exports an hour (429); 20 linked PCs (a 21st link answers 409 with `This account already has 20 PCs linked. Unlink one in the app first.`).
+- Link codes (`/device/code`): 10 a minute per address. Better Auth trusts the private ranges and Cloudflare's published ranges as proxies, reading `x-forwarded-for` then `cf-connecting-ip`.
+- The daily job also deletes merge jobs finished over 30 days ago and Better Auth's expired sessions, verifications and device codes.
 - History: newest 100 unpruned merged or restored versions, then every older `weekly` one, newest first.
 - Comments are plain sentences that say why; British spelling. Commit subjects `Area: what changed (#40)` ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Tests use made-up journeys only (`test/helpers.ts`); never a real save.
@@ -30,7 +33,8 @@
 2. The clean-up deletes a file at the same moment an upload or merge stores an identical file for the same account: the new version's file can go missing. The merge then retries, fails as `SERVER_FAILED`, and the app sends the file again, which stores it again. Accepted as self-healing; the reviewer should confirm no path leaves a head without its file. (Task 4 notes it in a `ponytail:` comment.)
 3. A character not played for months: its head is older than 30 days and must stay, and History must still list it. (Task 4 test: the head stays at any age; Task 5 test lists it.)
 4. A restore row whose file was pruned must still strip its stretches from a stale upload. (Task 5 test.)
-5. A week boundary in a timezone other than UTC: the weekly pick must use UTC weeks so two runs never disagree. (Task 4 test with dates on a Sunday 23:00 and Monday 01:00 UTC.)
+5. Someone sends straight to the server's address with a forged `X-Forwarded-For` or `CF-Connecting-IP`, to dodge sign-in limits: the address used must still be the one Dokploy's proxy saw. (Task 9 test.)
+6. A week boundary in a timezone other than UTC: the weekly pick must use UTC weeks so two runs never disagree. (Task 4 test with dates on a Sunday 23:00 and Monday 01:00 UTC.)
 
 ---
 
@@ -826,6 +830,8 @@ git commit -m "Server: History shows the newest 100 versions and each older week
 
 ### Task 6: Start the clean-up, settings, wording and docs
 
+(Run Tasks 7 to 10 before this one's docs step, so AGENTS.md describes everything; its code steps don't depend on them.)
+
 **Files:**
 - Modify: `apps/server/src/config.ts`, `apps/server/src/index.ts`, `apps/server/.env.example`
 - Modify: `apps/server/AGENTS.md`
@@ -890,14 +896,19 @@ Expected: PASS.
 
 - [ ] **Step 5: Docs and wording**
 
-`apps/server/AGENTS.md`: under Layout add "`src/limits.ts` counts each PC's requests and uploads; `src/prune.ts` is the daily clean-up of old versions." Under Rules that bite add:
+`apps/server/AGENTS.md`: under Layout add "`src/limits.ts` counts each PC's and account's requests, uploads and exports; `src/proxies.ts` lists the proxies sign-in trusts (Dokploy's and Cloudflare's); `src/prune.ts` is the daily clean-up of old versions, finished jobs and expired sign-in rows." Under Rules that bite add:
 
 ```
-- Limits (spec 2026-10-15): 30 uploads per PC in 15 minutes and 600
-  requests an hour answer 429, which the app retries; 8 MB compressed and
+- Limits (spec 2026-10-15): 30 uploads per PC in 15 minutes, 600
+  requests an hour, 60 uploads per account in 15 minutes and 500 a day,
+  and 5 exports an hour answer 429, which the app retries; 20 linked PCs
+  per account (409 on the 21st); 8 MB compressed and
   64-character names answer 413 and 400; a 101st character answers 422 in
   plain text, which the app shows on the row. The counts are in memory.
-- The clean-up never deletes a row, only files, and sets `pruned_at`.
+- `api.roadtosixty.online` is behind Cloudflare's proxy. When
+  Cloudflare changes its ranges (https://www.cloudflare.com/ips/), update
+  `src/proxies.ts`, or sign-in limits count Cloudflare instead of visitors.
+- The clean-up never deletes a version row, only files, and sets `pruned_at`.
   Anything that reads a version's file must skip pruned versions. `PRUNE`
   is `dry` by default: read its log before setting `on` in Dokploy.
 ```
@@ -918,4 +929,349 @@ Expected: the site builds; every suite passes.
 ```bash
 git add apps/server apps/web docs
 git commit -m "Server: start the clean-up dry by default; the site says how versions are kept (#40)"
+```
+
+### Task 7: Per-account upload and export limits
+
+**Files:**
+- Modify: `apps/server/src/limits.ts`, `apps/server/src/sync.ts`, `apps/server/src/account.ts`, `apps/server/test/helpers.ts`
+- Test: `apps/server/test/limits.test.ts`, `apps/server/test/sync.test.ts`, `apps/server/test/account.test.ts`
+
+**Interfaces:**
+- Consumes: `Window`, `uploads`, `requests` (Task 1).
+- Produces: `Window.size: number` (keys held); `accountUploads` (60 per 900 s), `accountDaily` (500 per 86400 s), `exports` (5 per 3600 s), all keyed by user id; `clearLimits(): void` clearing every window.
+
+- [ ] **Step 1: Write the failing tests**
+
+`apps/server/test/limits.test.ts`, add:
+
+```ts
+test("a key whose window has emptied is dropped", () => {
+  let now = 0;
+  const w = new Window(1, 60, () => now);
+  w.take("a");
+  w.take("b");
+  expect(w.size).toBe(2);
+  now = 60_001;
+  w.take("a");
+  expect(w.size).toBe(1);
+});
+```
+
+`apps/server/test/sync.test.ts`, add (import `accountUploads, accountDaily` from `../src/limits`):
+
+```ts
+test("an account's PCs share its upload allowance", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  const other = await newDevice("user-2", "Elsewhere");
+  for (let i = 0; i < 60; i++) accountUploads.take(desk.device.userId);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
+  expect((await upload(other.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+  accountUploads.clear();
+  for (let i = 0; i < 500; i++) accountDaily.take(desk.device.userId);
+  expect((await upload(desk.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
+});
+```
+
+`apps/server/test/account.test.ts`, add (import `exports` from `../src/limits`):
+
+```ts
+test("an account can download its data 5 times an hour", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  for (let i = 0; i < 5; i++) exports.take(device.userId);
+  const refused = await call(token, "/v1/export");
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get("retry-after")).not.toBeNull();
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cd apps/server && LUA51=… bun test test/limits.test.ts test/sync.test.ts test/account.test.ts -t "emptied|share its upload|5 times an hour"`
+Expected: FAIL (`size` undefined; 200 instead of 429).
+
+- [ ] **Step 3: Implement**
+
+`apps/server/src/limits.ts`: in `recent`, replace `this.hits.set(key, recent);` with
+
+```ts
+    if (recent.length === 0) this.hits.delete(key);
+    else this.hits.set(key, recent);
+```
+
+and make `take` keep the hit it adds when the key was dropped:
+
+```ts
+  take(key: string): boolean {
+    const recent = this.recent(key);
+    if (recent.length >= this.max) return false;
+    recent.push(this.now());
+    this.hits.set(key, recent);
+    return true;
+  }
+```
+
+Add `get size() { return this.hits.size; }`, and at the end of the file:
+
+```ts
+// Per account, so linking more PCs doesn't multiply what one account can send.
+export const accountUploads = new Window(60, 15 * 60);
+export const accountDaily = new Window(500, 24 * 3600);
+// The export builds every character's journey into one zip in memory.
+export const exports = new Window(5, 3600);
+
+export function clearLimits() {
+  for (const w of [uploads, requests, accountUploads, accountDaily, exports]) w.clear();
+}
+```
+
+`apps/server/test/helpers.ts` `reset()`: replace `uploads.clear(); requests.clear();` with `clearLimits();`.
+
+`apps/server/src/sync.ts` upload handler, after the per-PC check:
+
+```ts
+      for (const w of [accountUploads, accountDaily]) {
+        if (!w.take(device!.userId)) {
+          set.status = 429;
+          set.headers["retry-after"] = String(w.retryAfter(device!.userId));
+          return { error: "too many uploads from this account" };
+        }
+      }
+```
+
+`apps/server/src/account.ts` export route, first statement (add `set` to its arguments):
+
+```ts
+    if (!exports.take(device!.userId)) {
+      set.status = 429;
+      set.headers["retry-after"] = String(exports.retryAfter(device!.userId));
+      return { error: "too many downloads; try again later" };
+    }
+```
+
+- [ ] **Step 4: Run the server tests and typecheck**
+
+Run: `cd apps/server && LUA51=… bun test && bun run typecheck`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/server/src apps/server/test
+git commit -m "Server: limit uploads and exports per account, not only per PC (#40)"
+```
+
+### Task 8: At most 20 linked PCs per account
+
+**Files:**
+- Modify: `apps/server/src/link.ts`
+- Test: `apps/server/test/auth.test.ts`
+
+**Interfaces:**
+- Produces: `/v1/link` answers 409 with the plain-text body `This account already has 20 PCs linked. Unlink one in the app first.` when the account has 20 devices with `revoked_at` null. The app shows it as "Linking didn't finish: the server answered 409: ...".
+
+- [ ] **Step 1: Write the failing test**
+
+Read `apps/server/test/auth.test.ts` first for its link helper (the test that links a PC through the device code and `/v1/link`), then add a test that gives the player 20 PCs with `newDevice` from `../src/devices` (or the `newDevice` helper for the same user id), runs that same link flow once more, and expects:
+
+```ts
+  expect(linked.status).toBe(409);
+  expect(await linked.text()).toBe("This account already has 20 PCs linked. Unlink one in the app first.");
+```
+
+and that after unlinking one (set `revokedAt` on one device row) the flow links.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `cd apps/server && LUA51=… bun test test/auth.test.ts -t "20 PCs"`
+Expected: FAIL, 200.
+
+- [ ] **Step 3: Implement**
+
+`apps/server/src/link.ts`, after the `signedIn` check (import `and, count, eq, isNull` and `devices`):
+
+```ts
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(devices)
+      .where(and(eq(devices.userId, signedIn.user.id), isNull(devices.revokedAt)));
+    // Plain text: the app shows the body as why linking didn't finish.
+    if (n >= MAX_PCS) return new Response(`This account already has ${MAX_PCS} PCs linked. Unlink one in the app first.`, { status: 409 });
+```
+
+with `const MAX_PCS = 20;` at the top level.
+
+- [ ] **Step 4: Run the server tests**
+
+Run: `cd apps/server && LUA51=… bun test`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/server/src/link.ts apps/server/test/auth.test.ts
+git commit -m "Server: an account can link at most 20 PCs (#40)"
+```
+
+### Task 9: Sign-in limits see the real visitor behind Cloudflare
+
+**Files:**
+- Create: `apps/server/src/proxies.ts`
+- Modify: `apps/server/src/auth.ts`
+- Test: `apps/server/test/proxies.test.ts`
+
+**Interfaces:**
+- Produces: `export const TRUSTED_PROXIES: string[]` (the private ranges plus Cloudflare's), used by `auth.ts`'s `advanced.ipAddress.trustedProxies`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`apps/server/test/proxies.test.ts`:
+
+```ts
+import { expect, test } from "bun:test";
+import { getIP } from "@better-auth/core/utils/ip";
+import { auth } from "../src/auth";
+import { TRUSTED_PROXIES } from "../src/proxies";
+
+const ip = (headers: Record<string, string>) => getIP(new Headers(headers), auth.options);
+
+test("through Cloudflare, the visitor is the address Cloudflare saw", () => {
+  expect(ip({ "x-forwarded-for": "198.51.100.7, 172.70.1.2" })).toBe("198.51.100.7");
+  expect(ip({ "x-forwarded-for": "172.70.1.2", "cf-connecting-ip": "198.51.100.7" })).toBe("198.51.100.7");
+});
+
+test("straight at the server, a forged header can't change the visitor", () => {
+  expect(ip({ "x-forwarded-for": "198.51.100.7, 203.0.113.9" })).toBe("203.0.113.9");
+  expect(ip({ "x-forwarded-for": "172.70.1.2, 203.0.113.9", "cf-connecting-ip": "198.51.100.7" })).toBe("203.0.113.9");
+});
+
+test("Cloudflare's ranges are all valid, and link codes have their own limit", () => {
+  expect(TRUSTED_PROXIES).toContain("172.64.0.0/13");
+  expect(auth.options.rateLimit?.customRules?.["/device/code"]).toEqual({ window: 60, max: 10 });
+});
+```
+
+If `@better-auth/core/utils/ip` isn't an exported path, find where `better-auth` re-exports `getIP` (`grep -rn "export.*getIP" node_modules/.bun/better-auth@1.7.7*/node_modules/better-auth/dist | head`) and import it from there; note the path in the ledger.
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cd apps/server && bun test test/proxies.test.ts`
+Expected: FAIL, cannot find `../src/proxies`.
+
+- [ ] **Step 3: Implement**
+
+`apps/server/src/proxies.ts`:
+
+```ts
+// The proxies a request may pass through on its way in: Dokploy's, in the
+// private ranges it runs in, and Cloudflare's, which sits in front of
+// api.roadtosixty.online. Better Auth walks X-Forwarded-For from the right
+// and skips these, so the first address left is the visitor's, and someone
+// calling the server directly can't hide behind a made-up chain.
+// Cloudflare's list: https://www.cloudflare.com/ips/ (checked 2026-10-15).
+const PRIVATE = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
+const CLOUDFLARE = [
+  "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",
+  "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17",
+  "162.158.0.0/15", "104.16.0.0/13", "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+  "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32",
+  "2a06:98c0::/29", "2c0f:f248::/32",
+];
+export const TRUSTED_PROXIES = [...PRIVATE, ...CLOUDFLARE];
+```
+
+`apps/server/src/auth.ts`: replace the `ipAddress` line and its comment with
+
+```ts
+    // Rate limits count by visitor (see proxies.ts). If Dokploy's proxy
+    // leaves only Cloudflare's address in X-Forwarded-For, Cloudflare's own
+    // header names the visitor; it is read only when X-Forwarded-For gives
+    // no visitor, so a direct caller can't use it.
+    ipAddress: { trustedProxies: TRUSTED_PROXIES, ipAddressHeaders: ["x-forwarded-for", "cf-connecting-ip"] },
+```
+
+and add to the `betterAuth({...})` options:
+
+```ts
+  // Each call for a link code makes a database row, and needs no account.
+  rateLimit: { customRules: { "/device/code": { window: 60, max: 10 } } },
+```
+
+- [ ] **Step 4: Run the server tests**
+
+Run: `cd apps/server && LUA51=… bun test && bun run typecheck`
+Expected: PASS. If the second forged-header case returns `198.51.100.7`, Better Auth reads `cf-connecting-ip` even when `x-forwarded-for` resolved: then drop `cf-connecting-ip` from `ipAddressHeaders`, keep the first case's second line out of the test, and ledger the ruling (behind Cloudflare the chain still ends with Cloudflare's address, which is skipped).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/server/src/proxies.ts apps/server/src/auth.ts apps/server/test/proxies.test.ts
+git commit -m "Server: sign-in limits see the visitor behind Cloudflare, and link codes have their own limit (#40)"
+```
+
+### Task 10: The daily job clears old rows too
+
+**Files:**
+- Modify: `apps/server/src/prune.ts`
+- Test: `apps/server/test/prune.test.ts`
+
+**Interfaces:**
+- Consumes: `prune(mode)` (Task 4).
+- Produces: in `on` mode, `prune` also deletes `jobs` with `state` in (`done`, `failed`) and `finished_at` over 30 days ago, and `session`, `verification`, `device_code` rows whose `expires_at` has passed.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/server/test/prune.test.ts`, add (import `deviceCode, session, verification` from `../src/auth-schema`):
+
+```ts
+test("old finished jobs and expired sign-in rows go; recent ones and dry runs leave them", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  await upload(token, savedFile(journey({ events: [...session(1000), ...session(5000)] })));
+  await workAll();
+  const [old, recent] = await db.select().from(jobs).orderBy(jobs.id);
+  await client`UPDATE jobs SET finished_at = now() - interval '31 days' WHERE id = ${old!.id}`;
+  const past = new Date(Date.now() - 1000);
+  await db.insert(verification).values({ id: "v-old", identifier: "x", value: "x", expiresAt: past, createdAt: past, updatedAt: past });
+  await prune("dry");
+  expect((await db.select().from(jobs)).length).toBe(2);
+  await prune("on");
+  expect((await db.select().from(jobs)).map((j) => j.id)).toEqual([recent!.id]);
+  expect(await db.select().from(verification)).toEqual([]);
+  void device;
+});
+```
+
+Read `src/auth-schema.ts` for `verification`'s exact required columns and adjust the insert to match.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `cd apps/server && LUA51=… bun test test/prune.test.ts -t "old finished jobs"`
+Expected: FAIL, 2 jobs left.
+
+- [ ] **Step 3: Implement**
+
+In `apps/server/src/prune.ts`, at the end of `prune` before the log loop (import `jobs`, and `deviceCode, session, verification` from `./auth-schema`, plus `lt, inArray, and` as needed):
+
+```ts
+  if (mode === "on") {
+    // Nothing reads a finished job once its version is settled.
+    await client`DELETE FROM jobs WHERE state IN ('done', 'failed') AND finished_at < now() - interval '30 days'`;
+    // Better Auth checks expiry on use but never clears these.
+    for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
+  }
+```
+
+- [ ] **Step 4: Run the server tests**
+
+Run: `cd apps/server && LUA51=… bun test && bun run typecheck`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/server/src/prune.ts apps/server/test/prune.test.ts
+git commit -m "Server: the daily clean-up also clears old jobs and expired sign-in rows (#40)"
 ```
