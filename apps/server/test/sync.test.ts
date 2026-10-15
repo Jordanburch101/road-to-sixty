@@ -280,7 +280,7 @@ test("a stale or unreadable file doesn't make a PC look out of date", async () =
   await workAll();
   expect((await check(token)).characters.find((c) => c.name === "Ann")).toMatchObject({ updateAddon: false });
   const [d] = await db.select().from(devices).where(eq(devices.id, device.id));
-  expect(d!.dataLayout).toBe(3);
+  expect(d!.dataLayout).toBe(4);
 });
 
 test("a merge never overwrites a head that moved while it ran", async () => {

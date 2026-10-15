@@ -105,3 +105,21 @@ export async function runWindows(old: Uint8Array, kept: Uint8Array, limits: Limi
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+// Whether a stamped upload continues head, a stored journey from before
+// stamps (Merge.SameJourney). An upload the merge would refuse counts as
+// the same, so the merge refuses it with its own reason.
+export async function runSame(head: Uint8Array, upload: Uint8Array, limits: Limits = LIMITS, runner = `${import.meta.dir}/runner.lua`): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), "rts-same-"));
+  try {
+    await Bun.write(join(dir, "head.lua"), head);
+    await Bun.write(join(dir, "upload.lua"), upload);
+    const { stdout, stderr, exitCode } = await run(["same", join(dir, "head.lua"), join(dir, "upload.lua"), String(limits.mb), String(limits.seconds)], limits, runner);
+    const [word, ...rest] = (stdout.trim().split("\n").pop() ?? "").split(" ");
+    if (word === "same") return rest[0] === "yes";
+    if (word === "rejected") return true;
+    throw new Error(`couldn't tell whose journey an upload is: ${(word === "failed" ? rest.join(" ") : stderr.trim().split("\n")[0]) || `exit code ${exitCode}`}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}

@@ -5,6 +5,7 @@
 --
 --   lua5.1 runner.lua <lua dir> merge <upload> <current or ""> <out> <pc> <windows or ""> <max MB> <max seconds>
 --   lua5.1 runner.lua <lua dir> windows <old> <kept> <max MB> <max seconds>
+--   lua5.1 runner.lua <lua dir> same <head> <upload> <max MB> <max seconds>
 --
 -- merge: <upload> is the SavedVariables file a PC uploaded, <current> the
 -- character's merged journey as Parse.Write text (none for a first
@@ -18,13 +19,20 @@
 -- windows: <old> and <kept> are stored journeys; prints the sessions a
 -- restore from old to kept takes out (Merge.Windows):
 --   windows <from> <to> <from> <to> ...
+-- same: <head> is a stored journey from before stamps, <upload> a stamped
+-- SavedVariables file; prints whether the upload continues it
+-- (Merge.SameJourney), after both are prepared and tidied:
+--   same yes|no
 
 local args = { ... }
 local dir, mode = args[1], args[2]
 local uploadPath, currentPath, outPath, pc, windowsPath, maxMB, maxSeconds
 local oldPath, keptPath
+local headPath
 if mode == "windows" then
     oldPath, keptPath, maxMB, maxSeconds = args[3], args[4], args[5], args[6]
+elseif mode == "same" then
+    headPath, uploadPath, maxMB, maxSeconds = args[3], args[4], args[5], args[6]
 else
     uploadPath, currentPath, outPath, pc, windowsPath, maxMB, maxSeconds = args[3], args[4], args[5], args[6], args[7], args[8], args[9]
 end
@@ -75,13 +83,13 @@ for _, name in ipairs({ "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Mer
     assert(loadfile(dir .. "/" .. name))("RoadToSixty", ns)
 end
 
-local function Run()
-    local function TidyUp(char)
-        if not char.seeded then ns.Tidy.Runs(char) end
-        ns.Tidy.Events(char, IsPlace)
-        if not char.seeded then ns.Tidy.Guilds(char) end
-    end
+local function TidyUp(char)
+    if not char.seeded then ns.Tidy.Runs(char) end
+    ns.Tidy.Events(char, IsPlace)
+    if not char.seeded then ns.Tidy.Guilds(char) end
+end
 
+local function Run()
     local upload = ns.Parse.File(Read(uploadPath)).RoadToSixtyCharDB
     if type(upload) ~= "table" then error("the upload holds no journey", 0) end
     from = tostring(tonumber(upload.version) or "-")
@@ -152,7 +160,22 @@ local function Windows()
     return ("windows %s"):format(table.concat(parts, " "))
 end
 
-local ok, result = pcall(mode == "windows" and Windows or Run)
+local function Same()
+    local read, head = Try(ns.Parse.Read, Read(headPath))
+    if not read then Fault("the stored journey can't be read: " .. tostring(head)) end
+    local bad
+    head, bad = ns.Merge.Prepare(head, "server")
+    if not head then Fault("the stored journey can't be used: " .. tostring(bad)) end
+    local upload = ns.Parse.File(Read(uploadPath)).RoadToSixtyCharDB
+    if type(upload) ~= "table" then error("the upload holds no journey", 0) end
+    upload, bad = ns.Merge.Prepare(upload, "server")
+    if not upload then error(bad, 0) end
+    TidyUp(head)
+    TidyUp(upload)
+    return "same " .. (ns.Merge.SameJourney(head, upload) and "yes" or "no")
+end
+
+local ok, result = pcall(({ windows = Windows, same = Same })[mode] or Run)
 debug.sethook()
 if ok then
     io.write(result, "\n")
