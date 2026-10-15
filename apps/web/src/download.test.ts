@@ -19,6 +19,13 @@ test("a Linux computer gets the Linux download", () => {
   expect(pick({ userAgent: "", platform: "Linux x86_64" })).toBe("linux");
 });
 
+test("Android tablets asking for desktop sites and ARM Linux get every download, not the x86 AppImage", () => {
+  // Chrome on a big Android tablet sends a Linux desktop user agent; the platform still says Android or ARM.
+  expect(pick({ userAgent: linux, platform: "Android" })).toBe("choose");
+  expect(pick({ userAgent: linux, platform: "Linux armv8l" })).toBe("choose");
+  expect(pick({ userAgent: "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" })).toBe("choose");
+});
+
 test("phones, tablets and anything unknown are offered every download", () => {
   expect(pick({ userAgent: iphone })).toBe("choose");
   expect(pick({ userAgent: android })).toBe("choose");

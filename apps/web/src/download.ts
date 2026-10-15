@@ -1,13 +1,14 @@
 // Which download to offer: the visitor's own computer when it is a Mac,
 // Windows or Linux, every one otherwise. iPads report a Mac browser, so a
-// touch screen counts against it, and Android reports Linux, so phones are
-// ruled out first.
+// touch screen counts against it. Android reports Linux, and big Android
+// tablets send a Linux desktop browser's name, so Android and ARM are ruled
+// out first: the AppImage is for x86 only.
 export type Choice = "mac" | "windows" | "linux" | "choose";
 
 export function pick(nav: { userAgent: string; platform?: string; maxTouchPoints?: number }): Choice {
   const ua = nav.userAgent;
   const platform = nav.platform ?? "";
-  if (/iPhone|iPad|iPod|Android/i.test(ua)) return "choose";
+  if (/iPhone|iPad|iPod|Android/i.test(ua) || /Android|arm|aarch64/i.test(platform) || /arm|aarch64/i.test(ua)) return "choose";
   if (/Windows/i.test(ua) || /^Win/i.test(platform)) return "windows";
   if (/Macintosh/i.test(ua) || /^Mac/i.test(platform)) return (nav.maxTouchPoints ?? 0) > 1 ? "choose" : "mac";
   if (/Linux/i.test(ua) || /^Linux/i.test(platform)) return "linux";
