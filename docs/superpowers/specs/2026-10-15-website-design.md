@@ -44,7 +44,7 @@ Top to bottom, as in `Site-Home` and `Site-Below-2`:
    - Every version kept
    - Works without the app
    - Yours: download it all, or delete it all, nothing public, nothing sold
-7. **"Ready for launch day."** WoW Forever launches on 4 November; install the addon now so the road starts at level 1. Both buttons again. This section goes after launch.
+7. **Launch.** Until 3 pm Pacific on 4 November (23:00 UTC): "Try it on the beta.", an airport-style flip board counting down the days, hours, minutes and seconds, and "WoW Forever launches on 4 November. Until then, help test the addon and the app on the beta." After: "Start recording your journey." and "Install the addon before you log in. The app keeps every step safe on every PC you play." The page switches by itself when launch passes. Both buttons under either.
 8. **Footer:** "Road to Sixty, made by Jordan Burch" (linked), Privacy, Terms, and "Not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft is a trademark of Blizzard Entertainment, Inc."
 
 At phone width (`Site-Phone`), the same sections stack:

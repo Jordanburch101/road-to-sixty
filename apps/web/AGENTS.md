@@ -12,8 +12,9 @@ Static pages built by Astro, hosted on Vercel. The design is
   `privacy`, `terms`, `404`.
 - `src/components/` are the home page's sections and the header, footer
   and download button. `src/layouts/Layout.astro` wraps every page.
-- `src/download.ts` picks the download for the visitor's computer (the
-  one script the site sends); `src/config.ts` reads the build settings.
+- `src/download.ts` picks the download for the visitor's computer, and
+  `src/countdown.ts` runs the flip board counting down to launch: the
+  only scripts the site sends. `src/config.ts` reads the build settings.
 - `src/roads.ts` holds the fog's roads. The fog itself and the theme come
   from `packages/ui`.
 - `src/assets/journey/` holds the in-game screenshots of the journey map,
