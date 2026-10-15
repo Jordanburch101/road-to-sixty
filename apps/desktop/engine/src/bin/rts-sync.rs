@@ -1,7 +1,7 @@
 //! Runs the sync engine from a terminal, until the app's window exists and
 //! for trying it out:
 //!
-//!   rts-sync status     the installs, game folders and characters found
+//!   rts-sync status     the installs, game folders (and whether each runs) and characters found
 //!   rts-sync link       link this PC (opens the browser to approve)
 //!   rts-sync once       one sync pass
 //!   rts-sync run        watch and sync until stopped
@@ -40,11 +40,17 @@ fn main() -> ExitCode {
                     _ => "not linked".into(),
                 }
             );
+            let programs = watch::running_programs(&mut sysinfo::System::new());
             for game in sync::games(&state) {
                 println!(
-                    "{} (addon {})",
+                    "{} (addon {}){}",
                     game.path.display(),
-                    installs::addon_version(&game.path).unwrap_or_else(|| "developer".into())
+                    installs::addon_version(&game.path).unwrap_or_else(|| "developer".into()),
+                    if watch::game_running(&game.path, &programs) {
+                        ", running"
+                    } else {
+                        ""
+                    }
                 );
                 for file in installs::saved_files(&game) {
                     match std::fs::read(&file.path).ok().as_deref().and_then(sync::roster_key) {

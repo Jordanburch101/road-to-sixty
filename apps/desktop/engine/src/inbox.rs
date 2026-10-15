@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::installs::addon_toc;
+use crate::installs::{self, addon_toc};
 
 /// One character's merged journey for the addon to bring in.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +23,7 @@ pub struct Delivery {
 }
 
 pub fn sync_folder(game: &Path) -> PathBuf {
-    game.join("Interface").join("AddOns").join("RoadToSixty_Sync")
+    installs::addons_folder(game).join("RoadToSixty_Sync")
 }
 
 /// A Lua string literal the game's Lua 5.1 reads back byte for byte. Bytes

@@ -120,14 +120,13 @@ The header, "This page doesn't exist", and a link home.
 
 ## Testing
 
-- **The platform rule:** `bun test` covers Mac, Windows, Linux, an iPhone and an Android phone, plus an unknown or missing user agent. The phones and Linux get the both-downloads layout.
+- **The platform rule:** `bun test` covers Mac, Windows, Linux, an iPhone and an Android phone, plus an unknown or missing user agent. The phones get the both-downloads layout; Linux gets its own download since the Linux app (`2026-10-15-linux-steam-deck-design.md`).
 - **The coloured roads in `dots.ts`:** tests that each dot knows its road and lights in its road's turn.
 - **The build:** `astro check` and `astro build` in CI, beside the other apps.
 - **Comparing with the mockups:** screenshots at 1280 px and 390 px, with motion and with reduced motion, before merging.
 
 ## Left out
 
-- Linux downloads, until the app builds for Linux.
 - Sign-in, account pages and journeys on a map in the browser. Accounts stay in the app.
 - Analytics of any kind.
 

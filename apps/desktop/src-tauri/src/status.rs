@@ -28,6 +28,8 @@ pub struct Status {
     pub problems: Vec<String>,
     /// While linking, the code the link page shows, to compare.
     pub link_code: Option<String>,
+    /// While linking, the link page's address, for when no browser opened.
+    pub link_url: Option<String>,
     /// The tray's status line, also shown in the window.
     pub line: String,
 }

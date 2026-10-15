@@ -221,6 +221,7 @@ impl Runner {
         state.save(&self.state_path).map_err(|e| e.to_string())?;
         self.notifier.update(|s| {
             s.link_code = None;
+            s.link_url = None;
             s.problems.clear();
         });
         self.start()

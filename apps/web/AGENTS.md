@@ -1,7 +1,8 @@
 # Website (apps/web)
 
 The public site (#1): what the addon and the app do, the app's download
-for the visitor's computer with the unsigned-app steps, Privacy and Terms.
+for the visitor's computer (Mac, Windows, or Linux for the Steam Deck in
+Desktop Mode, early, #47) with the first-run steps, Privacy and Terms.
 Static pages built by Astro, hosted on Vercel. The design is
 `docs/superpowers/specs/2026-10-15-website-design.md`; the mockups are the
 "Website" row of the mockups canvas.

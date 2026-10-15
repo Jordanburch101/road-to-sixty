@@ -4,7 +4,7 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
 
 export const isMac = navigator.userAgent.includes("Mac");
@@ -34,6 +34,7 @@ export type Status = {
   offline: boolean;
   problems: string[];
   linkCode: string | null;
+  linkUrl: string | null;
   line: string;
   update: Update;
 };
@@ -56,7 +57,7 @@ export const exportData = () => invoke<boolean>("export_data");
 export const deleteAccount = () => invoke("delete_account");
 
 export const startsAtLogin = () => isEnabled();
-export const setStartsAtLogin = (on: boolean) => (on ? enable() : disable());
+export const setStartsAtLogin = (on: boolean) => invoke("set_starts_at_login", { on });
 export const checkUpdate = () => invoke<string | null>("check_update");
 export const installUpdate = () => invoke("install_update");
 

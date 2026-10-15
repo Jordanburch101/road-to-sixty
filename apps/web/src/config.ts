@@ -21,6 +21,7 @@ export const addonUrl = () => link("PUBLIC_ADDON_URL", env.PUBLIC_ADDON_URL);
 export const contactEmail = () => need("PUBLIC_CONTACT_EMAIL", env.PUBLIC_CONTACT_EMAIL);
 
 // The fixed names the app's release workflow uploads (desktop-release.yml).
-export function fileUrl(platform: "mac" | "windows"): string {
-  return `${DOWNLOADS}/app/${platform === "mac" ? "Road-to-Sixty.dmg" : "Road-to-Sixty-Setup.exe"}`;
+const FILES = { mac: "Road-to-Sixty.dmg", windows: "Road-to-Sixty-Setup.exe", linux: "Road-to-Sixty.AppImage" };
+export function fileUrl(platform: keyof typeof FILES): string {
+  return `${DOWNLOADS}/app/${FILES[platform]}`;
 }
