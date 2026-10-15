@@ -6,6 +6,7 @@ import { type Device, pcName } from "./devices";
 import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
+import { exports } from "./limits";
 import { get, removeAll } from "./storage";
 import { zip } from "./zip";
 
@@ -206,7 +207,12 @@ export const account = pcRoutes()
 
   // Each character's current journey as the game would save it, so a
   // player can keep it, or put it back in their SavedVariables folder.
-  .get("/export", async ({ device }) => {
+  .get("/export", async ({ device, set }) => {
+    if (!exports.take(device!.userId)) {
+      set.status = 429;
+      set.headers["retry-after"] = String(exports.retryAfter(device!.userId));
+      return { error: "too many downloads; try again later" };
+    }
     const rows = await db
       .select({ c: characters, head: versions })
       .from(characters)

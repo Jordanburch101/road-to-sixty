@@ -9,6 +9,7 @@ import { db } from "../src/db";
 import * as lua from "../src/lua";
 import { characters, devices, jobs, user, versions } from "../src/schema";
 import * as storage from "../src/storage";
+import { exports } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -289,4 +290,12 @@ test("a pruned version can't be restored", async () => {
   await db.update(versions).set({ prunedAt: new Date() }).where(eq(versions.id, old!.id));
   const r = await call(token, `/v1/characters/${c!.id}/restore`, { method: "POST", body: JSON.stringify({ version: old!.id }), headers: { "content-type": "application/json" } });
   expect(r.status).toBe(404);
+});
+
+test("an account can download its data 5 times an hour", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  for (let i = 0; i < 5; i++) exports.take(device.userId);
+  const refused = await call(token, "/v1/export");
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get("retry-after")).not.toBeNull();
 });

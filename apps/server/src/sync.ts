@@ -3,7 +3,7 @@ import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "./db";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
-import { uploads } from "./limits";
+import { accountDaily, accountUploads, uploads } from "./limits";
 import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
 import { SERVER_FAILED } from "./worker";
 
@@ -21,6 +21,13 @@ export const sync = pcRoutes()
         set.status = 429;
         set.headers["retry-after"] = String(uploads.retryAfter(device!.id));
         return { error: "too many uploads" };
+      }
+      for (const w of [accountUploads, accountDaily]) {
+        if (!w.take(device!.userId)) {
+          set.status = 429;
+          set.headers["retry-after"] = String(w.retryAfter(device!.userId));
+          return { error: "too many uploads from this account" };
+        }
       }
       const { game, realm, name, addon, received } = query;
       if (!game || !realm || !name) {

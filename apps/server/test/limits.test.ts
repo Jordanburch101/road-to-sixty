@@ -24,3 +24,14 @@ test("each PC has its own count, and a refused try isn't counted", () => {
   now = 60_001;
   expect(w.take("a")).toBe(true);
 });
+
+test("a key whose window has emptied is dropped", () => {
+  let now = 0;
+  const w = new Window(1, 60, () => now);
+  w.take("a");
+  w.take("b");
+  expect(w.size).toBe(2);
+  now = 60_001;
+  w.take("a");
+  expect(w.size).toBe(1);
+});

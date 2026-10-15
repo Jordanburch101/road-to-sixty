@@ -8,7 +8,7 @@ import { newDevice as linkDevice } from "../src/devices";
 import { characters, devices, jobs, versions } from "../src/schema";
 import { MAX_PACKED, pack, unpack } from "../src/storage";
 import { MAX_ATTEMPTS, SERVER_FAILED, work } from "../src/worker";
-import { requests, uploads } from "../src/limits";
+import { accountDaily, accountUploads, requests, uploads } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -418,4 +418,16 @@ test("a restore whose file was pruned still keeps what it took out of a stale up
   const text = new TextDecoder().decode(unpack(new Uint8Array(await (await call(desk.token, `/v1/versions/${entry!.version}`)).arrayBuffer())));
   expect(text).toContain("30000");
   expect(text).not.toContain("20000");
+});
+
+test("an account's PCs share its upload allowance", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const laptop = await newDevice("user-1", "Laptop");
+  const other = await newDevice("user-2", "Elsewhere");
+  for (let i = 0; i < 60; i++) accountUploads.take(desk.device.userId);
+  expect((await upload(laptop.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
+  expect((await upload(other.token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+  accountUploads.clear();
+  for (let i = 0; i < 500; i++) accountDaily.take(desk.device.userId);
+  expect((await upload(desk.token, savedFile(journey({ events: session(1000) })))).status).toBe(429);
 });
