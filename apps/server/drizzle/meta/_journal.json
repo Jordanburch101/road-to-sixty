@@ -43,6 +43,13 @@
       "when": 1792033178701,
       "tag": "0005_version_prune",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792034776002,
+      "tag": "0006_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
-import { bigint, bigserial, boolean, integer, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, bigserial, boolean, index, integer, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
 
 export * from "./auth-schema";
@@ -20,7 +21,7 @@ export const devices = pgTable("devices", {
   tokenHash: text("token_hash").notNull().unique(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+}, (t) => [index("devices_user").on(t.userId)]);
 
 // One character of one user. The data holds no name, so this row is how
 // the server knows two uploads are the same character.
@@ -70,7 +71,12 @@ export const versions = pgTable("versions", {
   // windows, parents and the known-file check still need it.
   prunedAt: timestamp("pruned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Check, history, the known-file check and the clean-up read a character's versions.
+  index("versions_character").on(t.characterId, t.id),
+  // Check, folding and a PC's latest upload read one PC's uploads of a character.
+  index("versions_device_upload").on(t.deviceId, t.characterId, t.id).where(sql`${t.kind} = 'upload'`),
+]);
 
 export const versionParents = pgTable(
   "version_parents",
@@ -78,7 +84,8 @@ export const versionParents = pgTable(
     versionId: bigint("version_id", { mode: "number" }).notNull().references(() => versions.id),
     parentId: bigint("parent_id", { mode: "number" }).notNull().references(() => versions.id),
   },
-  (t) => [primaryKey({ columns: [t.versionId, t.parentId] })],
+  // Deleting an account checks each version against its parents by parent_id.
+  (t) => [primaryKey({ columns: [t.versionId, t.parentId] }), index("version_parents_parent").on(t.parentId)],
 );
 
 export const jobs = pgTable("jobs", {
@@ -96,4 +103,9 @@ export const jobs = pgTable("jobs", {
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
-});
+}, (t) => [
+  // The worker's claim looks only at jobs still to run.
+  index("jobs_due").on(t.id).where(sql`${t.state} IN ('queued', 'running')`),
+  index("jobs_version").on(t.versionId),
+  index("jobs_character").on(t.characterId),
+]);
