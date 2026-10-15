@@ -18,9 +18,10 @@ button, blue only for status, fog of war background).
   the loop, and `Fog`'s `colours` its own colour (the website's "one road"
   band).
 - `src/Fog.tsx` draws that grid in React (`animate` makes it move; the app's
-  first run leaves it still; each animated dot carries its loop length
-  inline, so two fogs on one page keep their own speeds); the server's link page draws it from
-  `dots.ts` without React, and the website will use it with `animate`.
+  first run leaves it still). The faint dots are one repeating SVG pattern,
+  not a circle each, and the loop length sits on the svg as `--rts-fog-s`,
+  so two fogs on one page keep their own speeds. The server's link page
+  draws it from `dots.ts` without React; the website uses it with `animate`.
   `src/Button.tsx` is the cream and outline button.
 - `classes/` holds the class icons (cut from the game's UI-Classes-Circles
   by `apps/desktop/scripts/class-icons.py`), and `src/classes.ts` maps class

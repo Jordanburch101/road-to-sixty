@@ -2,11 +2,15 @@
 import { Fog } from "@road-to-sixty/ui/Fog";
 import { addonUrl } from "../config";
 import { HERO, HERO_MARKS, HERO_ROADS } from "../roads";
+
+// The mask below hides everything from 68% of the height down, so the fog
+// stops there. HERO.height stays 900, which keeps the roads' shape.
+const HERO_SHOWN = Math.round(HERO.height * 0.68);
 import DownloadButton from "./DownloadButton.astro";
 ---
 <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-[900px] overflow-hidden [mask-image:linear-gradient(to_bottom,#000_0%,#000_45%,transparent_68%)]">
   <div class="absolute left-1/2 top-0 -translate-x-1/2" style={`width:${HERO.width}px;height:${HERO.height}px`}>
-    <Fog width={HERO.width} height={HERO.height} step={18} roads={HERO_ROADS} marks={HERO_MARKS} animate={22} />
+    <Fog width={HERO.width} height={HERO_SHOWN} step={18} roads={HERO_ROADS} marks={HERO_MARKS} animate={22} />
   </div>
   <div class="absolute inset-0 bg-[radial-gradient(ellipse_620px_300px_at_50%_300px,rgba(7,6,10,0.94)_0%,rgba(7,6,10,0.6)_55%,transparent_100%)]"></div>
 </div>
