@@ -64,6 +64,13 @@
       "when": 1792035276391,
       "tag": "0008_auth_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792103055865,
+      "tag": "0009_journeys",
+      "breakpoints": true
     }
   ]
 }

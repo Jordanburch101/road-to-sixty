@@ -33,6 +33,10 @@ export const characters = pgTable(
     game: text("game").notNull(),
     realm: text("realm").notNull(),
     name: text("name").notNull(),
+    // The journey's stamp from the addon (Core.lua, "<GUID>:<start>"); null
+    // for a row made before addon 1.10.0. A name has a row per journey, and
+    // its newest row is the current one.
+    journey: text("journey"),
     class: text("class"),
     level: integer("level"),
     played: integer("played"),
@@ -40,7 +44,7 @@ export const characters = pgTable(
     headVersionId: bigint("head_version_id", { mode: "number" }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique().on(t.userId, t.game, t.realm, t.name)],
+  (t) => [unique().on(t.userId, t.game, t.realm, t.name, t.journey).nullsNotDistinct()],
 );
 
 // Every upload, merge result and restore. Ids only grow: the addon takes a
@@ -61,6 +65,8 @@ export const versions = pgTable("versions", {
   // stripped from any upload made before the restore reached its PC.
   removed: text("removed"),
   addonVersion: text("addon_version"),
+  // An upload's stamp, read from the file, so the worker can tell where it belongs.
+  journey: text("journey"),
   receivedId: bigint("received_id", { mode: "number" }),
   status: text("status", { enum: ["pending", "accepted", "rejected", "superseded"] }).notNull(),
   rejectReason: text("reject_reason"),

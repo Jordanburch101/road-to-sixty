@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../src/config";
-import { runMerge, runWindows } from "../src/lua";
+import { runMerge, runSame, runWindows } from "../src/lua";
 import { journey, lua, savedFile, session, sessions } from "./helpers";
 
 const text = (j: object) => new TextEncoder().encode(lua(j));
@@ -19,7 +19,7 @@ test("a first upload is prepared and tidied, and becomes the journey", async () 
   });
   const r = await runMerge(savedFile(upload), null, "pc-1");
   if (!r.ok) throw new Error(r.reason);
-  expect(r).toMatchObject({ from: 2, layout: 3, level: 6, played: 3600, lastSeen: 1120, class: "MAGE" });
+  expect(r).toMatchObject({ from: 2, layout: 4, level: 6, played: 3600, lastSeen: 1120, class: "MAGE" });
   const out = new TextDecoder().decode(r.journey);
   expect(sessions(out)).toBe(1);
   expect(out).not.toContain("1415");
@@ -38,7 +38,7 @@ test("an upload merges into the current journey", async () => {
 test("uploads the merge can't take are rejected with a reason", async () => {
   const cases: [Uint8Array, RegExp][] = [
     [savedFile(journey({ seeded: true })), /seeded/],
-    [savedFile(journey({ version: 4 })), /newer layout/],
+    [savedFile(journey({ version: 5 })), /newer layout/],
     [savedFile(journey({ totals: 5 })), /damaged/],
     [new TextEncoder().encode("RoadToSixtyCharDB = { os.exit() }"), /./],
     [new TextEncoder().encode("SomethingElse = {}"), /no journey/],
@@ -74,7 +74,7 @@ test("an upload merges into a current journey saved in an older layout", async (
   const current = text(journey({ version: 2, events: session(1000), totals: { ...journey().totals, deaths: 1 } }));
   const r = await runMerge(savedFile(journey({ events: session(5000) })), current, "pc-2");
   if (!r.ok) throw new Error(r.reason);
-  expect(r.layout).toBe(3);
+  expect(r.layout).toBe(4);
   expect(sessions(r.journey)).toBe(2);
 });
 
@@ -120,4 +120,12 @@ test("a layout 2 upload's counts become its PC's tallies before the cap, so they
   const r = await runMerge(upload, current, "pc-2", [[5000, 5120]]);
   if (!r.ok) throw new Error(r.reason);
   expect(new TextDecoder().decode(r.journey)).toContain('["pc-2"]=3');
+});
+
+test("same tells an upload that continues a journey from a namesake's", async () => {
+  const head = text(journey({ events: session(1000) }));
+  const stamp = (s: string, events: unknown[]) => savedFile(journey({ journeyId: s, events }));
+  expect(await runSame(head, stamp("Player-1-0A:0", [...session(1000), ...session(5000)]))).toBe(true);
+  expect(await runSame(head, stamp("Player-1-0B:0", session(9000)))).toBe(false);
+  expect(await runSame(text(journey()), stamp("Player-1-0B:0", session(9000)))).toBe(true);
 });

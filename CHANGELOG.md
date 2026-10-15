@@ -6,6 +6,19 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.10.0
+
+### New
+- Deleted a character and made a new one with the same name? The new
+  character now starts a journey of its own, instead of carrying on the
+  old one's.
+
+### Fixed
+- Erasing a character's journey now sticks with the Road to Sixty app:
+  before, the app brought the old journey back at the next login. The
+  backup keeps the old journey as an earlier one, which you can remove in
+  the app.
+
 ## 1.9.0
 
 ### New

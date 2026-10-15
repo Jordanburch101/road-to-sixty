@@ -58,7 +58,8 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   `src/tray.rs` is the menu bar or tray icon (a left click opens the window, a right click the menu), `src/window.rs` opens the window under it with tauri-plugin-positioner and hides it when it loses focus, except while one of our dialogs is open or a link waits on the browser (so dialogs run from Rust, through `window::holding`, and confirmations are inline in the window), `src/commands.rs` is what the
   window can ask (anything that restarts the sync thread runs on a thread
   of its own), `src/account.rs` holds the account screens' calls
-  (characters, history, restore, PCs, export, delete everything): the
+  (characters, history, restore, remove a character, PCs, export,
+  delete everything): the
   window asks the app, which calls the server with the PC token, so the
   window never holds it. Answers pass through as JSON and the window reads
   them with `@road-to-sixty/api`'s types. Unlinking this PC revokes it on
@@ -78,6 +79,12 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the per-user Run key on Windows, `~/.config/autostart` on Linux pointing
   at the AppImage file itself, so moving the file breaks it), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
+  The Characters list tags a character Beta from the server's `game`
+  (`_classic_beta_`) and lists them apart with one button to remove them
+  all; a character the server doesn't have stays in the main list, since
+  the app's own list doesn't know a file's game. History lists a name's
+  earlier journeys (`earlier` from the server), each removable, and
+  removes the character itself from the backup.
   `api.ts` is the only file that talks to the app (its commands and the
   `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
   `History.tsx` and `Account.tsx` are the screens, after the mockups'

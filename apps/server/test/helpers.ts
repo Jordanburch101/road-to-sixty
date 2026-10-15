@@ -45,10 +45,10 @@ export function lua(v: unknown): string {
 
 export type Event = (string | number | boolean | null | object)[];
 
-// A journey at layout 3 with nothing in it but what is given.
+// A journey at layout 4 with nothing in it but what is given.
 export function journey(fields: Record<string, unknown> = {}) {
   return {
-    version: 3,
+    version: 4,
     segments: [],
     events: [] as Event[],
     levels: {},

@@ -96,7 +96,7 @@ local SECTIONS = {
 }
 
 StaticPopupDialogs.ROADTOSIXTY_RESET = {
-    text = "Erase the whole journey of this character?\n\nIts path, history, level ups and gear are deleted for good. The interface reloads afterwards.",
+    text = "Erase the whole journey of this character?\n\nIts path, history, level ups and gear are deleted for good. The interface reloads afterwards.\n\nYour backup keeps the old journey as an earlier one; remove it in the Road to Sixty app.",
     button1 = "Erase",
     button2 = CANCEL,
     OnAccept = function()

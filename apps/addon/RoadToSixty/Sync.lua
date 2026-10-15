@@ -31,10 +31,18 @@ local function TidyUp(char)
     if not char.seeded then ns.Tidy.Guilds(char) end
 end
 
+-- A journey's stamp (Core.lua) as its GUID and start, or nil for none.
+local function Stamp(char)
+    local guid, start = tostring(char.journeyId or ""):match("^(.+):(%d+)$")
+    return guid, tonumber(start)
+end
+
 -- What a sync folder entry does to char, the journey this PC saved: "same"
 -- when that version was already brought in; "merged" or "replaced" with
 -- the journey to keep; "problem" with why it can't be used. Tidies char in
--- place, as the login would anyway, and changes nothing else in it.
+-- place, as the login would anyway, and changes nothing else in it. An
+-- entry for another journey of this name (another GUID's, or the one
+-- before an erase here) is "same": nothing to bring in.
 function Sync.Apply(char, entry)
     if type(entry) ~= "table" or type(entry.version) ~= "number" then
         return "problem", "the sync folder's entry has no version number"
@@ -51,13 +59,20 @@ function Sync.Apply(char, entry)
     local why
     journey, why = ns.Merge.Prepare(journey, ns.pc)
     if not journey then return "problem", why end
+    -- Both stamped and different: erased on another PC (same GUID, later
+    -- start), which replaces this copy; anything else isn't this journey.
+    -- No stamp on either side merges as before stamps.
+    local mine, mineStart = Stamp(char)
+    local theirs, theirStart = Stamp(journey)
+    local erased = mine and theirs and (mine ~= theirs or mineStart ~= theirStart)
+    if erased and (mine ~= theirs or theirStart < mineStart) then return "same" end
     TidyUp(char)
     TidyUp(journey)
     -- A restore replaces only a copy older than it. A PC that already took
     -- the restore in has play since then that a replace would throw away.
     -- replace is what app 0.1.1 writes instead of restore.
     local restore = tonumber(entry.restore)
-    if (restore and (char.syncedVersion or 0) < restore) or (not restore and entry.replace) then
+    if erased or (restore and (char.syncedVersion or 0) < restore) or (not restore and entry.replace) then
         return "replaced", journey
     end
     local out

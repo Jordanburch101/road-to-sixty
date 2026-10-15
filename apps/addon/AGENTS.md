@@ -42,6 +42,11 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   one from their copies count it once after the merge.
 - The character file keeps its own `class` (set at each login) because
   the sync server reads only that file, never the account-wide one.
+- Each character file carries `journeyId`, the journey's stamp
+  (`<GUID>:<start>`, Core.lua). The login writes it, a GUID that differs
+  starts the file fresh (a deleted namesake's), Erase gives a new start,
+  and `Sync.Apply` and `Merge.Merge` never join two different stamps. The
+  sync server reads it from uploads to keep journeys of one name apart.
 - Saved times use `ns.Now()`, never `time()` (a test fails on `time()` in
   shipped files).
 - Map.lua is near Lua's 200-local limit: new map features go in their own file.

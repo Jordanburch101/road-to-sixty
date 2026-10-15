@@ -59,9 +59,9 @@ local Sync, Write = ns.Sync, ns.Parse.Write
 
 local function Same(a, b) return Write(a) == Write(b) end
 
--- A journey at layout 3, with the defaults and the fields given.
+-- A journey at layout 4, with the defaults and the fields given.
 local function Journey(fields)
-    local j = { version = 3 }
+    local j = { version = 4 }
     ns.CharDefaults(j)
     for k, v in pairs(fields or {}) do j[k] = v end
     return j
@@ -99,6 +99,28 @@ char = Journey({ events = Session(1000), syncedVersion = 6 })
 check(Sync.Apply(char, { version = 6, journey = "not even read" }) == "same", "the version already brought in")
 check(Sync.Apply(char, { version = 4, replace = true, journey = "not even read" }) == "same", "an older version")
 
+-- 3b. The journey stamp (Core.lua): only this journey merges; an erase on
+-- another PC replaces; another GUID's, or the journey before an erase, is
+-- left alone.
+do
+    local mine = "Player-1-0A:0"
+    local function Entry(stamp, events)
+        return { version = 8, journey = Write(Journey({ journeyId = stamp, events = events or Session(5000) })) }
+    end
+    local w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry(mine))
+    check(w == "merged" and #o.events == 6 and o.journeyId == mine, "the same journey merges: " .. tostring(w))
+    w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry("Player-1-0A:7000", Session(8000)))
+    check(w == "replaced" and Same(o.events, Session(8000)) and o.journeyId == "Player-1-0A:7000",
+        "an erase on another PC replaces this copy: " .. tostring(w))
+    check(Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }), Entry("Player-1-0B:0")) == "same",
+        "another character's journey is left alone")
+    check(Sync.Apply(Journey({ journeyId = "Player-1-0A:7000", events = Session(8000) }), Entry(mine)) == "same",
+        "the journey from before this PC's erase is left alone")
+    w, o = Sync.Apply(Journey({ journeyId = mine, events = Session(1000) }),
+        { version = 8, journey = Write(Journey({ events = Session(5000) })) })
+    check(w == "merged" and o.journeyId == mine, "a server copy from before stamps merges and takes this stamp: " .. tostring(w))
+end
+
 -- 4. Entries that can't be used, each with a reason.
 local function Problem(entry, local_)
     local w, why = Sync.Apply(local_ or Journey({ events = Session(1000) }), entry)
@@ -110,7 +132,7 @@ check(Problem({ version = 7 }), "an entry without a journey")
 check(Problem({ version = 7, journey = "{ [1] = 1" }), "a cut-off journey")
 check(Problem({ version = 7, journey = '{ ["x"] = os.exit() }' }), "a journey holding code")
 check(Problem({ version = 7, journey = '"just a string"' }), "a journey that isn't a table")
-local newer = Problem({ version = 7, journey = Write(Journey({ version = 4 })) })
+local newer = Problem({ version = 7, journey = Write(Journey({ version = 5 })) })
 check(newer and newer:find("Update the addon on this PC"), "a newer layout asks for an update: " .. tostring(newer))
 check(Problem({ version = 7, journey = Write(Journey({ version = 1 })) }), "a layout from before the realm's clock")
 local seeded = Journey({ events = Session(1000), seeded = true })
@@ -129,7 +151,7 @@ for _, bad in ipairs({
     { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1, 2 } }, { events = { { "t", "on" } } },
     { totals = { kills = "many" } }, { kills = { d = 5 } },
 }) do
-    local journey = { version = 3, events = Session(5000) }
+    local journey = { version = 4, events = Session(5000) }
     for k, v in pairs(bad) do journey[k] = v end
     local why = Problem({ version = 7, replace = true, journey = Write(journey) })
     check(why, "a restore with the wrong shape is refused: " .. Write(bad))
@@ -182,7 +204,7 @@ ns = Load(saved, folder)
 Login()
 check(Write(saved) == after and ns.Sync:Describe():find("already brought in"), "the same version again changes nothing")
 saved.lastZone = 1429
-local restore = Folder({ version = 6, replace = true, journey = Write({ version = 3, events = Session(1000) }) })
+local restore = Folder({ version = 6, replace = true, journey = Write({ version = 4, events = Session(1000) }) })
 ns = Load(saved, restore)
 Login()
 check(ns.char == saved and Same(saved.events, here) and saved.syncedVersion == 6, "a restore replaces, in the same table")

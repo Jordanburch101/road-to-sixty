@@ -60,7 +60,7 @@ export type CheckResponse = { characters: CheckEntry[] };
 
 // The account API: the app's window, with the PC token. Times are ISO 8601.
 
-// GET /v1/characters: each character with a merged journey.
+// GET /v1/characters: each character with a merged journey, earlier journeys of a name included.
 export type CharacterInfo = {
   id: number;
   game: string;
@@ -72,6 +72,10 @@ export type CharacterInfo = {
   lastPlayedAt: string | null;
   syncedAt: string; // when its current version was made
   syncedFrom: string | null; // the PC whose upload made it; null for a restore
+  // Not its name's current journey: an Erase, or a character deleted in
+  // game and made again with the same name, started a newer one. It can be
+  // removed or exported, not made current again.
+  earlier: boolean;
 };
 
 // GET /v1/characters/:id/versions: newest first, at most 100.
@@ -89,6 +93,9 @@ export type VersionInfo = {
 // current again as a new restore version; every PC replaces its copy with
 // it at its next login, unless it already took the restore in.
 export type RestoreResponse = { version: number };
+
+// DELETE /v1/characters/:id removes one journey from the backup: { ok: true },
+// 404 if it isn't this player's, 409 while its latest upload is being merged.
 
 // GET /v1/devices: the player's linked PCs, most recently seen first.
 // PATCH /v1/devices/:id, body { name }, renames one; DELETE unlinks it.

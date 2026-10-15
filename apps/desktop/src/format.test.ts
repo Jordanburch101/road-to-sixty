@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
-import { ago, characterLine, deviceLine, levelClass, played, updateWords, versionLine, when } from "./format";
+import { BETA, ago, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -27,7 +27,7 @@ test("a version's time says today, yesterday or the date", () => {
 
 const ann: CharacterInfo = {
   id: 1, game: "_classic_beta_", realm: "Classic Beta PvE 2", name: "Ann", class: "WARRIOR", level: 42,
-  played: 3600, lastPlayedAt: null, syncedAt: at(2026, 9, 14, 20, 0), syncedFrom: "Laptop",
+  played: 3600, lastPlayedAt: null, syncedAt: at(2026, 9, 14, 20, 0), syncedFrom: "Laptop", earlier: false,
 };
 
 test("a character's lines: level and class, then realm, PC and when", () => {
@@ -54,4 +54,31 @@ test("the update row says what the update is doing", () => {
   expect(updateWords({ state: "none" }, null)).toBe("Up to date. Updates install by themselves while the window is closed.");
   expect(updateWords({ state: "none" }, "0.1.3")).toBe("Version 0.1.3 is downloading. It installs when you close this window.");
   expect(updateWords({ state: "failed", why: "no network" }, undefined)).toBe("Couldn't update: no network. It tries again in a few hours.");
+});
+
+test("beta characters are listed apart, by the server's game for each", () => {
+  const info = new Map([
+    ["Ann-Classic Beta PvE 2", ann],
+    ["Bob-Nightslayer", { ...ann, id: 2, name: "Bob", realm: "Nightslayer", game: "_classic_" }],
+  ]);
+  const rows = [{ key: "Ann-Classic Beta PvE 2" }, { key: "Bob-Nightslayer" }, { key: "Cy-Nightslayer" }];
+  expect(byGame(rows, info)).toEqual({ main: [rows[1]!, rows[2]!], beta: [rows[0]!] });
+  expect(BETA).toBe("_classic_beta_");
+  expect(betaWords(1)).toBe("Remove 1 beta journey from the backup? Journeys on your PCs stay.");
+  expect(betaWords(3)).toBe("Remove 3 beta journeys from the backup? Journeys on your PCs stay.");
+});
+
+test("a character's earlier journeys are its name's, newest first", () => {
+  const old = { ...ann, id: 3, earlier: true, level: 12, lastPlayedAt: at(2026, 9, 12, 20, 0) };
+  const older = { ...ann, id: 2, earlier: true, level: null, lastPlayedAt: null };
+  const otherName = { ...ann, id: 4, name: "Bob", earlier: true };
+  expect(earlierOf([ann, older, otherName, old], ann)).toEqual([old, older]);
+  expect(earlierLine(old, now)).toBe("Level 12 · last played 3 days ago");
+  expect(earlierLine(older, now)).toBe("");
+});
+
+test("removing says what stays", () => {
+  expect(removeWords("Ann")).toBe(
+    "Removes Ann's journey from the backup. Journeys on your PCs stay. If you play Ann again, its journey is backed up again from that PC.",
+  );
 });

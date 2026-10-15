@@ -58,6 +58,6 @@ local counted = { people = { g = { groups = 2 } } }
 ns.Tally.Upgrade(counted, "a")
 assert(ns.Tally.Total(counted.people.g.groups) == 2)
 
-local merged = ns.Merge.Merge({ version = 3, events = { { 1, "on", 0, 0, 0, 1 } } }, { version = 3, events = {} })
+local merged = ns.Merge.Merge({ version = 4, events = { { 1, "on", 0, 0, 0, 1 } } }, { version = 4, events = {} })
 assert(#merged.events == 1 and merged.totals.kills == 0)
 print("Pure tests passed.")

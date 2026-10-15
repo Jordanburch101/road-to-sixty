@@ -27,6 +27,9 @@ local addonName, ns = ...
 --   rosterKey  Name-Realm, set at each login after the sync (Roster.lua): the
 --              app reads it, since the game's folder names don't give the
 --              realm the addon uses
+--   journeyId  the journey's stamp, "<GUID>:<start>" (see DATA_VERSION 4),
+--              so a namesake made after a character is deleted, or an
+--              erased journey, is never merged with the old one (#51)
 -- addon is the addon version that last loaded the file (the toc's version
 -- placeholder, unfilled, in a developer install), so whatever reads it
 -- knows what wrote it. Never write the placeholder itself in a .lua file:
@@ -59,7 +62,10 @@ local defaults = {
 --      people[guid] groups, seconds, raids, raidSeconds, dungeons and
 --      raidRuns, and rares[key][1]. Older counts become this PC's. class,
 --      the character's class (UnitClass's file name), set at each login.
-local DATA_VERSION = 3
+--   4  journeyId, the journey's stamp: "<GUID>:<start>", start 0 for an
+--      ordinary journey or the time of an Erase. Set at each login (see
+--      PLAYER_LOGIN below) and by ns.ResetCharacter.
+local DATA_VERSION = 4
 
 -- Brings a character file saved by an older layout up to DATA_VERSION.
 local function Upgrade(char)
@@ -216,7 +222,38 @@ function ns.CharDefaults(char)
     ApplyDefaults(char, charDefaults)
 end
 
+-- The logged-in character's GUID, or nil when the client gives none or a
+-- secret value, which would error when compared.
+local function PlayerGUID()
+    local ok, guid = pcall(function()
+        local g = UnitGUID("player")
+        if issecretvalue and issecretvalue(g) then return nil end
+        return type(g) == "string" and g:match("^[%w%-]+$") and g or nil
+    end)
+    return ok and guid or nil
+end
+
+local function StampGUID(char)
+    return type(char.journeyId) == "string" and char.journeyId:match("^([%w%-]+):%d+$") or nil
+end
+
+-- Stamps the journey as this character's, first at login so Sync.lua sees
+-- it. A file stamped with another GUID was a deleted namesake's (WoW keeps
+-- it under the same name): this character starts fresh, as a new one would,
+-- before the recorder, journal and roster read it. The old journey is on
+-- the server if it was ever synced.
 ns.On("PLAYER_LOGIN", function()
+    local guid = PlayerGUID()
+    if guid then
+        local char, stamped = ns.char, StampGUID(ns.char)
+        if stamped and stamped ~= guid then
+            local addon = char.addon
+            wipe(char)
+            ApplyDefaults(char, charDefaults)
+            char.addon, stamped = addon, nil
+        end
+        if not stamped then char.journeyId = guid .. ":0" end
+    end
     if ns.db.greet then
         Print("Recording your journey. Type /rts for commands.")
     end
@@ -282,10 +319,14 @@ ns.Command("reset", "erase this character's journey (type /rts reset confirm)", 
 end)
 
 -- Empties this character's journey in place, keeping the same table, and
--- brings the recorder and roster in line without needing a reload.
+-- brings the recorder and roster in line without needing a reload. The new
+-- stamp starts now, so the sync keeps the erased journey apart instead of
+-- merging it back.
 function ns.ResetCharacter()
+    local guid = PlayerGUID() or StampGUID(ns.char)
     wipe(ns.char)
     ApplyDefaults(ns.char, charDefaults)
+    if guid then ns.char.journeyId = guid .. ":" .. ns.Now() end
     ns.Recorder:Reset()
     ns.Journal:Reset()
     ns.Roster:Rebuild()

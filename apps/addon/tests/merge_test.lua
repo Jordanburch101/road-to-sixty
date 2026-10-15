@@ -22,10 +22,10 @@ local function Same(a, b)
     return Write(a) == Write(b)
 end
 
--- A journey at layout 3 with nothing in it, plus the fields given.
+-- A journey at layout 4 with nothing in it, plus the fields given.
 local function Journey(fields)
     local j = {
-        version = 3, segments = {}, events = {}, levels = {}, recipes = {}, people = {},
+        version = 4, segments = {}, events = {}, levels = {}, recipes = {}, people = {},
         kills = { d = "", last = 0, names = {} },
         totals = { kills = 0, killXP = 0, questXP = 0, deaths = 0, quests = 0, instances = 0, distance = 0, flown = 0 },
     }
@@ -68,7 +68,7 @@ check(joinBroken == 0, joinBroken .. " random values broke Join's properties")
 -- 2. Copies the merge must not take.
 local refused, why = Merge.Merge(Journey({ seeded = true }), Journey())
 check(refused == nil and tostring(why):find("seeded"), "a seeded journey is refused: " .. tostring(why))
-refused, why = Merge.Merge(Journey(), Journey({ version = 4 }))
+refused, why = Merge.Merge(Journey(), Journey({ version = 5 }))
 check(refused == nil and tostring(why):find("newer"), "a newer layout is refused: " .. tostring(why))
 refused, why = Merge.Merge(Journey({ version = 2 }), Journey())
 check(refused == nil and tostring(why):find("older"), "an older layout is refused: " .. tostring(why))
@@ -86,7 +86,7 @@ check(m.lastZone == 1429 and m.gear[1] == 5, "copies seen last at the same time 
 -- 4. The merge's own fields.
 m = Merge.Merge(Journey({ rosterBuilt = 3, played = 50, clockFrom = 10 }),
     Journey({ played = 70, clockFrom = 20, recipes = { Cooking = { Bread = true } } }))
-check(m.version == 3 and m.rosterBuilt == nil, "layout 3, and the roster copy to be rebuilt")
+check(m.version == 4 and m.rosterBuilt == nil, "layout 4, and the roster copy to be rebuilt")
 check(m.played == 70 and m.clockFrom == 20 and m.recipes.Cooking.Bread, "played, clockFrom and recipes keep the most")
 check(older.instance == 36 and #older.events == 1 and older.guild[1] == "Old Guild", "the inputs are not changed")
 
@@ -288,13 +288,14 @@ check(#m.events == 2 and m.rares[522][2] == 450 and ns.Tally.Total(m.rares[522][
 
 -- 13. Prepare brings a layout 2 upload up, its counts as the PC it came from.
 local old = Journey({ version = 2, people = { g = { groups = 3 } }, rares = { [1] = { 2, 10 } } })
-check(Merge.Prepare(old, "pcz") == old and old.version == 3 and old.people.g.groups.pcz == 3 and old.rares[1][1].pcz == 2,
+check(Merge.Prepare(old, "pcz") == old and old.version == 4 and old.people.g.groups.pcz == 3 and old.rares[1][1].pcz == 2,
     "a layout 2 upload is prepared")
 local none, reason = Merge.Prepare(Journey({ version = 1 }), "pcz")
 check(none == nil and reason, "layout 1 is refused")
-none, reason = Merge.Prepare(Journey({ version = 4 }), "pcz")
+none, reason = Merge.Prepare(Journey({ version = 5 }), "pcz")
 check(none == nil and tostring(reason):find("newer"), "a newer layout is refused")
-check(Merge.Prepare(Journey(), "pcz").version == 3, "layout 3 is left as it is")
+check(Merge.Prepare(Journey(), "pcz").version == 4, "layout 4 is left as it is")
+check(Merge.Prepare(Journey({ version = 3 }), "pcz").version == 4, "layout 3 comes up to 4 as it is: it has no stamp yet")
 for _, bad in ipairs({ { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1 } }, { events = { { "t", "on" } } },
     { totals = { kills = "many" } }, { kills = { d = 5 } } }) do
     local damaged = Journey()
@@ -504,6 +505,29 @@ do
     check(done.run == nil, "a run whose out event is in the merged events is not brought back")
     check(done.group == nil, "a group whose grpx event is in the merged events is not brought back")
     check(Same(done, Merge.Merge(ended, a)), "dropping an ended run works either way round")
+end
+
+-- The journey stamp (Core.lua): two different journeys never merge, and a
+-- copy that has one keeps it whichever copy was seen last.
+do
+    local a = Journey({ journeyId = "Player-1-0A:0", events = { On(1000) } })
+    local erased = Journey({ journeyId = "Player-1-0A:7000", events = { On(8000) } })
+    local bare = Journey({ events = { On(2000) } })
+    local out, why = Merge.Merge(a, erased)
+    check(out == nil and why == "these are two different journeys", "two stamps that differ are refused: " .. tostring(why))
+    check(Merge.Merge(a, bare).journeyId == "Player-1-0A:0", "a lone stamp is kept though the other copy was seen last")
+    check(Merge.Merge(bare, a).journeyId == "Player-1-0A:0", "and either way round")
+    check(Merge.Merge(a, a).journeyId == "Player-1-0A:0", "the same stamp stays")
+
+    local SameJourney = Merge.SameJourney
+    check(SameJourney(Journey(), bare), "a journey with no events yet is anyone's start")
+    check(SameJourney(Journey({ events = { On(1000), On(3000) } }), Journey({ events = { On(1000), On(5000) } })),
+        "two copies that begin with the same event are one journey")
+    check(not SameJourney(Journey({ events = { On(1000) } }), Journey({ events = { On(9000) } })),
+        "a namesake begins later")
+    check(not SameJourney(Journey({ events = { On(1000) } }), Journey({ events = { { 1000, "die", 0, 0, 0 } } })),
+        "the same second but another kind of event is another journey")
+    check(not SameJourney(Journey({ events = { On(1000) } }), Journey()), "an upload with no events doesn't continue one that has some")
 end
 
 -- DATA_VERSION in Core.lua and Merge.VERSION must move together: one

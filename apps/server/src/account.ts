@@ -1,5 +1,5 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
@@ -7,7 +7,8 @@ import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
-import { get, removeAll } from "./storage";
+import { get, remove, removeAll } from "./storage";
+import { currentIds } from "./sync";
 import { zip } from "./zip";
 
 const HISTORY = 100;
@@ -65,6 +66,16 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
 
 const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
+// Which of the player's rows are current, counting rows with nothing merged yet.
+async function current(userId: string): Promise<Set<number>> {
+  return currentIds(
+    await db
+      .select({ id: characters.id, game: characters.game, realm: characters.realm, name: characters.name })
+      .from(characters)
+      .where(eq(characters.userId, userId)),
+  );
+}
+
 // The account API (spec, "Account API"), for the app's window.
 export const account = pcRoutes()
   .get("/characters", async ({ device }): Promise<CharacterInfo[]> => {
@@ -75,6 +86,7 @@ export const account = pcRoutes()
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
     const from = await madeBy(rows.map((r) => r.head.id));
+    const now = await current(device!.userId);
     return rows.map(({ c, head }) => ({
       id: c.id,
       game: c.game,
@@ -86,6 +98,7 @@ export const account = pcRoutes()
       lastPlayedAt: c.lastPlayedAt?.toISOString() ?? null,
       syncedAt: head.createdAt.toISOString(),
       syncedFrom: from.get(head.id) ?? null,
+      earlier: !now.has(c.id),
     }));
   })
 
@@ -214,6 +227,57 @@ export const account = pcRoutes()
     }
   })
 
+  // Spec 2026-10-15 journeys, "Removing a character". Its files go after its
+  // rows, each only when no other version of the account has it.
+  // ponytail: an upload storing the same file for another character at
+  // that moment can lose it, as with the clean-up; its merge fails and the
+  // app sends it again.
+  .delete("/characters/:id", async ({ device, params, set }) => {
+    const c = await own(device!, params.id);
+    if (!c) {
+      set.status = 404;
+      return { error: "no such character" };
+    }
+    // The current journey goes last: removed first, the earlier one would
+    // become current again and be handed to every PC, where a journey from
+    // before stamps merges into whatever character has the name now.
+    const named = await db
+      .select({ id: characters.id })
+      .from(characters)
+      .where(and(eq(characters.userId, c.userId), eq(characters.game, c.game), eq(characters.realm, c.realm), eq(characters.name, c.name)));
+    if (named.every((r) => r.id <= c.id) && named.some((r) => r.id < c.id)) {
+      set.status = 409;
+      return { error: "Remove this character's earlier journeys first" };
+    }
+    const files = await db.transaction(async (tx) => {
+      // Locked, so the worker's claim skips them; a job it already took
+      // shows as running, and its commit would meet a deleted row.
+      const held = await tx.select({ state: jobs.state }).from(jobs).where(eq(jobs.characterId, c.id)).for("update");
+      if (held.some((j) => j.state === "running")) return null;
+      const theirs = tx.select({ id: versions.id }).from(versions).where(eq(versions.characterId, c.id));
+      const fps = await tx.selectDistinct({ fp: versions.fingerprint }).from(versions).where(eq(versions.characterId, c.id));
+      await tx.delete(jobs).where(eq(jobs.characterId, c.id));
+      await tx.delete(versionParents).where(or(inArray(versionParents.versionId, theirs), inArray(versionParents.parentId, theirs)));
+      await tx.delete(versions).where(eq(versions.characterId, c.id));
+      await tx.delete(characters).where(eq(characters.id, c.id));
+      return fps.map((f) => f.fp);
+    });
+    if (files === null) {
+      set.status = 409;
+      return { error: "Its latest upload is being merged; try again in a minute" };
+    }
+    for (const fp of files) {
+      const [shared] = await db
+        .select({ id: versions.id })
+        .from(versions)
+        .innerJoin(characters, eq(characters.id, versions.characterId))
+        .where(and(eq(characters.userId, c.userId), eq(versions.fingerprint, fp)))
+        .limit(1);
+      if (!shared) await remove(c.userId, fp);
+    }
+    return { ok: true };
+  })
+
   .get("/devices", async ({ device }): Promise<DeviceInfo[]> =>
     (
       await db
@@ -252,6 +316,7 @@ export const account = pcRoutes()
       .innerJoin(versions, eq(versions.id, characters.headVersionId))
       .where(eq(characters.userId, device!.userId))
       .orderBy(characters.id);
+    const now = await current(device!.userId);
     if (rows.reduce((sum, r) => sum + r.head.rawSize, 0) > MAX_EXPORT) {
       set.status = 413;
       return { error: "too big to download in one go" };
@@ -266,7 +331,9 @@ export const account = pcRoutes()
       for (const { c, head } of rows) {
         const journey = await get(c.userId, head.fingerprint);
         const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
-        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${safe(c.name)}.lua`, data: new Uint8Array(data) });
+        // An earlier journey of a name sits beside the current one.
+        const file = now.has(c.id) ? safe(c.name) : `${safe(c.name)} (earlier ${c.id})`;
+        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${file}.lua`, data: new Uint8Array(data) });
       }
       return new Response(zip(files), {
         headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },
