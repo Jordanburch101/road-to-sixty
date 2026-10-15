@@ -44,7 +44,7 @@ export function wireDownloads() {
     a.href = PAGE[choice];
     const label = a.querySelector<HTMLElement>("[data-label]");
     if (label) label.textContent = LABEL[choice];
-    a.querySelector<HTMLElement>("[data-apple]")?.toggleAttribute("hidden", choice !== "mac");
+    for (const icon of a.querySelectorAll<SVGElement>("[data-icon]")) icon.toggleAttribute("hidden", icon.dataset.icon !== choice);
   }
   for (const line of document.querySelectorAll<HTMLElement>("[data-also]")) {
     if (choice === "choose") continue;
