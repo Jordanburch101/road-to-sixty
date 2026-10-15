@@ -9,8 +9,9 @@ use serde::Deserialize;
 /// The app's client ID for Better Auth's device sign-in (APP_CLIENT_ID).
 pub const APP_CLIENT_ID: &str = "road-to-sixty-app";
 
-/// The test server on everhold.online. Builds for players set RTS_SERVER.
-pub const TEST_SERVER: &str = "https://api.rts.everhold.online";
+/// The server for builds that don't set RTS_SERVER, such as `tauri dev` and
+/// `rts-sync` from a terminal. Release builds set it in the workflow.
+pub const DEFAULT_SERVER: &str = "https://api.roadtosixty.online";
 
 /// The most a merged journey may unpack to; the server refuses more.
 const MAX_JOURNEY: u64 = 32 * 1024 * 1024;

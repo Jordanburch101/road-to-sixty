@@ -57,7 +57,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFMTg1MzFBNzhEN0I2QTcKUldTbnR0ZDRHbE1ZM2pjaWdBK3U5eTNkWGpnMUdhNytjTlZyZW15Q015S3ZieW9vbG9qWkc1QncK",
       "endpoints": [
-        "https://dl.rts.everhold.online/app/latest.json"
+        "https://dl.roadtosixty.online/app/latest.json"
       ],
       "windows": {
         "installMode": "passive"
