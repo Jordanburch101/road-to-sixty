@@ -1,5 +1,6 @@
 ---
 import "../styles/site.css";
+import "../styles/reveal.css";
 import Analytics from "@vercel/analytics/astro";
 import compass from "@road-to-sixty/ui/compass.png";
 import Footer from "../components/Footer.astro";
@@ -17,11 +18,36 @@ const { title, description = "The Road to Sixty app backs up your WoW Forever jo
     <meta name="description" content={description} />
     <link rel="icon" type="image/png" href={compass.src} />
     <slot name="head" />
+    {/* Here, not with the rest at the end of <body>, so the parts are hidden from the first paint (reveal.css). */}
+    <script is:inline>
+      if ("IntersectionObserver" in window && !matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("motion");
+    </script>
   </head>
-  <body class="min-h-screen overflow-x-hidden bg-ground antialiased">
+  <body data-reveal class="min-h-screen overflow-x-hidden bg-ground antialiased">
     <Header />
     <slot />
     <Footer />
+    <script is:inline>
+      (() => {
+        if (!document.documentElement.classList.contains("motion")) return;
+        const seen = new IntersectionObserver((entries) => {
+          let i = 0;
+          for (const e of entries) {
+            // Parts above the screen (a link to #one-road, a reload halfway down) show at once,
+            // rather than rising from below as you scroll back up.
+            if (!e.isIntersecting && e.boundingClientRect.bottom >= 0) continue;
+            const el = e.target;
+            el.style.transitionDelay = `${Math.min(i++, 8) * 80}ms`;
+            el.classList.add("in", "rising");
+            el.addEventListener("transitionend", (t) => {
+              if (t.target === el && t.propertyName === "opacity") { el.classList.remove("rising"); el.style.transitionDelay = ""; }
+            });
+            seen.unobserve(el);
+          }
+        });
+        for (const el of document.querySelectorAll("[data-reveal] > :not([data-reveal], script, style)")) seen.observe(el);
+      })();
+    </script>
     <Analytics />
     <script>
       import { wireDownloads } from "../download";

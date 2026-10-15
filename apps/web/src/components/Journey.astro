@@ -12,13 +12,13 @@ const shots = [
   { src: map3, alt: "The Wetlands at level 23, mid-replay, with portals and gear in the history", caption: "The Wetlands, level 23" },
 ];
 ---
-<section class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-3.5 px-4 text-center md:mt-[140px]">
+<section data-reveal class="mt-28 flex w-full max-w-[1040px] flex-col items-center gap-3.5 px-4 text-center md:mt-[140px]">
   <span class="text-[13px] text-muted">The addon</span>
   <h2 class="max-w-[760px] text-3xl font-medium leading-[1.1] tracking-[-0.03em] md:text-[40px]">Every step from 1 to 60, replayed on the world map.</h2>
   <p class="max-w-[580px] text-base leading-relaxed text-muted">Where you walked, flew and sailed, every quest, kill, death and level, the gear you wore. The app makes sure none of it is lost.</p>
 </section>
 
-<figure class="mt-11 flex w-full max-w-[1040px] flex-col gap-[18px] px-4">
+<figure data-grow class="mt-11 flex w-full max-w-[1040px] flex-col gap-[18px] px-4">
   <div class="relative aspect-[2000/1196] w-full overflow-hidden rounded-[14px] border border-[#24212c] shadow-[0_30px_100px_rgba(0,0,0,0.6),0_0_120px_rgba(58,160,255,0.07)]">
     {shots.map((s, i) => (
       <Picture
