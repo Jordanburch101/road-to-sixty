@@ -284,6 +284,11 @@ pub fn run(
                 Err(_) => wait_until = now + RETRY,
             }
             report(&result);
+            // Unlinked from another PC, or the token is gone on the server:
+            // asking again won't change that. Linking again starts a new loop.
+            if matches!(result, Err(ApiError::Unauthorized)) {
+                return Ok(());
+            }
         }
         std::thread::sleep(Duration::from_secs(1));
     }
@@ -439,6 +444,38 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
         thread.join().unwrap().unwrap();
         assert!(!busy.load(Ordering::SeqCst), "not busy once the pass ended");
+    }
+
+    #[test]
+    fn a_refused_token_ends_the_loop_instead_of_asking_again_every_minute() {
+        use crate::api::fake;
+        let dir = tempfile::tempdir().unwrap();
+        let fake = fake::serve(|_, _| (401, br#"{"error":"unknown or unlinked PC"}"#.to_vec()));
+        let (done, url, data) = (Arc::new(AtomicBool::new(false)), fake.url.clone(), dir.path().join("data"));
+        let finished = done.clone();
+        std::thread::spawn(move || {
+            let mut state = State {
+                pc: Some("pc-1".into()),
+                ..State::default()
+            };
+            let stop = AtomicBool::new(false);
+            let _ = run(
+                &Client::new(&url, Some("t".into())),
+                &mut state,
+                &data.join("s.json"),
+                &data.join("j"),
+                &Vec::new,
+                &stop,
+                &AtomicBool::new(false),
+                |_| {},
+            );
+            finished.store(true, Ordering::SeqCst);
+        });
+        let until = Instant::now() + Duration::from_secs(5);
+        while !done.load(Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(done.load(Ordering::SeqCst), "still running after the token was refused");
     }
 
     #[test]
