@@ -132,7 +132,8 @@ check.
 
 ### What it remembers
 
-In `state.json`: `addon_updates` (the switch, on by default) and, by game
+In `addon/addon.json` in the app's data folder (its own file, so it never
+races the sync thread's `state.json`): `updates` (the switch, on by default) and, by game
 folder, when the app last put the addon in and the last failure with its
 reason. "updated today" shows for a day after an update.
 

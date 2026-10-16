@@ -64,7 +64,7 @@ its own thread and keeps the status, `status.rs` words the tray line and the
 window's notes, `tray.rs` is the menu bar or tray icon, `commands.rs` and
 `account.rs` are what the window can ask (the account screens' server calls
 go through `account.rs`, so the window never holds the token), `window.rs`
-opens the window under the icon, `update.rs` is self-update. `src/` is the window (Vite
+opens the window under the icon, `update.rs` is self-update, `addons.rs` installs and updates the addon. `src/` is the window (Vite
 and React), styled from `packages/ui`, the look the website shares. App
 releases come from `app-v*` tags: CI uploads them to the public R2 bucket
 `road-to-sixty-downloads` (`https://dl.roadtosixty.online/app/`), with
