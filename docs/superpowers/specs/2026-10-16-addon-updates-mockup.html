@@ -1,0 +1,180 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Addon updates mockup</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2a2733; color: #ece9f2; font: 14px "Geist", system-ui, sans-serif; padding: 20px; }
+  .group { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 28px; }
+  .pane { width: 400px; background: #07060a; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .cap { width: 400px; color: #e5b84a; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 8px 2px; }
+  .muted { color: #9a95a8; } .faint { color: #6f6a7d; } .warn { color: #e5b84a; } .accent { color: #3aa0ff; }
+  .xs { font-size: 12px; } .s13 { font-size: 13px; } .sm { font-size: 14px; } .tiny { font-size: 11.5px; }
+  .b { font-weight: 500; }
+  header.fr { padding: 24px 24px 20px; border-bottom: 1px solid #1a1820; background: radial-gradient(120% 140% at 100% 0, #141220 0, #07060a 60%); }
+  .logo { width: 48px; height: 48px; border-radius: 10px; background: #12233a; display: flex; align-items: center; justify-content: center; color: #3aa0ff; font-weight: 600; }
+  h1 { font-size: 20px; font-weight: 500; margin: 14px 0 4px; letter-spacing: -.01em; }
+  ol { list-style: none; margin: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+  li.step { display: flex; gap: 12px; }
+  .dot { width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+  .dot.done { background: #12233a; color: #3aa0ff; } .dot.cur { border: 1px solid #ece9f2; } .dot.todo { border: 1px solid #2a2733; color: #6f6a7d; }
+  .stepbody { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; }
+  .btn { height: 40px; border-radius: 10px; border: 1px solid #2a2733; background: transparent; color: #ece9f2; font-size: 14px; width: 100%; }
+  .btn.cream { background: #f7f4ee; color: #17141d; border-color: #f7f4ee; }
+  .btn.small { height: 30px; width: auto; padding: 0 12px; border-radius: 8px; font-size: 12px; }
+  .btn.dis { opacity: .55; }
+  .gamebox { border: 1px solid #1f1d26; background: #0c0b10; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+  footer.fr { margin-top: auto; border-top: 1px solid #1a1820; padding: 14px 24px; display: flex; justify-content: space-between; font-size: 13px; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .pill { margin-left: auto; height: 26px; border: 1px solid #2a2733; border-radius: 999px; padding: 0 10px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c9c4d6; }
+  .pdot { width: 7px; height: 7px; border-radius: 99px; background: #3aa0ff; }
+  .tabs { margin: 0 16px; display: flex; gap: 2px; border: 1px solid #1f1d26; background: #0c0b10; border-radius: 10px; padding: 3px; }
+  .tab { flex: 1; text-align: center; padding: 6px 0; border-radius: 7px; font-size: 13px; color: #9a95a8; } .tab.on { background: #1c1a23; color: #ece9f2; }
+  .body { padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sec { display: flex; flex-direction: column; gap: 8px; } .sec h2 { margin: 0 4px; font-size: 12px; font-weight: 500; color: #6f6a7d; }
+  .card { border: 1px solid #1f1d26; background: #0c0b10; border-radius: 10px; }
+  .card.warnc { border-color: #3d3215; background: #0f0d0a; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+  .col { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+  .line { display: flex; align-items: baseline; gap: 8px; } .right { margin-left: auto; white-space: nowrap; }
+  .switch { width: 40px; height: 22px; border-radius: 999px; background: #1c1a23; border: 1px solid #2a2733; position: relative; flex-shrink: 0; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 99px; background: #f7f4ee; }
+  .switch.on { background: #3aa0ff; border-color: #3aa0ff; } .switch.on::after { left: 20px; }
+  .div { height: 1px; background: #1a1820; margin: 0 14px; }
+  .charrow { display: flex; gap: 10px; align-items: center; border: 1px solid #1f1d26; background: #0c0b10; border-radius: 10px; padding: 12px 14px; }
+  .charrow.w { border-color: #3d3215; background: #0f0d0a; }
+  .icon { width: 34px; height: 34px; border-radius: 99px; background: radial-gradient(circle at 35% 35%, #8a5cd6, #2b1a48); flex-shrink: 0; align-self: flex-start; }
+  .note { margin: 0 4px; font-size: 12px; line-height: 1.45; color: #6f6a7d; }
+  .new { outline: 1px dashed #e5b84a55; outline-offset: 3px; border-radius: 10px; }
+</style></head>
+<body>
+
+<!-- 1. FIRST RUN -->
+<div class="group" id="firstrun">
+  <div>
+    <div class="cap">1a · First run: WoW found, no addon yet</div>
+    <div class="pane" style="height:640px">
+      <header class="fr"><div class="logo">N</div><h1>Set up Road to Sixty</h1><div class="sm muted">Three steps, once. After that it runs by itself.</div></header>
+      <ol>
+        <li class="step"><div class="dot cur">1</div><div class="stepbody">
+          <div class="sm b">Install the addon</div>
+          <div class="gamebox new"><div class="line"><span class="sm b">Classic Beta</span><span class="right xs muted">No addon yet</span></div><div class="tiny faint">/Applications/World of Warcraft</div></div>
+          <button class="btn cream new">Install Road to Sixty 1.10.1</button>
+          <div class="xs faint">Puts the addon in this game's AddOns folder. It keeps itself up to date after that.</div>
+        </div></li>
+        <li class="step"><div class="dot todo">2</div><div class="stepbody"><div class="sm b muted">Link this PC</div><div class="s13 muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</div></div></li>
+        <li class="step"><div class="dot todo">3</div><div class="stepbody"><div class="sm b muted">Restart WoW once</div><div class="s13 muted">So the game loads the addon and the sync folder. Your journeys stay where they are.</div></div></li>
+      </ol>
+      <footer class="fr"><span style="color:#c9c4d6">Add a game folder…</span><span class="faint">Free · works offline</span></footer>
+    </div>
+  </div>
+  <div>
+    <div class="cap">1b · Two game folders, one without it</div>
+    <div class="pane" style="height:640px">
+      <header class="fr"><div class="logo">N</div><h1>Set up Road to Sixty</h1><div class="sm muted">Three steps, once. After that it runs by itself.</div></header>
+      <ol>
+        <li class="step"><div class="dot done">✓</div><div class="stepbody">
+          <div class="sm b">WoW found</div>
+          <div class="gamebox"><div class="line"><span class="sm b">Classic Beta</span><span class="right xs muted">Addon 1.10.1</span></div><div class="tiny faint">/Applications/World of Warcraft</div></div>
+          <div class="gamebox new"><div class="line"><span class="sm b">Classic</span><button class="btn small right">Install the addon</button></div><div class="tiny faint">/Applications/World of Warcraft</div></div>
+        </div></li>
+        <li class="step"><div class="dot cur">2</div><div class="stepbody"><div class="sm b">Link this PC</div><div class="s13 muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</div>
+          <button class="btn cream">Link this PC</button></div></li>
+        <li class="step"><div class="dot todo">3</div><div class="stepbody"><div class="sm b muted">Restart WoW once</div></div></li>
+      </ol>
+      <footer class="fr"><span style="color:#c9c4d6">Add a game folder…</span><span class="faint">Free · works offline</span></footer>
+    </div>
+  </div>
+  <div>
+    <div class="cap">1c · Installed</div>
+    <div class="pane" style="height:640px">
+      <header class="fr"><div class="logo">N</div><h1>Set up Road to Sixty</h1><div class="sm muted">Three steps, once. After that it runs by itself.</div></header>
+      <ol>
+        <li class="step"><div class="dot done">✓</div><div class="stepbody">
+          <div class="sm b">Addon installed</div>
+          <div class="gamebox"><div class="line"><span class="sm b">Classic Beta</span><span class="right xs muted">Addon 1.10.1</span></div><div class="tiny faint">/Applications/World of Warcraft</div></div>
+        </div></li>
+        <li class="step"><div class="dot cur">2</div><div class="stepbody"><div class="sm b">Link this PC</div><div class="s13 muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</div>
+          <button class="btn cream">Link this PC</button></div></li>
+        <li class="step"><div class="dot todo">3</div><div class="stepbody"><div class="sm b muted">Restart WoW once</div><div class="s13 muted">So the game loads the addon and the sync folder. Your journeys stay where they are.</div></div></li>
+      </ol>
+      <footer class="fr"><span style="color:#c9c4d6">Add a game folder…</span><span class="faint">Free · works offline</span></footer>
+    </div>
+  </div>
+</div>
+
+<!-- 2. ACCOUNT -->
+<div class="group" id="account">
+  <div>
+    <div class="cap">2a · Account: game folders, each state</div>
+    <div class="pane">
+      <div class="top"><div class="logo" style="width:28px;height:28px;border-radius:6px;font-size:12px">N</div><div><div class="sm b">Road to Sixty</div><div class="xs muted">Ann#1234</div></div><div class="pill"><span class="pdot"></span>Backed up 2 min ago</div></div>
+      <div class="tabs"><div class="tab">Characters</div><div class="tab on">Account</div></div>
+      <div class="body">
+        <div class="sec"><h2>Game folders</h2>
+          <div class="card"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic Beta</span><span class="right xs muted">3 characters</span></div>
+            <div class="xs muted">Addon 1.10.1 · <span class="new">updated today</span></div>
+            <div class="tiny faint">/Applications/World of Warcraft</div></div></div></div>
+          <div class="card new"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic</span><span class="right xs muted">1 character</span></div>
+            <div class="xs muted">Addon 1.10.0 · 1.10.1 installs when WoW closes</div>
+            <div class="tiny faint">D:\Games\World of Warcraft</div></div></div></div>
+          <div class="card new"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic</span><button class="btn small right">Install the addon</button></div>
+            <div class="xs muted">No addon yet</div>
+            <div class="tiny faint">/Applications/World of Warcraft</div></div></div></div>
+          <div class="card new"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic PTR</span><span class="right xs muted">2 characters</span></div>
+            <div class="xs muted">Developer addon · the app leaves it alone</div>
+            <div class="tiny faint">/Applications/World of Warcraft</div></div></div></div>
+          <div class="card warnc new"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic</span><span class="right xs muted">1 character</span></div>
+            <div class="xs warn">Couldn't update the addon: the folder can't be written to. Trying again in a few hours.</div>
+            <div class="tiny faint">E:\WoW</div></div></div></div>
+          <button class="btn small" style="align-self:flex-start">Add a game folder…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="cap">2b · This PC: the new switch</div>
+    <div class="pane">
+      <div class="body">
+        <div class="sec"><h2>This PC</h2>
+          <div class="card">
+            <div class="row"><div class="col"><span class="sm b">Start at login</span><span class="xs muted" style="line-height:1.45">Opens hidden in the menu bar, so every session is backed up.</span></div><div class="switch on"></div></div>
+            <div class="div"></div>
+            <div class="row new"><div class="col"><span class="sm b">Keep the addon up to date</span><span class="xs muted" style="line-height:1.45">New versions install while WoW is closed. A developer copy is never changed.</span></div><div class="switch on"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap" style="margin-top:20px">2c · Switch off, a newer addon out</div>
+    <div class="pane">
+      <div class="body">
+        <div class="sec"><h2>Game folders</h2>
+          <div class="card new"><div class="row"><div class="col">
+            <div class="line"><span class="sm b">Classic Beta</span><span class="right xs muted">3 characters</span></div>
+            <div class="line"><span class="xs muted">Addon 1.10.0 · 1.10.1 is out</span><button class="btn small right">Update</button></div>
+            <div class="tiny faint">/Applications/World of Warcraft</div></div></div></div>
+        </div>
+        <div class="sec"><h2>This PC</h2>
+          <div class="card"><div class="row"><div class="col"><span class="sm b">Keep the addon up to date</span><span class="xs muted" style="line-height:1.45">New versions install while WoW is closed. A developer copy is never changed.</span></div><div class="switch"></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="cap">3 · Characters list and the tray line</div>
+    <div class="pane">
+      <div class="top"><div class="logo" style="width:28px;height:28px;border-radius:6px;font-size:12px">N</div><div><div class="sm b">Road to Sixty</div><div class="xs muted">Ann#1234</div></div><div class="pill new"><span class="pdot"></span>Addon updated to 1.10.1</div></div>
+      <div class="tabs"><div class="tab on">Characters</div><div class="tab">Account</div></div>
+      <div class="body" style="gap:8px">
+        <div class="charrow"><div class="icon"></div><div class="col"><div class="line"><span class="b" style="font-size:15px;color:#3fc7eb">Ann</span><span class="s13 muted">Level 34 Mage</span><span class="right xs muted" style="font-family:monospace">1d 1h</span></div><div class="xs faint">Nightslayer · Desk, 2 h ago</div></div></div>
+        <div class="charrow new"><div class="icon" style="background:radial-gradient(circle at 35% 35%,#e0c06a,#4a3a12)"></div><div class="col"><div class="line"><span class="b" style="font-size:15px;color:#c69b6d">Bo</span><span class="s13 muted">Level 21 Warrior</span></div><div class="xs faint">Its newest journey comes in when you next log in to Bo.</div></div></div>
+        <div class="charrow w"><div class="icon" style="background:radial-gradient(circle at 35% 35%,#aad372,#2f4a12)"></div><div class="col"><div class="line"><span class="b" style="font-size:15px;color:#aad372">Cy</span><span class="s13 muted">Level 18 Hunter</span></div><div class="xs warn">Update the addon on this PC to get the newest journey (Account, Game folders).</div></div></div>
+        <p class="note" style="margin-top:6px">Bo: the addon was just updated, so only a login is left. Cy: updates are switched off and the addon is behind; it stays a warning, and Account has the Update button.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

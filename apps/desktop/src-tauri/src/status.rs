@@ -18,6 +18,12 @@ pub struct Status {
     pub version: String,
     pub update: UpdateState,
     pub games: Vec<Game>,
+    /// Every game folder the addon is in or could go in, for the window.
+    pub folders: Vec<crate::addons::Folder>,
+    /// "Keep the addon up to date" is on.
+    pub addon_updates: bool,
+    /// The addon was just updated, for the line, for an hour.
+    pub addon_updated: Option<AddonUpdated>,
     pub characters: Vec<Character>,
     /// Unix seconds of the last pass that reached the server.
     pub last_synced: Option<u64>,
@@ -71,6 +77,12 @@ pub enum UpdateState {
     Updated { version: String, at: u64 },
     /// The last try failed; the next check tries again.
     Failed { why: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AddonUpdated {
+    pub version: String,
+    pub at: u64,
 }
 
 /// The tray's update item.
@@ -144,11 +156,18 @@ pub fn refresh(status: &mut Status, now: u64) {
     {
         status.update = UpdateState::None;
     }
+    if status.addon_updated.as_ref().is_some_and(|u| now.saturating_sub(u.at) >= 3600) {
+        status.addon_updated = None;
+    }
+    let updates = status.addon_updates;
     for c in &mut status.characters {
         c.note = if let Some(why) = &c.problem {
             why.clone()
+        } else if c.update_addon && updates {
+            let name = c.key.split('-').next().unwrap_or(&c.key);
+            format!("Its newest journey comes in when you next log in to {name}.")
         } else if c.update_addon {
-            "Update the addon on this PC to get the newest journey".into()
+            "Update the addon on this PC to get the newest journey (Account, Game folders).".into()
         } else if !c.here {
             "Only on your other PCs so far".into()
         } else if let Some(t) = c.uploaded {
@@ -163,7 +182,7 @@ pub fn refresh(status: &mut Status, now: u64) {
         "Syncing paused".into()
     } else if status.games.is_empty() {
         "WoW not found".into()
-    } else if status.characters.iter().any(|c| c.update_addon) {
+    } else if !status.addon_updates && status.characters.iter().any(|c| c.update_addon) {
         "Update the addon on this PC".into()
     } else if status.offline {
         "Can't reach the server, trying again".into()
@@ -175,6 +194,8 @@ pub fn refresh(status: &mut Status, now: u64) {
         }
     } else if !status.problems.is_empty() {
         "Needs a look: open Road to Sixty".into()
+    } else if let Some(u) = &status.addon_updated {
+        format!("Addon updated to {}", u.version)
     } else if let Some(t) = status.last_synced {
         format!("Synced {}", ago(now.saturating_sub(t)))
     } else {
@@ -259,7 +280,10 @@ mod tests {
         apply(&mut s, &report(&["Ann-Test"], &[], &["Ann-Test"]), &["Ann-Test".into()], 100);
         refresh(&mut s, 100);
         assert_eq!(s.line, "Update the addon on this PC");
-        assert_eq!(s.characters[0].note, "Update the addon on this PC to get the newest journey");
+        assert_eq!(
+            s.characters[0].note,
+            "Update the addon on this PC to get the newest journey (Account, Game folders)."
+        );
         s.games.clear();
         refresh(&mut s, 100);
         assert_eq!(s.line, "WoW not found");
@@ -384,5 +408,44 @@ mod tests {
             serde_json::to_value(UpdateState::None).unwrap(),
             serde_json::json!({ "state": "none" })
         );
+    }
+
+    #[test]
+    fn a_character_held_back_for_a_newer_addon_reads_calmly_while_updates_are_on() {
+        let mut s = linked();
+        s.characters = vec![Character {
+            key: "Bo-Test".into(),
+            here: true,
+            update_addon: true,
+            uploaded: None,
+            problem: None,
+            note: String::new(),
+        }];
+        s.addon_updates = true;
+        refresh(&mut s, 1000);
+        assert_eq!(s.characters[0].note, "Its newest journey comes in when you next log in to Bo.");
+        assert_ne!(s.line, "Update the addon on this PC");
+        s.addon_updates = false;
+        refresh(&mut s, 1000);
+        assert_eq!(
+            s.characters[0].note,
+            "Update the addon on this PC to get the newest journey (Account, Game folders)."
+        );
+        assert_eq!(s.line, "Update the addon on this PC");
+    }
+
+    #[test]
+    fn an_addon_update_shows_in_the_line_for_an_hour() {
+        let mut s = linked();
+        s.last_synced = Some(900);
+        s.addon_updated = Some(AddonUpdated {
+            version: "1.10.1".into(),
+            at: 1000,
+        });
+        refresh(&mut s, 1000);
+        assert_eq!(s.line, "Addon updated to 1.10.1");
+        refresh(&mut s, 1000 + 3600);
+        assert_eq!(s.addon_updated, None);
+        assert!(s.line.starts_with("Synced"));
     }
 }

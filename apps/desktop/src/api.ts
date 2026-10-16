@@ -10,6 +10,15 @@ import { useEffect, useState } from "react";
 export const isMac = navigator.userAgent.includes("Mac");
 
 export type Game = { path: string; name: string; addon: string | null; characters: number };
+export type FolderState =
+  | { state: "current" }
+  | { state: "waiting"; latest: string }
+  | { state: "missing"; latest: string }
+  | { state: "developer" }
+  | { state: "failed"; why: string }
+  | { state: "behind"; latest: string }
+  | { state: "otherClient" };
+export type Folder = { path: string; name: string; characters: number; addon: string | null; updatedAt: number | null } & FolderState;
 export type Character = {
   key: string;
   here: boolean;
@@ -28,6 +37,8 @@ export type Status = {
   pc: string | null;
   version: string;
   games: Game[];
+  folders: Folder[];
+  addonUpdates: boolean;
   characters: Character[];
   lastSynced: number | null;
   paused: boolean;
@@ -46,6 +57,9 @@ export const link = (name: string) => invoke("link", { name });
 export const unlink = () => invoke("unlink");
 export const setPaused = (paused: boolean) => invoke("set_paused", { paused });
 export const pickFolder = () => invoke("pick_folder");
+export const installAddon = (path: string) => invoke("install_addon", { path });
+export const updateAddon = (path: string) => invoke("update_addon", { path });
+export const setAddonUpdates = (on: boolean) => invoke("set_addon_updates", { on });
 
 export const characters = () => invoke<CharacterInfo[]>("characters");
 export const versions = (id: number) => invoke<VersionInfo[]>("versions", { id });

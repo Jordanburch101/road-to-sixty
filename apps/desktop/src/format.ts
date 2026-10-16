@@ -1,7 +1,7 @@
 // The words and numbers the screens show, as plain functions so they are
 // tested without a window.
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
-import type { Update } from "./api";
+import type { Folder, Update } from "./api";
 
 // The game's class colours (RAID_CLASS_COLORS).
 export const CLASSES: Record<string, { name: string; colour: string }> = {
@@ -121,5 +121,23 @@ export function installFolder(path: string, folder: string): string {
   return path.endsWith(folder) ? path.slice(0, -folder.length).replace(/[\\/]+$/, "") : path;
 }
 
-// A developer copy's toc has no version filled in.
-export const addonLine = (version: string | null) => (version ? `Addon ${version}` : "Developer addon");
+// A game folder's addon line. now and updatedAt are Unix seconds.
+export function folderWords(f: Folder, now: number): { line: string; warn: boolean; action: "install" | "update" | null } {
+  const has = `Addon ${f.addon ?? ""}`;
+  switch (f.state) {
+    case "current":
+      return { line: f.updatedAt !== null && now - f.updatedAt < 86400 ? `${has} · updated today` : has, warn: false, action: null };
+    case "waiting":
+      return { line: `${has} · ${f.latest} installs when WoW closes`, warn: false, action: null };
+    case "missing":
+      return { line: "No addon yet", warn: false, action: "install" };
+    case "developer":
+      return { line: "Developer addon · the app leaves it alone", warn: false, action: null };
+    case "failed":
+      return { line: `Couldn't update the addon: ${f.why}. Trying again in a few hours.`, warn: true, action: null };
+    case "behind":
+      return { line: `${has} · ${f.latest} is out`, warn: false, action: "update" };
+    case "otherClient":
+      return { line: `${has} · not for this version of WoW`, warn: false, action: null };
+  }
+}

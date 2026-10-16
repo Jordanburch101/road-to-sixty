@@ -19,6 +19,12 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
     list in each with drive letters turned into paths through `dosdevices`,
     and the default folder. `wine.rs` is unix-only: a path joined with `c:`
     on Windows replaces the whole path.
+  - `addon.rs` is the addon release the app installs: `latest.json` from
+    the downloads bucket, its signature (the updater's key), versions,
+    which client a release fits, and putting it into a game by unpacking
+    beside `RoadToSixty` and swapping by renaming. `installs::game_dirs`
+    gives each game folder's client version from the game's `.flavor.info`
+    and `.build.info`; a folder's name doesn't say which client it is.
   - `inbox.rs` writes the `RoadToSixty_Sync` folder. A restore reaches the
     addon as `restore = <id>`, never as a yes or no: the addon replaces only
     a copy older than that restore (`Sync.lua`).
@@ -69,7 +75,7 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   is started without the AppImage's library folders (they break the host's
   programs), and the autostart entry's Exec line is written again quoted,
   since the plugin leaves a path with spaces unquoted. While linking, the
-  window also shows the link page's address. `src/update.rs` checks the downloads bucket's `latest.json` at start and
+  window also shows the link page's address. `src/addons.rs` checks for an addon release with the app's own check (at start and every six hours, on a thread of its own), and on the 30-second ticker lists every game folder with its addon state and puts waiting updates into games that aren't running; it remembers the switch and each folder's last install in `addon/addon.json`, never `state.json`, and writes only `RoadToSixty`. `src/update.rs` checks the downloads bucket's `latest.json` at start and
   every six hours (never in debug builds), downloads a newer version at
   once, and restarts into it only while the window is hidden and the sync
   thread isn't busy, or when the player asks (the tray item or Restart

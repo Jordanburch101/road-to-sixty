@@ -3,7 +3,8 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
 import type { Point } from "@road-to-sixty/ui/dots";
 import { useEffect, useState, type ReactNode } from "react";
-import { hostName, link, pickFolder, setStartsAtLogin, type Status } from "./api";
+import { hostName, installAddon, link, pickFolder, setStartsAtLogin, type Status } from "./api";
+import { gameName, installFolder } from "./format";
 
 const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
 const MARKS: Point[] = [[240, 118], [330, 70]];
@@ -11,7 +12,22 @@ const MARKS: Point[] = [[240, 118], [330, 70]];
 export function FirstRun({ status, onDone }: { status: Status; onDone: () => void }) {
   const [name, setName] = useState("");
   useEffect(() => void hostName().then((n) => setName((typed) => typed || n)), []);
-  const found = status.games.length > 0;
+  const folders = status.folders;
+  const missing = folders.filter((f) => f.state === "missing");
+  const ready = folders.some((f) => f.state !== "missing");
+  const found = folders.length > 0;
+  const [installed, setInstalled] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+
+  async function install(paths: string[]) {
+    setInstallError(null);
+    try {
+      for (const p of paths) await installAddon(p);
+      setInstalled(true);
+    } catch (e) {
+      setInstallError(`Couldn't install the addon: ${String(e)}`);
+    }
+  }
   const linked = status.linkedTo !== null;
   return (
     <main className="flex h-full flex-col">
@@ -25,19 +41,37 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
       </header>
 
       <ol className="flex flex-1 flex-col gap-[18px] px-6 py-5">
-        <Step n={1} done={found} title={found ? "WoW found" : "WoW not found"}>
-          {status.games.map((g) => (
-            <div key={g.path} className="min-w-0">
-              <div className="truncate font-mono text-xs text-muted">{g.path}</div>
-              <div className="text-[13px] text-muted">{g.name} · Road to Sixty {g.addon ?? "(developer copy)"}</div>
+        <Step n={1} done={ready} current={found && !ready} title={!found ? "WoW not found" : !ready ? "Install the addon" : installed ? "Addon installed" : "WoW found"}>
+          {folders.map((f) => (
+            <div key={f.path} className="flex min-w-0 flex-col gap-0.5 rounded-[10px] border border-line bg-panel px-3 py-2.5">
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-medium">{gameName(f.name)}</span>
+                {f.state === "missing" && ready ? (
+                  <Button className="ml-auto h-[30px] rounded-lg px-3 text-xs" onClick={() => install([f.path])}>
+                    Install the addon
+                  </Button>
+                ) : (
+                  <span className="ml-auto text-xs text-muted">{f.state === "missing" ? "No addon yet" : f.addon ? `Addon ${f.addon}` : "Developer addon"}</span>
+                )}
+              </div>
+              <div className="truncate text-[11.5px] text-faint">{installFolder(f.path, f.name)}</div>
             </div>
           ))}
+          {found && !ready && missing.length > 0 && (
+            <>
+              <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => install(missing.map((f) => f.path))}>
+                Install Road to Sixty {missing[0]!.state === "missing" ? missing[0]!.latest : ""}
+              </Button>
+              <p className="text-xs text-faint">Puts the addon in this game's AddOns folder. It keeps itself up to date after that.</p>
+            </>
+          )}
+          {installError && <p className="text-xs text-warn">{installError}</p>}
           {!found && <p className="text-[13px] text-muted">Install the Road to Sixty addon first, or show us where WoW is.</p>}
         </Step>
 
-        <Step n={2} done={linked} current={found && !linked} title="Link this PC">
+        <Step n={2} done={linked} current={ready && !linked} title="Link this PC">
           <p className="text-[13px] leading-snug text-muted">Give this PC a name you'll recognise, sign in with Battle.net in your browser, check the code matches, and click Link.</p>
-          {found && !linked && (
+          {ready && !linked && (
             <>
               {!status.linkCode && (
                 <label className="flex flex-col gap-1.5 text-xs text-muted">
@@ -70,7 +104,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         </Step>
 
         <Step n={3} current={linked} title="Restart WoW once">
-          <p className="text-[13px] leading-snug text-muted">So the game loads the sync folder. Your journeys stay where they are.</p>
+          <p className="text-[13px] leading-snug text-muted">So the game loads the addon and the sync folder. Your journeys stay where they are.</p>
           {linked && (
             <Button look="cream" className="h-10 w-full rounded-[10px] text-sm" onClick={() => setStartsAtLogin(true).catch(() => {}).then(onDone)}>
               Done

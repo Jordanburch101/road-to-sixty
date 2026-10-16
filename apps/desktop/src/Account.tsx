@@ -1,11 +1,11 @@
 import { Button } from "@road-to-sixty/ui/Button";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  checkUpdate, deleteAccount, devices, exportData, installUpdate, isMac, pickFolder, renameDevice,
-  setStartsAtLogin, startsAtLogin, unlink, unlinkDevice, useLoad, type Status,
+  checkUpdate, deleteAccount, devices, exportData, installAddon, installUpdate, isMac, pickFolder, renameDevice,
+  setAddonUpdates, setStartsAtLogin, startsAtLogin, unlink, unlinkDevice, updateAddon, useLoad, type Status,
 } from "./api";
 import { Shell, type Tab } from "./Characters";
-import { addonLine, deviceLine, gameName, installFolder, updateWords } from "./format";
+import { deviceLine, folderWords, gameName, installFolder, updateWords } from "./format";
 
 const small = "h-[30px] whitespace-nowrap rounded-lg px-3 text-xs";
 
@@ -108,22 +108,39 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
         </Section>
 
         <Section title="Game folders">
-          {status.games.map((g) => (
-            <Card key={g.path}>
-              <Row>
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-medium">{gameName(g.name)}</span>
-                    <span className="ml-auto shrink-0 text-xs text-muted">{g.characters === 1 ? "1 character" : `${g.characters} characters`}</span>
+          {status.folders.map((f) => {
+            const w = folderWords(f, Math.floor(Date.now() / 1000));
+            return (
+              <Card key={f.path}>
+                <Row>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium">{gameName(f.name)}</span>
+                      {w.action === "install" ? (
+                        <Button className={`ml-auto ${small}`} onClick={act("folders", () => installAddon(f.path))}>
+                          Install the addon
+                        </Button>
+                      ) : (
+                        <span className="ml-auto shrink-0 text-xs text-muted">{f.characters === 1 ? "1 character" : `${f.characters} characters`}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs ${w.warn ? "text-warn" : "text-muted"}`}>{w.line}</span>
+                      {w.action === "update" && (
+                        <Button className={`ml-auto ${small}`} onClick={act("folders", () => updateAddon(f.path))}>
+                          Update
+                        </Button>
+                      )}
+                    </div>
+                    <div className="text-[11.5px] text-faint [overflow-wrap:anywhere]" title={f.path}>
+                      {installFolder(f.path, f.name)}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted">{addonLine(g.addon)}</div>
-                  <div className="text-[11.5px] text-faint [overflow-wrap:anywhere]" title={g.path}>
-                    {installFolder(g.path, g.name)}
-                  </div>
-                </div>
-              </Row>
-            </Card>
-          ))}
+                </Row>
+              </Card>
+            );
+          })}
+          {problem("folders")}
           <Button className="h-[30px] self-start rounded-lg px-3 text-xs" onClick={pickFolder}>
             Add a game folder…
           </Button>
@@ -151,6 +168,23 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
               </button>
             </Row>
             {error?.at === "login" && <p className="px-3.5 pb-3 text-xs text-warn">Couldn't change it: {error.why}</p>}
+            <Row line>
+              <label htmlFor="addonupdates" className="flex flex-1 flex-col gap-1">
+                <span className="text-sm font-medium">Keep the addon up to date</span>
+                <span className="text-xs leading-[1.45] text-muted">New versions install while WoW is closed. A developer copy is never changed.</span>
+              </label>
+              <button
+                id="addonupdates"
+                type="button"
+                role="switch"
+                aria-checked={status.addonUpdates}
+                onClick={act("addon", () => setAddonUpdates(!status.addonUpdates))}
+                className={`flex h-6 w-10 shrink-0 rounded-full p-[3px] ${status.addonUpdates ? "justify-end bg-accent" : "justify-start bg-outline"}`}
+              >
+                <span className="size-[18px] rounded-full bg-cream" />
+              </button>
+            </Row>
+            {error?.at === "addon" && <p className="px-3.5 pb-3 text-xs text-warn">Couldn't change it: {error.why}</p>}
             <Row line>
               <div className="flex flex-1 flex-col gap-1">
                 <span className="text-sm font-medium">Road to Sixty {status.version}</span>

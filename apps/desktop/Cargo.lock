@@ -3311,7 +3311,7 @@ dependencies = [
 
 [[package]]
 name = "road-to-sixty-app"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "rts-sync",
  "serde",
@@ -3333,8 +3333,10 @@ dependencies = [
 name = "rts-sync"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "dirs 7.0.0",
  "hex",
+ "minisign-verify",
  "notify",
  "serde",
  "serde_json",
@@ -3343,6 +3345,7 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "ureq",
+ "zip",
  "zstd",
 ]
 
@@ -5910,6 +5913,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
 ]

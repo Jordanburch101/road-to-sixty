@@ -64,7 +64,7 @@ its own thread and keeps the status, `status.rs` words the tray line and the
 window's notes, `tray.rs` is the menu bar or tray icon, `commands.rs` and
 `account.rs` are what the window can ask (the account screens' server calls
 go through `account.rs`, so the window never holds the token), `window.rs`
-opens the window under the icon, `update.rs` is self-update. `src/` is the window (Vite
+opens the window under the icon, `update.rs` is self-update, `addons.rs` installs and updates the addon. `src/` is the window (Vite
 and React), styled from `packages/ui`, the look the website shares. App
 releases come from `app-v*` tags: CI uploads them to the public R2 bucket
 `road-to-sixty-downloads` (`https://dl.roadtosixty.online/app/`), with
@@ -129,13 +129,15 @@ ours to fix.
    `beta` or `alpha` become pre-releases.
 4. The Release workflow fails at once if the changelog section is missing,
    then checks, builds, makes the GitHub release with the zip and the notes,
-   and uploads to CurseForge. Watch it to the end (`gh run watch <id>
+   puts the zip in the downloads bucket for the app (`apps/addon/scripts/publish.sh`; a full release moves `addon/latest.json`), and uploads to CurseForge. Watch it to the end (`gh run watch <id>
    --exit-status`): the GitHub release can succeed while the upload fails.
 5. If only the CurseForge upload failed, fix the cause on `main`, then run
    `gh workflow run curseforge-check.yml -f tag=vX.Y.Z`. It uploads the
    existing GitHub release's zip with its notes. Never move or re-push a
    tag. Without a tag, that workflow only checks the token and game version.
-6. Sweep the issues (see below).
+6. If only the bucket step failed, run `gh workflow run addon-publish.yml -f tag=vX.Y.Z`;
+   it signs and publishes that GitHub release's zip.
+7. Sweep the issues (see below).
 
 The CurseForge description and screenshots are not synced; they are
 edited on CurseForge by hand.
