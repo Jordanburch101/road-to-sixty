@@ -6,6 +6,7 @@
 //! --hidden, it stays out of sight until the player opens it.
 
 mod account;
+mod addons;
 mod appimage;
 mod commands;
 mod runner;
