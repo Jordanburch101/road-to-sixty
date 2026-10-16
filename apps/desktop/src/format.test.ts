@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
-import { BETA, addonLine, ago, gameName, installFolder, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
+import type { Folder } from "./api";
+import { BETA, ago, folderWords, gameName, installFolder, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -89,6 +90,22 @@ test("a game folder reads as words, with its install folder and addon apart", ()
   expect(gameName("_classic_ptr_")).toBe("Classic PTR");
   expect(installFolder("/Applications/World of Warcraft/_classic_beta_", "_classic_beta_")).toBe("/Applications/World of Warcraft");
   expect(installFolder("D:\\Games\\World of Warcraft\\_classic_", "_classic_")).toBe("D:\\Games\\World of Warcraft");
-  expect(addonLine("1.10.0")).toBe("Addon 1.10.0");
-  expect(addonLine(null)).toBe("Developer addon");
+});
+
+test("each game folder's addon state reads as the mockups do", () => {
+  const base = { path: "/wow/_classic_beta_", name: "_classic_beta_", characters: 3, addon: "1.10.1", updatedAt: null } as const;
+  const day = 86400;
+  const words = (f: Folder) => folderWords(f, 10 * day);
+  expect(words({ ...base, state: "current" })).toEqual({ line: "Addon 1.10.1", warn: false, action: null });
+  expect(words({ ...base, state: "current", updatedAt: 10 * day - 3600 }).line).toBe("Addon 1.10.1 · updated today");
+  expect(words({ ...base, addon: "1.10.0", state: "waiting", latest: "1.10.1" }).line).toBe("Addon 1.10.0 · 1.10.1 installs when WoW closes");
+  expect(words({ ...base, addon: null, state: "missing", latest: "1.10.1" })).toEqual({ line: "No addon yet", warn: false, action: "install" });
+  expect(words({ ...base, addon: null, state: "developer" }).line).toBe("Developer addon · the app leaves it alone");
+  expect(words({ ...base, state: "failed", why: "the disk is full" })).toEqual({
+    line: "Couldn't update the addon: the disk is full. Trying again in a few hours.",
+    warn: true,
+    action: null,
+  });
+  expect(words({ ...base, addon: "1.10.0", state: "behind", latest: "1.10.1" })).toEqual({ line: "Addon 1.10.0 · 1.10.1 is out", warn: false, action: "update" });
+  expect(words({ ...base, state: "otherClient" }).line).toBe("Addon 1.10.1 · not for this version of WoW");
 });
