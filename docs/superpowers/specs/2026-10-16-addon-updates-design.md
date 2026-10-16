@@ -14,7 +14,8 @@ anything works.
 Success: a player with the app always has the newest addon in each
 Classic game folder that has it, without clicking anything; a new release
 reaches every running app within about 6 hours and goes in while WoW is
-closed. Installing the app leads straight to installing the addon.
+closed. It only ever goes into a game that runs the client the addon is
+built for (Forever's), never Classic Era, retail or another version. Installing the app leads straight to installing the addon.
 Developer copies are never touched, and the game never sees half an addon.
 
 Decided with Jordan: update installed copies and offer to install where
@@ -30,17 +31,21 @@ downloads bucket:
 
 - It signs the zip with the key the app releases use
   (`TAURI_SIGNING_PRIVATE_KEY` and its password, already repository
-  secrets) through `tauri signer sign`, then checks the signature with
-  minisign against the public key in `apps/desktop/src-tauri/tauri.conf.json`,
-  as `desktop-release.yml` does.
+  secrets) through the Tauri CLI's `signer sign`, run with Bun
+  (`oven-sh/setup-bun` and the repo's own `@tauri-apps/cli`; the job has
+  no Bun today), then checks the signature with minisign against the
+  public key in `apps/desktop/src-tauri/tauri.conf.json`, as
+  `desktop-release.yml` does.
 - It uploads `addon/RoadToSixty-<version>.zip` and `addon/RoadToSixty-<version>.zip.sig`.
 - Last, for a full release only (not a tag containing `alpha` or `beta`),
   it writes `addon/latest.json`, then reads it back from
   `https://dl.roadtosixty.online/addon/latest.json` to check:
 
   ```json
-  { "version": "1.10.1", "zip": "https://dl.roadtosixty.online/addon/RoadToSixty-1.10.1.zip", "signature": "<the .sig file's text>" }
+  { "version": "1.10.1", "interface": 16001, "zip": "https://dl.roadtosixty.online/addon/RoadToSixty-1.10.1.zip", "signature": "<the .sig file's text>" }
   ```
+
+  `interface` is the toc's `## Interface`, read by the publish script.
 
 The steps live in `apps/addon/scripts/publish.sh <zip> <version> <type>`.
 A manual workflow, `addon-publish.yml` (input: a tag), runs it on that
@@ -52,11 +57,26 @@ the next release, and redoes a publish that failed.
 
 ### Which folders
 
-Every Classic game folder of every install the app finds: a folder named
-`_classic…_` (`_classic_`, `_classic_beta_`, `_classic_era_`,
-`_classic_ptr_`, and whatever Forever launches in). Never `_retail_` or
-another game. The sync itself keeps working only with folders that have
-the addon, as now; the new list is for the window and the installer.
+The addon is built for one client (toc `## Interface: 16001`, client
+1.60); in Classic Era (1.15), Classic Progression or retail it would show
+as out of date and not load. So a game folder qualifies by the client it
+runs, not by its name:
+
+- Its `.flavor.info` names its product (`Product Flavor` line, such as
+  `wow_classic_beta`).
+- The install's `.build.info` has a row per product with its `Version`
+  (`1.60.1.70374`).
+- It qualifies when that version's major and minor match the release's
+  `interface` (16001 is 1.60; the interface is major × 10000 + minor ×
+  100 + patch).
+
+Checked on Jordan's Mac: `_classic_beta_` is `wow_classic_beta` at
+1.60.1.70374. Whatever folder Forever launches in qualifies by its build,
+with no app release. A folder without both files, or on another client,
+is never offered the addon and never updated; one that has the addon
+anyway (put there by hand) shows "Addon 1.10.0 · not for this version of
+WoW". The sync keeps working with every folder that has the addon, as
+now.
 
 ### What it never touches
 
@@ -129,13 +149,17 @@ words as the mockups show:
 | developer | Developer addon · the app leaves it alone | |
 | failed | Couldn't update the addon: <why>. Trying again in a few hours. (warning colour) | |
 | behind (switch off) | Addon 1.10.0 · 1.10.1 is out | Update |
+| other client | Addon 1.10.0 · not for this version of WoW | |
 
-- **First run, step 1:** with no Classic folder holding the addon, the
+- **First run, step 1:** with no qualifying game folder at all, it stays
+  as today: "WoW not found", "Install the Road to Sixty addon first, or
+  show us where WoW is.", with Add a game folder. With no qualifying
+  folder holding the addon, the
   step is "Install the addon", listing the game it found ("No addon yet")
   and one button, "Install Road to Sixty <version>", with the line "Puts
   the addon in this game's AddOns folder. It keeps itself up to date after
   that." Linking waits until it is in. With the addon in one folder, step 1
-  is "WoW found", and any other Classic folder without it gets a small
+  is "WoW found", and any other qualifying folder without it gets a small
   "Install the addon" button; linking goes ahead. After an install, step 1
   reads "Addon installed". Step 3's line becomes "So the game loads the
   addon and the sync folder. Your journeys stay where they are."
@@ -156,13 +180,16 @@ words as the mockups show:
 
 - `engine/src/addon.rs` (new): reading `latest.json`, checking a
   signature, comparing versions, unpacking safely and swapping folders, as
-  plain functions tested with a test key. `installs.rs` gains the list of
-  Classic game folders with or without the addon.
+  plain functions tested with a test key. `installs.rs` gains every game
+  folder with its client version (from `.flavor.info` and `.build.info`),
+  with or without the addon.
 - `src-tauri`: the check beside the app's in `update.rs`, the per-folder
   state and the pill in `status.rs`, new commands `install_addon`,
   `update_addon` and `set_addon_updates` in `commands.rs`, the switch in
   `state.json`. The updater public key reaches the engine from
-  `tauri.conf.json`.
+  `tauri.conf.json`, passed in as a string; it is base64 of the minisign
+  public key text, so the engine decodes it before
+  `minisign_verify::PublicKey::decode`.
 - `src/`: `FirstRun.tsx`, `Account.tsx`, the words in `format.ts`, tested
   there.
 - Version: app 0.1.9.
@@ -181,8 +208,10 @@ without the app.
   a link), a developer copy, a linked folder, a newer copy and a running
   game each leave the folder exactly as it was; a failed second rename
   puts the old folder back; leftovers from a crash are cleared; version
-  order (1.9.0 < 1.10.0, 1.11.0-beta newer than 1.10.1); only `_classic…_`
-  folders are offered.
+  order (1.9.0 < 1.10.0, 1.11.0-beta newer than 1.10.1); a folder on
+  another client version (1.15, or with no `.flavor.info`) is never offered
+  or updated; `.build.info` and `.flavor.info` read from made-up files in
+  the game's format.
 - The window's words for each state, and the Characters note, in
   `format.test.ts` and `status.rs`.
 - The release workflow: the signature is checked with minisign before
