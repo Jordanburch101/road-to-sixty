@@ -5,7 +5,7 @@ import {
   setStartsAtLogin, startsAtLogin, unlink, unlinkDevice, useLoad, type Status,
 } from "./api";
 import { Shell, type Tab } from "./Characters";
-import { deviceLine, updateWords } from "./format";
+import { addonLine, deviceLine, gameName, installFolder, updateWords } from "./format";
 
 const small = "h-[30px] whitespace-nowrap rounded-lg px-3 text-xs";
 
@@ -111,18 +111,22 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
           {status.games.map((g) => (
             <Card key={g.path}>
               <Row>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <div className="font-mono text-xs leading-normal text-[#c9c4d6] [overflow-wrap:anywhere]">{g.path}</div>
-                  <div className="text-xs text-muted">
-                    {["Road to Sixty", g.addon].filter(Boolean).join(" ")} · {g.characters === 1 ? "1 character" : `${g.characters} characters`}
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-medium">{gameName(g.name)}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted">{g.characters === 1 ? "1 character" : `${g.characters} characters`}</span>
+                  </div>
+                  <div className="text-xs text-muted">{addonLine(g.addon)}</div>
+                  <div className="text-[11.5px] text-faint [overflow-wrap:anywhere]" title={g.path}>
+                    {installFolder(g.path, g.name)}
                   </div>
                 </div>
               </Row>
             </Card>
           ))}
-          <button type="button" onClick={pickFolder} className="mx-1 self-start text-[#c9c4d6] hover:text-text">
+          <Button className="h-[30px] self-start rounded-lg px-3 text-xs" onClick={pickFolder}>
             Add a game folder…
-          </button>
+          </Button>
         </Section>
 
         <Section title="This PC">
