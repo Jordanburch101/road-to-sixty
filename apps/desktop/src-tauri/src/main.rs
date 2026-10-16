@@ -83,6 +83,19 @@ fn main() {
             });
             runner.start()?;
             app.manage(notifier.clone());
+            // The updater's public key also checks addon releases.
+            let key = app
+                .config()
+                .plugins
+                .0
+                .get("updater")
+                .and_then(|u| u.get("pubkey"))
+                .and_then(|k| k.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let addons = Arc::new(addons::Addons::new(&data_dir(), &key));
+            app.manage(addons.clone());
+            let told = notifier.clone();
             app.manage(account::Account::new(SERVER, &data_dir()));
             app.manage(runner::Links::default());
             app.manage(Mutex::new(runner));
@@ -91,11 +104,13 @@ fn main() {
             // while nothing syncs (not linked, or no WoW yet) the app looks
             // for WoW again.
             let ticker = app.handle().clone();
+            let (ticking, ticked) = (addons.clone(), notifier.clone());
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_secs(30));
                     notifier.update(|_| {});
                     commands::with_runner(ticker.clone(), |r| r.rescan());
+                    ticking.tick(&addons::picked(&data_dir()), &ticked);
                 }
             });
 
@@ -104,6 +119,17 @@ fn main() {
             std::thread::spawn(move || {
                 loop {
                     let _ = update::run(&app_handle);
+                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                }
+            });
+
+            // The addon's check rides on the app's: at start and every six
+            // hours. A thread of its own, because the app's waits to restart.
+            let checking = addons.clone();
+            std::thread::spawn(move || {
+                loop {
+                    let _ = checking.check();
+                    checking.tick(&addons::picked(&data_dir()), &told);
                     std::thread::sleep(Duration::from_secs(6 * 3600));
                 }
             });
@@ -131,6 +157,9 @@ fn main() {
             account::characters,
             account::versions,
             account::restore,
+            addons::install_addon,
+            addons::update_addon,
+            addons::set_addon_updates,
             account::remove_character,
             account::devices,
             account::rename_device,
