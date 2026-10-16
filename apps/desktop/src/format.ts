@@ -105,3 +105,21 @@ export function earlierLine(c: CharacterInfo, now: Date): string {
 
 export const removeWords = (name: string) =>
   `Removes ${name}'s journey from the backup. Journeys on your PCs stay. If you play ${name} again, its journey is backed up again from that PC.`;
+
+// A game folder's name in words: _classic_beta_ is "Classic Beta", so
+// whatever folder Forever launches in reads properly.
+export function gameName(folder: string): string {
+  return folder
+    .split("_")
+    .filter(Boolean)
+    .map((w) => (w === "ptr" ? "PTR" : w[0]!.toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
+// The install a game folder is in: its path without the folder's own name.
+export function installFolder(path: string, folder: string): string {
+  return path.endsWith(folder) ? path.slice(0, -folder.length).replace(/[\\/]+$/, "") : path;
+}
+
+// A developer copy's toc has no version filled in.
+export const addonLine = (version: string | null) => (version ? `Addon ${version}` : "Developer addon");

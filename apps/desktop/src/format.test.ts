@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
-import { BETA, ago, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
+import { BETA, addonLine, ago, gameName, installFolder, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -81,4 +81,14 @@ test("removing says what stays", () => {
   expect(removeWords("Ann")).toBe(
     "Removes Ann's journey from the backup. Journeys on your PCs stay. If you play Ann again, its journey is backed up again from that PC.",
   );
+});
+
+test("a game folder reads as words, with its install folder and addon apart", () => {
+  expect(gameName("_classic_beta_")).toBe("Classic Beta");
+  expect(gameName("_classic_")).toBe("Classic");
+  expect(gameName("_classic_ptr_")).toBe("Classic PTR");
+  expect(installFolder("/Applications/World of Warcraft/_classic_beta_", "_classic_beta_")).toBe("/Applications/World of Warcraft");
+  expect(installFolder("D:\\Games\\World of Warcraft\\_classic_", "_classic_")).toBe("D:\\Games\\World of Warcraft");
+  expect(addonLine("1.10.0")).toBe("Addon 1.10.0");
+  expect(addonLine(null)).toBe("Developer addon");
 });
