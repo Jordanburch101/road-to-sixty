@@ -4,6 +4,7 @@
 //! RoadToSixty_Sync addon folder. The Tauri app (apps/desktop) wraps it;
 //! `rts-sync` (src/bin) runs it from a terminal.
 
+pub mod addon;
 pub mod api;
 pub mod inbox;
 pub mod installs;
