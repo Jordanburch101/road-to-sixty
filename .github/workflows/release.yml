@@ -11,6 +11,11 @@
 # apps/addon/scripts/sync-version.ps1 after a patch). A CF_GAME_VERSIONS variable, if
 # set, overrides it. Run the "CurseForge check" workflow to test without
 # uploading.
+#
+# The zip also goes to the downloads bucket for the desktop app
+# (apps/addon/scripts/publish.sh): signed with the app updater's key, and
+# for a full release latest.json moves to it. Run "Addon publish" by hand
+# to redo it for an existing tag.
 name: Release
 
 on:
@@ -78,3 +83,25 @@ jobs:
           bash apps/addon/scripts/curseforge.sh upload "${{ steps.package.outputs.zip }}" \
             "Road to Sixty ${{ steps.package.outputs.version }}" "${{ steps.type.outputs.type }}" \
             "$(cat "$RUNNER_TEMP/notes.md")"
+
+      # After CurseForge, so a bucket problem never holds up the CurseForge upload.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Downloads bucket
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 rejects the newer checksums the aws CLI sends by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          bun install --frozen-lockfile
+          sudo apt-get install -y minisign
+          bash apps/addon/scripts/publish.sh "${{ steps.package.outputs.zip }}" \
+            "${{ steps.package.outputs.version }}" "${{ steps.type.outputs.type }}"

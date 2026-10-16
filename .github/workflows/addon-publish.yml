@@ -1,0 +1,47 @@
+# Run by hand (Actions > Addon publish > Run workflow) to put an existing
+# release's zip in the downloads bucket for the desktop app: once for
+# v1.10.0, the release before publishing was automatic, and to redo a
+# publish that failed in the Release workflow.
+name: Addon publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to publish (e.g. v1.10.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          version="${TAG#v}"
+          case "$TAG" in
+            *alpha*) type=alpha ;;
+            *beta*)  type=beta ;;
+            *)       type=release ;;
+          esac
+          bun install --frozen-lockfile
+          sudo apt-get update -qq && sudo apt-get install -y minisign
+          gh release download "$TAG" --pattern "RoadToSixty-$version.zip" --dir dist
+          bash apps/addon/scripts/publish.sh "$PWD/dist/RoadToSixty-$version.zip" "$version" "$type"
