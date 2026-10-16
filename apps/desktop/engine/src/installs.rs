@@ -112,6 +112,69 @@ pub fn game_folders(install: &Path) -> Vec<GameFolder> {
     found
 }
 
+/// A game folder of any client, with or without the addon, and the client
+/// version it runs (major, minor) when the game's own files say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameDir {
+    pub path: PathBuf,
+    pub name: String,
+    pub client: Option<(u32, u32)>,
+}
+
+/// Every game folder in an install. Its `.flavor.info` names its product,
+/// and the install's `.build.info` gives each product's version: the name
+/// of the folder doesn't say which client it is.
+pub fn game_dirs(install: &Path) -> Vec<GameDir> {
+    let builds = fs::read_to_string(install.join(".build.info"))
+        .map(|t| build_versions(&t))
+        .unwrap_or_default();
+    let mut found = Vec::new();
+    for entry in fs::read_dir(install).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path = entry.path();
+        if name.len() > 2 && name.starts_with('_') && name.ends_with('_') && path.is_dir() {
+            let client = fs::read_to_string(path.join(".flavor.info"))
+                .ok()
+                .and_then(|t| flavor(&t))
+                .and_then(|product| builds.iter().find(|(p, _)| *p == product).map(|(_, v)| v.clone()))
+                .and_then(|v| major_minor(&v));
+            found.push(GameDir { path, name, client });
+        }
+    }
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    found
+}
+
+/// `.build.info`: a header row of `Name!TYPE:n` columns, then a row per
+/// product, split by `|`. Each product with its version.
+pub fn build_versions(text: &str) -> Vec<(String, String)> {
+    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+    let Some(header) = lines.next() else { return Vec::new() };
+    let columns: Vec<&str> = header.split('|').map(|c| c.split('!').next().unwrap_or("")).collect();
+    let (Some(version), Some(product)) = (
+        columns.iter().position(|c| *c == "Version"),
+        columns.iter().position(|c| *c == "Product"),
+    ) else {
+        return Vec::new();
+    };
+    lines
+        .filter_map(|l| {
+            let fields: Vec<&str> = l.split('|').collect();
+            Some((fields.get(product)?.trim().to_string(), fields.get(version)?.trim().to_string()))
+        })
+        .collect()
+}
+
+/// `.flavor.info`: a header line, then the product, such as `wow_classic_beta`.
+pub fn flavor(text: &str) -> Option<String> {
+    text.lines().map(str::trim).filter(|l| !l.is_empty()).nth(1).map(str::to_string)
+}
+
+fn major_minor(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
+}
+
 /// The game's AddOns folder, whatever the case of its name: Wine loads
 /// `Interface/Addons` too, and Linux's disks care about case.
 pub fn addons_folder(game: &Path) -> PathBuf {
@@ -124,7 +187,7 @@ pub fn addon_toc(game: &Path) -> PathBuf {
 
 /// `name` in `dir` matched without regard to case, or the game's own
 /// spelling while there's nothing there yet.
-fn child(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn child(dir: &Path, name: &str) -> PathBuf {
     fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -180,6 +243,55 @@ mod tests {
     fn touch(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    // Made up in the format the game writes: a header of Name!TYPE:n
+    // columns, then a row per product.
+    const BUILD_INFO: &str = "Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|Version!STRING:0|Product!STRING:0\r\n\
+        us|1|aa|1.60.1.70374|wow_classic_beta\r\n\
+        us|1|bb|1.15.8.65000|wow_classic_era\r\n";
+
+    #[test]
+    fn the_build_info_gives_each_products_version() {
+        assert_eq!(
+            build_versions(BUILD_INFO),
+            vec![
+                ("wow_classic_beta".to_string(), "1.60.1.70374".to_string()),
+                ("wow_classic_era".to_string(), "1.15.8.65000".to_string())
+            ]
+        );
+        assert_eq!(build_versions("not a table"), vec![]);
+        assert_eq!(
+            flavor("Product Flavor!STRING:0\nwow_classic_beta\n"),
+            Some("wow_classic_beta".to_string())
+        );
+        assert_eq!(flavor(""), None);
+    }
+
+    #[test]
+    fn each_game_folder_carries_its_client_version_with_or_without_the_addon() {
+        let install = tempfile::tempdir().unwrap();
+        touch(&install.path().join(".build.info"), BUILD_INFO);
+        touch(
+            &install.path().join("_classic_beta_/.flavor.info"),
+            "Product Flavor!STRING:0\nwow_classic_beta\n",
+        );
+        touch(
+            &install.path().join("_classic_era_/.flavor.info"),
+            "Product Flavor!STRING:0\nwow_classic_era\n",
+        );
+        fs::create_dir_all(install.path().join("_retail_")).unwrap();
+        fs::create_dir_all(install.path().join("Utils")).unwrap();
+        let dirs = game_dirs(install.path());
+        let seen: Vec<(&str, Option<(u32, u32)>)> = dirs.iter().map(|d| (d.name.as_str(), d.client)).collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("_classic_beta_", Some((1, 60))),
+                ("_classic_era_", Some((1, 15))),
+                ("_retail_", None)
+            ]
+        );
     }
 
     #[test]
