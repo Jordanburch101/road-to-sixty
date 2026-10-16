@@ -22,6 +22,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      # Without the secrets: an install script in a package could read them.
+      - name: Tools
+        run: |
+          bun install --frozen-lockfile
+          sudo apt-get update -qq && sudo apt-get install -y minisign
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,7 +46,5 @@ jobs:
             *beta*)  type=beta ;;
             *)       type=release ;;
           esac
-          bun install --frozen-lockfile
-          sudo apt-get update -qq && sudo apt-get install -y minisign
           gh release download "$TAG" --pattern "RoadToSixty-$version.zip" --dir dist
           bash apps/addon/scripts/publish.sh "$PWD/dist/RoadToSixty-$version.zip" "$version" "$type"

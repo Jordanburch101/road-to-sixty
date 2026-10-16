@@ -90,16 +90,33 @@ pub fn is_link(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
 }
 
-/// Puts a verified release into a game's AddOns folder.
-pub fn install(addons: &Path, zip: &[u8]) -> Result<(), String> {
-    install_with(addons, zip, |from, to| fs::rename(from, to))
+/// Puts a verified release into a game's AddOns folder. `version` is what
+/// latest.json says it is: the signature covers only the zip, so a zip
+/// whose toc says otherwise (an old release served again) is refused
+/// rather than put in again and again.
+pub fn install(addons: &Path, zip: &[u8], version: &str) -> Result<(), String> {
+    install_with(addons, zip, version, |from, to| fs::rename(from, to))
+}
+
+/// Puts back an old copy left aside when a swap failed half way (a crash,
+/// or the rename back failing too), so the game isn't left without the
+/// addon. True when it did.
+pub fn recover(addons: &Path) -> bool {
+    let (target, old) = (crate::installs::child(addons, NAME), addons.join(OLD));
+    !target.exists() && old.join("RoadToSixty.toc").is_file() && fs::rename(&old, &target).is_ok()
 }
 
 /// The release is unpacked beside the old copy and swapped in by renaming,
 /// so the game never sees half of it; a failed swap puts the old one back.
 /// WoW loads neither leftover name: an addon folder loads only when its toc
 /// has the folder's own name.
-pub fn install_with(addons: &Path, zip: &[u8], mut rename: impl FnMut(&Path, &Path) -> io::Result<()>) -> Result<(), String> {
+pub fn install_with(
+    addons: &Path,
+    zip: &[u8],
+    version: &str,
+    mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> Result<(), String> {
+    recover(addons);
     let target = crate::installs::child(addons, NAME);
     if is_link(&target) {
         return Err("the addon folder is a link to a developer copy".into());
@@ -111,7 +128,13 @@ pub fn install_with(addons: &Path, zip: &[u8], mut rename: impl FnMut(&Path, &Pa
         }
     }
     fs::create_dir_all(addons).map_err(words)?;
-    if let Err(e) = unpack(zip, &new) {
+    if let Err(e) = unpack(zip, &new).and_then(|()| {
+        let toc = fs::read_to_string(new.join(NAME).join("RoadToSixty.toc")).unwrap_or_default();
+        let unpacked = toc.lines().find_map(|l| l.strip_prefix("## Version:")).map(str::trim);
+        (unpacked == Some(version))
+            .then_some(())
+            .ok_or_else(|| "the download isn't the version it says it is".to_string())
+    }) {
         let _ = fs::remove_dir_all(&new);
         return Err(e);
     }
@@ -207,7 +230,7 @@ mod tests {
         let addons = game.path().join("Interface/AddOns");
         old_copy(&addons);
         fs::create_dir_all(addons.join("RoadToSixty_Sync")).unwrap();
-        install(&addons, ZIP).unwrap();
+        install(&addons, ZIP, "1.10.1").unwrap();
         assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.10.1"));
         assert!(addons.join("RoadToSixty/ZoneMasks/a.lua").is_file());
         assert!(
@@ -219,10 +242,38 @@ mod tests {
     }
 
     #[test]
+    fn a_zip_whose_toc_isnt_the_version_it_was_published_as_is_refused() {
+        let game = tempfile::tempdir().unwrap();
+        let addons = game.path().join("Interface/AddOns");
+        old_copy(&addons);
+        assert_eq!(
+            install(&addons, ZIP, "1.10.2"),
+            Err("the download isn't the version it says it is".into())
+        );
+        assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.9.0"));
+        assert!(!addons.join(".RoadToSixty-new").exists());
+    }
+
+    #[test]
+    fn an_old_copy_left_aside_by_a_crash_is_put_back() {
+        let game = tempfile::tempdir().unwrap();
+        let addons = game.path().join("Interface/AddOns");
+        old_copy(&addons);
+        fs::rename(addons.join("RoadToSixty"), addons.join(".RoadToSixty-old")).unwrap();
+        assert!(recover(&addons));
+        assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.9.0"));
+        assert!(!recover(&addons), "nothing more to put back");
+        fs::rename(addons.join("RoadToSixty"), addons.join(".RoadToSixty-old")).unwrap();
+        install(&addons, ZIP, "1.10.1").unwrap();
+        assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.10.1"));
+        assert!(!addons.join(".RoadToSixty-old").exists());
+    }
+
+    #[test]
     fn a_first_install_makes_the_folder() {
         let game = tempfile::tempdir().unwrap();
         let addons = game.path().join("Interface/AddOns");
-        install(&addons, ZIP).unwrap();
+        install(&addons, ZIP, "1.10.1").unwrap();
         assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.10.1"));
     }
 
@@ -233,7 +284,7 @@ mod tests {
             let addons = game.path().join("Interface/AddOns");
             old_copy(&addons);
             let zip = zip_of(&[("RoadToSixty/RoadToSixty.toc", "## Version: 1.10.1\n"), (bad, "-- no")]);
-            assert!(install(&addons, &zip).is_err(), "{bad} is refused");
+            assert!(install(&addons, &zip, "1.10.1").is_err(), "{bad} is refused");
             assert!(
                 read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.9.0"),
                 "{bad}: the old copy stays"
@@ -248,7 +299,7 @@ mod tests {
         let game = tempfile::tempdir().unwrap();
         let addons = game.path().join("Interface/AddOns");
         old_copy(&addons);
-        assert!(install(&addons, &zip_of(&[("RoadToSixty/Core.lua", "--")])).is_err());
+        assert!(install(&addons, &zip_of(&[("RoadToSixty/Core.lua", "--")]), "1.10.1").is_err());
         assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.9.0"));
     }
 
@@ -258,7 +309,7 @@ mod tests {
         let addons = game.path().join("Interface/AddOns");
         old_copy(&addons);
         let mut calls = 0;
-        let result = install_with(&addons, ZIP, |from, to| {
+        let result = install_with(&addons, ZIP, "1.10.1", |from, to| {
             calls += 1;
             if calls == 2 {
                 Err(std::io::Error::other("locked"))
@@ -278,7 +329,7 @@ mod tests {
         old_copy(&addons);
         fs::create_dir_all(addons.join(".RoadToSixty-new/RoadToSixty")).unwrap();
         fs::create_dir_all(addons.join(".RoadToSixty-old")).unwrap();
-        install(&addons, ZIP).unwrap();
+        install(&addons, ZIP, "1.10.1").unwrap();
         assert!(read(&addons.join("RoadToSixty/RoadToSixty.toc")).contains("1.10.1"));
         assert!(!addons.join(".RoadToSixty-new").exists() && !addons.join(".RoadToSixty-old").exists());
     }
@@ -293,7 +344,7 @@ mod tests {
         fs::create_dir_all(&addons).unwrap();
         std::os::unix::fs::symlink(repo.path(), addons.join("RoadToSixty")).unwrap();
         assert!(is_link(&addons.join("RoadToSixty")));
-        assert!(install(&addons, ZIP).is_err());
+        assert!(install(&addons, ZIP, "1.10.1").is_err());
         assert!(read(&repo.path().join("RoadToSixty.toc")).contains("@project-version@"));
     }
 

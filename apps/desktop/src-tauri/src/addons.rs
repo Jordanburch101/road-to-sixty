@@ -193,6 +193,14 @@ impl Addons {
         Ok(())
     }
 
+    /// When to check again: with the app's own check every six hours, or
+    /// in five minutes while no release is known yet (the network wasn't up
+    /// at login, say), so a first run isn't left without its Install button.
+    pub fn next_check(&self) -> std::time::Duration {
+        let known = self.inner.lock().unwrap().latest.is_some();
+        std::time::Duration::from_secs(if known { 6 * 3600 } else { 5 * 60 })
+    }
+
     /// Takes a release in; the tick checks its signature before installing.
     pub fn put_latest(&self, latest: Latest, zip: Vec<u8>) {
         let mut inner = self.inner.lock().unwrap();
@@ -243,6 +251,9 @@ impl Addons {
         inner.offered.clear();
         for install in found {
             for dir in installs::game_dirs(install) {
+                // A copy left aside by a swap that failed half way goes back
+                // first, so the game isn't left without the addon.
+                addon::recover(&installs::addons_folder(&dir.path));
                 let mut found = self.folder_state(&inner, &dir.path, dir.client);
                 if matches!(found, Some(FolderState::Waiting { .. })) && !running(&dir.path) {
                     let _ = self.put(&mut inner, &dir.path);
@@ -298,7 +309,8 @@ impl Addons {
         let (Some(latest), Some(zip)) = (inner.latest.clone(), inner.zip.as_ref()) else {
             return Err("the addon hasn't downloaded yet; try again in a minute".into());
         };
-        let result = addon::verify(zip, &latest.signature, &self.key).and_then(|()| addon::install(&installs::addons_folder(game), zip));
+        let result = addon::verify(zip, &latest.signature, &self.key)
+            .and_then(|()| addon::install(&installs::addons_folder(game), zip, &latest.version));
         let record = inner.saved.folders.entry(game.to_path_buf()).or_default();
         match &result {
             Ok(()) => {
@@ -430,6 +442,44 @@ mod tests {
         assert_eq!(s.folders[0].state, FolderState::Current);
         assert_eq!(s.addon_updated.map(|u| u.version), Some("1.10.1".into()));
         assert!(s.addon_updates);
+    }
+
+    #[test]
+    fn a_copy_left_aside_by_a_failed_swap_is_put_back_not_offered_again() {
+        let (_keep, installs, game) = install_with_game(Some("1.10.0"));
+        let addons_dir = game.join("Interface/AddOns");
+        fs::rename(addons_dir.join("RoadToSixty"), addons_dir.join(".RoadToSixty-old")).unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let notifier = Notifier::new(|_| {});
+        let a = addons(data.path(), SIG);
+        a.tick_with(&installs, &notifier, &|_| true);
+        assert_eq!(
+            installed(&game),
+            Copy::Version("1.10.0".into()),
+            "the old copy is back, even with the game running"
+        );
+        assert_eq!(notifier.get().folders[0].state, FolderState::Waiting { latest: "1.10.1".into() });
+    }
+
+    #[test]
+    fn without_a_release_known_the_check_comes_back_in_minutes() {
+        let data = tempfile::tempdir().unwrap();
+        let a = Addons::new(data.path(), KEY);
+        assert_eq!(
+            a.next_check(),
+            std::time::Duration::from_secs(5 * 60),
+            "offline at first run: try again soon"
+        );
+        a.put_latest(
+            Latest {
+                version: "1.10.1".into(),
+                interface: 16001,
+                zip: String::new(),
+                signature: SIG.into(),
+            },
+            ZIP.to_vec(),
+        );
+        assert_eq!(a.next_check(), std::time::Duration::from_secs(6 * 3600));
     }
 
     #[test]

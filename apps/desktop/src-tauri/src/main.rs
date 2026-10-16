@@ -125,12 +125,15 @@ fn main() {
 
             // The addon's check rides on the app's: at start and every six
             // hours. A thread of its own, because the app's waits to restart.
+            // The folders are listed first, so the window never waits on the
+            // network to show them.
             let checking = addons.clone();
             std::thread::spawn(move || {
+                checking.tick(&addons::picked(&data_dir()), &told);
                 loop {
                     let _ = checking.check();
                     checking.tick(&addons::picked(&data_dir()), &told);
-                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                    std::thread::sleep(checking.next_check());
                 }
             });
 
