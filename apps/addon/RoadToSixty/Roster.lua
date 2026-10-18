@@ -34,8 +34,11 @@ local _, ns = ...
 local Roster = {}
 ns.Roster = Roster
 
-local VERSION = 3           -- of the copy's layout; ns.char.rosterBuilt holds the one built
-local SIMPLIFY_YARDS = 8    -- simplified paths stay this close to the recorded one
+local VERSION = 4           -- of the copy's layout; ns.char.rosterBuilt holds the one built
+-- Simplified paths stay this close to the recorded one. Close enough to keep
+-- the recorder's tight turns (#57): a loop round a tree, 5 yards out, would
+-- vanish at 8; at 2 the copy is about two thirds of the recorded size.
+local SIMPLIFY_YARDS = 2
 
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
