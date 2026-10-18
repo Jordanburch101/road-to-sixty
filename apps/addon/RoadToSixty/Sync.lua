@@ -9,7 +9,7 @@ local _, ns = ...
 --   RoadToSixtySync = {
 --       pc = "3f9a1c2b7d4e",       -- optional: this PC's ID (Core.lua uses it)
 --       chars = {
---           ["Name-Realm"] = {     -- Roster:Key()
+--           ["Name-Realm"] = {     -- Roster:Name(), the journey's rosterKey
 --               version = 42,      -- the server's version number; higher is newer
 --               restore = 40,      -- optional: the restore this PC hasn't taken in yet
 --               journey = "...",   -- the journey as Parse.Write text
@@ -89,7 +89,7 @@ ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
     Sync.found = type(data) == "table"
-    local entry = Sync.found and type(data.chars) == "table" and data.chars[ns.Roster:Key()]
+    local entry = Sync.found and type(data.chars) == "table" and data.chars[ns.Roster:Name()]
     if not entry then return end
     local started = debugprofilestop()
     local ok, what, value = pcall(Sync.Apply, ns.char, entry)

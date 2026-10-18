@@ -6,6 +6,14 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.10.1
+
+### Fixed
+- Two characters with the same name now each show in the map's character
+  list, with their own journey, instead of only the one you logged in to
+  last. A character that was missing shows again once you next log in to
+  it.
+
 ## 1.10.0
 
 ### New

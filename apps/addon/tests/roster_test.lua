@@ -12,10 +12,12 @@ end
 local handlers = {}
 local recorded = {}     -- full journey the fake recorder returns, one path per segment
 local ns = {
-    db = {},
+    db = { showPaths = {} },
     char = { segments = {}, events = { { 100, "lvl" } }, kills = { d = "" }, totals = { kills = 3 } },
 }
 ns.view = ns.char
+-- As Core.lua's, which also refuses a secret value.
+ns.PlayerGUID = function() return UnitGUID("player") end
 ns.Recorder = {
     GetPath = function(_, i) return recorded[i] end,
     GetPaths = function() return recorded end,
@@ -49,6 +51,8 @@ end
 local now = 1000
 UnitName = function() return "Eagin" end
 GetRealmName = function() return "Test" end
+local GUID = "Player-1-0000000E"
+UnitGUID = function() return GUID end
 UnitClass = function() return "Mage", "MAGE" end
 UnitLevel = function() return 12 end
 IsInInstance = function() return false end
@@ -85,9 +89,11 @@ for i = 0, 10 do
     zig[#zig + 1], zig[#zig + 2] = i * 40, (i % 2) * 100
 end
 
--- An existing journey, with a roster entry from before the journey copy.
+-- An existing journey, with a roster entry from before the journey copy
+-- and before entries were keyed by GUID, its path drawn on the map.
 ns.char.rosterBuilt = true
-ns.db.roster = { ["Eagin-Test"] = { path = { { c = 0, d = "0,0;150,0" } } } }
+ns.db.roster = { ["Eagin-Test"] = { path = { { c = 0, d = "0,0;150,0" } }, played = 99 } }
+ns.db.showPaths["Eagin-Test"] = true
 Record({
     line("w", 0, "l", 100, 0, 0, 51),          -- 1000 yards east, straight
     path("g", 0, "d", 300, { 500, 900, 520, 900 }),
@@ -96,7 +102,11 @@ Record({
 })
 
 Fire("PLAYER_LOGIN")
-local e = ns.db.roster["Eagin-Test"]
+local e = ns.db.roster[GUID]
+check(e and ns.db.roster["Eagin-Test"] == nil, "the Name-Realm entry moves under the GUID")
+check(e.guid == GUID and e.name == "Eagin" and e.realm == "Test", "entry has the GUID, name and realm")
+check(e.played == nil, "starting afresh, as a shared entry may hold another character's journey")
+check(ns.db.showPaths[GUID] and ns.db.showPaths["Eagin-Test"] == nil, "its path toggle moves too")
 check(e.class == "MAGE" and e.level == 12 and e.zone == 1436, "entry has class, level and zone")
 check(ns.char.class == "MAGE", "the character's own file keeps its class, for the sync server")
 check(ns.char.rosterBuilt == 3, "journey copied on first login")
@@ -141,7 +151,7 @@ local old = Roster:Paths(alt)
 check(old[1].m == "w" and old[1].x[2] == 300 and old[1].y[2] == -400, "old absolute pieces still decode")
 
 local entries = Roster:Entries()
-check(entries[1].key == "Eagin-Test" and entries[2].key == "Alt-Test", "this character listed first")
+check(entries[1].key == GUID and entries[2].key == "Alt-Test", "this character listed first")
 
 -- Views: an alt without a journey copy cannot be shown; one with it can.
 check(not Roster:SetView(alt) and ns.view == ns.char, "no view of a character without a copy")
@@ -157,6 +167,22 @@ check(Roster:ViewLevel() == 12 and Roster:ViewPaths() == recorded, "own view is 
 local before = e.journey.segments[1]
 Fire("PLAYER_LOGIN")
 check(e.journey.segments[1] == before and #Roster:Paths(e) == 5, "copy kept across logins")
+
+-- Two characters with one Name-Realm (#56): the second gets an entry of its
+-- own, with its own journey copy, and the first keeps its own.
+local first = e
+GUID = "Player-1-0000000F"
+Fire("PLAYER_LOGIN")
+local second = ns.db.roster[GUID]
+check(second and second ~= first and ns.db.roster["Player-1-0000000E"] == first, "a namesake gets its own entry")
+check(second.journey and #Roster:Entries() == 3, "with a journey copy of its own, and both are listed")
+GUID = "Player-1-0000000E"
+Fire("PLAYER_LOGIN")
+
+-- Without a GUID from the client, the key is Name-Realm and nothing moves.
+UnitGUID = function() return nil end
+check(Roster:Key() == "Eagin-Test" and Roster:Name() == "Eagin-Test", "Name-Realm when the client gives no GUID")
+UnitGUID = function() return GUID end
 
 -- A reset journey empties the copy.
 Record({})

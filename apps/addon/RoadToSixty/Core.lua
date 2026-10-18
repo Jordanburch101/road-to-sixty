@@ -232,6 +232,7 @@ local function PlayerGUID()
     end)
     return ok and guid or nil
 end
+ns.PlayerGUID = PlayerGUID
 
 local function StampGUID(char)
     return type(char.journeyId) == "string" and char.journeyId:match("^([%w%-]+):%d+$") or nil

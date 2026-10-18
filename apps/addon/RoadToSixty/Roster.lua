@@ -5,11 +5,18 @@ local _, ns = ...
 -- SavedVariables, which only load for that character, so the roster keeps a
 -- summary and a copy of each journey:
 --
---   RoadToSixtyDB.roster["Name-Realm"] = {
---     name, realm, class (class file, e.g. "MAGE"), level, zone (uiMapID),
+--   RoadToSixtyDB.roster[GUID] = {
+--     name, realm, guid, class (class file, e.g. "MAGE"), level, zone (uiMapID),
 --     c, x, y (last outdoor position, world yards), seen (time), played,
 --     journey = copy of RoadToSixtyCharDB as of the last logout,
 --   }
+--
+-- Entries are keyed by the character's GUID (Roster:Key()), as two
+-- characters can share a Name-Realm (#56). Entries saved before then are
+-- keyed by Name-Realm and have no guid; the first character of that name
+-- to log in takes its place under its GUID, starting afresh, as a shared
+-- entry may hold the other character's journey. ns.db.showPaths uses the
+-- same keys.
 --
 -- The copy shares every table with the character's own data except
 -- segments: those are the recorder's segments (same format and index, see
@@ -33,8 +40,14 @@ local SIMPLIFY_YARDS = 8    -- simplified paths stay this close to the recorded 
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
 
-function Roster:Key()
+-- Name-Realm, the name the app and the sync folder know the character by.
+function Roster:Name()
     return UnitName("player") .. "-" .. GetRealmName()
+end
+
+-- This character's roster key: its GUID, or Name-Realm if the client gives none.
+function Roster:Key()
+    return ns.PlayerGUID() or self:Name()
 end
 
 -- Indexes of the points to keep so the line through them stays within
@@ -131,18 +144,23 @@ local function UpdateZone()
 end
 
 ns.On("PLAYER_LOGIN", function()
-    ns.db.roster = ns.db.roster or {}
-    local key = Roster:Key()
-    entry = ns.db.roster[key] or {}
-    ns.db.roster[key] = entry
-    ns.char.rosterKey = key
-    entry.name, entry.realm = UnitName("player"), GetRealmName()
+    local roster = ns.db.roster or {}
+    ns.db.roster = roster
+    local key, name = Roster:Key(), Roster:Name()
+    if key ~= name and roster[name] and not roster[name].guid then
+        roster[name] = nil
+        ns.db.showPaths[key], ns.db.showPaths[name] = ns.db.showPaths[name], nil
+    end
+    entry = roster[key] or {}
+    roster[key] = entry
+    ns.char.rosterKey = name
+    entry.name, entry.realm, entry.guid = UnitName("player"), GetRealmName(), ns.PlayerGUID()
     entry.class = select(2, UnitClass("player"))
     ns.char.class = entry.class
     entry.level = UnitLevel("player")
     entry.seen = ns.Now()
     entry.played = ns.char.played or entry.played
-    if ns.char.rosterBuilt ~= VERSION then
+    if ns.char.rosterBuilt ~= VERSION or not entry.journey then
         Roster:Rebuild()
     end
     UpdateZone()

@@ -48,8 +48,8 @@ local function Load(saved, sync)
     RoadToSixtyDB, RoadToSixtyCharDB, RoadToSixtySync = { greet = false }, saved, sync
     local ns = {}
     for _, name in ipairs(FILES) do assert(loadfile("RoadToSixty/" .. name))("RoadToSixty", ns) end
-    -- Roster.lua needs much more of the game to load; this is its Key.
-    ns.Roster = { Key = function() return UnitName("player") .. "-" .. GetRealmName() end }
+    -- Roster.lua needs much more of the game to load; this is its Name.
+    ns.Roster = { Name = function() return UnitName("player") .. "-" .. GetRealmName() end }
     script(nil, "ADDON_LOADED", "RoadToSixty")
     return ns
 end

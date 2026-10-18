@@ -11,7 +11,7 @@ use crate::installs::{self, addon_toc};
 /// One character's merged journey for the addon to bring in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Delivery {
-    /// `Name-Realm`, as the addon's Roster:Key() makes it.
+    /// `Name-Realm`, as the addon's Roster:Name() makes it.
     pub key: String,
     /// The server's version id; the addon takes it when it is higher than
     /// the one it last brought in.
