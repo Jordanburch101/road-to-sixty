@@ -19,9 +19,10 @@ local _, ns = ...
 -- same keys.
 --
 -- The copy shares every table with the character's own data except
--- segments: those are the recorder's segments (same format and index, see
--- Recorder.lua) with their points simplified to keep the shape within
--- SIMPLIFY_YARDS. Segments before the last never change, so on logout only
+-- segments: those are copies of the recorder's segments (same format and
+-- index, see Recorder.lua) with every point, so another character's path
+-- shows as recorded (#57); the map thins it by zoom as it does the
+-- player's own. Segments before the last never change, so on logout only
 -- the last one and any new ones are redone.
 --
 -- Entries saved before the journey copy have path = { { c, d = "x,y;..." } }
@@ -34,11 +35,7 @@ local _, ns = ...
 local Roster = {}
 ns.Roster = Roster
 
-local VERSION = 4           -- of the copy's layout; ns.char.rosterBuilt holds the one built
--- Simplified paths stay this close to the recorded one. Close enough to keep
--- the recorder's tight turns (#57): a loop round a tree, 5 yards out, would
--- vanish at 8; at 2 the copy is about two thirds of the recorded size.
-local SIMPLIFY_YARDS = 2
+local VERSION = 5           -- of the copy's layout; ns.char.rosterBuilt holds the one built
 
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
@@ -53,54 +50,13 @@ function Roster:Key()
     return ns.PlayerGUID() or self:Name()
 end
 
--- Indexes of the points to keep so the line through them stays within
--- SIMPLIFY_YARDS of every point (Douglas-Peucker), in order.
-local function Simplify(xs, ys)
-    local n = #xs
-    local keep = { [1] = true, [n] = true }
-    local stack = { 1, n }
-    local limit = SIMPLIFY_YARDS * SIMPLIFY_YARDS
-    while #stack > 0 do
-        local b = table.remove(stack)
-        local a = table.remove(stack)
-        local ax, ay = xs[a], ys[a]
-        local dx, dy = xs[b] - ax, ys[b] - ay
-        local lengthSq = dx * dx + dy * dy
-        local worst, worstAt = limit, nil
-        for i = a + 1, b - 1 do
-            local px, py = xs[i] - ax, ys[i] - ay
-            local d
-            if lengthSq > 0 then
-                local cross = dy * px - dx * py
-                d = cross * cross / lengthSq
-            else
-                d = px * px + py * py
-            end
-            if d > worst then
-                worst, worstAt = d, i
-            end
-        end
-        if worstAt then
-            keep[worstAt] = true
-            stack[#stack + 1], stack[#stack + 2] = a, worstAt
-            stack[#stack + 1], stack[#stack + 2] = worstAt, b
-        end
-    end
-    local idx = {}
-    for i = 1, n do
-        if keep[i] then idx[#idx + 1] = i end
-    end
-    return idx
-end
-
--- A simplified copy of a recorder segment, from its decoded path.
+-- A copy of a recorder segment, from its decoded path: the open segment's
+-- latest points are in the recorder's buffer, not yet in its string.
 local function Copy(path)
     local ts, xs, ys = path.t, path.x, path.y
-    local idx = Simplify(xs, ys)
     local steps = {}
-    for k = 2, #idx do
-        local i, p = idx[k], idx[k - 1]
-        steps[k - 1] = (ts[i] - ts[p]) .. "," .. (xs[i] - xs[p]) .. "," .. (ys[i] - ys[p])
+    for i = 2, #xs do
+        steps[i - 1] = (ts[i] - ts[i - 1]) .. "," .. (xs[i] - xs[i - 1]) .. "," .. (ys[i] - ys[i - 1])
     end
     return { m = path.m, c = path.c, j = path.j, t = ts[1], x = xs[1], y = ys[1], d = table.concat(steps, ";") }
 end

@@ -83,7 +83,7 @@ local function line(m, c, j, t0, x0, y0, count)
 end
 
 -- A zigzag: 100 yards north and back every 40 yards east, as when fighting
--- in a camp. Simplifying must keep every corner.
+-- in a camp. The copy must keep every corner.
 local zig = {}
 for i = 0, 10 do
     zig[#zig + 1], zig[#zig + 2] = i * 40, (i % 2) * 100
@@ -117,7 +117,7 @@ check(e.played == nil, "starting afresh, as a shared entry may hold another char
 check(ns.db.showPaths[GUID] and ns.db.showPaths["Eagin-Test"] == nil, "its path toggle moves too")
 check(e.class == "MAGE" and e.level == 12 and e.zone == 1436, "entry has class, level and zone")
 check(ns.char.class == "MAGE", "the character's own file keeps its class, for the sync server")
-check(ns.char.rosterBuilt == 4, "journey copied on first login")
+check(ns.char.rosterBuilt == 5, "journey copied on first login")
 check(ns.char.rosterKey == "Eagin-Test", "the journey records its roster key, for the app")
 check(e.path == nil and e.journey ~= nil, "old coarse path replaced by the journey copy")
 check(e.journey.events == ns.char.events and e.journey.kills == ns.char.kills, "copy shares the journey's tables")
@@ -125,10 +125,20 @@ check(e.journey.rosterBuilt == nil, "copy leaves out the roster's own flag")
 
 local paths = Roster:Paths(e)
 check(#paths == 4, "one path per segment, got " .. #paths)
-check(#paths[1].x == 2 and paths[1].x[2] == 1000 and paths[1].t[2] == 200, "straight line keeps only its ends, with times")
+check(#paths[1].x == 51 and paths[1].x[51] == 1000 and paths[1].t[51] == 200, "straight line keeps every point, with times")
+-- The copy is the recorded path, point for point (#57).
+local same = #paths == #recorded
+for i = 1, math.min(#paths, #recorded) do
+    for k = 1, #recorded[i].x do
+        same = same and paths[i].x[k] == recorded[i].x[k] and paths[i].y[k] == recorded[i].y[k]
+            and paths[i].t[k] == recorded[i].t[k]
+    end
+    same = same and #paths[i].x == #recorded[i].x
+end
+check(same, "the copy holds every recorded point")
 check(#paths[3].x == 11, "zigzag keeps every corner, got " .. #paths[3].x)
 check(paths[2].m == "g" and paths[2].j == "d", "ghost run kept with its mode and reason")
-check(#paths[2].x >= 8, "a loop round a tree is kept, got " .. #paths[2].x .. " points")
+check(#paths[2].x == 10, "a loop round a tree is kept, got " .. #paths[2].x .. " points")
 check(paths[4].m == "t" and paths[4].j == "b" and paths[4].c == 1, "flight keeps mode, reason and continent")
 check(e.c == 1 and e.x == 6200 and e.y == 0, "last position from the last point")
 
