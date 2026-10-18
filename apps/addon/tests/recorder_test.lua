@@ -55,7 +55,8 @@ C_Timer = {
 UnitOnTaxi = function() return game.taxi end
 UnitIsGhost = function() return game.ghost end
 IsInInstance = function() return game.instance end
-time = function() return game.now end
+-- The server clock gives whole seconds; GetTime has fractions.
+time = function() return math.floor(game.now) end
 GetTime = function() return game.now end
 
 ns.Now = function() return time() end
@@ -64,23 +65,25 @@ assert(loadfile("RoadToSixty/Recorder.lua"))("RoadToSixty", ns)
 local Recorder = ns.Recorder
 
 -- Every sample the game reached, for comparing with what was decoded.
+local SAMPLE_INTERVAL = 0.25
+
 local function Tick()
-    game.now = game.now + 1
+    game.now = game.now + SAMPLE_INTERVAL
     assert(tickFn, "the recorder never started its ticker")()
 end
 
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
 
--- 1. Walk east 7 yards a second for 60 s. A point is stored at the first
--- sample at least 15 yards on, so every third sample (21 yards): the start
--- plus 59 / 3 more.
-for _ = 1, 60 do
-    game.x = game.x + 7
+-- 1. Walk east 8 yards a second (2 a sample) for 60 s. A point is stored at
+-- the first sample at least 20 yards on, so every tenth sample: the start
+-- plus 239 / 10 more.
+for _ = 1, 240 do
+    game.x = game.x + 2
     Tick()
 end
 check(#ns.char.segments == 1, "walking makes one segment, got " .. #ns.char.segments)
-check(Recorder:OpenPoints() == 20, "20 points while walking, got " .. Recorder:OpenPoints())
+check(Recorder:OpenPoints() == 24, "24 points while walking, got " .. Recorder:OpenPoints())
 check(ns.char.segments[1].d ~= "", "a minute of walking is written into the segment before logout")
 
 -- 2. Teleport 5000 yards: new segment, no line across.
@@ -252,6 +255,85 @@ check(JR(P(0, "w", nil, 0, 0), P(0, "g", nil, 5000, 0)) == nil, "a ghost's jump 
 check(JR(P(0, "w", nil, 0, 0), P(0, "w", "h", 5000, 0)) == "h", "a saved reason is kept")
 check(JR(nil, P(0, "w", nil, 5000, 0)) == nil, "the first segment has no jump")
 check(JR({ c = 0, m = "w", x = {}, y = {} }, P(0, "w", nil, 5000, 0)) == nil, "an empty segment before is skipped")
+
+-- 11. Bends keep their shape (#57). Each walk is a segment of its own, one
+-- position a sample, rounded to whole yards as the game's are.
+local function Walk(points)
+    Fire("PLAYER_ENTERING_WORLD")
+    for _, p in ipairs(points) do
+        game.x, game.y = math.floor(p[1] + 0.5), math.floor(p[2] + 0.5)
+        Tick()
+    end
+    return Recorder:GetPath(#ns.char.segments)
+end
+
+-- The furthest any walked position is from the stored line, with the last
+-- position joined on (the part since the last stored point).
+local function Worst(points, path)
+    local xs, ys = { unpack(path.x) }, { unpack(path.y) }
+    xs[#xs + 1], ys[#ys + 1] = game.x, game.y
+    local worst = 0
+    for _, p in ipairs(points) do
+        local best = math.huge
+        for i = 2, #xs do
+            local ax, ay, dx, dy = xs[i - 1], ys[i - 1], xs[i] - xs[i - 1], ys[i] - ys[i - 1]
+            local lengthSq = dx * dx + dy * dy
+            local u = lengthSq > 0 and math.max(0, math.min(1, ((p[1] - ax) * dx + (p[2] - ay) * dy) / lengthSq)) or 0
+            local ex, ey = ax + u * dx - p[1], ay + u * dy - p[2]
+            best = math.min(best, math.sqrt(ex * ex + ey * ey))
+        end
+        worst = math.max(worst, best)
+    end
+    return worst
+end
+
+local function Line(points, x1, y1, x2, y2, step)
+    local length = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+    for k = 1, math.floor(length / step) do
+        local f = k * step / length
+        points[#points + 1] = { x1 + (x2 - x1) * f, y1 + (y2 - y1) * f }
+    end
+    return points
+end
+
+-- Twice round a tree, 5 yards out, at 7 yards a second.
+local cx, cy = game.x + 5000, game.y
+local tree = {}
+for k = 0, 36 do
+    local a = k * 1.75 / 5
+    tree[#tree + 1] = { cx + 5 * math.cos(a), cy + 5 * math.sin(a) }
+end
+local path = Walk(tree)
+local worst = Worst(tree, path)
+check(worst <= 3, ("circling a tree stays within 3 yards, strays %.1f"):format(worst))
+check(#path.x <= 16, "circling a tree twice stores at most 16 points, got " .. #path.x)
+
+-- Along a fence and round its corner.
+local fence = Line({ { cx, cy } }, cx, cy, cx + 30, cy, 1.75)
+Line(fence, cx + 30, cy, cx + 30, cy + 30, 1.75)
+path = Walk(fence)
+worst = Worst(fence, path)
+check(worst <= 3, ("a fence corner stays within 3 yards, strays %.1f"):format(worst))
+
+-- Out 10 yards and back: the turn is kept.
+local back = Line({ { cx, cy } }, cx, cy, cx + 10, cy, 1.75)
+Line(back, cx + 10, cy, cx, cy, 1.75)
+path = Walk(back)
+worst = Worst(back, path)
+check(worst <= 3, ("going back on oneself stays within 3 yards, strays %.1f"):format(worst))
+
+-- Standing still, or fighting in place within a yard, for two minutes: only the start.
+local still = {}
+for k = 1, 480 do
+    still[k] = { cx + (k % 3) - 1, cy + (k % 2) }
+end
+path = Walk(still)
+check(#path.x == 1, "fighting in place stores no points, got " .. (#path.x - 1))
+
+-- A straight run stores no more than before: about every 20 yards.
+local run = Line({ { cx, cy } }, cx, cy, cx + 300, cy + 100, 1.75)
+path = Walk(run)
+check(#path.x <= 17, "a 316-yard run stores at most 17 points, got " .. #path.x)
 
 check(ns.errors.count == 0, "no errors while recording")
 

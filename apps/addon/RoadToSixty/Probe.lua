@@ -895,3 +895,48 @@ ns.Command("survey", "collect item, dungeon and flight data for the seeds (devel
     SurveyPlaces(survey)
     SurveyItems(survey)
 end)
+
+-- /rts pathprobe [label] records the raw position ten times a second, unrounded,
+-- until run again, for scripts/path-fidelity.lua to compare the recorder's
+-- rules on (#57). Each run is a trace in ns.db.pathProbe:
+-- { label, d = "seconds,continent,x,y;..." }, seconds from its start.
+local PATH_PROBE_INTERVAL = 0.1
+local pathProbe     -- { trace, buf, start, frame } while recording
+
+local function PathProbeFlush()
+    if pathProbe then
+        pathProbe.trace.d = table.concat(pathProbe.buf, ";")
+    end
+end
+
+ns.Command("pathprobe", "record raw positions ten times a second for the path rules (developer)", function(label)
+    if pathProbe then
+        pathProbe.frame:SetScript("OnUpdate", nil)
+        PathProbeFlush()
+        ns.Print(("Path probe stopped: %d positions in \"%s\". Type /reload to save it."):format(
+            #pathProbe.buf, pathProbe.trace.label))
+        pathProbe = nil
+        return
+    end
+    ns.db.pathProbe = ns.db.pathProbe or {}
+    local trace = { label = (label and label ~= "") and label or ("trace " .. (#ns.db.pathProbe + 1)), d = "" }
+    table.insert(ns.db.pathProbe, trace)
+    pathProbe = { trace = trace, buf = {}, start = GetTime(), frame = CreateFrame("Frame") }
+    local wait = 0
+    pathProbe.frame:SetScript("OnUpdate", function(_, elapsed)
+        wait = wait - elapsed
+        if wait > 0 then return end
+        wait = wait + PATH_PROBE_INTERVAL
+        if wait < 0 then wait = PATH_PROBE_INTERVAL end
+        local mapID = C_Map.GetBestMapForUnit("player")
+        local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+        if not pos then return end
+        local c, world = C_Map.GetWorldPosFromMapPos(mapID, pos)
+        if not c or not world then return end
+        local buf = pathProbe.buf
+        buf[#buf + 1] = ("%.2f,%d,%.1f,%.1f"):format(GetTime() - pathProbe.start, c, world.x, world.y)
+    end)
+    ns.Print(("Path probe recording \"%s\". Walk, then type /rts pathprobe again."):format(trace.label))
+end)
+
+ns.On("PLAYER_LOGOUT", PathProbeFlush)

@@ -19,7 +19,7 @@ local function Line(x1, y1, x2, y2, mode, i) return { x1, y1, x2, y2, mode, i } 
 local lines = {
     Line(0, 0, 10, 5, "w", 2), Line(10, 5, 20, 0, "w", 3), Line(20, 0, 30, 5, "w", 4),
     Line(30, 5, 80, 60, "j", 5),
-    Line(80, 60, 82, 61, "w", 6),
+    Line(80, 60, 80.5, 60.25, "w", 6),
 }
 
 -- Zoomed out, nothing changes.

@@ -11,7 +11,7 @@ local _, ns = ...
 -- jumps (mode "j") are drawn as arcs by the map and are left as they are.
 
 local CURVE_ZOOM = 4            -- zoom from which lines are curved
-local PIECE_PIXELS = 10         -- a piece for about every this many pixels of line on screen
+local PIECE_PIXELS = 5          -- a piece for about every this many pixels of line on screen (#57: small loops stay round)
 local MAX_PIECES = 4            -- pieces per line at most
 
 local function Joined(a, b)
