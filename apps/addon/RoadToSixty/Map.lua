@@ -15,10 +15,13 @@ local Map = {}
 ns.Map = Map
 local Style = ns.Style   -- colours, icons and categories (Style.lua)
 
--- Replay pace in recorded points per second at 1x. Points are about 20
--- yards apart, so the star moves at the same map speed whatever the length
--- of the journey: a 1-10 replays in about a minute, a 1-60 in tens of minutes.
-local REPLAY_POINTS = 40
+-- Replay pace in world yards per second at 1x, by mode (Recorder.lua), so the
+-- star moves at the same map speed whatever the length of the journey: a
+-- 1-10 replays in about a minute, a 1-60 in tens of minutes. Yards rather
+-- than points, as the recorder stores more points where the path bends (#57);
+-- these match the 40 points a second it used to go at (points were about 20
+-- yards apart walking, 80 flying).
+local REPLAY_YARDS = { w = 800, g = 800, t = 3200 }
 local MIN_PIXELS = 2            -- points closer than this on screen are merged
 local MAX_LINES = 3000          -- line budget per build; past it, points merge further
 local LINE_WIDTH = 2
@@ -396,7 +399,7 @@ end
 -- Journey data -------------------------------------------------------------------
 
 local function BuildPoints(paths)
-    local px, py, pt, pm, pb, brk, pj = {}, {}, {}, {}, {}, {}, {}
+    local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
 
     -- Level changes in time order, walked alongside the points. The same
     -- pass builds the level and zone timelines.
@@ -434,6 +437,8 @@ local function BuildPoints(paths)
                 n = n + 1
                 px[n], py[n] = toContent(path.x[i], path.y[i])
                 pt[n], pm[n], pb[n], brk[n] = t, path.m, band, i == 1
+                -- Yards from the point before, for the replay's pace.
+                pd[n] = i > 1 and math.sqrt((path.x[i] - path.x[i - 1]) ^ 2 + (path.y[i] - path.y[i - 1]) ^ 2) or 0
                 if i == 1 then
                     pj[n] = ns.Recorder:JumpReason(previous, path)
                     if path.j == "b" and previous then
@@ -479,7 +484,7 @@ local function BuildPoints(paths)
     end
 
     state.n, state.px, state.py, state.pt, state.pm, state.pb, state.brk = n, px, py, pt, pm, pb, brk
-    state.pj = pj
+    state.pj, state.pd = pj, pd
     state.bounds = { x1, y1, x2, y2 }
     state.lods = {}
 end
@@ -2338,24 +2343,35 @@ local function OnUpdate(_, elapsed)
         -- Along a jump, at its style's pace rather than a point at a time;
         -- a break without moving, or an instant jump, passes as any other point.
         local seq = math.floor(state.cur)
-        local rate = REPLAY_POINTS
+        local budget = elapsed * SPEEDS[state.speedIndex]     -- seconds of replay this frame
         local style = seq >= 1 and seq < state.n and state.brk[seq + 1]
             and Style.Jump(state.pj[seq + 1])
+        local cur = state.cur
         if style and not style.instant
             and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
             -- Its time follows its length, known once the arrow is on the
             -- jump (PlaceHead).
             local jump = state.headJump
             local seconds = jump and jump.i == seq + 1 and jump.seconds or style.replay or 1
-            rate = 1 / seconds
-        end
-        local cur = state.cur + elapsed * SPEEDS[state.speedIndex] * rate
-        -- Fast replays cover many points a frame: stop where the next jump
-        -- starts, so none is skipped.
-        for k = seq + 2, math.min(math.floor(cur), state.n) do
-            if state.brk[k] and (state.px[k] ~= state.px[k - 1] or state.py[k] ~= state.py[k - 1]) then
-                cur = k - 1
-                break
+            cur = cur + budget / seconds
+        else
+            -- Along the path by yards; a break passes as a point a yard on.
+            -- Fast replays cover many points a frame: stop where the next
+            -- jump starts, so none is skipped.
+            while cur < state.n do
+                local s = math.floor(cur)
+                local k = s + 1
+                if s > seq and state.brk[k]
+                    and (state.px[k] ~= state.px[s] or state.py[k] ~= state.py[s]) then
+                    cur = s
+                    break
+                end
+                local cost = (k - cur) * math.max(state.pd[k], 1) / (REPLAY_YARDS[state.pm[k]] or REPLAY_YARDS.w)
+                if budget < cost then
+                    cur = cur + (k - cur) * budget / cost
+                    break
+                end
+                budget, cur = budget - cost, k
             end
         end
         state.cur = cur

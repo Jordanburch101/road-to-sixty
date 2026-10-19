@@ -20,13 +20,24 @@ local _, ns = ...
 local Recorder = {}
 ns.Recorder = Recorder
 
-local SAMPLE_INTERVAL = 1   -- seconds between position checks
-local FLUSH_SAMPLES = 60    -- samples between writes of the open segment into its string
-local TELEPORT_DIST = 300   -- yards; a bigger jump between two samples is a teleport
+local SAMPLE_INTERVAL = 0.25    -- seconds between position checks
+local FLUSH_SAMPLES = 240       -- samples between writes of the open segment into its string (a minute)
+local STALE_SECONDS = 5         -- no sample for this long means the sampler has stopped
+local TELEPORT_DIST = 300       -- yards; a bigger jump between two samples is a teleport
 
 -- Modes: w = on foot or mounted, t = flight path, g = ghost (corpse run).
--- Yards moved before another point is stored, per mode.
-local MIN_STEP = { w = 15, g = 15, t = 60 }
+-- A point is stored once the player is MAX_STEP yards from the last one, or
+-- sooner where the path bends (#57): when the straight line from the last
+-- point to here passes more than BEND yards from a position checked on the
+-- way, the position before this one is stored, if it is at least MIN_STEP
+-- from the last point, so standing still or fighting in place adds nothing.
+-- Straight runs cost what they always did; circling a tree keeps its shape.
+-- Flights follow fixed routes and have no bend check. The steps are what a
+-- sample a second at 15 and 60 yards gave in practice, overshoot included.
+local MAX_STEP = { w = 20, g = 20, t = 75 }
+local MIN_STEP = { w = 3, g = 3 }
+local BEND = { w = 2, g = 2 }
+local MAX_HELD = 120            -- positions held for the bend check (30 seconds)
 
 -- Spells that move the player, for seg.j.
 local HEARTH_SPELLS = { [8690] = true, [556] = true }  -- Hearthstone, Astral Recall
@@ -39,7 +50,8 @@ local PENDING_SECONDS = 60  -- a cast or login explains a jump within this long
 -- jump is a teleport.
 local INSTANCE_DOOR = 150
 
-local current           -- open segment: { seg, buf, mode, c, x, y, t }
+local current           -- open segment: { seg, buf, mode, c, x, y, t, n, hx, hy, ht }
+                        -- (x, y, t: the last stored point; n positions since, in hx, hy, ht)
 local prev              -- previous sample, stored or not
 local lastKnown = {}    -- last outdoor position, used to place indoor events
 local ticker
@@ -60,6 +72,20 @@ end
 local function Dist(x1, y1, x2, y2)
     local dx, dy = x2 - x1, y2 - y1
     return math.sqrt(dx * dx + dy * dy)
+end
+
+-- Squared distance from px, py to the line from ax, ay to bx, by. To the
+-- line between the ends, not beyond them, so going back on oneself counts
+-- as a bend.
+local function OffLineSq(px, py, ax, ay, bx, by)
+    local dx, dy = bx - ax, by - ay
+    local lengthSq = dx * dx + dy * dy
+    local u = 0
+    if lengthSq > 0 then
+        u = math.max(0, math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq))
+    end
+    local ex, ey = ax + u * dx - px, ay + u * dy - py
+    return ex * ex + ey * ey
 end
 
 -- Returns continentID, worldX, worldY, uiMapID, or nil when the client
@@ -130,7 +156,51 @@ end
 local function OpenSegment(mode, c, x, y, t, reason)
     local seg = { m = mode, c = c, t = t, x = x, y = y, d = "", j = reason }
     table.insert(ns.char.segments, seg)
-    current = { seg = seg, buf = {}, mode = mode, c = c, x = x, y = y, t = t }
+    current = { seg = seg, buf = {}, mode = mode, c = c, x = x, y = y, t = t, n = 0, hx = {}, hy = {}, ht = {} }
+end
+
+-- Stores x, y at time t as the open segment's next point.
+local function Store(x, y, t)
+    local dist = Dist(current.x, current.y, x, y)
+    table.insert(current.buf, (t - current.t) .. "," .. (x - current.x) .. "," .. (y - current.y))
+    current.x, current.y, current.t, current.n = x, y, t, 0
+    Recorder.stored = Recorder.stored + 1
+
+    local totals = ns.char.totals
+    if current.mode == "t" then
+        totals.flown = totals.flown + dist
+    else
+        totals.distance = totals.distance + dist
+    end
+end
+
+-- True if the line from the last stored point to x, y passes more than
+-- limit yards from any position held since.
+local function Bent(x, y, limit)
+    local limitSq = limit * limit
+    local ax, ay, hx, hy = current.x, current.y, current.hx, current.hy
+    for i = 1, current.n do
+        if OffLineSq(hx[i], hy[i], ax, ay, x, y) > limitSq then
+            return true
+        end
+    end
+    return false
+end
+
+-- Holds a position not stored, for the bend check. Standing still holds
+-- nothing new; a full hold stores its last position, or drops them all
+-- when the player has stayed near the last point.
+local function Hold(x, y, t, mode)
+    local n = current.n
+    if n > 0 and current.hx[n] == x and current.hy[n] == y then return end
+    if n >= MAX_HELD then
+        if Dist(current.x, current.y, current.hx[n], current.hy[n]) >= MIN_STEP[mode] then
+            Store(current.hx[n], current.hy[n], current.ht[n])
+        end
+        n = 0
+    end
+    n = n + 1
+    current.hx[n], current.hy[n], current.ht[n], current.n = x, y, t, n
 end
 
 local function Sample()
@@ -178,18 +248,15 @@ local function Sample()
         return
     end
 
-    local dist = Dist(current.x, current.y, x, y)
-    if dist < MIN_STEP[mode] then return end
-
-    table.insert(current.buf, (t - current.t) .. "," .. (x - current.x) .. "," .. (y - current.y))
-    current.x, current.y, current.t = x, y, t
-    Recorder.stored = Recorder.stored + 1
-
-    local totals = ns.char.totals
-    if mode == "t" then
-        totals.flown = totals.flown + dist
-    else
-        totals.distance = totals.distance + dist
+    local bend, n = BEND[mode], current.n
+    if bend and n > 0 and Bent(x, y, bend)
+        and Dist(current.x, current.y, current.hx[n], current.hy[n]) >= MIN_STEP[mode] then
+        Store(current.hx[n], current.hy[n], current.ht[n])
+    end
+    if Dist(current.x, current.y, x, y) >= MAX_STEP[mode] then
+        Store(x, y, t)
+    elseif bend then
+        Hold(x, y, t, mode)
     end
 end
 
@@ -306,7 +373,7 @@ end
 
 -- Restarts the sampler if it has stopped. Returns true if it had to.
 function Recorder:EnsureRunning()
-    local stale = not self.lastSample or GetTime() - self.lastSample > SAMPLE_INTERVAL * 5
+    local stale = not self.lastSample or GetTime() - self.lastSample > STALE_SECONDS
     if ticker and not ticker:IsCancelled() and not stale then
         return false
     end
