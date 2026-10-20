@@ -21,7 +21,7 @@ const CLASSES: Record<RowData["cls"], { name: string; icon: string }> = {
 export function DemoCharacters({ demo, still, shown }: { demo: Demo; still: boolean; shown: boolean }) {
   const line = still ? "Synced 2 min ago" : demo.syncing ? "Syncing…" : "Synced just now";
   return (
-    <main
+    <div
       className={`absolute inset-0 flex flex-col transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${shown ? "" : "translate-x-6 opacity-0"}`}
     >
       <div className="flex items-center gap-2.5 px-5 py-3.5">
@@ -51,10 +51,10 @@ export function DemoCharacters({ demo, still, shown }: { demo: Demo; still: bool
           <Row key={r.name} row={r} arrive={!still} />
         ))}
       </ul>
-      <footer className="flex shrink-0 gap-2 border-t border-line-soft px-4 py-3">
+      <div className="flex shrink-0 gap-2 border-t border-line-soft px-4 py-3">
         <Button tabIndex={-1}>Pause syncing</Button>
-      </footer>
-    </main>
+      </div>
+    </div>
   );
 }
 

@@ -23,7 +23,7 @@ const cream = (pressed: boolean) =>
 export function DemoSetup({ demo, still, shown, pressed, buttons }: { demo: Demo; still: boolean; shown: boolean; pressed: Target | null; buttons: Buttons }) {
   const [one, two, three] = demo.steps;
   return (
-    <main
+    <div
       className={`absolute inset-0 flex flex-col transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${shown ? "" : "-translate-x-6 opacity-0"}`}
     >
       <Header />
@@ -93,25 +93,25 @@ export function DemoSetup({ demo, still, shown, pressed, buttons }: { demo: Demo
         </Step>
       </ol>
 
-      <footer className="flex shrink-0 items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px] max-[379px]:px-5 max-[379px]:py-3">
+      <div className="flex shrink-0 items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px] max-[379px]:px-5 max-[379px]:py-3">
         <span className="text-[#c9c4d6]">Add a game folder…</span>
         <span className="text-faint">Free · works offline</span>
-      </footer>
-    </main>
+      </div>
+    </div>
   );
 }
 
 // The fog is the heaviest part of the screen and never changes.
 const Header = memo(function Header() {
   return (
-    <header className="relative shrink-0 overflow-hidden border-b border-line-soft px-6 pb-5 pt-6 max-[379px]:px-5 max-[379px]:pb-4 max-[379px]:pt-4">
+    <div className="relative shrink-0 overflow-hidden border-b border-line-soft px-6 pb-5 pt-6 max-[379px]:px-5 max-[379px]:pb-4 max-[379px]:pt-4">
       <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
         <Fog width={400} height={180} step={14} roads={ROADS} marks={MARKS} />
       </div>
       <img src={compass.src} alt="" width={48} height={48} className="relative size-12 rounded-[10px] max-[379px]:size-10" />
-      <h1 className="relative mt-3.5 text-xl max-[379px]:mt-2.5 font-medium tracking-tight">Set up Road to Sixty</h1>
+      <div className="relative mt-3.5 text-xl max-[379px]:mt-2.5 font-medium tracking-tight">Set up Road to Sixty</div>
       <p className="relative mt-1 text-sm text-muted">Three steps, once. After that it runs by itself.</p>
-    </header>
+    </div>
   );
 });
 
