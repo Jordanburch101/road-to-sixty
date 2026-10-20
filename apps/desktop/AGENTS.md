@@ -95,13 +95,13 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   `status` event); `FirstRun.tsx` (with the PC's name), `Characters.tsx`,
   `History.tsx` and `Account.tsx` are the screens, after the mockups'
   A-Characters-2, A-History and A-Account (#39). `format.ts` works out
-  every word and number they show and is tested (`bun test src`);
-  The class icons are in `packages/ui`
-  (`@road-to-sixty/ui/classes`), cut from the game's art by
-  `scripts/class-icons.py`, with the class names and colours
-  (`classColours`, which `format.ts` passes on as `CLASSES`) and the first
-  run's fog road (`roads`), which the website's demo shares. `packages/ui/theme.css` gives every scrolling
-  list a thin dark scroll bar (#41).
+  every word and number they show and is tested (`bun test src`). The
+  class icons are in `packages/ui` (`@road-to-sixty/ui/classes`), cut
+  from the game's art by `scripts/class-icons.py`. The class names and
+  colours (`classColours`, which `format.ts` passes on as `CLASSES`) and
+  the first run's fog road (`roads`) are there too, shared with the
+  website's demo. `packages/ui/theme.css` gives every scrolling list a
+  thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`
   tags), which uploads the builds (the Mac app, the Windows installer and, from
