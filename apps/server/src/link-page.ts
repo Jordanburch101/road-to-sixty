@@ -41,9 +41,21 @@ function drawFog() {
   for (const [x, y, at] of lit) dot(x, y, 1.8, "rgba(58,160,255,0.85)", at);
 }
 
+// A request that never reaches the server comes back as status 0 rather
+// than throwing, so a dropped connection doesn't leave Link dead.
 async function call(path: string, body?: object) {
-  const r = await fetch(`/api/auth${path}`, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
-  return { ok: r.ok, data: await r.json().catch(() => null) };
+  const r = await fetch(`/api/auth${path}`, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}).catch(() => null);
+  if (!r) return { ok: false, status: 0, data: null };
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
+}
+type Answer = Awaited<ReturnType<typeof call>>;
+
+// Better Auth's own words for a rate limit don't say how long to wait.
+// Every limit this page meets clears within a minute.
+function failed(r: Answer): string {
+  if (r.status === 429) return "Too many tries from this network. Wait a minute, then try again.";
+  if (r.status === 0) return "That didn't work: the server couldn't be reached. Try again.";
+  return `That didn't work: ${r.data?.message ?? "check the code and try again"}`;
 }
 
 // The name the app sent with its code, if it sent one (app 0.1.1 doesn't).
@@ -77,30 +89,39 @@ if (!signedIn) {
   $("who").textContent = `Signed in as ${signedIn.user.name}`;
   $("form").hidden = false;
   let looked = "";
+  let lookup: Promise<Answer> | undefined;
   // Looking the code up ties it to this player; only then is the PC's name
-  // shown, and only then can they approve it.
-  $("code").oninput = async () => {
-    const code = typed();
-    if (code.length < 8 || code === looked) return;
+  // shown, and only then can they approve it. Lookups are rate limited per
+  // network, so Link reuses the one made as the code came in.
+  const lookUp = (code: string) => {
     looked = code;
-    const found = await call(`/device?user_code=${encodeURIComponent(code)}`);
-    const name = found.ok ? pcOf(found.data?.scope) : null;
-    $("pc").hidden = !found.ok;
-    $("pc-name").textContent = name ?? "a PC";
-    $("link").textContent = name ? `Link ${name.split(" · ")[0]}` : "Link";
+    lookup = call(`/device?user_code=${encodeURIComponent(code)}`).then((found) => {
+      // A slow answer for a code since replaced must not show its PC.
+      if (code !== looked) return found;
+      const name = found.ok ? pcOf(found.data?.scope) : null;
+      $("pc").hidden = !found.ok;
+      $("pc-name").textContent = name ?? "a PC";
+      $("link").textContent = name ? `Link ${name.split(" · ")[0]}` : "Link";
+      $("result").textContent = found.status === 429 || found.status === 0 ? failed(found) : "";
+      return found;
+    });
+    return lookup;
+  };
+  $("code").oninput = () => {
+    const code = typed();
+    if (code.length >= 8 && code !== looked) void lookUp(code);
   };
   const given = new URLSearchParams(location.search).get("user_code");
   if (given) {
     ($("code") as HTMLInputElement).value = given;
-    void ($("code").oninput as () => Promise<void>)();
+    $("code").dispatchEvent(new Event("input"));
   }
   $("form").onsubmit = async (e) => {
     e.preventDefault();
     const userCode = typed();
-    const found = await call(`/device?user_code=${encodeURIComponent(userCode)}`);
+    let found = userCode === looked ? await lookup : undefined;
+    if (!found?.ok) found = await lookUp(userCode);
     const r = found.ok ? await call("/device/approve", { userCode }) : found;
-    $("result").textContent = r.ok
-      ? "Linked. You can close this page; the app takes it from here."
-      : `That didn't work: ${r.data?.message ?? "check the code and try again"}`;
+    $("result").textContent = r.ok ? "Linked. You can close this page; the app takes it from here." : failed(r);
   };
 }
