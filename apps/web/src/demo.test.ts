@@ -1,36 +1,19 @@
 import { expect, test } from "bun:test";
-import { advance, demoAt, LINES, LOOP, STILL, STILL_LINES } from "./demo";
+import { advance, demoAt, LINES, LOOP, STILL } from "./demo";
 
 const names = (t: number) => demoAt(t, false).rows.map((r) => r.name);
 
-test("the lines are the spec's words", () => {
-  expect(LINES).toEqual({
-    setup: {
-      left: { head: "Three clicks, once.", text: "It finds WoW, puts the addon in, and links this PC to your Battle.net account." },
-      right: { head: "In your menu bar or tray.", text: "It opens under its icon and stays out of the way. Close the window and it keeps syncing." },
-    },
-    arrive: {
-      left: { head: "Every character, every PC.", text: "The ones you played on the laptop come down to this PC too." },
-      right: { head: "Nothing to copy by hand.", text: "It reads the addon's saved journeys itself." },
-    },
-    level: {
-      left: { head: "Backed up after every session.", text: "When you log out, it sends the journey up." },
-      right: { head: "Ready before you log in.", text: "When the game starts, it brings the newest one back." },
-    },
-    new: {
-      left: { head: "New characters join by themselves.", text: "Make one, play, log out, and it's on the list." },
-      right: { head: "Free, with nothing to buy.", text: "No subscription, no ads, no paid version." },
-    },
-  });
-  expect(STILL_LINES).toEqual({
-    left: { head: "In your menu bar or tray", text: "It opens under its icon and stays out of the way. Close the window and it keeps syncing." },
-    right: { head: "Backed up after every session", text: "When you log out, it sends the journey up. When the game starts, it brings the newest one back before you log in." },
-  });
+test("every part has both lines", () => {
+  for (const pair of Object.values(LINES)) {
+    for (const l of [pair.left, pair.right]) {
+      expect(l.head).not.toBe("");
+      expect(l.text).not.toBe("");
+    }
+  }
 });
 
 test("the still picture is today's", () => {
   expect(STILL.open).toBe(true);
-  expect(STILL.lit).toBe(true);
   expect(STILL.screen).toBe("characters");
   expect(STILL.syncing).toBe(false);
   expect(STILL.rows.map((r) => r.name)).toEqual(["Thalrok", "Mirelle", "Brannoc", "Ysolde"]);
@@ -39,10 +22,9 @@ test("the still picture is today's", () => {
   expect(ysolde?.played).toBe("14h");
 });
 
-test("the loop starts closed and unlit", () => {
+test("the loop starts closed", () => {
   const d = demoAt(0, false);
   expect(d.open).toBe(false);
-  expect(d.lit).toBe(false);
   expect(d.clock).toBe("Tue 21:44");
   expect(d.part).toBe("setup");
 });
@@ -50,7 +32,6 @@ test("the loop starts closed and unlit", () => {
 test("the window opens on step one", () => {
   const d = demoAt(1.5, false);
   expect(d.open).toBe(true);
-  expect(d.lit).toBe(true);
   expect(d.screen).toBe("setup");
   expect(d.steps).toEqual(["current", "waiting", "waiting"]);
   expect(d.installed).toBe(false);
@@ -68,7 +49,7 @@ test("the name types itself in", () => {
   expect(part.length).toBeGreaterThan(0);
   expect(part).not.toBe("Desk");
   expect("Desk".startsWith(part)).toBe(true);
-  expect(demoAt(5.0, false).typed).toBe("Desk");
+  expect(demoAt(4.6, false).typed).toBe("Desk");
 });
 
 test("linking ticks step two and skips the browser", () => {

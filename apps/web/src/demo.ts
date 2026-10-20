@@ -6,12 +6,11 @@
 export type Part = "setup" | "arrive" | "level" | "new";
 export type Line = { head: string; text: string };
 export type Target = "icon" | "install" | "link" | "done";
-export type Row = { name: string; cls: "WARRIOR" | "HUNTER" | "PALADIN" | "MAGE"; colour: string; level: number; played: string; line: string; glow: boolean };
+export type Row = { name: string; cls: "WARRIOR" | "HUNTER" | "PALADIN" | "MAGE"; level: number; played: string; line: string; glow: boolean };
 export type Step = "waiting" | "current" | "done";
 export type Demo = {
   part: Part;
-  open: boolean; // the window is showing
-  lit: boolean; // the menu bar icon is lit
+  open: boolean; // the window is showing, and the menu bar icon is lit
   clock: string; // "Tue 21:44"
   screen: "setup" | "characters";
   steps: [Step, Step, Step];
@@ -50,22 +49,14 @@ export const STILL_LINES = {
   right: { head: "Backed up after every session", text: "When you log out, it sends the journey up. When the game starts, it brings the newest one back before you log in." },
 };
 
-const COLOURS = { WARRIOR: "#c69b6d", HUNTER: "#aad372", PALADIN: "#f48cba", MAGE: "#3fc7eb" };
+const row = (name: string, cls: Row["cls"], level: number, played: string, line: string): Row => ({ name, cls, level, played, line, glow: false });
 
-const row = (name: string, cls: Row["cls"], level: number, played: string, line: string): Row => ({
-  name,
-  cls,
-  colour: COLOURS[cls],
-  level,
-  played,
-  line,
-  glow: false,
-});
+const MIRELLE = row("Mirelle", "HUNTER", 27, "3d 11h", "Classic PvE · Laptop, yesterday");
+const BRANNOC = row("Brannoc", "PALADIN", 60, "18d 2h", "Classic PvE · Laptop, yesterday");
 
 export const STILL: Demo = {
   part: "setup",
   open: true,
-  lit: true,
   clock: "Tue 21:44",
   screen: "characters",
   steps: ["done", "done", "done"],
@@ -77,15 +68,15 @@ export const STILL: Demo = {
   pulse: 0,
   rows: [
     row("Thalrok", "WARRIOR", 42, "9d 4h", "Classic PvE · Desk, 2 min ago"),
-    row("Mirelle", "HUNTER", 27, "3d 11h", "Classic PvE · Laptop, yesterday"),
-    row("Brannoc", "PALADIN", 60, "18d 2h", "Classic PvE · Laptop, yesterday"),
+    MIRELLE,
+    BRANNOC,
     row("Ysolde", "MAGE", 12, "14h", "Classic PvE · Desk, 3 days ago"),
   ],
 };
 
 const NAME = "Desk";
-const TYPING_START = 4.0;
-const TYPING_STEP = 0.2;
+// When each letter of the name is typed.
+const KEYS = [4.0, 4.2, 4.4, 4.6];
 const CLICK_DOWN = 0.12;
 
 // When the cursor starts gliding to each button; it clicks 0.6 s later.
@@ -103,7 +94,6 @@ export function demoAt(time: number, phone: boolean): Demo {
   const d: Demo = {
     part: "setup",
     open: false,
-    lit: false,
     clock: "Tue 21:44",
     screen: "setup",
     steps: ["current", "waiting", "waiting"],
@@ -116,20 +106,13 @@ export function demoAt(time: number, phone: boolean): Demo {
     rows: [],
   };
 
-  if (t >= 1.0) {
-    d.open = true;
-    d.lit = true;
-  }
+  if (t >= 1.0) d.open = true;
   if (t >= 2.8) {
     d.installed = true;
     d.steps = ["done", "waiting", "waiting"];
   }
   if (t >= 3.8) d.steps = ["done", "current", "waiting"];
-  if (t >= TYPING_START) {
-    // Floating-point error makes (4.6 - 4.0) / 0.2 come out just under 3, which would show "Des" at 4.6.
-    const letters = Math.floor((t - TYPING_START) / TYPING_STEP + 1e-9) + 1;
-    d.typed = NAME.slice(0, letters);
-  }
+  d.typed = NAME.slice(0, KEYS.filter((k) => t >= k).length);
   if (t >= 6.0) {
     d.linked = true;
     d.steps = ["done", "done", "waiting"];
@@ -141,8 +124,8 @@ export function demoAt(time: number, phone: boolean): Demo {
     d.syncing = true;
   }
   if (t >= 9.2) d.rows.push(thalrok);
-  if (t >= 9.7) d.rows.push(row("Mirelle", "HUNTER", 27, "3d 11h", "Classic PvE · Laptop, yesterday"));
-  if (t >= 10.2) d.rows.push(row("Brannoc", "PALADIN", 60, "18d 2h", "Classic PvE · Laptop, yesterday"));
+  if (t >= 9.7) d.rows.push(MIRELLE);
+  if (t >= 10.2) d.rows.push(BRANNOC);
   if (t >= 11.0) {
     d.syncing = false;
     d.pulse = 1;
@@ -176,10 +159,7 @@ export function demoAt(time: number, phone: boolean): Demo {
     d.syncing = false;
     d.pulse = 3;
   }
-  if (t >= 22.0) {
-    d.open = false;
-    d.lit = false;
-  }
+  if (t >= 22.0) d.open = false;
   if (t >= 22.5) d.clock = "Tue 21:44";
 
   for (const [start, at] of GLIDES) {

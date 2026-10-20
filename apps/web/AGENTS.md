@@ -14,10 +14,10 @@ Static pages built by Astro, hosted on Vercel. The design is
 - `src/components/` are the home page's sections and the header, footer
   and download button. `src/layouts/Layout.astro` wraps every page.
 - `src/download.ts` picks the download for the visitor's computer, and
-  `src/countdown.ts` runs the flip board counting down to launch. With the
-  app demo's island, those are the only scripts the site sends, besides the
-  two short ones in `Layout.astro` for the load-in animation
-  (`src/styles/reveal.css`). `src/config.ts` reads the build settings.
+  `src/countdown.ts` runs the flip board counting down to launch. The site
+  sends those two, the app demo's island and the two short scripts in
+  `Layout.astro` for the load-in animation (`src/styles/reveal.css`), and
+  nothing else. `src/config.ts` reads the build settings.
 - `src/demo.ts` is the app demo's story: what is on screen at each moment
   of the loop, as a plain function of time (tested in `src/demo.test.ts`).
   `AppDemo.tsx` plays it and is the one island. `DemoSetup.tsx` and
@@ -25,8 +25,9 @@ Static pages built by Astro, hosted on Vercel. The design is
   holds the moving pieces they share: crossfades, rolling numbers and
   folding steps. The keyframes are in `src/styles/site.css`. The cursor art
   is in `src/assets/demo/`.
-- `src/roads.ts` holds the fog's roads. The fog itself and the theme come
-  from `packages/ui`.
+- `src/roads.ts` holds the fog's roads. The fog itself, the theme, the
+  setup header's road and the class names and colours come from
+  `packages/ui`.
 - `src/assets/journey/` holds the in-game screenshots of the journey map,
   at 2000 px. The build makes AVIF, WebP and JPEG copies at 1040 and 2000
   px with sharp (Astro's `<Picture>`), so keep only the full-size originals.

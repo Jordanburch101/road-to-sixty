@@ -3,8 +3,8 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
 import { advance, demoAt, LINES, LOOP, STILL, STILL_LINES, type Demo, type Line } from "../demo";
 import { DemoCharacters } from "./DemoCharacters";
-import { DemoSetup, type Buttons } from "./DemoSetup";
-import { Roll, useChange } from "./DemoMotion";
+import { DemoSetup } from "./DemoSetup";
+import { Roll, Swap, useChange } from "./DemoMotion";
 
 // The home page's app demo (docs/superpowers/specs/2026-10-20-app-demo-design.md):
 // the still picture in the page's HTML, then, once half of it is on screen, the
@@ -13,25 +13,20 @@ import { Roll, useChange } from "./DemoMotion";
 const STORY =
   "The Road to Sixty app opening under its menu bar icon. It sets itself up in three clicks: it installs the addon, links this PC, and asks you to restart WoW once. Then its list fills with your characters from every PC, one levels up after a session, and a new character joins, each backed up as it changes.";
 
-// The still picture's rows close with the window before the loop's first turn.
-const CLOSING: Demo = { ...STILL, open: false, lit: false };
+// The loop starts a second early, while the still picture's rows close with the window.
+const CLOSING: Demo = { ...STILL, open: false };
 
-const view = (t: number | null, wrapped: boolean, phone: boolean) => (t === null ? STILL : wrapped ? demoAt(t, phone) : CLOSING);
-
-// The game's own pointer; its click point is the fingertip at its top left.
-const CURSOR = { src: gauntlet.src, width: 26.5, height: 24, x: 0, y: 0 };
+const view = (t: number, phone: boolean) => (t < 0 ? CLOSING : demoAt(t, phone));
 
 export function AppDemo() {
-  const [t, setT] = useState<number | null>(null);
-  const [wrapped, setWrapped] = useState(false);
-  const [phone, setPhone] = useState(false);
+  // t is null until the loop starts.
+  const [{ t, demo }, setNow] = useState<{ t: number | null; demo: Demo }>({ t: null, demo: STILL });
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
     const narrow = matchMedia("(max-width: 767px)");
     let time = 0;
-    let wrap = false;
     let started = false;
     let seen = false;
     let frame = 0;
@@ -40,19 +35,16 @@ export function AppDemo() {
 
     // React hears about a frame only when what it shows changes.
     const show = () => {
-      const now = JSON.stringify(view(time, wrap, narrow.matches));
+      const d = view(time, narrow.matches);
+      const now = JSON.stringify(d);
       if (now === shown) return;
       shown = now;
-      setT(time);
-      setWrapped(wrap);
+      setNow({ t: time, demo: d });
     };
     const tick = (now: number) => {
       time = advance(time, last ? now - last : 0);
       last = now;
-      if (time >= LOOP) {
-        time %= LOOP;
-        wrap = true;
-      }
+      if (time >= LOOP) time -= LOOP;
       show();
       frame = requestAnimationFrame(tick);
     };
@@ -61,8 +53,7 @@ export function AppDemo() {
       if (go && !frame) {
         if (!started) {
           started = true;
-          time = LOOP - 1;
-          wrap = false;
+          time = -1;
         }
         last = 0;
         frame = requestAnimationFrame(tick);
@@ -75,12 +66,10 @@ export function AppDemo() {
       if (reduce.matches) {
         started = false;
         shown = "";
-        setT(null);
-        setWrapped(false);
+        setNow({ t: null, demo: STILL });
       }
       run();
     };
-    const onNarrow = () => setPhone(narrow.matches);
     const seeing = new IntersectionObserver(
       ([e]) => {
         seen = e!.intersectionRatio >= 0.5;
@@ -89,34 +78,28 @@ export function AppDemo() {
       { threshold: 0.5 },
     );
 
-    onNarrow();
     seeing.observe(root.current!);
     reduce.addEventListener("change", onReduce);
-    narrow.addEventListener("change", onNarrow);
     document.addEventListener("visibilitychange", run);
     return () => {
       seeing.disconnect();
       reduce.removeEventListener("change", onReduce);
-      narrow.removeEventListener("change", onNarrow);
       document.removeEventListener("visibilitychange", run);
       cancelAnimationFrame(frame);
     };
   }, []);
 
-  const demo = view(t, wrapped, phone);
-  const still = t === null || !wrapped;
+  const still = t === null || t < 0;
   const lines = t === null ? STILL_LINES : LINES[demo.part];
   const pressed = demo.cursor.down ? demo.cursor.at : null;
 
-  const icon = useRef<HTMLSpanElement>(null);
   const win = useRef<HTMLDivElement>(null);
-  const buttons: Buttons = { install: useRef(null), link: useRef(null), done: useRef(null) };
   const [spot, setSpot] = useState<{ x: number; y: number } | null>(null);
   const { at, shown } = demo.cursor;
   useLayoutEffect(() => {
     const place = () => {
       const r = root.current!.getBoundingClientRect();
-      const target = at === "icon" ? icon.current : buttons[at].current;
+      const target = root.current!.querySelector(`[data-target="${at}"]`);
       if (shown && target) {
         const b = target.getBoundingClientRect();
         setSpot({ x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top });
@@ -129,7 +112,7 @@ export function AppDemo() {
     place();
     addEventListener("resize", place);
     return () => removeEventListener("resize", place);
-  }, [at, shown, phone]);
+  }, [at, shown]);
 
   return (
     <div ref={root} className="demo relative grid w-full grid-cols-1 items-start gap-8 md:grid-cols-[1fr_400px_1fr] md:gap-12">
@@ -142,8 +125,8 @@ export function AppDemo() {
         >
           <span className="h-2.5 w-3.5 rounded-sm border border-faint" />
           <span
-            ref={icon}
-            className={`flex size-[22px] items-center justify-center rounded-[5px] transition-[background-color,scale,filter] duration-200 ${demo.lit ? "bg-accent/20" : ""} ${pressed === "icon" ? "scale-90 brightness-90" : ""}`}
+            data-target="icon"
+            className={`flex size-[22px] items-center justify-center rounded-[5px] transition-[background-color,scale,filter] duration-200 ${demo.open ? "bg-accent/20" : ""} ${pressed === "icon" ? "scale-90 brightness-90" : ""}`}
           >
             <img src={compass.src} alt="" width={15} height={15} className="size-[15px] rounded-[3px]" />
           </span>
@@ -155,7 +138,7 @@ export function AppDemo() {
           aria-hidden="true"
           className={`relative h-[640px] w-full max-w-[400px] overflow-hidden rounded-xl border border-[#24212c] bg-ground text-left shadow-[0_30px_90px_rgba(0,0,0,0.6),0_-10px_60px_rgba(58,160,255,0.08)] transition-[opacity,scale] duration-[350ms] ease-out md:ml-[38px] md:mt-2 md:w-[400px] md:origin-[332px_-22px] ${demo.open ? "" : "opacity-0 md:scale-[0.96]"}`}
         >
-          <DemoSetup demo={demo} still={still} shown={demo.screen === "setup"} pressed={pressed} buttons={buttons} />
+          <DemoSetup demo={demo} shown={demo.screen === "setup"} pressed={pressed} />
           <DemoCharacters demo={demo} still={still} shown={demo.screen === "characters"} />
         </div>
       </div>
@@ -173,7 +156,7 @@ export function AppDemo() {
         ))}
       </div>
 
-      <Cursor art={CURSOR} spot={spot} shown={shown} down={demo.cursor.down} />
+      <Cursor spot={spot} shown={shown} down={demo.cursor.down} />
     </div>
   );
 }
@@ -205,27 +188,23 @@ function Lines({ side, now, className }: { side: "left" | "right"; now: Line; cl
 // Rolls forward while the window is open; the jump back to the loop's start
 // happens while it is closed, and fades instead of rolling backwards.
 function Clock({ text, roll }: { text: string; roll: boolean }) {
-  const [s, setS] = useState({ text, fades: 0, was: null as string | null });
-  let now = s;
-  if (text !== s.text) {
-    now = roll ? { ...s, text } : { text, fades: s.fades + 1, was: s.text };
-    setS(now);
-  }
+  const time = <Roll text={text} />;
   return (
-    <span className="relative inline-block w-[58px] text-right tabular-nums">
-      {now.was !== null && (
-        <span key={`was${now.fades}`} className="demo-out absolute inset-0">
-          {now.was}
-        </span>
+    <span className="inline-block w-[58px] text-right tabular-nums">
+      {roll ? (
+        time
+      ) : (
+        <Swap className="block" enter="demo-in-late" text={text}>
+          {time}
+        </Swap>
       )}
-      <span key={`now${now.fades}`} className={`inline-block ${now.fades ? "demo-in-late" : ""}`}>
-        <Roll text={now.text} />
-      </span>
     </span>
   );
 }
 
-function Cursor({ art, spot, shown, down }: { art: typeof CURSOR; spot: { x: number; y: number } | null; shown: boolean; down: boolean }) {
+// The game's own pointer. Its click point is the fingertip at its top left,
+// so the press shrinks towards it.
+function Cursor({ spot, shown, down }: { spot: { x: number; y: number } | null; shown: boolean; down: boolean }) {
   // Counts presses, so each one gets its own ring.
   const presses = Math.ceil(useChange(down).n / 2);
   return (
@@ -239,12 +218,11 @@ function Cursor({ art, spot, shown, down }: { art: typeof CURSOR; spot: { x: num
     >
       <span key={presses} className={`absolute -left-3.5 -top-3.5 size-7 rounded-full border border-white/70 ${presses ? "demo-click" : "opacity-0"}`} />
       <img
-        src={art.src}
+        src={gauntlet.src}
         alt=""
-        width={art.width}
-        height={art.height}
-        className={`block max-w-none transition-[scale] duration-100 ${down ? "scale-90" : ""}`}
-        style={{ width: art.width, height: art.height, translate: `${-art.x}px ${-art.y}px`, transformOrigin: `${art.x}px ${art.y}px` }}
+        width={26.5}
+        height={24}
+        className={`block h-6 w-[26.5px] max-w-none origin-top-left transition-[scale] duration-100 ${down ? "scale-90" : ""}`}
       />
     </div>
   );

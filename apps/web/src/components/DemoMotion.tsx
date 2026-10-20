@@ -14,38 +14,24 @@ export function useChange<T>(value: T) {
 }
 
 // Text that fades from one wording to the next. The old copy is taken out of
-// the flow, so the new one decides the size.
-export function Swap({ text, className = "" }: { text: string; className?: string }) {
+// the flow, so the new one decides the size; with fit, the box grows or
+// shrinks to it instead of jumping. children, when given, draw the new copy.
+export function Swap({ text, className = "", enter = "demo-in", fit = false, children }: { text: string; className?: string; enter?: string; fit?: boolean; children?: ReactNode }) {
   const s = useChange(text);
+  const now = useRef<HTMLSpanElement>(null);
+  const [width, setWidth] = useState<number>();
+  useLayoutEffect(() => {
+    if (fit) setWidth(now.current!.getBoundingClientRect().width);
+  }, [text, fit]);
   return (
-    <span className={`relative ${className}`}>
+    <span className={`relative ${className}`} style={fit && s.n ? { width } : undefined}>
       {s.was !== null && (
         <span key={`was${s.n}`} className="demo-out absolute inset-x-0 top-0">
           {s.was}
         </span>
       )}
-      <span key={`now${s.n}`} className={`inline-block ${s.n ? "demo-in" : ""}`}>
-        {text}
-      </span>
-    </span>
-  );
-}
-
-// Like Swap, but the box grows or shrinks to the new text instead of jumping.
-export function FitSwap({ text }: { text: string }) {
-  const s = useChange(text);
-  const now = useRef<HTMLSpanElement>(null);
-  const [width, setWidth] = useState<number>();
-  useLayoutEffect(() => setWidth(now.current!.getBoundingClientRect().width), [text]);
-  return (
-    <span className="relative block overflow-hidden whitespace-nowrap transition-[width] duration-300 ease-out" style={{ width: s.n ? width : undefined }}>
-      {s.was !== null && (
-        <span key={`was${s.n}`} className="demo-out absolute left-0 top-0">
-          {s.was}
-        </span>
-      )}
-      <span ref={now} key={`now${s.n}`} className={`inline-block ${s.n ? "demo-in" : ""}`}>
-        {text}
+      <span ref={now} key={`now${s.n}`} className={`inline-block ${s.n ? enter : ""}`}>
+        {children ?? text}
       </span>
     </span>
   );
