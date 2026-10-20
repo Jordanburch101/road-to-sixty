@@ -1,4 +1,3 @@
-import { Button } from "@road-to-sixty/ui/Button";
 import compass from "@road-to-sixty/ui/compass.png";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
@@ -9,9 +8,8 @@ import { Roll, Swap, useChange } from "./DemoMotion";
 
 // The home page's app demo (docs/superpowers/specs/2026-10-20-app-demo-design.md):
 // the still picture in the page's HTML, then, once half of it (or half the
-// screen, on short screens) is in view, the story from demo.ts on a loop, with
-// a button under the window to pause it. Every change moves through CSS; this
-// only keeps time.
+// screen, on short screens) is in view, the story from demo.ts on a loop.
+// Every change moves through CSS; this only keeps time.
 
 const STORY = "The Road to Sixty app, shown as a short looping demo of setting it up and syncing characters.";
 
@@ -20,10 +18,8 @@ const RESTING = { t: null, demo: STILL };
 export function AppDemo() {
   // t is null until the loop starts.
   const [{ t, demo }, setNow] = useState<{ t: number | null; demo: Demo }>(RESTING);
-  // False in the page's HTML and under reduced motion, so the pause button
-  // only shows once the demo can play.
+  // False in the page's HTML and under reduced motion.
   const [motion, setMotion] = useState(false);
-  const [paused, setPaused] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,7 +31,7 @@ export function AppDemo() {
   }, []);
 
   useEffect(() => {
-    if (!motion || paused) return;
+    if (!motion) return;
     const narrow = matchMedia("(max-width: 767px)");
     let time = START;
     let first = true;
@@ -89,11 +85,11 @@ export function AppDemo() {
       seeing.disconnect();
       document.removeEventListener("visibilitychange", run);
       cancelAnimationFrame(frame);
-      // Reduced motion and a pause both go back to the still picture, and
-      // playing again slides from it to the setup screen, as on the first start.
+      // Reduced motion goes back to the still picture, and turning it off
+      // again slides from it to the setup screen, as on the first start.
       setNow(RESTING);
     };
-  }, [motion, paused]);
+  }, [motion]);
 
   const still = t === null;
   const lines = still ? STILL_LINES : LINES[demo.part];
@@ -150,14 +146,6 @@ export function AppDemo() {
             <DemoCharacters demo={demo} still={still} shown={demo.screen === "characters"} />
           </div>
         </div>
-        {/* Its room is kept while it is invisible, so nothing moves when it shows. */}
-        <Button
-          aria-label={paused ? "Play the app demo" : "Pause the app demo"}
-          onClick={() => setPaused(!paused)}
-          className={`mt-4 h-[30px] min-w-16 rounded-lg px-3! text-xs! focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:ml-[38px] ${motion ? "" : "invisible"}`}
-        >
-          {paused ? "Play" : "Pause"}
-        </Button>
       </div>
 
       <Lines side="right" now={lines.right} className="order-3 md:pt-[330px] md:text-left" />
