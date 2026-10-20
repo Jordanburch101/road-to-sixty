@@ -21,9 +21,10 @@ export function DemoCharacters({ demo, still, shown }: { demo: Demo; still: bool
       className={`absolute inset-0 flex flex-col transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${shown ? "" : "translate-x-6 opacity-0"}`}
     >
       <div className="flex items-center gap-2.5 px-5 py-3.5">
-        <img src={compass.src} alt="" width={28} height={28} className="size-7 rounded-md" />
+        {/* On screens narrower than about 350 px there is no room for it beside the title and the longest pill text. */}
+        <img src={compass.src} alt="" width={28} height={28} className="size-7 rounded-md max-[349px]:hidden" />
         <div className="flex flex-1 flex-col">
-          <div className="text-sm font-medium">Road to Sixty</div>
+          <div className="whitespace-nowrap text-sm font-medium">Road to Sixty</div>
           <div className="text-xs text-muted">Player#0000</div>
         </div>
         <div className="flex h-[26px] items-center gap-1.5 rounded-full border border-outline px-2.5 text-xs text-[#c9c4d6]">
@@ -82,7 +83,7 @@ function Row({ row, arrive }: { row: RowData; arrive: boolean }) {
                 <Roll text={row.played} />
               </span>
             </div>
-            <Swap className="block text-xs leading-[1.45] text-faint" text={row.line} />
+            <Swap className="block text-xs leading-[1.45] text-muted" text={row.line} />
           </div>
           <span className="text-base text-faint">›</span>
         </div>

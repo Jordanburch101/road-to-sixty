@@ -28,14 +28,14 @@ export function DemoSetup({ demo, shown, pressed }: { demo: Demo; shown: boolean
               <span className="text-sm font-medium">Classic</span>
               <Swap className="ml-auto whitespace-nowrap text-right text-xs text-muted" text={demo.installed ? "Addon 1.10.2" : "No addon yet"} />
             </div>
-            <div className="truncate text-[11.5px] text-faint">/Applications/World of Warcraft</div>
+            <div className="truncate text-[11.5px] text-muted">/Applications/World of Warcraft</div>
           </div>
           <Fold open={!demo.installed}>
             <div className="flex flex-col gap-2.5 pt-2.5">
               <Button data-target="install" look="cream" tabIndex={-1} className={cream(pressed === "install")}>
                 Install Road to Sixty 1.10.2
               </Button>
-              <p className="text-xs text-faint">Puts the addon in this game's AddOns folder. It keeps itself up to date after that.</p>
+              <p className="text-xs text-muted">Puts the addon in this game's AddOns folder. It keeps itself up to date after that.</p>
             </div>
           </Fold>
         </Step>
@@ -83,7 +83,7 @@ export function DemoSetup({ demo, shown, pressed }: { demo: Demo; shown: boolean
 
       <div className="flex shrink-0 items-center justify-between border-t border-line-soft px-6 py-3.5 text-[13px] max-[379px]:px-5 max-[379px]:py-3">
         <span className="text-[#c9c4d6]">Add a game folder…</span>
-        <span className="text-faint">Free · works offline</span>
+        <span className="text-muted">Free · works offline</span>
       </div>
     </div>
   );

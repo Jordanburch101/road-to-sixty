@@ -51,7 +51,11 @@ bun run build
   animation is CSS, still under reduced motion.
 - The demo copies the app's `FirstRun.tsx` and `Characters.tsx` by hand.
   When the look of either screen changes, make the same change in
-  `DemoSetup.tsx` and `DemoCharacters.tsx`.
+  `DemoSetup.tsx` and `DemoCharacters.tsx`. One difference is on purpose:
+  where the app uses `text-faint` for text meant to be read (the line
+  under a character, a folder's path, notes), the site uses `text-muted`,
+  which is easier to read on the page. Dimmed parts such as waiting step
+  numbers stay `text-faint`.
 - Content rises into place as it reaches the screen: each child of a
   `[data-reveal]` element that isn't `[data-reveal]` itself. `<body>` has
   it, so a new section rises as one block; give it `data-reveal` to bring

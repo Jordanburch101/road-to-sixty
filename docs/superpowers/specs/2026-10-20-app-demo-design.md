@@ -32,6 +32,8 @@ The copy follows the real screens as they are now. These details differ from the
 - Character rows end in a "›" arrow.
 - There is no "New" badge on a new character.
 
+One difference from the app is Jordan's choice (2026-10-20): text meant to be read, which the app draws in its faint grey (the line under each character, the folder card's path, the note under the install button, and "Free · works offline"), uses the brighter muted grey on the site, as the still picture did. Deliberately dimmed parts, such as the waiting step numbers and the row arrows, stay faint.
+
 ## The story
 
 The window is the app's real size, 400 × 640. Times are from the start of the loop and only rough: the builder tunes them by eye, but keeps the order and keeps every change moving. "Glides" means the pretend cursor moves to a target in about 0.6 s on an eased curve. "Clicks" means the target darkens and shrinks slightly for about 120 ms, with a soft ring spreading out from the cursor.
