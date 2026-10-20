@@ -79,10 +79,13 @@ bun run dev               # port 3000, with .env copied from .env.example
   minutes and 600 requests an hour; per account, 240 uploads in 15
   minutes, 500 and 200 MB a day, 2,000 requests an hour, 10 links a day, 5
   exports and 10 restores an hour; 200 new players an hour; one export and
-  one restore at a time. All answer 429. 20 linked PCs per account (409),
-  100 characters (422, plain text the app shows on the row), 8 MB uploads
-  and 16 KB for any other body (413), 64-character names (400). The counts
-  are in memory, so a restart forgets them.
+  one restore at a time; per address (Better Auth's rules in
+  `src/auth.ts`), 10 link codes and 20 code lookups a minute. All answer
+  429. The lookup rule replaces the device plugin's own 5 per half hour,
+  too few for one household linking two PCs; keep it. 20 linked PCs per
+  account (409), 100 characters (422, plain text the app shows on the
+  row), 8 MB uploads and 16 KB for any other body (413), 64-character
+  names (400). The counts are in memory, so a restart forgets them.
 - `api.roadtosixty.online` is behind Cloudflare's proxy. When
   Cloudflare changes its ranges (https://www.cloudflare.com/ips/), update
   `src/proxies.ts`, or sign-in limits count Cloudflare instead of visitors.

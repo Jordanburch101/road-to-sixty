@@ -26,8 +26,16 @@ export const auth = betterAuth({
   baseURL: config.auth.url,
   secret: config.auth.secret,
   database: drizzleAdapter(db, { provider: "pg", schema }),
-  // Each call for a link code makes a database row, and needs no account.
-  rateLimit: { customRules: { "/device/code": { window: 60, max: 10 } } },
+  rateLimit: {
+    customRules: {
+      // Each call for a link code makes a database row, and needs no account.
+      "/device/code": { window: 60, max: 10 },
+      // Replaces the device plugin's 5 code lookups per half hour, which one
+      // household linking two PCs runs through. A code is 8 characters and
+      // lives 30 minutes, so 20 a minute still makes guessing one hopeless.
+      "/device": { window: 60, max: 20 },
+    },
+  },
   advanced: {
     // Rate limits count by visitor (see proxies.ts). If Dokploy's proxy
     // leaves only Cloudflare's address in X-Forwarded-For, Cloudflare's own

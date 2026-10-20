@@ -2,7 +2,7 @@ import { APP_CLIENT_ID, type LinkResponse } from "@road-to-sixty/api";
 import { beforeEach, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { app } from "../src/app";
-import { accountHash } from "../src/auth";
+import { accountHash, auth } from "../src/auth";
 import { db } from "../src/db";
 import { account, deviceCode as deviceCodes, devices, session, user } from "../src/schema";
 import { newDevice } from "../src/devices";
@@ -129,6 +129,7 @@ test("the link page, its script and its pictures are served, and the code comes 
   const js = await script.text();
   expect(js).toContain("rts-fog-road");
   expect(js).toContain("URLSearchParams"); // the app's link fills the code in
+  expect(js).toContain("Too many tries from this network");
   expect((await get("/link/compass.png")).headers.get("content-type")).toBe("image/png");
   expect((await get("/link/geist.woff2")).status).toBe(200);
 });
@@ -200,4 +201,22 @@ test("the link page can't be shown inside another site", async () => {
   const page = await app.handle(new Request("http://localhost:3000/link"));
   expect(page.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
   expect(page.headers.get("x-frame-options")).toBe("DENY");
+});
+
+test("one network can look up 20 link codes a minute; the 21st waits", async () => {
+  const cookie = await signIn();
+  const { user_code } = (await (await deviceCode()).json()) as { user_code: string };
+  const context = await auth.$context;
+  context.rateLimit.enabled = true; // Better Auth counts only in production
+  try {
+    const look = () => get(`/api/auth/device?user_code=${user_code}`, { cookie });
+    for (let i = 0; i < 20; i++) expect((await look()).status).toBe(200);
+    const refused = await look();
+    expect(refused.status).toBe(429);
+    const wait = Number(refused.headers.get("x-retry-after"));
+    expect(wait).toBeGreaterThan(0);
+    expect(wait).toBeLessThanOrEqual(60); // the page says to wait a minute
+  } finally {
+    context.rateLimit.enabled = false;
+  }
 });
