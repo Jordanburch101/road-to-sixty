@@ -1,20 +1,10 @@
 // The words and numbers the screens show, as plain functions so they are
 // tested without a window.
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
+import { CLASSES } from "@road-to-sixty/ui/classColours";
 import type { Folder, Update } from "./api";
 
-// The game's class colours (RAID_CLASS_COLORS).
-export const CLASSES: Record<string, { name: string; colour: string }> = {
-  WARRIOR: { name: "Warrior", colour: "#c69b6d" },
-  PALADIN: { name: "Paladin", colour: "#f48cba" },
-  HUNTER: { name: "Hunter", colour: "#aad372" },
-  ROGUE: { name: "Rogue", colour: "#fff468" },
-  PRIEST: { name: "Priest", colour: "#ffffff" },
-  SHAMAN: { name: "Shaman", colour: "#0070dd" },
-  MAGE: { name: "Mage", colour: "#3fc7eb" },
-  WARLOCK: { name: "Warlock", colour: "#8788ee" },
-  DRUID: { name: "Druid", colour: "#ff7c0a" },
-};
+export { CLASSES };
 
 // Time played in its two biggest units, as the game's /played does.
 export function played(seconds: number | null): string {

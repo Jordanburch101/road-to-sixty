@@ -24,8 +24,13 @@ button, blue only for status, fog of war background).
   draws it from `dots.ts` without React; the website uses it with `animate`.
   `src/Button.tsx` is the cream and outline button.
 - `classes/` holds the class icons (cut from the game's UI-Classes-Circles
-  by `apps/desktop/scripts/class-icons.py`), and `src/classes.ts` maps class
-  file names to them, for the app and the website.
+  by `apps/desktop/scripts/class-icons.py`), and `src/classes.ts` maps the
+  game's class names (`WARRIOR`) to them for the app; the website imports
+  the PNGs itself. `src/classColours.ts` holds each class's name and colour
+  (`CLASSES`), which both use. It has no PNG imports, because the website's
+  type check reads a PNG import as an image object, not an address.
+- `src/roads.ts` is the road through the fog in the app's first run header
+  (`SETUP_ROAD`, `SETUP_MARKS`), which the website's app demo shows too.
 - `compass.png` is Jordan's compass icon (256 px, used as is). If Blizzard
   ever objects to it, this is the one file to swap.
 

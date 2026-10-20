@@ -98,7 +98,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   every word and number they show and is tested (`bun test src`);
   The class icons are in `packages/ui`
   (`@road-to-sixty/ui/classes`), cut from the game's art by
-  `scripts/class-icons.py`. `packages/ui/theme.css` gives every scrolling
+  `scripts/class-icons.py`, with the class names and colours
+  (`classColours`, which `format.ts` passes on as `CLASSES`) and the first
+  run's fog road (`roads`), which the website's demo shares. `packages/ui/theme.css` gives every scrolling
   list a thin dark scroll bar (#41).
 - `scripts/latest-json.ts` writes the updater's `latest.json` in the
   release workflow (`.github/workflows/desktop-release.yml`, on `app-v*`

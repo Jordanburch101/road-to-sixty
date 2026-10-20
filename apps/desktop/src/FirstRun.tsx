@@ -1,13 +1,10 @@
 import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import { Fog } from "@road-to-sixty/ui/Fog";
-import type { Point } from "@road-to-sixty/ui/dots";
+import { SETUP_MARKS, SETUP_ROAD } from "@road-to-sixty/ui/roads";
 import { useEffect, useState, type ReactNode } from "react";
 import { hostName, installAddon, link, pickFolder, setStartsAtLogin, type Status } from "./api";
 import { gameName, installFolder } from "./format";
-
-const ROAD: Point[] = [[150, 190], [205, 150], [240, 118], [290, 104], [330, 70], [372, 52], [420, 20]];
-const MARKS: Point[] = [[240, 118], [330, 70]];
 
 export function FirstRun({ status, onDone }: { status: Status; onDone: () => void }) {
   const [name, setName] = useState("");
@@ -33,7 +30,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
     <main className="flex h-full flex-col">
       <header className="relative overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
         <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
-          <Fog width={400} height={180} step={14} roads={[ROAD]} marks={MARKS} />
+          <Fog width={400} height={180} step={14} roads={[SETUP_ROAD]} marks={SETUP_MARKS} />
         </div>
         <img src={compass} alt="" className="relative size-12 rounded-[10px]" />
         <h1 className="relative mt-3.5 text-xl font-medium tracking-tight">Set up Road to Sixty</h1>
