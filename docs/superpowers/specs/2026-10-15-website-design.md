@@ -79,12 +79,12 @@ One readable column, as in `Site-Privacy`.
   - the Battle.net account number, kept only as a keyed hash
   - each character's name, realm and journey, including the names of other players grouped with
   - each linked PC's name, platform and versions
-- **Where it's kept:** a server Jordan runs, and journey files in Cloudflare R2. Database backups age out within 30 days.
-- **Who sees it:** only the player, through the app.
+- **Where it's kept:** "our servers", without naming the hosts (Jordan, 2026-10-20). Kept until deleted; database backups age out within 30 days.
+- **Who sees it:** only the player, through the app. Stored data is touched only to run or repair the service.
 - **Deleting it:** Delete everything in the app, or email. It is gone from backups within 30 days.
 - **Cookies:** none on the site. The link page sets one when linking, used only there, which expires within a week.
 - **Battle.net:** only the account number and BattleTag are received, never a password.
-- **Who runs it:** Jordan Burch, with the contact email.
+- **Contact:** the contact email. The page speaks as "we" and doesn't name Jordan or "Jordan's server" (Jordan, 2026-10-20: it read as amateur); the footer still names Jordan as the maker.
 
 **Terms:**
 - Free, provided as is, with no warranty.
