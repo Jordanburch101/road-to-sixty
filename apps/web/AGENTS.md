@@ -14,10 +14,17 @@ Static pages built by Astro, hosted on Vercel. The design is
 - `src/components/` are the home page's sections and the header, footer
   and download button. `src/layouts/Layout.astro` wraps every page.
 - `src/download.ts` picks the download for the visitor's computer, and
-  `src/countdown.ts` runs the flip board counting down to launch: the
-  only scripts the site sends, besides the two short ones in `Layout.astro`
-  for the load-in animation (`src/styles/reveal.css`).
-  `src/config.ts` reads the build settings.
+  `src/countdown.ts` runs the flip board counting down to launch. With the
+  app demo's island, those are the only scripts the site sends, besides the
+  two short ones in `Layout.astro` for the load-in animation
+  (`src/styles/reveal.css`). `src/config.ts` reads the build settings.
+- `src/demo.ts` is the app demo's story: what is on screen at each moment
+  of the loop, as a plain function of time (tested in `src/demo.test.ts`).
+  `AppDemo.tsx` plays it and is the one island. `DemoSetup.tsx` and
+  `DemoCharacters.tsx` draw the app's two screens, and `DemoMotion.tsx`
+  holds the moving pieces they share: crossfades, rolling numbers and
+  folding steps. The keyframes are in `src/styles/site.css`. The cursor art
+  is in `src/assets/demo/`.
 - `src/roads.ts` holds the fog's roads. The fog itself and the theme come
   from `packages/ui`.
 - `src/assets/journey/` holds the in-game screenshots of the journey map,
@@ -38,8 +45,12 @@ bun run build
 - The contact email, the addon's address and the site's address are
   build settings (`.env.example`), never in the public repo.
   A missing one stops the build, and so does an address without https://.
-- The shared React components render at build time; no React is sent to
-  the browser. Keep every animation in CSS, still under reduced motion.
+- The app demo (`AppDemo`, `client:visible`) is the one island that sends
+  React to the browser. Everything else renders at build time, and its
+  animation is CSS, still under reduced motion.
+- The demo copies the app's `FirstRun.tsx` and `Characters.tsx` by hand.
+  When the look of either screen changes, make the same change in
+  `DemoSetup.tsx` and `DemoCharacters.tsx`.
 - Content rises into place as it reaches the screen: each child of a
   `[data-reveal]` element that isn't `[data-reveal]` itself. `<body>` has
   it, so a new section rises as one block; give it `data-reveal` to bring

@@ -67,7 +67,7 @@ function Row({ row, arrive }: { row: RowData; arrive: boolean }) {
       {/* The extra room around the row, taken back by the negative margins, keeps its glow from being clipped. */}
       <div className="-mx-2 -mt-2 min-h-0 overflow-hidden px-2 pt-2">
         <div
-          className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-panel px-3.5 py-3 transition-[border-color,box-shadow] ${
+          className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-panel px-3.5 py-3 max-[359px]:gap-2 max-[359px]:px-2.5 max-[359px]:py-2.5 transition-[border-color,box-shadow] ${
             row.glow
               ? "border-accent/70 shadow-[0_0_0_1px_rgba(58,160,255,0.3),0_0_10px_rgba(58,160,255,0.3)] duration-300"
               : "border-line duration-[1200ms]"
@@ -75,11 +75,11 @@ function Row({ row, arrive }: { row: RowData; arrive: boolean }) {
         >
           <img src={c.icon} alt="" width={34} height={34} className="size-[34px] shrink-0 self-start rounded-full" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="text-[15px] font-medium" style={{ color: row.colour }}>
                 {row.name}
               </span>
-              <span className="truncate text-[13px] text-muted">
+              <span className="whitespace-nowrap text-[13px] text-muted max-[359px]:order-last max-[359px]:basis-full">
                 Level <Roll text={String(row.level)} /> {c.name}
               </span>
               <span className="ml-auto font-mono text-xs text-muted">
