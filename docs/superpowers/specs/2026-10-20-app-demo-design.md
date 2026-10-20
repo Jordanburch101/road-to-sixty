@@ -91,7 +91,7 @@ When the island starts, it begins by closing that window (the 22.0 s step), so t
 ## How it is built
 
 - **One island.** `AppPicture.astro` renders the demo component with `client:visible`, so React is downloaded only when the section comes near the screen. Astro already has `@astrojs/react`. Nothing else on the page changes.
-- **The section's rise-in.** The section's parts rise one by one as now (`data-reveal`). An Astro island is wrapped in an `astro-island` element that takes up no box of its own, which can't fade, so the island sits inside an ordinary element that does (see the `display: contents` rule in `apps/web/AGENTS.md`).
+- **The section's rise-in.** An Astro island is wrapped in an `astro-island` element that takes up no box of its own, which can't fade, so the island sits inside one ordinary element that can (see the `display: contents` rule in `apps/web/AGENTS.md`). That means the section now rises as one block, not its three columns one after another as before.
 - **The story is plain data.** The steps, times and words are a list in a plain TypeScript file with tests (the order, the total length, and that the words match the table above), as `countdown.ts` is. The component only plays it.
 - **Only while seen.** The loop pauses when the section leaves the screen or the tab is hidden, and carries on from where it stopped.
 - **No jumping.** The window is 640 tall at every width, and the still picture is exactly the same size, so nothing moves when the island takes over. Each side's lines keep the height of their longest version, so nothing moves as the demo plays.

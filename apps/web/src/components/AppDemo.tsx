@@ -139,7 +139,7 @@ export function AppDemo({ cursor = "arrow" }: { cursor?: "arrow" | "gauntlet" })
     <div ref={root} className="demo relative grid w-full grid-cols-1 items-start gap-8 md:grid-cols-[1fr_400px_1fr] md:gap-12">
       <Lines side="left" now={lines.left} className="order-2 md:order-1 md:pt-[150px] md:text-right" />
 
-      <div role="img" aria-label={STORY} className="order-1 flex flex-col items-center md:order-2">
+      <div role="img" aria-label={STORY} className="pointer-events-none order-1 flex select-none flex-col items-center md:order-2">
         <div
           aria-hidden="true"
           className="hidden h-7 w-[560px] items-center justify-end gap-4 rounded-t-lg border border-b-0 border-[#24212c] bg-[rgba(28,26,35,0.9)] px-3.5 text-xs text-[#c9c4d6] md:flex"
@@ -198,7 +198,7 @@ function Lines({ side, now, className }: { side: "left" | "right"; now: Line; cl
             className={`flex flex-col gap-2.5 transition-opacity [grid-area:1/1] ${on ? "delay-300 duration-500" : "pointer-events-none select-none opacity-0 duration-300"}`}
           >
             <div className="text-[15px] font-medium">{l.head}</div>
-            <p className="text-sm leading-relaxed text-muted">{l.text}</p>
+            <p className="text-pretty text-sm leading-relaxed text-muted">{l.text}</p>
           </div>
         );
       })}

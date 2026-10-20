@@ -126,6 +126,7 @@ export function demoAt(time: number, phone: boolean): Demo {
   }
   if (t >= 3.8) d.steps = ["done", "current", "waiting"];
   if (t >= TYPING_START) {
+    // Floating-point error makes (4.6 - 4.0) / 0.2 come out just under 3, which would show "Des" at 4.6.
     const letters = Math.floor((t - TYPING_START) / TYPING_STEP + 1e-9) + 1;
     d.typed = NAME.slice(0, letters);
   }

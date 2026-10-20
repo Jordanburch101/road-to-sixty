@@ -36,9 +36,9 @@ export function FitSwap({ text }: { text: string }) {
   const s = useChange(text);
   const now = useRef<HTMLSpanElement>(null);
   const [width, setWidth] = useState<number>();
-  useLayoutEffect(() => setWidth(now.current!.offsetWidth), [text]);
+  useLayoutEffect(() => setWidth(now.current!.getBoundingClientRect().width), [text]);
   return (
-    <span className="relative block overflow-hidden whitespace-nowrap transition-[width] duration-300 ease-out" style={{ width }}>
+    <span className="relative block overflow-hidden whitespace-nowrap transition-[width] duration-300 ease-out" style={{ width: s.n ? width : undefined }}>
       {s.was !== null && (
         <span key={`was${s.n}`} className="demo-out absolute left-0 top-0">
           {s.was}

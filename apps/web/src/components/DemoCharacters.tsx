@@ -75,11 +75,11 @@ function Row({ row, arrive }: { row: RowData; arrive: boolean }) {
         >
           <img src={c.icon} alt="" width={34} height={34} className="size-[34px] shrink-0 self-start rounded-full" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <div className="flex flex-wrap items-baseline gap-x-2">
+            <div className="flex items-baseline gap-x-2 max-[379px]:flex-wrap">
               <span className="text-[15px] font-medium" style={{ color: row.colour }}>
                 {row.name}
               </span>
-              <span className="whitespace-nowrap text-[13px] text-muted max-[359px]:order-last max-[359px]:basis-full">
+              <span className="whitespace-nowrap text-[13px] text-muted max-[379px]:order-last max-[379px]:basis-full">
                 Level <Roll text={String(row.level)} /> {c.name}
               </span>
               <span className="ml-auto font-mono text-xs text-muted">
