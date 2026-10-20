@@ -4,6 +4,8 @@ import { AppDemo } from "./AppDemo";
 <section data-reveal aria-label="The app" class="relative mt-12 w-full max-w-[1040px] px-4 md:mt-[72px]">
   {/* An ordinary element, so it can rise in: Astro's island wrapper has no box of its own. */}
   <div>
-    <AppDemo client:visible />
+    {/* React loads once the demo has come about a third of the screen's height up from the bottom, not
+        with the page. A percentage rather than pixels, so short landscape phones still get there. */}
+    <AppDemo client:visible={{ rootMargin: "-35% 0px" }} />
   </div>
 </section>
