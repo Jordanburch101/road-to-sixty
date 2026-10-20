@@ -1,6 +1,5 @@
 import compass from "@road-to-sixty/ui/compass.png";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import arrow from "../assets/demo/cursor-arrow.png";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
 import { advance, demoAt, LINES, LOOP, STILL, STILL_LINES, type Demo, type Line } from "../demo";
 import { DemoCharacters } from "./DemoCharacters";
@@ -19,13 +18,10 @@ const CLOSING: Demo = { ...STILL, open: false, lit: false };
 
 const view = (t: number | null, wrapped: boolean, phone: boolean) => (t === null ? STILL : wrapped ? demoAt(t, phone) : CLOSING);
 
-// Each art's click point, in CSS pixels from its top left.
-const CURSORS = {
-  arrow: { src: arrow.src, width: 12, height: 18, x: 2.5, y: 2.5 },
-  gauntlet: { src: gauntlet.src, width: 26.5, height: 24, x: 0, y: 0 },
-};
+// The game's own pointer; its click point is the fingertip at its top left.
+const CURSOR = { src: gauntlet.src, width: 26.5, height: 24, x: 0, y: 0 };
 
-export function AppDemo({ cursor = "arrow" }: { cursor?: "arrow" | "gauntlet" }) {
+export function AppDemo() {
   const [t, setT] = useState<number | null>(null);
   const [wrapped, setWrapped] = useState(false);
   const [phone, setPhone] = useState(false);
@@ -177,7 +173,7 @@ export function AppDemo({ cursor = "arrow" }: { cursor?: "arrow" | "gauntlet" })
         ))}
       </div>
 
-      <Cursor art={CURSORS[cursor]} spot={spot} shown={shown} down={demo.cursor.down} />
+      <Cursor art={CURSOR} spot={spot} shown={shown} down={demo.cursor.down} />
     </div>
   );
 }
@@ -229,7 +225,7 @@ function Clock({ text, roll }: { text: string; roll: boolean }) {
   );
 }
 
-function Cursor({ art, spot, shown, down }: { art: (typeof CURSORS)["arrow"]; spot: { x: number; y: number } | null; shown: boolean; down: boolean }) {
+function Cursor({ art, spot, shown, down }: { art: typeof CURSOR; spot: { x: number; y: number } | null; shown: boolean; down: boolean }) {
   // Counts presses, so each one gets its own ring.
   const presses = Math.ceil(useChange(down).n / 2);
   return (

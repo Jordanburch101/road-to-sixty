@@ -98,7 +98,7 @@ When the island starts, it begins by closing that window (the 22.0 s step), so t
 - **Phones (my call).** The menu bar strip is hidden as now, so the loop skips the icon click, and the window simply fades in and out. The window keeps the full 640 height and fills the width up to 400 px, with its text wrapping. Today's phone picture is shorter (three rows, no footer). The still picture on phones grows to match, so the island can take over without a jump. Both pairs of lines stay below the window, left then right, as now, each in a slot as tall as its longest version.
 - **The clock at the loop's end (my call).** While the window is closed, the clock fades out and back in at "Tue 21:44", rather than rolling backwards.
 - **Screen readers** get one fixed description of the whole story (the window is `role="img"`, as now) and all four pairs of lines once, not text that keeps changing.
-- **The cursor** is raster art, not a drawn SVG. The builder makes two: an ordinary pointer arrow, and the game's own gauntlet cursor. Jordan picks one from a screenshot.
+- **The cursor** is raster art, not a drawn SVG. It is the game's own gauntlet pointer, which Jordan picked over an ordinary arrow from screenshots (2026-10-20).
 
 ## Rules to update in the same commit
 
