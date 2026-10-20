@@ -2,7 +2,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import compass from "@road-to-sixty/ui/compass.png";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
-import { advance, demoAt, LINES, LOOP, STILL, STILL_LINES, type Demo, type Line } from "../demo";
+import { advance, demoAt, firstAt, LINES, LOOP, START, STILL, STILL_LINES, type Demo, type Line } from "../demo";
 import { DemoCharacters } from "./DemoCharacters";
 import { DemoSetup } from "./DemoSetup";
 import { Roll, Swap, useChange } from "./DemoMotion";
@@ -14,11 +14,6 @@ import { Roll, Swap, useChange } from "./DemoMotion";
 // only keeps time.
 
 const STORY = "The Road to Sixty app, shown as a short looping demo of setting it up and syncing characters.";
-
-// The loop starts a second early, while the still picture's rows close with the window.
-const CLOSING: Demo = { ...STILL, open: false };
-
-const view = (t: number, phone: boolean) => (t < 0 ? CLOSING : demoAt(t, phone));
 
 const RESTING = { t: null, demo: STILL };
 
@@ -42,7 +37,8 @@ export function AppDemo() {
   useEffect(() => {
     if (!motion || paused) return;
     const narrow = matchMedia("(max-width: 767px)");
-    let time = -1;
+    let time = START;
+    let first = true;
     let seen = false;
     let frame = 0;
     let last = 0;
@@ -50,7 +46,7 @@ export function AppDemo() {
 
     // React hears about a frame only when what it shows changes.
     const show = () => {
-      const d = view(time, narrow.matches);
+      const d = (first ? firstAt : demoAt)(time, narrow.matches);
       const now = JSON.stringify(d);
       if (now === shown) return;
       shown = now;
@@ -59,7 +55,10 @@ export function AppDemo() {
     const tick = (now: number) => {
       time = advance(time, last ? now - last : 0);
       last = now;
-      if (time >= LOOP) time -= LOOP;
+      if (time >= LOOP) {
+        time -= LOOP;
+        first = false;
+      }
       show();
       frame = requestAnimationFrame(tick);
     };
@@ -91,12 +90,12 @@ export function AppDemo() {
       document.removeEventListener("visibilitychange", run);
       cancelAnimationFrame(frame);
       // Reduced motion and a pause both go back to the still picture, and
-      // playing again starts from its closing second.
+      // playing again slides from it to the setup screen, as on the first start.
       setNow(RESTING);
     };
   }, [motion, paused]);
 
-  const still = t === null || t < 0;
+  const still = t === null;
   const lines = still ? STILL_LINES : LINES[demo.part];
   const pressed = demo.cursor.down ? demo.cursor.at : null;
 

@@ -173,6 +173,18 @@ export function demoAt(time: number, phone: boolean): Demo {
   return d;
 }
 
+// The first loop starts just after the window has opened, so the still
+// picture slides straight to the setup screen. Starting at 0 would close the
+// window and leave the section empty for two seconds as it comes into view.
+export const START = 1.2;
+// How long the still rows stay, while their screen slides away.
+const LEAVING = 0.6;
+
+export function firstAt(t: number, phone: boolean): Demo {
+  const d = demoAt(t, phone);
+  return t < START + LEAVING ? { ...d, rows: STILL.rows } : d;
+}
+
 export function advance(t: number, frameMs: number): number {
   return t + Math.min(frameMs, 100) / 1000;
 }

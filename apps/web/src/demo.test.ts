@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { advance, demoAt, LINES, LOOP, STILL } from "./demo";
+import { advance, demoAt, firstAt, LINES, LOOP, START, STILL } from "./demo";
 
 const names = (t: number) => demoAt(t, false).rows.map((r) => r.name);
 
@@ -21,6 +21,17 @@ test("the still picture is today's", () => {
   const ysolde = STILL.rows[3];
   expect(ysolde?.level).toBe(12);
   expect(ysolde?.played).toBe("14h 20m");
+});
+
+test("the first loop starts with the window open, sliding from the still list to setup", () => {
+  const d = firstAt(START, false);
+  expect(d.open).toBe(true);
+  expect(d.screen).toBe("setup");
+  expect(d.steps[0]).toBe("current");
+  // The still rows stay while their screen slides away, then go before anyone can see.
+  expect(d.rows).toEqual(STILL.rows);
+  expect(firstAt(START + 1, false).rows).toEqual([]);
+  expect(firstAt(10, false)).toEqual(demoAt(10, false));
 });
 
 test("the loop starts closed", () => {
