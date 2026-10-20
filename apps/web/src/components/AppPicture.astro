@@ -1,67 +1,11 @@
 ---
-import brannoc from "@road-to-sixty/ui/classes/paladin.png";
-import compass from "@road-to-sixty/ui/compass.png";
-import mirelle from "@road-to-sixty/ui/classes/hunter.png";
-import thalrok from "@road-to-sixty/ui/classes/warrior.png";
-import ysolde from "@road-to-sixty/ui/classes/mage.png";
-
-// Made-up characters, drawn like the app's Characters screen.
-const rows = [
-  { name: "Thalrok", colour: "#c69b6d", icon: thalrok.src, what: "Level 42 Warrior", played: "9d 4h", line: "Classic PvE · Desk, 2 min ago" },
-  { name: "Mirelle", colour: "#aad372", icon: mirelle.src, what: "Level 27 Hunter", played: "3d 11h", line: "Classic PvE · Laptop, yesterday" },
-  { name: "Brannoc", colour: "#f48cba", icon: brannoc.src, what: "Level 60 Paladin", played: "18d 2h", line: "Classic PvE · Laptop, yesterday" },
-  { name: "Ysolde", colour: "#3fc7eb", icon: ysolde.src, what: "Level 12 Mage", played: "14h", line: "Classic PvE · Desk, 3 days ago" },
-];
+import { AppDemo } from "./AppDemo";
 ---
-<section data-reveal aria-label="The app" class="relative mt-12 grid w-full max-w-[1040px] grid-cols-1 items-start gap-8 px-4 md:mt-[72px] md:grid-cols-[1fr_400px_1fr] md:gap-12">
-  <div class="order-2 flex flex-col gap-2.5 text-center md:order-1 md:pt-[150px] md:text-right">
-    <h2 class="text-[15px] font-medium">In your menu bar or tray</h2>
-    <p class="text-sm leading-relaxed text-muted">It opens under its icon and stays out of the way. Close the window and it keeps syncing.</p>
-  </div>
-
-  <div role="img" aria-label="The app's window under its menu bar icon, listing characters, synced 2 minutes ago" class="order-1 flex flex-col items-center md:order-2">
-    <div class="hidden h-7 w-[560px] items-center justify-end gap-4 rounded-t-lg border border-b-0 border-[#24212c] bg-[rgba(28,26,35,0.9)] px-3.5 text-xs text-[#c9c4d6] md:flex">
-      <span class="h-2.5 w-3.5 rounded-sm border border-faint"></span>
-      <span class="flex size-[22px] items-center justify-center rounded-[5px] bg-accent/20"><img src={compass.src} alt="" width="15" height="15" class="size-[15px] rounded-[3px]" /></span>
-      <span class="size-3 rounded-full border border-faint"></span>
-      <span>Tue 21:44</span>
-    </div>
-    <div class="flex w-full max-w-[400px] flex-col overflow-hidden rounded-xl border border-[#24212c] bg-ground text-left shadow-[0_30px_90px_rgba(0,0,0,0.6),0_-10px_60px_rgba(58,160,255,0.08)] md:ml-[38px] md:mt-2 md:h-[640px] md:w-[400px]">
-      <div class="flex items-center gap-2.5 px-5 py-3.5">
-        <img src={compass.src} alt="" width="28" height="28" class="size-7 rounded-md" />
-        <div class="flex flex-1 flex-col">
-          <div class="text-sm font-medium">Road to Sixty</div>
-          <div class="text-xs text-muted">Player#0000</div>
-        </div>
-        <div class="flex h-[26px] items-center gap-1.5 rounded-full border border-outline px-2.5 text-xs text-[#c9c4d6]"><span class="size-[7px] rounded-full bg-accent"></span>Synced 2 min ago</div>
-      </div>
-      <div class="mx-4 flex gap-0.5 rounded-[10px] border border-line bg-panel p-[3px] text-[13px]">
-        <span class="flex-1 rounded-[7px] bg-tab py-1.5 text-center">Characters</span>
-        <span class="flex-1 py-1.5 text-center text-muted">Account</span>
-      </div>
-      <ul class="flex flex-1 flex-col gap-2 px-4 py-3.5">
-        {rows.map((r, i) => (
-          <li class={`flex items-center gap-2.5 rounded-[10px] border border-line bg-panel px-3.5 py-3 ${i === 3 ? "hidden md:flex" : ""}`}>
-            <img src={r.icon} alt="" width="34" height="34" class="size-[34px] self-start rounded-full" />
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="flex items-baseline gap-2">
-                <span class="text-[15px] font-medium" style={`color:${r.colour}`}>{r.name}</span>
-                <span class="truncate text-[13px] text-muted">{r.what}</span>
-                <span class="ml-auto font-mono text-xs text-muted">{r.played}</span>
-              </div>
-              <div class="text-xs text-muted">{r.line}</div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div class="hidden border-t border-line-soft px-4 py-3 md:block">
-        <span class="inline-flex h-[34px] items-center rounded-[9px] border border-outline bg-panel px-3.5 text-[13px] font-medium">Pause syncing</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="order-3 flex flex-col gap-2.5 text-center md:pt-[330px] md:text-left">
-    <h2 class="text-[15px] font-medium">Backed up after every session</h2>
-    <p class="text-sm leading-relaxed text-muted">When you log out, it sends the journey up. When the game starts, it brings the newest one back before you log in.</p>
+<section data-reveal aria-label="The app" class="relative mt-12 w-full max-w-[1040px] px-4 md:mt-[72px]">
+  {/* An ordinary element, so it can rise in: Astro's island wrapper has no box of its own. */}
+  <div>
+    {/* React loads once the demo has come about a third of the screen's height up from the bottom, not
+        with the page. A percentage rather than pixels, so short landscape phones still get there. */}
+    <AppDemo client:visible={{ rootMargin: "-35% 0px" }} />
   </div>
 </section>

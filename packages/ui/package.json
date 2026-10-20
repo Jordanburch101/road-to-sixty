@@ -5,10 +5,12 @@
   "exports": {
     "./theme.css": "./theme.css",
     "./dots": "./src/dots.ts",
+    "./roads": "./src/roads.ts",
     "./Fog": "./src/Fog.tsx",
     "./Button": "./src/Button.tsx",
     "./compass.png": "./compass.png",
     "./classes": "./src/classes.ts",
+    "./classColours": "./src/classColours.ts",
     "./classes/*": "./classes/*"
   },
   "scripts": {

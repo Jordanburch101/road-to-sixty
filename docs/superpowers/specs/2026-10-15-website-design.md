@@ -34,7 +34,7 @@ Top to bottom, as in `Site-Home` and `Site-Below-2`:
    - the Download button for the visitor's computer, and "Get the addon"
    - a small line naming the other platform, with its link
    - The fog is the shared `Fog` with two roads and a 22 s loop. It is still for anyone who asks their system for reduced motion.
-3. **The app:** a menu bar strip with the compass icon lit and the app's window hanging under it, showing the Characters screen with made-up characters and class icons. One line on each side: "In your menu bar or tray" and "Backed up after every session". It is built in HTML from the shared theme, not a screenshot, so it stays sharp and matches the app.
+3. **The app:** replaced by the looping demo in `2026-10-20-app-demo-design.md`; what follows is the still picture it falls back to. A menu bar strip with the compass icon lit and the app's window hanging under it, showing the Characters screen with made-up characters and class icons. One line on each side: "In your menu bar or tray" and "Backed up after every session". It is built in HTML from the shared theme, not a screenshot, so it stays sharp and matches the app.
 4. **"One road, whichever PC you played on."** A full-width fog band:
    - Desk's road (blue) and Laptop's road (cream) light up and join, then the joined road carries on.
    - Labels: "Monday on Desk · levels 18 to 20", "Tuesday on Laptop · levels 20 to 22", "Joined", "Wednesday, on either PC: the whole road".
@@ -100,7 +100,7 @@ The header, "This page doesn't exist", and a link home.
 ## How it is built
 
 - `apps/web` is Astro with static output, Tailwind 4 and `packages/ui`'s theme, matching the app's window.
-- **Shared components:** Astro renders the shared React components (`Fog`, `Button`) to HTML at build time, with no React sent to the browser. Every animation is CSS.
+- **Shared components:** the app demo (`2026-10-20-app-demo-design.md`) replaces this for its one section, which sends React to the browser. Otherwise, Astro renders the shared React components (`Fog`, `Button`) to HTML at build time, with no React sent to the browser. Every animation is CSS.
 - **The one script** reads the browser's platform (`navigator.userAgentData` where present, else the user agent) and sets the main Download button and the "also for" line. Without the script, the page shows both downloads. The rule that picks the platform is a plain function with tests.
 - **The fog band needs roads in their own colours,** timed one after another. `packages/ui/src/dots.ts` gains that: each lit dot knows which road it belongs to and when in the loop it lights. The hero, the link page and the app keep working as they do.
 - **The class icons move** from `apps/desktop/src/classes/` to `packages/ui`, so the site's app picture and the app share one copy.
