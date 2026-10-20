@@ -95,11 +95,12 @@ When the island starts, it begins by closing that window (the 22.0 s step), so t
 - **One island.** `AppPicture.astro` renders the demo component with `client:visible`, so React is downloaded only when the section comes near the screen. Astro already has `@astrojs/react`. Nothing else on the page changes.
 - **The section's rise-in.** An Astro island is wrapped in an `astro-island` element that takes up no box of its own, which can't fade, so the island sits inside one ordinary element that can (see the `display: contents` rule in `apps/web/AGENTS.md`). That means the section now rises as one block, not its three columns one after another as before.
 - **The story is plain data.** A plain TypeScript file holds the words and a function of time that builds what is on screen at second t from a run of `if (t >= …)` steps, with tests (the order, the total length, and that every part has both its lines), as `countdown.ts` is. The component only plays it.
-- **Only while seen.** The loop pauses when the section leaves the screen or the tab is hidden, and carries on from where it stopped.
+- **Only while seen.** The loop starts once half the demo is on screen, or half the screen's height on a screen too short for that (landscape phones). It pauses when the section leaves the screen or the tab is hidden, and carries on from where it stopped.
+- **A pause button**, the demo's one control, since anything that moves by itself for more than 5 seconds needs a way to stop it (WCAG 2.2.2). It is the shared outline `Button` at a small size, centred under the window, outside the part screen readers skip. It reads "Pause" while the demo plays and "Play" while it is paused, and screen readers hear "Pause the app demo" or "Play the app demo". Pausing shows the still picture and stops the clock; Play starts again from the still picture's closing second, as on the first start. A pause lasts until the visitor presses Play: scrolling away and back or switching tabs doesn't undo it, and nothing is saved across reloads, since the site keeps nothing on the visitor's computer. Its room is always kept, so nothing moves when it shows: it is invisible, and can't be reached with Tab, in the page's HTML, under reduced motion and until the island has loaded.
 - **No jumping.** The window is 640 tall at every width, and the still picture is exactly the same size, so nothing moves when the island takes over. Each side's lines keep the height of their longest version, so nothing moves as the demo plays.
 - **Phones (my call).** The menu bar strip is hidden as now, so the loop skips the icon click, and the window simply fades in and out. The window keeps the full 640 height and fills the width up to 400 px, with its text wrapping. The still picture on phones is the same size, with all four rows and the footer, so the island can take over without a jump. Both pairs of lines stay below the window, left then right, as now, each in a slot as tall as its longest version.
 - **The clock at the loop's end (my call).** While the window is closed, the clock fades out and back in at "Tue 21:44", rather than rolling backwards.
-- **Screen readers** get one fixed description of the whole story (the window is `role="img"`, as now) and all four pairs of lines once, not text that keeps changing.
+- **Screen readers** get a short fixed label for the window (it is `role="img"`, as now: "The Road to Sixty app, shown as a short looping demo of setting it up and syncing characters.") and all four pairs of lines once, as one plain list, not text that keeps changing.
 - **The cursor** is raster art, not a drawn SVG. It is the game's own gauntlet pointer, which Jordan picked over an ordinary arrow from screenshots (2026-10-20).
 
 ## Rules to update in the same commit
@@ -118,4 +119,4 @@ When the island starts, it begins by closing that window (the 22.0 s step), so t
 
 - The browser sign-in and the link code.
 - The Account tab, History and any clicks on a character.
-- Anything that reacts to the visitor's mouse. It's a film, not a toy.
+- Anything that reacts to the visitor's mouse, except the pause button. It's a film, not a toy.

@@ -1,3 +1,4 @@
+import { Button } from "@road-to-sixty/ui/Button";
 import compass from "@road-to-sixty/ui/compass.png";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
@@ -8,8 +9,9 @@ import { Roll, Swap, useChange } from "./DemoMotion";
 
 // The home page's app demo (docs/superpowers/specs/2026-10-20-app-demo-design.md):
 // the still picture in the page's HTML, then, once half of it (or half the
-// screen, on short screens) is in view, the story from demo.ts on a loop.
-// Every change moves through CSS; this only keeps time.
+// screen, on short screens) is in view, the story from demo.ts on a loop, with
+// a button under the window to pause it. Every change moves through CSS; this
+// only keeps time.
 
 const STORY = "The Road to Sixty app, shown as a short looping demo of setting it up and syncing characters.";
 
@@ -18,16 +20,29 @@ const CLOSING: Demo = { ...STILL, open: false };
 
 const view = (t: number, phone: boolean) => (t < 0 ? CLOSING : demoAt(t, phone));
 
+const RESTING = { t: null, demo: STILL };
+
 export function AppDemo() {
   // t is null until the loop starts.
-  const [{ t, demo }, setNow] = useState<{ t: number | null; demo: Demo }>({ t: null, demo: STILL });
+  const [{ t, demo }, setNow] = useState<{ t: number | null; demo: Demo }>(RESTING);
+  // False in the page's HTML and under reduced motion, so the pause button
+  // only shows once the demo can play.
+  const [motion, setMotion] = useState(false);
+  const [paused, setPaused] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const check = () => setMotion(!reduce.matches);
+    check();
+    reduce.addEventListener("change", check);
+    return () => reduce.removeEventListener("change", check);
+  }, []);
+
+  useEffect(() => {
+    if (!motion || paused) return;
     const narrow = matchMedia("(max-width: 767px)");
-    let time = 0;
-    let started = false;
+    let time = -1;
     let seen = false;
     let frame = 0;
     let last = 0;
@@ -49,26 +64,14 @@ export function AppDemo() {
       frame = requestAnimationFrame(tick);
     };
     const run = () => {
-      const go = seen && !document.hidden && !reduce.matches;
+      const go = seen && !document.hidden;
       if (go && !frame) {
-        if (!started) {
-          started = true;
-          time = -1;
-        }
         last = 0;
         frame = requestAnimationFrame(tick);
       } else if (!go && frame) {
         cancelAnimationFrame(frame);
         frame = 0;
       }
-    };
-    const onReduce = () => {
-      if (reduce.matches) {
-        started = false;
-        shown = "";
-        setNow({ t: null, demo: STILL });
-      }
-      run();
     };
     // A screen shorter than half the demo could never show half of it, so
     // half the screen's height counts as seen too.
@@ -82,15 +85,16 @@ export function AppDemo() {
     );
 
     seeing.observe(root.current!);
-    reduce.addEventListener("change", onReduce);
     document.addEventListener("visibilitychange", run);
     return () => {
       seeing.disconnect();
-      reduce.removeEventListener("change", onReduce);
       document.removeEventListener("visibilitychange", run);
       cancelAnimationFrame(frame);
+      // Reduced motion and a pause both go back to the still picture, and
+      // playing again starts from its closing second.
+      setNow(RESTING);
     };
-  }, []);
+  }, [motion, paused]);
 
   const still = t === null || t < 0;
   const lines = still ? STILL_LINES : LINES[demo.part];
@@ -122,29 +126,39 @@ export function AppDemo() {
     <div ref={root} className="demo relative grid w-full grid-cols-1 items-start gap-8 md:grid-cols-[1fr_400px_1fr] md:gap-12">
       <Lines side="left" now={lines.left} className="order-2 md:order-1 md:pt-[150px] md:text-right" />
 
-      <div role="img" aria-label={STORY} className="pointer-events-none order-1 flex select-none flex-col items-center md:order-2">
-        <div
-          aria-hidden="true"
-          className="hidden h-7 w-[560px] items-center justify-end gap-4 rounded-t-lg border border-b-0 border-[#24212c] bg-[rgba(28,26,35,0.9)] px-3.5 text-xs text-[#c9c4d6] md:flex"
-        >
-          <span className="h-2.5 w-3.5 rounded-sm border border-faint" />
-          <span
-            data-target="icon"
-            className={`flex size-[22px] items-center justify-center rounded-[5px] transition-[background-color,scale,filter] duration-200 ${demo.open ? "bg-accent/20" : ""} ${pressed === "icon" ? "scale-90 brightness-90" : ""}`}
+      <div className="order-1 flex flex-col items-center md:order-2">
+        <div role="img" aria-label={STORY} className="pointer-events-none flex w-full select-none flex-col items-center">
+          <div
+            aria-hidden="true"
+            className="hidden h-7 w-[560px] items-center justify-end gap-4 rounded-t-lg border border-b-0 border-[#24212c] bg-[rgba(28,26,35,0.9)] px-3.5 text-xs text-[#c9c4d6] md:flex"
           >
-            <img src={compass.src} alt="" width={15} height={15} className="size-[15px] rounded-[3px]" />
-          </span>
-          <span className="size-3 rounded-full border border-faint" />
-          <Clock text={demo.clock} roll={demo.open} />
+            <span className="h-2.5 w-3.5 rounded-sm border border-faint" />
+            <span
+              data-target="icon"
+              className={`flex size-[22px] items-center justify-center rounded-[5px] transition-[background-color,scale,filter] duration-200 ${demo.open ? "bg-accent/20" : ""} ${pressed === "icon" ? "scale-90 brightness-90" : ""}`}
+            >
+              <img src={compass.src} alt="" width={15} height={15} className="size-[15px] rounded-[3px]" />
+            </span>
+            <span className="size-3 rounded-full border border-faint" />
+            <Clock text={demo.clock} roll={demo.open} />
+          </div>
+          <div
+            ref={win}
+            aria-hidden="true"
+            className={`relative h-[640px] w-full max-w-[400px] overflow-hidden rounded-xl border border-[#24212c] bg-ground text-left shadow-[0_30px_90px_rgba(0,0,0,0.6),0_-10px_60px_rgba(58,160,255,0.08)] transition-[opacity,scale] duration-[350ms] ease-out md:ml-[38px] md:mt-2 md:w-[400px] md:origin-[332px_-22px] ${demo.open ? "" : "opacity-0 md:scale-[0.96]"}`}
+          >
+            <DemoSetup demo={demo} shown={demo.screen === "setup"} pressed={pressed} />
+            <DemoCharacters demo={demo} still={still} shown={demo.screen === "characters"} />
+          </div>
         </div>
-        <div
-          ref={win}
-          aria-hidden="true"
-          className={`relative h-[640px] w-full max-w-[400px] overflow-hidden rounded-xl border border-[#24212c] bg-ground text-left shadow-[0_30px_90px_rgba(0,0,0,0.6),0_-10px_60px_rgba(58,160,255,0.08)] transition-[opacity,scale] duration-[350ms] ease-out md:ml-[38px] md:mt-2 md:w-[400px] md:origin-[332px_-22px] ${demo.open ? "" : "opacity-0 md:scale-[0.96]"}`}
+        {/* Its room is kept while it is invisible, so nothing moves when it shows. */}
+        <Button
+          aria-label={paused ? "Play the app demo" : "Pause the app demo"}
+          onClick={() => setPaused(!paused)}
+          className={`mt-4 h-[30px] min-w-16 rounded-lg px-3! text-xs! focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:ml-[38px] ${motion ? "" : "invisible"}`}
         >
-          <DemoSetup demo={demo} shown={demo.screen === "setup"} pressed={pressed} />
-          <DemoCharacters demo={demo} still={still} shown={demo.screen === "characters"} />
-        </div>
+          {paused ? "Play" : "Pause"}
+        </Button>
       </div>
 
       <Lines side="right" now={lines.right} className="order-3 md:pt-[330px] md:text-left" />
