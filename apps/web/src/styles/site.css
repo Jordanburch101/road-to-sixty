@@ -39,6 +39,35 @@ body { font-family: var(--font-sans); color: var(--color-text); }
 @keyframes fold-bottom { from { transform: rotateX(90deg) } to { transform: rotateX(0deg) } }
 @media (prefers-reduced-motion: reduce) { .tile .fold { display: none; } }
 
+/* The app demo (AppDemo.tsx and the files beside it). Each class's own style
+   is where the animation ends, so with animations off the part simply shows
+   its final state: an old copy of a text stays hidden, a new one shows. */
+.demo-in { animation: demo-in 0.25s ease-out 0.1s both; }
+.demo-in-late { animation: demo-in 0.35s ease-out 0.3s both; }
+.demo-out { opacity: 0; animation: demo-out 0.2s ease-in; }
+@keyframes demo-in { from { opacity: 0 } }
+@keyframes demo-out { from { opacity: 1 } }
+.demo-roll-in { animation: demo-roll-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.demo-roll-out { opacity: 0; translate: 0 -100%; animation: demo-roll-out 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes demo-roll-in { from { opacity: 0; translate: 0 100% } }
+@keyframes demo-roll-out { from { opacity: 1; translate: 0 0 } }
+.demo-pop { animation: demo-pop 0.45s ease-out; }
+@keyframes demo-pop { 0% { opacity: 0; scale: 0.4 } 60% { opacity: 1; scale: 1.15 } 100% { scale: 1 } }
+.demo-type { animation: demo-in 0.08s ease-out; }
+.demo-caret { animation: demo-caret 1s steps(1) infinite; }
+@keyframes demo-caret { 50% { opacity: 0 } }
+.demo-spin { animation: demo-spin 0.9s linear infinite; }
+@keyframes demo-spin { to { rotate: 360deg } }
+.demo-pulse { opacity: 0; animation: demo-pulse 1s ease-out; }
+@keyframes demo-pulse { from { opacity: 0.7; scale: 1 } to { scale: 3.2 } }
+.demo-click { opacity: 0; animation: demo-click 0.5s ease-out; }
+@keyframes demo-click { from { opacity: 0.6; scale: 0.2 } }
+.demo-arrive { animation: demo-arrive 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes demo-arrive { from { grid-template-rows: 0fr; opacity: 0; translate: 0 10px } }
+@media (prefers-reduced-motion: reduce) {
+  .demo, .demo * { animation: none !important; transition: none !important; }
+}
+
 /* Privacy and Terms (Prose.astro). */
 .prose-rts section { display: flex; flex-direction: column; gap: 10px; padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--color-line-soft); }
 .prose-rts h2 { font-size: 18px; font-weight: 500; }
