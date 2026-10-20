@@ -16,7 +16,7 @@ Failure, even if it works: anything that snaps into place instead of moving, a d
 - **The browser sign-in step is left out.** Clicking "Link this PC" goes straight to linked. Neither a browser window nor "Waiting for your browser" is shown.
 - **Every step and every small change inside a step is animated**: the cursor gliding to each button and the button pressing, ticks popping in, titles fading from one to the next, steps opening and closing smoothly, the name typing itself in. Nothing snaps.
 - **A React island is fine.** It is a fake demo with made-up data.
-- **The two lines beside the window change with each part**, with the words in the table below.
+- **The two lines beside the window change with each part**, with the words in the table below. Their headings have no full stop, like the still picture's and the site's other small headings.
 - It starts when it scrolls into view, loops, and stands still for anyone who asks for reduced motion. On phones the menu bar strip stays hidden, as it is now.
 
 ## Built as a copy, not from the app's screens (my call)
@@ -63,7 +63,7 @@ The window is the app's real size, 400 × 640. Times are from the start of the l
 | 13.3 | Thalrok's level rolls from 42 to 43 like a counter, his played time ticks from "9d 4h" to "9d 6h", and his row's border glows blue and fades over about 1.2 s. |
 | 14.3 | The pill fades back to "Synced just now", with a pulse. |
 | 16.0 | The "new character" lines fade in. The clock rolls to "Wed 19:30". The pill says "Syncing…". |
-| 16.6 | Ysolde arrives at the top of the list ("Level 1 Mage", "12m", "Classic PvE · Desk, just now"). The rows below slide down smoothly to make room as she rises in with the same glow. Thalrok's line fades to "Desk, yesterday". |
+| 16.6 | Ysolde arrives at the top of the list ("Level 1 Mage", "12m", "Classic PvE · Desk, just now"). The rows below slide down smoothly to make room as she rises in with the same glow. Thalrok's line fades to "Classic PvE · Desk, 20 h ago", since his session ended at 23:12 the day before. |
 | 17.6 | The pill fades to "Synced just now", with a pulse. |
 | 18 to 22 | It holds on the full list. |
 | 22.0 | The window closes, the reverse of opening, and the menu bar icon goes unlit. |
@@ -71,14 +71,14 @@ The window is the app's real size, 400 × 640. Times are from the start of the l
 
 ### The lines beside the window
 
-Each part swaps both lines at once with a fade, when the window enters that part. The heading is the first sentence, the rest is the text under it. The wording is Jordan's choice, except where noted.
+Each part swaps both lines at once with a fade, when the window enters that part. Each line is a small heading with no full stop, then the text under it. The wording is Jordan's choice, except where noted.
 
 | Part | Left | Right |
 |---|---|---|
-| Setup | **Three clicks, once.** It finds WoW, puts the addon in, and links this PC to your Battle.net account. | **In your menu bar or tray.** It opens under its icon and stays out of the way. Close the window and it keeps syncing. |
-| Characters arrive | **Every character, every PC.** The ones you played on the laptop come down to this PC too. | **Nothing to copy by hand.** It reads the addon's saved journeys itself. |
-| Level up | **Backed up after every session.** When you log out, it sends the journey up. | **Ready before you log in.** When the game starts, it brings the newest one back. |
-| New character | **New characters join by themselves.** Make one, play, log out, and it's on the list. | **Free, with nothing to buy.** No subscription, no ads, no paid version. |
+| Setup | **Three clicks, once**<br>It finds WoW, puts the addon in, and links this PC to your Battle.net account. | **In your menu bar or tray**<br>It opens under its icon and stays out of the way. Close the window and it keeps syncing. |
+| Characters arrive | **Every character, every PC**<br>The ones you played on the laptop come down to this PC too. | **Nothing to copy by hand**<br>It reads the addon's saved journeys itself. |
+| Level up | **Backed up after every session**<br>When you log out, it sends the journey up. | **Ready before you log in**<br>When the game starts, it brings the newest one back. |
+| New character | **New characters join by themselves**<br>Make one, play, log out, and it's on the list. | **Free, with nothing to buy**<br>No subscription, no ads, no paid version. |
 
 The last right-hand line is my call. Jordan first agreed to "Free, and it works offline", but the website design rules out an offline claim, since WoW is an online game.
 

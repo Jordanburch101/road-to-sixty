@@ -3,10 +3,11 @@ import { advance, demoAt, LINES, LOOP, STILL } from "./demo";
 
 const names = (t: number) => demoAt(t, false).rows.map((r) => r.name);
 
-test("every part has both lines", () => {
+test("every part has both lines, with headings that end without a full stop", () => {
   for (const pair of Object.values(LINES)) {
     for (const l of [pair.left, pair.right]) {
       expect(l.head).not.toBe("");
+      expect(l.head.endsWith(".")).toBe(false);
       expect(l.text).not.toBe("");
     }
   }
@@ -19,7 +20,7 @@ test("the still picture is today's", () => {
   expect(STILL.rows.map((r) => r.name)).toEqual(["Thalrok", "Mirelle", "Brannoc", "Ysolde"]);
   const ysolde = STILL.rows[3];
   expect(ysolde?.level).toBe(12);
-  expect(ysolde?.played).toBe("14h");
+  expect(ysolde?.played).toBe("14h 20m");
 });
 
 test("the loop starts closed", () => {
@@ -45,11 +46,9 @@ test("install ticks step one", () => {
 
 test("the name types itself in", () => {
   expect(demoAt(3.8, false).typed).toBe("");
-  const part = demoAt(4.2, false).typed;
-  expect(part.length).toBeGreaterThan(0);
-  expect(part).not.toBe("Desk");
-  expect("Desk".startsWith(part)).toBe(true);
-  expect(demoAt(4.6, false).typed).toBe("Desk");
+  expect(demoAt(4.0, false).typed).toBe("D");
+  expect(demoAt(4.5, false).typed).toBe("Des");
+  expect(demoAt(5.0, false).typed).toBe("Desk");
 });
 
 test("linking ticks step two and skips the browser", () => {
@@ -93,7 +92,7 @@ test("a new character joins at the top", () => {
   expect(d.clock).toBe("Wed 19:30");
   expect(d.part).toBe("new");
   expect(d.rows[0]).toMatchObject({ name: "Ysolde", level: 1, played: "12m", line: "Classic PvE · Desk, just now" });
-  expect(d.rows[1]).toMatchObject({ name: "Thalrok", line: "Classic PvE · Desk, yesterday" });
+  expect(d.rows[1]).toMatchObject({ name: "Thalrok", line: "Classic PvE · Desk, 20 h ago" });
 });
 
 test("the loop ends closed and wraps", () => {

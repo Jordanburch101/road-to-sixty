@@ -27,20 +27,20 @@ export const LOOP = 23;
 
 export const LINES: Record<Part, { left: Line; right: Line }> = {
   setup: {
-    left: { head: "Three clicks, once.", text: "It finds WoW, puts the addon in, and links this PC to your Battle.net account." },
-    right: { head: "In your menu bar or tray.", text: "It opens under its icon and stays out of the way. Close the window and it keeps syncing." },
+    left: { head: "Three clicks, once", text: "It finds WoW, puts the addon in, and links this PC to your Battle.net account." },
+    right: { head: "In your menu bar or tray", text: "It opens under its icon and stays out of the way. Close the window and it keeps syncing." },
   },
   arrive: {
-    left: { head: "Every character, every PC.", text: "The ones you played on the laptop come down to this PC too." },
-    right: { head: "Nothing to copy by hand.", text: "It reads the addon's saved journeys itself." },
+    left: { head: "Every character, every PC", text: "The ones you played on the laptop come down to this PC too." },
+    right: { head: "Nothing to copy by hand", text: "It reads the addon's saved journeys itself." },
   },
   level: {
-    left: { head: "Backed up after every session.", text: "When you log out, it sends the journey up." },
-    right: { head: "Ready before you log in.", text: "When the game starts, it brings the newest one back." },
+    left: { head: "Backed up after every session", text: "When you log out, it sends the journey up." },
+    right: { head: "Ready before you log in", text: "When the game starts, it brings the newest one back." },
   },
   new: {
-    left: { head: "New characters join by themselves.", text: "Make one, play, log out, and it's on the list." },
-    right: { head: "Free, with nothing to buy.", text: "No subscription, no ads, no paid version." },
+    left: { head: "New characters join by themselves", text: "Make one, play, log out, and it's on the list." },
+    right: { head: "Free, with nothing to buy", text: "No subscription, no ads, no paid version." },
   },
 };
 
@@ -70,7 +70,7 @@ export const STILL: Demo = {
     row("Thalrok", "WARRIOR", 42, "9d 4h", "Classic PvE · Desk, 2 min ago"),
     MIRELLE,
     BRANNOC,
-    row("Ysolde", "MAGE", 12, "14h", "Classic PvE · Desk, 3 days ago"),
+    row("Ysolde", "MAGE", 12, "14h 20m", "Classic PvE · Desk, 3 days ago"),
   ],
 };
 
@@ -150,7 +150,7 @@ export function demoAt(time: number, phone: boolean): Demo {
     d.syncing = true;
   }
   if (t >= 16.6) {
-    thalrok.line = "Classic PvE · Desk, yesterday";
+    thalrok.line = "Classic PvE · Desk, 20 h ago";
     const ysolde = row("Ysolde", "MAGE", 1, "12m", "Classic PvE · Desk, just now");
     ysolde.glow = t < 17.8;
     d.rows.unshift(ysolde);
