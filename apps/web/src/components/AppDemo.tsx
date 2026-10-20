@@ -1,5 +1,5 @@
 import compass from "@road-to-sixty/ui/compass.png";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gauntlet from "../assets/demo/cursor-gauntlet.png";
 import { advance, demoAt, LINES, LOOP, STILL, STILL_LINES, type Demo, type Line } from "../demo";
 import { DemoCharacters } from "./DemoCharacters";
@@ -7,11 +7,11 @@ import { DemoSetup } from "./DemoSetup";
 import { Roll, Swap, useChange } from "./DemoMotion";
 
 // The home page's app demo (docs/superpowers/specs/2026-10-20-app-demo-design.md):
-// the still picture in the page's HTML, then, once half of it is on screen, the
-// story from demo.ts on a loop. Every change moves through CSS; this only keeps time.
+// the still picture in the page's HTML, then, once half of it (or half the
+// screen, on short screens) is in view, the story from demo.ts on a loop.
+// Every change moves through CSS; this only keeps time.
 
-const STORY =
-  "The Road to Sixty app opening under its menu bar icon. It sets itself up in three clicks: it installs the addon, links this PC, and asks you to restart WoW once. Then its list fills with your characters from every PC, one levels up after a session, and a new character joins, each backed up as it changes.";
+const STORY = "The Road to Sixty app, shown as a short looping demo of setting it up and syncing characters.";
 
 // The loop starts a second early, while the still picture's rows close with the window.
 const CLOSING: Demo = { ...STILL, open: false };
@@ -70,12 +70,15 @@ export function AppDemo() {
       }
       run();
     };
+    // A screen shorter than half the demo could never show half of it, so
+    // half the screen's height counts as seen too.
     const seeing = new IntersectionObserver(
-      ([e]) => {
-        seen = e!.intersectionRatio >= 0.5;
+      (entries) => {
+        const e = entries[entries.length - 1]!;
+        seen = e.isIntersecting && e.intersectionRect.height >= Math.min(e.boundingClientRect.height, e.rootBounds?.height ?? innerHeight) / 2;
         run();
       },
-      { threshold: 0.5 },
+      { threshold: [0, 0.25, 0.5, 0.75, 1] },
     );
 
     seeing.observe(root.current!);
@@ -90,23 +93,24 @@ export function AppDemo() {
   }, []);
 
   const still = t === null || t < 0;
-  const lines = t === null ? STILL_LINES : LINES[demo.part];
+  const lines = still ? STILL_LINES : LINES[demo.part];
   const pressed = demo.cursor.down ? demo.cursor.at : null;
 
   const win = useRef<HTMLDivElement>(null);
   const [spot, setSpot] = useState<{ x: number; y: number } | null>(null);
   const { at, shown } = demo.cursor;
   useLayoutEffect(() => {
+    const move = (x: number, y: number) => setSpot((s) => (s && s.x === x && s.y === y ? s : { x, y }));
     const place = () => {
       const r = root.current!.getBoundingClientRect();
-      const target = root.current!.querySelector(`[data-target="${at}"]`);
-      if (shown && target) {
-        const b = target.getBoundingClientRect();
-        setSpot({ x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top });
+      const b = root.current!.querySelector(`[data-target="${at}"]`)?.getBoundingClientRect();
+      // A target with no width is hidden (the menu bar icon on narrow screens), and would pull the cursor to a corner.
+      if (shown && b?.width) {
+        move(b.left + b.width / 2 - r.left, b.top + b.height / 2 - r.top);
       } else if (!shown && at === "icon") {
         // Parked over the window's lower right while hidden, so it glides in to its first target.
         const w = win.current!.getBoundingClientRect();
-        setSpot({ x: w.right - r.left - 70, y: w.top - r.top + 380 });
+        move(w.right - r.left - 70, w.top - r.top + 380);
       }
     };
     place();
@@ -145,16 +149,15 @@ export function AppDemo() {
 
       <Lines side="right" now={lines.right} className="order-3 md:pt-[330px] md:text-left" />
 
-      <div className="sr-only">
-        {Object.values(LINES).map((pair) => (
-          <Fragment key={pair.left.head}>
-            <h2>{pair.left.head}</h2>
-            <p>{pair.left.text}</p>
-            <h2>{pair.right.head}</h2>
-            <p>{pair.right.text}</p>
-          </Fragment>
-        ))}
-      </div>
+      <ul className="sr-only">
+        {Object.values(LINES).flatMap((pair) =>
+          [pair.left, pair.right].map((l) => (
+            <li key={l.head}>
+              {l.head}. {l.text}
+            </li>
+          )),
+        )}
+      </ul>
 
       <Cursor spot={spot} shown={shown} down={demo.cursor.down} />
     </div>
@@ -190,7 +193,7 @@ function Lines({ side, now, className }: { side: "left" | "right"; now: Line; cl
 function Clock({ text, roll }: { text: string; roll: boolean }) {
   const time = <Roll text={text} />;
   return (
-    <span className="inline-block w-[58px] text-right tabular-nums">
+    <span className="inline-block w-[58px] whitespace-nowrap text-right tabular-nums">
       {roll ? (
         time
       ) : (
