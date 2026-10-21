@@ -394,13 +394,47 @@ local function Anchor(frame, owner)
     end
 end
 
+local function Copy(gear)
+    local copy = {}
+    for slot, id in pairs(gear) do
+        copy[slot] = id
+    end
+    return copy
+end
+
+local GUESSED_NOTE = "Gear seen later in this level"
+
+-- A level snapshot's gear, and whether it is a guess. Snapshots taken at
+-- login used to have no gear, as the client did not give it yet (issue
+-- #63). For those the best guess is the next snapshot with gear, less the
+-- slots an "eq" event changed in between (what they held before is unknown).
+local function SnapshotGear(level)
+    local snapshot = ns.view.levels[level]
+    local gear = snapshot and snapshot.gear
+    if not gear or next(gear) or not snapshot.t then return gear, false end
+    local nextT, nextGear
+    for _, s in pairs(ns.view.levels) do
+        if s.t and s.t > snapshot.t and s.gear and next(s.gear) and (not nextT or s.t < nextT) then
+            nextT, nextGear = s.t, s.gear
+        end
+    end
+    if not nextGear then return gear, false end
+    local guess = Copy(nextGear)
+    for _, e in ipairs(ns.view.events) do
+        if e[2] == "eq" and e[1] >= snapshot.t and e[1] <= nextT then
+            guess[e[6]] = nil
+        end
+    end
+    return guess, true
+end
+
 -- Shows the gear for level beside owner, in place of a tooltip: title
 -- (default "Gear at level N") on the banner, detail (such as zone and date)
 -- under the model. Returns false, showing nothing, for levels without
 -- recorded gear, so the caller can show a plain tooltip instead.
 function GearCard:Show(level, owner, title, detail)
     local snapshot = ns.view.levels[level]
-    local gear = snapshot and snapshot.gear
+    local gear, guessed = SnapshotGear(level)
     if not gear or not next(gear) then
         self:Hide()
         return false
@@ -409,7 +443,9 @@ function GearCard:Show(level, owner, title, detail)
     Anchor(hoverCard.frame, owner)
     hoverCard.model.facing = 0
     local note = detail
-    if snapshot.gearLater then
+    if guessed then
+        note = (note and note .. "\n" or "") .. GUESSED_NOTE
+    elseif snapshot.gearLater then
         note = (note and note .. "\n" or "") .. "Gear recorded at a later login"
     end
     hoverCard:Render(gear, title or ("Gear at level %d"):format(level), note)
@@ -426,21 +462,14 @@ local dockCard, dockParent
 local timeline          -- { t, level, gear } in time order, see Rebuild
 local shownIndex
 
-local function Copy(gear)
-    local copy = {}
-    for slot, id in pairs(gear) do
-        copy[slot] = id
-    end
-    return copy
-end
-
 -- Builds the gear worn over time: each level snapshot sets the whole gear
 -- (and the level), each "eq" event changes one slot.
 function GearCard:Rebuild()
     local changes = {}
     for level, snapshot in pairs(ns.view.levels) do
-        if snapshot.gear and snapshot.t then
-            changes[#changes + 1] = { t = snapshot.t, level = level, gear = snapshot.gear, order = 0 }
+        local gear, guessed = SnapshotGear(level)
+        if gear and snapshot.t then
+            changes[#changes + 1] = { t = snapshot.t, level = level, gear = gear, guessed = guessed, order = 0 }
         end
     end
     for i, e in ipairs(ns.view.events) do
@@ -455,16 +484,16 @@ function GearCard:Rebuild()
     end)
 
     timeline = {}
-    local gear, level
+    local gear, level, guessed
     for _, change in ipairs(changes) do
         if change.gear then
-            gear, level = Copy(change.gear), change.level
+            gear, level, guessed = Copy(change.gear), change.level, change.guessed
         elseif gear then
             gear = Copy(gear)
             gear[change.slot] = change.id ~= 0 and change.id or nil
         end
         if gear then
-            timeline[#timeline + 1] = { t = change.t, level = level, gear = gear }
+            timeline[#timeline + 1] = { t = change.t, level = level, gear = gear, guessed = guessed }
         end
     end
     shownIndex = nil
@@ -501,7 +530,8 @@ function GearCard:Follow(t)
         return
     end
     local title = entry.level and ("Gear at level %d"):format(entry.level) or "Gear"
-    dockCard:Render(entry.gear, title, not index and "Before the first recorded gear" or nil, wasShown)
+    local note = not index and "Before the first recorded gear" or entry.guessed and GUESSED_NOTE or nil
+    dockCard:Render(entry.gear, title, note, wasShown)
 end
 
 function GearCard:Undock()

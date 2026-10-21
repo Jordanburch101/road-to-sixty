@@ -204,6 +204,50 @@ Fire("SKILL_LINES_CHANGED")
 local last = ns.char.events[#ns.char.events]
 check(last[2] == "prof" and last[6] == "Cooking" and last[8] == 150, "a profession raised elsewhere is logged after login")
 
+-- 8. Equipped items are not readable yet at login on Forever (issue #63):
+-- the login gear is read again until they show, then fills in the snapshot
+-- taken at login and the gear last seen, without logging them as changes.
+local timers = {}
+local realAfter = C_Timer.After
+C_Timer.After = function(_, fn) timers[#timers + 1] = fn end   ---@diagnostic disable-line: duplicate-set-field
+local function RunTimers()
+    local due = timers
+    timers = {}
+    for _, fn in ipairs(due) do fn() end
+end
+local wearing = { [1] = 102, [5] = 200 }   -- slot 1 changed on another PC
+local readable = false
+GetInventoryItemID = function(_, slot) return readable and wearing[slot] or nil end
+game.level = 7
+Fire("PLAYER_LOGIN")
+check(next(ns.char.levels[7].gear) == nil, "the first gear read at login is empty")
+check(ns.char.gear[1] == 101, "while waiting, the gear last seen is still the saved one")
+check(#timers > 0, "the login gear is read again later")
+local function EqCount()
+    local n = 0
+    for _, e in ipairs(ns.char.events) do if e[2] == "eq" then n = n + 1 end end
+    return n
+end
+local eqLogged = EqCount()
+readable = true
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+check(EqCount() == eqLogged, "items turning up while waiting are not logged as changes")
+RunTimers()
+check(ns.char.levels[7].gear[1] == 102 and ns.char.levels[7].gear[5] == 200, "the login snapshot gets the gear once readable")
+check(ns.char.gear[1] == 102 and ns.char.levels[7].gear ~= ns.char.gear, "the gear last seen is set too, as its own table")
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+check(EqCount() == eqLogged, "after the wait an unchanged slot still logs nothing")
+
+-- A login whose snapshot already has gear keeps it; one with nothing on
+-- stops reading after a while and stays empty.
+readable = false
+Fire("PLAYER_LOGIN")
+for _ = 1, 100 do RunTimers() end   -- also runs the other modules' login timers
+check(ns.char.levels[7].gear[1] == 102, "a snapshot that has gear is left alone")
+check(next(ns.char.gear) == nil and #timers == 0, "a character wearing nothing stops being read and stays empty")
+C_Timer.After = realAfter
+readable = true
+
 if failures == 0 then
     print("Journal tests passed.")
 else

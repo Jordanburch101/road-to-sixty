@@ -72,15 +72,41 @@ function ns.CaptureGear()
     return gear
 end
 
+-- Equipped items are not readable yet at PLAYER_LOGIN on Forever: the gear
+-- read there comes back empty (issue #63). So the login gear is read again
+-- every GEAR_RETRY seconds until items show, then fills in the snapshot
+-- taken at login and ns.char.gear. A character that really wears nothing
+-- stays empty once GEAR_TRIES reads have found nothing.
+local GEAR_RETRY, GEAR_TRIES = 1, 30
+local waitingGear = false
+
+-- level: the level whose snapshot waits for the login gear, or nil.
+local function ReadLoginGear(level, tries)
+    local gear = ns.CaptureGear()
+    if next(gear) == nil and tries > 1 then
+        waitingGear = true
+        C_Timer.After(GEAR_RETRY, function() ns.SafeCall(ReadLoginGear, level, tries - 1) end)
+        return
+    end
+    waitingGear = false
+    ns.char.gear = gear
+    local snapshot = level and ns.char.levels[level]
+    if snapshot and (not snapshot.gear or next(snapshot.gear) == nil) then
+        snapshot.gear = CopyTable(gear)
+    end
+end
+
 -- Logs real equipment changes, so a replay can show gear changing between
 -- level ups. ns.char.gear is the gear last seen (set at login), so swapping
 -- an item for the same one logs nothing. Before login it is still the saved
 -- gear, which the sync folder may be about to replace (Sync.lua), and an
--- "eq" logged then would make this PC's older copy look played last.
+-- "eq" logged then would make this PC's older copy look played last. While
+-- the login gear is not readable yet nothing is logged either: items
+-- turning up then are the gear worn all along, not changes.
 local loggedIn = false
 ns.On("PLAYER_EQUIPMENT_CHANGED", function(slot)
     local gear = ns.char.gear
-    if not loggedIn or not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
+    if not loggedIn or waitingGear or not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
     local itemID = GetInventoryItemID("player", slot) or 0
     if (gear[slot] or 0) ~= itemID then
         gear[slot] = itemID ~= 0 and itemID or nil
@@ -270,15 +296,17 @@ ns.On("PLAYER_LOGIN", function()
     end
     local level = UnitLevel("player")
     local snapshot = ns.char.levels[level]
+    local fillLevel
     if not snapshot then
         -- Level 1 is a clean start; anything else means tracking began mid-level.
         Snapshot(level, level > 1)
+        fillLevel = level
     elseif not snapshot.gear then
         -- Reached before gear was recorded: today's gear is the best guess.
-        snapshot.gear = ns.CaptureGear()
         snapshot.gearLater = true
+        fillLevel = level
     end
-    ns.char.gear = ns.CaptureGear()
+    ReadLoginGear(fillLevel, GEAR_TRIES)
     Journal:Log("on", level)
 end)
 

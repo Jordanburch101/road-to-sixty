@@ -6,6 +6,14 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.10.3
+
+### Fixed
+- The gear card for the level you start recording at (level 1 for a new
+  character) now shows the gear you were wearing, instead of an empty
+  card. Journeys recorded before show the gear from later in that level,
+  marked as such.
+
 ## 1.10.2
 
 ### New
