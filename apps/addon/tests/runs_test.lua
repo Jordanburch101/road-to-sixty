@@ -55,6 +55,7 @@ ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Tidy.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/Items.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 local Journal = ns.Journal
 

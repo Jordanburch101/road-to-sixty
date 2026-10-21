@@ -60,6 +60,7 @@ local function Settle()
     for _, fn in ipairs(due) do fn() end
 end
 
+assert(loadfile("RoadToSixty/Items.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Enchants.lua"))("RoadToSixty", ns)
 local Enchants = ns.Enchants
 

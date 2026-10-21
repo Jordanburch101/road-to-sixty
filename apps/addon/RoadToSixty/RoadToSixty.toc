@@ -20,6 +20,7 @@ ChatPatterns.lua
 MinimapTiles.lua
 ZoneOverlays.lua
 ZoneArt.lua
+Items.lua
 Recorder.lua
 Journal.lua
 LevelChat.lua
@@ -30,6 +31,7 @@ Mounts.lua
 Rares.lua
 Groups.lua
 Enchants.lua
+Sources.lua
 Parties.lua
 Roster.lua
 Health.lua

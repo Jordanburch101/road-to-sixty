@@ -25,11 +25,13 @@ for data, its exact format; read that before changing a module.
 | Merge.lua | merges two copies of one character's journey, for the sync (no game calls); its rules are in its header and the sync spec; `tests/pure_test.lua` keeps Packed, Tidy, Parse, Tally and Merge pure |
 | Sync.lua | at login, brings in the journey the app left in `RoadToSixty_Sync`: merged, or replaced for a restore; the sync folder's format is in its header |
 | ChatPatterns.lua | `ns.ChatMatcher`: matches messages against the client's format strings in any language (numbered `%1$s` arguments too) |
+| Items.lua | item strings (`ns.ItemString`), what can be worn, items in the gear and bags counted together (`ns.CountItems`) |
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
 | LevelChat.lua | the summary in chat at each level up, with an Open map link |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
-| Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua | guilds, reputation, riding and mounts, rare mobs, groups: each records its own events, listed in its header |
+| Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua, Enchants.lua | guilds, reputation, riding and mounts, rare mobs, groups, enchants: each records its own events, listed in its header |
+| Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
@@ -43,7 +45,7 @@ for data, its exact format; read that before changing a module.
 | Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
 | MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo) |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua | developer tools, left out of releases |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app

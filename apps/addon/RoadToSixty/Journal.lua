@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 -- Records what happened along the path, plus a stats snapshot at each level
 -- (ns.char.levels[level], including the equipped gear: slot -> item ID, and
--- from 1.10.3 links: slot -> item string, see ns.ItemString; gearLater =
+-- from 1.10.3 links: slot -> item string, see Items.lua; gearLater =
 -- true when it was taken at a later login, not at the level up).
 --
 -- Each event is an array: { time, kind, continentID, x, y, ... } with the
@@ -21,12 +21,14 @@ local addonName, ns = ...
 --   out  instanceID, summary       left it; summary of the run, see EndRun
 --   loot itemLink, quality, instanceID   looted an item of green quality or
 --                                  better; instanceID if inside one
---   eq   slot, itemID, item, late  equipment changed; itemID 0 when emptied;
---                                  item is the item string (ns.ItemString),
---                                  from 1.10.3, nil when emptied; late = true
---                                  when found at login (changed while the
---                                  addon was not running), so its time and
---                                  place are the login's
+--   eq   slot, itemID, item, late, source   equipment changed; itemID 0
+--                                  when emptied; item is the item string
+--                                  (ns.ItemString), from 1.10.3, nil when
+--                                  emptied; late = true when found at login
+--                                  (changed while the addon was not
+--                                  running), so its time and place are the
+--                                  login's; source is where and how the item
+--                                  was got, when known (Sources.lua)
 --   prof, rec                      professions and recipes, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 --   rep                            reputation standing changed, see Reputation.lua
@@ -64,26 +66,6 @@ ns.GEAR_SLOTS = {
     "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot",
     "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
 }
-
--- An item link as its item string, keeping what tells this item apart (the
--- random suffix such as "of the Monkey", the enchant, the item context that
--- hints where it came from) and leaving out what changes while it stays the
--- same item: the link level (field 9, the player's level, so every link
--- changes at a level up) and the spec (field 10). Empty fields at the end
--- are dropped: "item:6070:::::::::::11". withoutEnchant leaves the enchant
--- out too (Enchants.lua logs enchants). nil for anything but an item link.
-function ns.ItemString(link, withoutEnchant)
-    local s = type(link) == "string" and link:match("item:[%-%d:]+")
-    if not s then return nil end
-    local fields = {}
-    for v in (s:sub(6) .. ":"):gmatch("([^:]*):") do fields[#fields + 1] = v end
-    for i = #fields + 1, 10 do fields[i] = "" end
-    fields[9], fields[10] = "", ""
-    if withoutEnchant then fields[2] = "" end
-    local last = #fields
-    while last > 1 and fields[last] == "" do last = last - 1 end
-    return "item:" .. table.concat(fields, ":", 1, last)
-end
 
 -- What the player is wearing: inventory slot ID -> item ID, and slot ID ->
 -- item string. Slots this client does not have are skipped.
@@ -168,7 +150,8 @@ ns.On("PLAYER_EQUIPMENT_CHANGED", function(slot)
     local plain = ns.ItemString(item, true)
     if (gear[slot] or 0) ~= itemID or (plain and worn[slot] and plain ~= worn[slot]) then
         gear[slot] = itemID ~= 0 and itemID or nil
-        Journal:Log("eq", slot, itemID, item)
+        local source = plain and ns.Sources and ns.Sources:Take(plain)
+        Journal:Log("eq", slot, itemID, item, nil, source)
     end
     worn[slot] = plain
 end)

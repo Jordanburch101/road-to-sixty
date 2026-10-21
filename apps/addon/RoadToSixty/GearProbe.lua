@@ -13,7 +13,9 @@ local _, ns = ...
 -- message.
 -- Every line is also kept in the account file (ns.db.gearProbe, newest
 -- last), as the output is too long to screenshot: /reload writes it.
--- /rts gearprobe clear empties it. The report goes to the file only.
+-- /rts gearprobe clear empties it. The report goes to the file only, as
+-- does /rts gearprobe sources: the last gear changes and enchants with
+-- what was recorded about them, and the source notes waiting.
 
 local MAX_LINES = 5000
 local quiet = false     -- true while the report runs: file only, not chat
@@ -326,6 +328,26 @@ end
 ns.Command("gearprobe", "check gear links and where items come from; watch to print the events (developer)", function(arg)
     if arg == "watch" then
         Watch()
+    elseif arg == "sources" then
+        -- What Sources.lua and Enchants.lua recorded: the last gear changes
+        -- with their source, the last enchants, and the notes waiting.
+        quiet = true
+        local shown = 0
+        for i = #ns.char.events, 1, -1 do
+            local e = ns.char.events[i]
+            if (e[2] == "eq" or e[2] == "ench") and shown < 10 then
+                P(("%s %s %s"):format(date("%H:%M:%S", e[1]), e[2], Show({ unpack(e, 6, 13) })))
+                shown = shown + 1
+            end
+        end
+        local waiting = 0
+        for key, notes in pairs(ns.char.got or {}) do
+            waiting = waiting + #notes
+            local last = notes[#notes]
+            P(("Noted %s: %d, last %s %s %s"):format(key, #notes, Show(last.how), Show(last.id), Show(last.name)))
+        end
+        quiet = false
+        ns.Print(("%d gear and enchant events shown, %d notes waiting. In the log; /reload to write it."):format(shown, waiting))
     elseif arg == "clear" then
         ns.db.gearProbe = nil
         ns.Print("Gear probe log cleared.")

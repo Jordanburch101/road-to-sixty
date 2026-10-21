@@ -36,7 +36,6 @@ local SCAN_DELAY = 0.3      -- seconds; bursts of bag and inventory events read 
 local TRADE_WINDOW = 10     -- seconds after a trade closes that its enchant can land
 local CAST_WINDOW = 3       -- seconds after the player's own cast that it counts as the cause
 local TRADE_ENCHANT_SLOT = 7
-local BAGS = 4              -- backpack is 0, then four bags
 
 local Log = function(...) return ns.Journal:Log(...) end
 
@@ -54,38 +53,15 @@ function Enchants.Parse(link)
     return tonumber(id), tonumber(enchant) or 0
 end
 
-local function Equippable(itemID)
-    ---@diagnostic disable-next-line: deprecated
-    local info = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
-    if not info then return true end
-    local equipLoc = select(4, info(itemID))
-    return equipLoc ~= nil and equipLoc ~= "" and equipLoc ~= "INVTYPE_BAG" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
-end
-
-local function Add(into, link)
+-- "itemID:enchantID" for an item link.
+local function Key(link)
     local itemID, enchantID = Enchants.Parse(link)
-    if itemID and Equippable(itemID) then
-        local key = itemID .. ":" .. enchantID
-        into[key] = (into[key] or 0) + 1
-    end
+    return itemID and (itemID .. ":" .. enchantID)
 end
 
 -- Counts of "itemID:enchantID" over the equipped gear and the bags.
 local function Read()
-    local now = {}
-    for slot = 1, 19 do
-        Add(now, GetInventoryItemLink("player", slot))
-    end
-    local bags = C_Container
-    if bags and bags.GetContainerNumSlots and bags.GetContainerItemInfo then
-        for bag = 0, BAGS do
-            for slot = 1, bags.GetContainerNumSlots(bag) do
-                local info = bags.GetContainerItemInfo(bag, slot)
-                if info then Add(now, info.hyperlink) end
-            end
-        end
-    end
-    return now
+    return ns.CountItems(Key)
 end
 
 -- Enchant changes between two reads: { itemID, enchantID, oldEnchantID }

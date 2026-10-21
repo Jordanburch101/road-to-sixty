@@ -89,6 +89,7 @@ ns.Now = function() return time() end
 assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Tidy.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/Items.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Journal.lua"))("RoadToSixty", ns)
 ns.view = ns.char
 local Journal = ns.Journal
@@ -309,6 +310,21 @@ wearing[1] = nil
 Fire("PLAYER_EQUIPMENT_CHANGED", 1)
 eq9 = LastEq()
 check(eq9[7] == 0 and eq9[8] == nil, "an emptied slot has no item string")
+
+-- 11. Putting an item on asks Sources.lua where it came from, by its
+-- item string without the enchant, and the eq event keeps the answer.
+local asked
+ns.Sources = { Take = function(_, key)
+    asked = key
+    return { how = "quest", id = 33 }
+end }
+wearing[1] = 103
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+local eq11 = LastEq()
+check(asked == "item:103::::::1017", "the source is asked for by item string, got " .. tostring(asked))
+check(eq11[7] == 103 and eq11[9] == nil and type(eq11[10]) == "table" and eq11[10].how == "quest",
+    "the eq event keeps the source as field 10")
+ns.Sources = nil
 
 if failures == 0 then
     print("Journal tests passed.")

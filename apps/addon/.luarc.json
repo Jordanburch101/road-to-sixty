@@ -36,6 +36,7 @@
         "GetMouseFocus",
         "LOOT_ITEM_SELF",
         "LOOT_ITEM_SELF_MULTIPLE",
+        "ATTACHMENTS_MAX_RECEIVE",
         "PlayerFrame",
         "PlayerLevelText",
         "ERR_LEARN_RECIPE_S",
