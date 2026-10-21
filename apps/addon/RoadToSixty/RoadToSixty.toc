@@ -58,4 +58,5 @@ PartyProbe.lua
 LevelProbe.lua
 MountProbe.lua
 PortraitProbe.lua
+GearProbe.lua
 #@end-debug@
