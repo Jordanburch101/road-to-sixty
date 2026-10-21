@@ -37,11 +37,13 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   the restore reached its PC. `tests/restore_test.lua` covers them.
 - Any change to what is saved, or what it means, bumps `DATA_VERSION` in
   Core.lua, gets listed there, and brings older files up in `Upgrade`.
-  A new event kind is the exception: it changes nothing already saved,
-  and Merge matches kinds it does not know on time and kind alone. A bump
-  would stop syncing until the server is redeployed, as the server's
-  merge refuses a newer layout than it knows. List the kind in Merge's
-  `ABOUT` and the sync spec instead.
+  A new event kind, or a new optional field older code ignores (an extra
+  event field, a new key in a snapshot), is the exception: it changes
+  nothing already saved, and Merge matches kinds it does not know on time
+  and kind alone and copies fields it does not know. A bump would stop
+  syncing until the server is redeployed, as the server's merge refuses
+  a newer layout than it knows. List a new kind in Merge's `ABOUT` and
+  the sync spec instead.
 - Counts kept per PC (Tally.lua) go under the PC that started the thing:
   an open dungeon run and group carry `pc`, so two PCs finishing the same
   one from their copies count it once after the merge.

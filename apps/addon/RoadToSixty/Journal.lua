@@ -2,7 +2,8 @@ local addonName, ns = ...
 
 -- Records what happened along the path, plus a stats snapshot at each level
 -- (ns.char.levels[level], including the equipped gear: slot -> item ID, and
--- gearLater = true when it was taken at a later login, not at the level up).
+-- from 1.10.3 links: slot -> item string, see ns.ItemString; gearLater =
+-- true when it was taken at a later login, not at the level up).
 --
 -- Each event is an array: { time, kind, continentID, x, y, ... } with the
 -- kind's own fields from index 6 on (so e[6] is the first one below). The
@@ -20,7 +21,12 @@ local addonName, ns = ...
 --   out  instanceID, summary       left it; summary of the run, see EndRun
 --   loot itemLink, quality, instanceID   looted an item of green quality or
 --                                  better; instanceID if inside one
---   eq   slot, itemID              equipment changed; itemID 0 when emptied
+--   eq   slot, itemID, item, late  equipment changed; itemID 0 when emptied;
+--                                  item is the item string (ns.ItemString),
+--                                  from 1.10.3, nil when emptied; late = true
+--                                  when found at login (changed while the
+--                                  addon was not running), so its time and
+--                                  place are the login's
 --   prof, rec                      professions and recipes, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 --   rep                            reputation standing changed, see Reputation.lua
@@ -59,18 +65,50 @@ ns.GEAR_SLOTS = {
     "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
 }
 
--- What the player is wearing: inventory slot ID -> item ID. Slots this client
--- does not have are skipped.
+-- An item link as its item string, keeping what tells this item apart (the
+-- random suffix such as "of the Monkey", the enchant, the item context that
+-- hints where it came from) and leaving out what changes while it stays the
+-- same item: the link level (field 9, the player's level, so every link
+-- changes at a level up) and the spec (field 10). Empty fields at the end
+-- are dropped: "item:6070:::::::::::11". withoutEnchant leaves the enchant
+-- out too (Enchants.lua logs enchants). nil for anything but an item link.
+function ns.ItemString(link, withoutEnchant)
+    local s = type(link) == "string" and link:match("item:[%-%d:]+")
+    if not s then return nil end
+    local fields = {}
+    for v in (s:sub(6) .. ":"):gmatch("([^:]*):") do fields[#fields + 1] = v end
+    for i = #fields + 1, 10 do fields[i] = "" end
+    fields[9], fields[10] = "", ""
+    if withoutEnchant then fields[2] = "" end
+    local last = #fields
+    while last > 1 and fields[last] == "" do last = last - 1 end
+    return "item:" .. table.concat(fields, ":", 1, last)
+end
+
+-- What the player is wearing: inventory slot ID -> item ID, and slot ID ->
+-- item string. Slots this client does not have are skipped.
 function ns.CaptureGear()
-    local gear = {}
+    local gear, links = {}, {}
     for _, name in ipairs(ns.GEAR_SLOTS) do
         local ok, slot = pcall(GetInventorySlotInfo, name)
         local itemID = ok and slot and GetInventoryItemID("player", slot)
         if itemID then
             gear[slot] = itemID
+            links[slot] = ns.ItemString(GetInventoryItemLink("player", slot))
         end
     end
-    return gear
+    return gear, links
+end
+
+-- Item strings worn now, without enchants: slot -> string. Not saved; a
+-- suffix changing while the item ID stays (one "of the Bear" for one "of
+-- the Eagle") is a real change, which item IDs alone would miss.
+local worn = {}
+
+local function Unenchanted(links)
+    local out = {}
+    for slot, item in pairs(links) do out[slot] = ns.ItemString(item, true) end
+    return out
 end
 
 -- Equipped items are not readable yet at PLAYER_LOGIN on Forever: the gear
@@ -78,22 +116,39 @@ end
 -- every GEAR_RETRY seconds until items show, then fills in the snapshot
 -- taken at login and ns.char.gear. A character that really wears nothing
 -- stays empty once GEAR_TRIES reads have found nothing.
+--
+-- Gear that differs from the gear last seen was changed while the addon was
+-- not running (turned off, or played on a PC without it), and is logged as
+-- a late "eq". Only slots the last seen gear has an item in are compared:
+-- before 1.10.3 it was often empty or partial (issue #63), and a missing
+-- slot is unknown, not empty. So a slot filled while away from an empty one
+-- is missed. A read that finds nothing is not compared either, as it may
+-- not have worked.
 local GEAR_RETRY, GEAR_TRIES = 1, 30
 local waitingGear = false
 
 -- level: the level whose snapshot waits for the login gear, or nil.
 local function ReadLoginGear(level, tries)
-    local gear = ns.CaptureGear()
+    local gear, links = ns.CaptureGear()
     if next(gear) == nil and tries > 1 then
         waitingGear = true
         C_Timer.After(GEAR_RETRY, function() ns.SafeCall(ReadLoginGear, level, tries - 1) end)
         return
     end
     waitingGear = false
-    ns.char.gear = gear
+    local before = ns.char.gear
+    if type(before) == "table" and next(gear) then
+        for slot = 1, 19 do
+            local was = before[slot]
+            if was and was ~= (gear[slot] or 0) then
+                Journal:Log("eq", slot, gear[slot] or 0, links[slot], true)
+            end
+        end
+    end
+    ns.char.gear, worn = gear, Unenchanted(links)
     local snapshot = level and ns.char.levels[level]
     if snapshot and (not snapshot.gear or next(snapshot.gear) == nil) then
-        snapshot.gear = CopyTable(gear)
+        snapshot.gear, snapshot.links = CopyTable(gear), CopyTable(links)
     end
 end
 
@@ -109,16 +164,21 @@ ns.On("PLAYER_EQUIPMENT_CHANGED", function(slot)
     local gear = ns.char.gear
     if not loggedIn or waitingGear or not gear or type(slot) ~= "number" or slot < 1 or slot > 19 then return end
     local itemID = GetInventoryItemID("player", slot) or 0
-    if (gear[slot] or 0) ~= itemID then
+    local item = itemID ~= 0 and ns.ItemString(GetInventoryItemLink("player", slot)) or nil
+    local plain = ns.ItemString(item, true)
+    if (gear[slot] or 0) ~= itemID or (plain and worn[slot] and plain ~= worn[slot]) then
         gear[slot] = itemID ~= 0 and itemID or nil
-        Journal:Log("eq", slot, itemID)
+        Journal:Log("eq", slot, itemID, item)
     end
+    worn[slot] = plain
 end)
 
 local function Snapshot(level, partial)
     local totals = ns.char.totals
+    local gear, links = ns.CaptureGear()
     ns.char.levels[level] = {
-        gear = ns.CaptureGear(),
+        gear = gear,
+        links = links,
         t = ns.Now(),
         money = GetMoney(),
         kills = totals.kills,
@@ -307,8 +367,9 @@ ns.On("PLAYER_LOGIN", function()
         snapshot.gearLater = true
         fillLevel = level
     end
-    ReadLoginGear(fillLevel, GEAR_TRIES)
+    -- After the session start, so gear changed while away is logged in it.
     Journal:Log("on", level)
+    ReadLoginGear(fillLevel, GEAR_TRIES)
 end)
 
 ns.On("PLAYER_LOGOUT", function()

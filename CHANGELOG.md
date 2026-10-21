@@ -12,6 +12,8 @@ broken and now works. Leave out internal changes. Sections are
 - Enchants on your gear are now part of your journey. History lists each
   one with the enchant, where it happened and who did it: you, or the
   enchanter you traded with.
+- Gear you changed while the addon was turned off, or on a PC without it,
+  now shows in your journey from your next login.
 
 ### Fixed
 - The gear card for the level you start recording at (level 1 for a new

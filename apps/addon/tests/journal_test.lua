@@ -67,6 +67,13 @@ GetInventorySlotInfo = function(name)
     return id
 end
 GetInventoryItemID = function(_, slot) return ({ [1] = 100, [5] = 200 })[slot] end
+-- Links as Forever writes them: the player's level in field 9, a spec in
+-- field 10. suffixes[slot] puts a random suffix (field 7) on a slot's item.
+local suffixes = {}
+GetInventoryItemLink = function(unit, slot)
+    local id = GetInventoryItemID(unit, slot)
+    return id and ("|cff1eff00|Hitem:%d::::::%s::%d:1491:::::::::|h[Item]|h|r"):format(id, suffixes[slot] or "", game.level)
+end
 GetItemInfo = function(link) return nil end     -- never cached, so quality comes from the link colour
 C_Map = { GetBestMapForUnit = function() return game.map end }
 C_QuestLog = { GetTitleForQuestID = function(id) return "Quest " .. id end }
@@ -233,10 +240,26 @@ readable = true
 Fire("PLAYER_EQUIPMENT_CHANGED", 1)
 check(EqCount() == eqLogged, "items turning up while waiting are not logged as changes")
 RunTimers()
+local late = ns.char.events[#ns.char.events]
+check(EqCount() == eqLogged + 1 and late[2] == "eq" and late[6] == 1 and late[7] == 102 and late[9] == true,
+    "gear changed while away (slot 1 on another PC) is logged once read, marked late")
+check(late[8] == "item:102", "with its item string")
+eqLogged = EqCount()
 check(ns.char.levels[7].gear[1] == 102 and ns.char.levels[7].gear[5] == 200, "the login snapshot gets the gear once readable")
 check(ns.char.gear[1] == 102 and ns.char.levels[7].gear ~= ns.char.gear, "the gear last seen is set too, as its own table")
 Fire("PLAYER_EQUIPMENT_CHANGED", 1)
 check(EqCount() == eqLogged, "after the wait an unchanged slot still logs nothing")
+
+-- A slot missing from the gear last seen is unknown, not empty, so it is
+-- not logged (before 1.10.3 the gear last seen was often empty, #63).
+ns.char.gear = { [5] = 200 }
+Fire("PLAYER_LOGIN")
+RunTimers()
+check(EqCount() == eqLogged, "a slot the gear last seen had nothing for logs nothing at login")
+ns.char.gear = {}
+Fire("PLAYER_LOGIN")
+RunTimers()
+check(EqCount() == eqLogged, "an empty gear last seen logs nothing at login")
 
 -- A login whose snapshot already has gear keeps it; one with nothing on
 -- stops reading after a while and stays empty.
@@ -247,6 +270,45 @@ check(ns.char.levels[7].gear[1] == 102, "a snapshot that has gear is left alone"
 check(next(ns.char.gear) == nil and #timers == 0, "a character wearing nothing stops being read and stays empty")
 C_Timer.After = realAfter
 readable = true
+
+-- 9. Item strings: the suffix, enchant and context kept; the link level
+-- and spec left out, so a level up changes nothing.
+local ItemString = ns.ItemString
+check(ItemString("|cnIQ1:|Hitem:6070::::::::2:1491::11:::::::|h[Wolfskin Bracers]|h|r") == "item:6070:::::::::::11",
+    "the link level and spec are left out, the context kept")
+check(ItemString("|Hitem:6070::::::::12:1491::11:::::::|h[x]|h") == ItemString("|Hitem:6070::::::::2:1491::11|h[x]|h"),
+    "the same item reads the same at any level")
+check(ItemString("|Hitem:15210:41:::::1017::20:1491:::::|h[x]|h") == "item:15210:41:::::1017",
+    "the enchant and the random suffix are kept")
+check(ItemString("|Hitem:15210:41:::::1017::20:1491:::::|h[x]|h", true) == "item:15210::::::1017",
+    "without the enchant when asked")
+check(ItemString("item:25") == "item:25" and ItemString(nil) == nil and ItemString("Linen Cloth") == nil,
+    "a bare item string reads as itself; anything else is not an item")
+
+-- 10. The snapshot keeps item strings, and an eq event carries one. A
+-- suffix changing while the item ID stays is a change; a level up is not.
+-- (The login before ended with nothing worn, so slot 1 is put on first.)
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+game.level = 8
+Fire("PLAYER_LEVEL_UP", 8)
+check(ns.char.levels[8].links[1] == "item:102" and ns.char.levels[8].links[5] == "item:200",
+    "the level snapshot holds each slot's item string")
+local function LastEq()
+    for i = #ns.char.events, 1, -1 do
+        if ns.char.events[i][2] == "eq" then return ns.char.events[i], i end
+    end
+end
+local _, before = LastEq()
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+check(select(2, LastEq()) == before, "re-equipping the same item at a new level logs nothing")
+suffixes[1] = "1017"
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+local eq9 = LastEq()
+check(eq9[6] == 1 and eq9[7] == 102 and eq9[8] == "item:102::::::1017", "the same item with another suffix is logged, with its item string")
+wearing[1] = nil
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+eq9 = LastEq()
+check(eq9[7] == 0 and eq9[8] == nil, "an emptied slot has no item string")
 
 if failures == 0 then
     print("Journal tests passed.")
