@@ -54,7 +54,8 @@ local defaults = {
 }
 
 -- Layout of RoadToSixtyCharDB; bump it at every change to what is saved
--- or what it means, and bring older files up in Upgrade.
+-- or what it means, and bring older files up in Upgrade. A new event kind
+-- needs no bump (Merge matches unknown kinds on time and kind; AGENTS.md).
 --   1  everything up to 1.8.0 (fields were only ever added)
 --   2  times are by the realm's clock (ns.Now). Times in a journey begun
 --      earlier are by that PC's clock before clockFrom.

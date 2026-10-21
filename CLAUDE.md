@@ -82,8 +82,9 @@ one when it is created.
 Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 (per character). Its `version` is `DATA_VERSION` in Core.lua: bump it at
 every change to what is saved or what it means, list the change there, and
-bring older files up in `Upgrade`. `addon` holds the addon version that
-last loaded the file.
+bring older files up in `Upgrade`. A new event kind needs no bump (see
+apps/addon/AGENTS.md). `addon` holds the addon version that last loaded
+the file.
 
 ## Commands
 
