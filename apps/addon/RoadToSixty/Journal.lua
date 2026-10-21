@@ -27,6 +27,7 @@ local addonName, ns = ...
 --   ride, mount                    riding learned, new mount, see Mounts.lua
 --   rare                           first kill of a rare mob, see Rares.lua
 --   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
+--   ench                           an enchant put on gear, see Enchants.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}

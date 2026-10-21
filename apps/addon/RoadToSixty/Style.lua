@@ -148,7 +148,7 @@ local CATEGORY = {
     lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
-    grp = "groups", rep = "reps", ride = "mounts", mount = "mounts", rare = "rares",
+    grp = "groups", rep = "reps", ride = "mounts", mount = "mounts", rare = "rares", ench = "enchants",
 }
 
 -- False if the player has turned this History filter category off.

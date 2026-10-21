@@ -328,6 +328,7 @@ local HISTORY_FILTERS = {
     { "Quests", { "qd" }, { { "quests", "Quests turned in" } } },
     { "Loot", { atlas = "Banker" }, {
         { "greens", "Green items" }, { "blues", "Blue items and better" },
+        { "enchants", "Enchants" },
     } },
     { "Learned", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
@@ -527,6 +528,9 @@ local function BuildHistory()
             local title, detail, icon = ns.Mounts:Describe(e)
             Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y,
                 ("%s, level %s - %s"):format(detail, level or "?", where))
+        elseif kind == "ench" then
+            local title, detail, icon = ns.Enchants:Describe(e)
+            Add({ kind = kind, title = title, iconFile = icon }, t, c, x, y, detail .. " - " .. where)
         elseif kind == "rare" then
             local title, detail = ns.Rares:Describe(e)
             Add({ kind = kind, title = title, rare = e, where = where }, t, c, x, y, detail .. " - " .. where)

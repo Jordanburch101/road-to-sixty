@@ -8,6 +8,11 @@ broken and now works. Leave out internal changes. Sections are
 
 ## 1.10.3
 
+### New
+- Enchants on your gear are now part of your journey. History lists each
+  one with the enchant, where it happened and who did it: you, or the
+  enchanter you traded with.
+
 ### Fixed
 - The gear card for the level you start recording at (level 1 for a new
   character) now shows the gear you were wearing, instead of an empty

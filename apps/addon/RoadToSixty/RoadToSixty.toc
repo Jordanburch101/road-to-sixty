@@ -29,6 +29,7 @@ Reputation.lua
 Mounts.lua
 Rares.lua
 Groups.lua
+Enchants.lua
 Parties.lua
 Roster.lua
 Health.lua

@@ -152,7 +152,7 @@ end
 local function Field6(e) return e[6] end
 local ABOUT = {
     qa = Field6, qd = Field6, eq = Field6, loot = Field6, ["in"] = Field6, out = Field6,
-    rep = Field6, prof = Field6, rec = Field6, mount = Field6, ride = Field6,
+    rep = Field6, prof = Field6, rec = Field6, mount = Field6, ride = Field6, ench = Field6,
     gj = Field6, gl = Field6, gr = Field6, lvl = Field6, zone = Field6, grpl = Field6, grps = Field6,
     grpa = function(e) return type(e[6]) == "table" and e[6][1] or nil end,
     rare = function(e) return e[9] or e[6] end,     -- the rares key: NPC ID, else name
