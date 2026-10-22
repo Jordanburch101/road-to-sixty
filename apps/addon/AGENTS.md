@@ -19,7 +19,7 @@ of what bites when you change the addon.
 
 ```
 bun run test              # every test under LuaJIT, and under Lua 5.1 if installed
-./check.ps1               # syntax, LuaLS diagnostics, tests (three old warnings are known)
+./check.ps1               # syntax, LuaLS diagnostics, tests (the old warnings are listed in the root CLAUDE.md)
 ./scripts/package.ps1     # release build plus a load test in toc order
 ```
 

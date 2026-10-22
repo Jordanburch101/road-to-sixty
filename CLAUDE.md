@@ -121,9 +121,10 @@ cargo run --bin rts-sync -- status  # installs and characters found; also link, 
 bunx tauri dev                      # the app with its window, using this PC's real link and data
 ```
 
-Run the addon commands from `apps/addon/`. `check.ps1` currently reports three old
-warnings (Probe.lua:52, Probe.lua:830, Recorder.lua:349); anything new is
-ours to fix.
+Run the addon commands from `apps/addon/`. `check.ps1` currently reports
+old LuaLS warnings in Parse.lua (69, 115), Probe.lua (52, 830), Sync.lua
+(101), tests/sync_test.lua and tests/tally_test.lua; anything new is ours
+to fix.
 
 ## Release
 

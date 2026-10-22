@@ -18,8 +18,11 @@ broken and now works. Leave out internal changes. Sections are
 - Under the gear, your average item level over the journey, with a mark
   wherever a blue or epic went on.
 - A date range for the journey map: see just today, yesterday, the last
-  7 or 30 days, or all time. The path, the replay, the markers and History
-  all follow it.
+  7 or 30 days, or all time. The path, the replay, the markers, the
+  pop-ups and History all follow it.
+- The Terrain and Gear card buttons now sit on the map itself, in its
+  bottom left corner, as they only change the map. The Fit button is
+  gone: the map fits your journey each time it opens.
 
 ### Fixed
 - The replay played too fast to follow; it now plays at half the speed.

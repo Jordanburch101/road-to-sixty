@@ -18,6 +18,9 @@ import sys
 import urllib.request
 
 BUILD = sys.argv[1] if len(sys.argv) > 1 else "1.60.1.70532"
+# The build goes into a URL and a Lua string: digits and dots only.
+if not re.fullmatch(r"[\d.]+", BUILD):
+    sys.exit(f"Not a build number: {BUILD}")
 OUT = "RoadToSixty/SeedGear.lua"
 
 # Inventory slot -> the item InventoryType values that go in it.
