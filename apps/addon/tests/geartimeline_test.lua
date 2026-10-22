@@ -48,7 +48,9 @@ check(tl.start == 1000 and tl.finish == finish, "start and finish")
 check(tl.capAt == 1000 + 100 * H, "level 60 reached")
 check(G.LevelAt(tl, 1000) == 1, "level 1 at the start")
 check(math.abs(G.LevelAt(tl, 1000 + 2 * H) - 2.5) < 1e-9, "halfway through level 2, got " .. G.LevelAt(tl, 1000 + 2 * H))
-check(G.LevelAt(tl, 1000 + 50 * H) == 3, "past the last level up before 60, still 3")
+-- Levels 4 to 59 were not recorded: they share the time from 3 to 60.
+local mid = G.LevelAt(tl, 1000 + 50 * H)
+check(math.abs(mid - (3 + 57 * 47 / 97)) < 1e-9, "levels not recorded share the gap, got " .. mid)
 check(G.LevelAt(tl, finish) == 60, "60 from reaching it on")
 check(G.ZoneAt(tl, 1000) == nil and G.ZoneAt(tl, 1000 + 2 * H) == 1429, "zone over time")
 check(tl.quests[33] and tl.enchants["310:41"], "quests and enchants by key")
@@ -98,6 +100,48 @@ check(G.WornAt(tl, math.huge)[5].id == 201, "the last item at the end")
 local trinket = tl.slots[13]
 check(#trinket == 2 and trinket[1].brief and not trinket[2].brief, "the same item with another suffix replaces it")
 check(G.Plain("item:310:41:::::1017") == "item:310::::::1017" and G.ItemID("item:310:41") == 310, "helpers")
+
+-- 6. A character partway through a level (the review of #67): the level
+-- being played runs to now, so gear put on since the last level up has
+-- its width, and U and TimeAt undo each other.
+local levelling = G.Build({
+    levels = {
+        [36] = { t = 1000, gear = { [1] = 500 } },
+        [37] = { t = 1000 + H, gear = { [1] = 500 } },
+    },
+    events = { { 1000 + 2 * H, "eq", 0, 0, 0, 1, 510, "item:510" } },
+}, 1000 + 4 * H)
+local uDing, uHelm, uNow = G.U(levelling, 1000 + H, 2), G.U(levelling, 1000 + 2 * H, 2), G.U(levelling, 1000 + 4 * H, 2)
+check(uDing == 37 and math.abs(uHelm - (37 + 1 / 3)) < 1e-9 and uNow > 37.99, "the current level has width, got "
+    .. uDing .. ", " .. uHelm .. ", " .. uNow)
+for _, t in ipairs({ 1000, 1000 + H / 2, 1000 + H, 1000 + 2.5 * H }) do
+    local back = G.TimeAt(levelling, G.U(levelling, t, 2), 2)
+    check(math.abs(back - t) < 1e-6, "TimeAt undoes U at " .. t .. ", got " .. back)
+end
+for _, t in ipairs({ 1000 + 2 * H, 1000 + 50 * H, 1000 + 100 * H, 1000 + 105 * H }) do
+    local back = G.TimeAt(tl, G.U(tl, t, 2), 2)
+    check(math.abs(back - t) < 1e-6, "TimeAt undoes U across the gap and after 60 at " .. t .. ", got " .. back)
+end
+
+-- 7. A two-hander empties the off hand, and a shield comes back later:
+-- kept gear does not stretch the first shield over the empty time.
+local twoHand = G.Build({
+    levels = { [10] = { t = 1000, gear = { [17] = 700 } } },
+    events = {
+        { 1000 + 5 * H, "eq", 0, 0, 0, 17, 0 },
+        { 1000 + 40 * H, "eq", 0, 0, 0, 17, 700, "item:700" },
+    },
+}, 1000 + 50 * H)
+local kept = twoHand.kept[17]
+check(#kept == 2 and kept[1].endT == 1000 + 5 * H and kept[1].closed, "the shield ends when the slot empties, got "
+    .. #kept .. " spans")
+check(G.WornAt(twoHand, 1000 + 20 * H)[17] == nil, "nothing in the off hand while empty")
+check(G.WornAt(twoHand, 1000 + 45 * H)[17] == kept[2], "the shield again after")
+
+-- 8. An empty journey builds without error and wears nothing.
+local empty = G.Build({}, 5000)
+check(empty.start == 5000 and empty.finish == 5000 and #empty.levels == 0, "an empty journey")
+check(next(G.WornAt(empty, 5000)) == nil and G.LevelAt(empty, 5000) == 1, "nothing worn, level 1")
 
 if failures == 0 then
     print("GearTimeline tests passed.")

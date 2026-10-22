@@ -24,7 +24,12 @@ local _, ns = ...
 --                              them stretched over the gap, or joined if the
 --                              same item came back
 --   GearTimeline.LevelAt(timeline, t)  the level at t as a fraction (5.5 is
---                              halfway through level 5); CAP from capAt on
+--                              halfway through level 5); CAP from capAt on.
+--                              Levels not recorded share the time between
+--                              the ones around them; the last runs to finish
+--   GearTimeline.U(timeline, t, weekWidth)  the gear screen's axis: LevelAt,
+--                              then CAP plus weekWidth a week; TimeAt(timeline,
+--                              u, weekWidth) runs it backwards
 --   GearTimeline.WornAt(timeline, t, every)  slot -> the span worn at t, kept
 --                              gear only unless every
 --   GearTimeline.ZoneAt(timeline, t)  the uiMapID of the zone at t, or nil
@@ -207,11 +212,13 @@ function GearTimeline.Kept(spans)
                 end
                 k = k - 1
             end
+            -- The one before stretches over the noise between them, unless the
+            -- slot was left empty after it (a two-hander put away the shield).
             local last = out[#out]
-            if last and SameItem(last, copy) then
+            if last and not last.closed and SameItem(last, copy) then
                 last.endT, last.next, last.closed = copy.endT, copy.next, copy.closed
             else
-                if last then last.endT = copy.t end
+                if last and not last.closed then last.endT = copy.t end
                 out[#out + 1] = copy
             end
         end
@@ -219,19 +226,54 @@ function GearTimeline.Kept(spans)
     return out
 end
 
+-- The level entry at or before t (by time) and where it leads: level, from,
+-- toLevel, to. The next entry, levels apart when some were not recorded (the
+-- addon off, or played on another PC); after the last, the next level at the
+-- journey's finish, so the level being played now has its width.
+local function Stretch(timeline, i)
+    local levels = timeline.levels
+    local entry, nextEntry = levels[i], levels[i + 1]
+    if nextEntry then return entry[1], entry[2], nextEntry[1], nextEntry[2] end
+    return entry[1], entry[2], entry[1] + 1, timeline.finish
+end
+
 function GearTimeline.LevelAt(timeline, t)
     local levels = timeline.levels
     if timeline.capAt and t >= timeline.capAt then return GearTimeline.CAP end
-    local level, from, to
+    local at
     for i, entry in ipairs(levels) do
-        if entry[2] <= t then
-            level, from = entry[1], entry[2]
-            to = levels[i + 1] and levels[i + 1][1] == level + 1 and levels[i + 1][2] or nil
-        end
+        if entry[2] <= t then at = i end
     end
-    if not level then return levels[1] and levels[1][1] or 1 end
-    if not to or to <= from then return level end
-    return level + math.min(0.999, (t - from) / (to - from))
+    if not at then return levels[1] and levels[1][1] or 1 end
+    local level, from, toLevel, to = Stretch(timeline, at)
+    if to <= from or toLevel <= level then return level end
+    return level + (toLevel - level) * math.min(0.999, (t - from) / (to - from))
+end
+
+-- The axis unit of the gear screen: the level as a fraction (LevelAt) up to
+-- CAP, then CAP plus weekWidth for each week since reaching it. TimeAt runs
+-- it backwards.
+GearTimeline.WEEK = 7 * 86400
+
+function GearTimeline.U(timeline, t, weekWidth)
+    if timeline.capAt and t >= timeline.capAt then
+        return GearTimeline.CAP + (t - timeline.capAt) / GearTimeline.WEEK * weekWidth
+    end
+    return GearTimeline.LevelAt(timeline, t)
+end
+
+function GearTimeline.TimeAt(timeline, u, weekWidth)
+    if timeline.capAt and u >= GearTimeline.CAP then
+        return timeline.capAt + (u - GearTimeline.CAP) / weekWidth * GearTimeline.WEEK
+    end
+    local levels, at = timeline.levels, nil
+    for i, entry in ipairs(levels) do
+        if entry[1] <= u then at = i end
+    end
+    if not at then return levels[1] and levels[1][2] or timeline.start end
+    local level, from, toLevel, to = Stretch(timeline, at)
+    if to <= from or toLevel <= level then return from end
+    return from + math.max(0, math.min(1, (u - level) / (toLevel - level))) * (to - from)
 end
 
 function GearTimeline.WornAt(timeline, t, every)
