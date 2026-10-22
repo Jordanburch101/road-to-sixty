@@ -83,9 +83,9 @@ local ui = {}                   -- frames made once: doll, lanes, header, ...
 local bars, flags, ticks, curve = {}, {}, {}, {}
 local flagLabels, tickLabels = {}, {}
 local flagStems, flagPlates = {}, {}
-local info, loading = {}, {}
+local info = {}
 local drag                      -- { x, lo, moved, overview } while the left button is down
-local curveScale                -- { bottom, top, points } of the item level curve, for the markers
+local curveScale                -- { bottom, top } of the item level curve, for the markers
 local stripDirty = true         -- the strip's colours need working out again
 local curveFill, curveGuides, guideLabels, curveDiamonds, stripSlices = {}, {}, {}, {}, {}
 local QueueRedraw     -- defined below; items arriving redraw the screen
@@ -96,26 +96,34 @@ local function ItemKey(span)
     return span.item or ("item:" .. span.id)
 end
 
+-- How long an item asked for may take before it is asked for again: one
+-- the server never sends would otherwise stay "..." for good.
+local RETRY = 10
+
 -- name, quality, icon and item level of a span's item, from the game's cache;
 -- asks for it when not cached, and the screen is redrawn when it comes.
+-- Until then it is kept as pending, so it is not looked up on every redraw.
 local function Info(span)
     local key = ItemKey(span)
     local known = info[key]
-    if known then return known end
+    if known and not (known.pending and GetTime() - known.asked > RETRY) then return known end
     ---@diagnostic disable-next-line: deprecated
     local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
     local name, _, quality = getInfo(key)
     local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(span.id)
     if not name then
-        -- Ask the game for it once; the screen is redrawn when it comes.
-        if not loading[span.id] and Item and Item.CreateFromItemID then
-            loading[span.id] = true
+        -- Ask the game for it; the screen is redrawn when it comes.
+        if Item and Item.CreateFromItemID then
             Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
-                loading[span.id] = nil
+                for k, v in pairs(info) do
+                    if v.pending and v.id == span.id then info[k] = nil end
+                end
                 QueueRedraw()
             end)
         end
-        return { name = "...", quality = 1, icon = icon, pending = true }
+        known = { name = "...", quality = 1, icon = icon, pending = true, id = span.id, asked = GetTime() }
+        info[key] = known
+        return known
     end
     ---@diagnostic disable-next-line: deprecated
     local levelOf = C_Item and C_Item.GetDetailedItemLevelInfo or GetDetailedItemLevelInfo
@@ -139,10 +147,48 @@ local function Clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
 
+-- What is worked out from the timeline and the items' details, kept until
+-- either changes (a new timeline, items arriving): the times where gear
+-- changes (cuts, kept gear; cutsAll, every swap), the average at each
+-- stretch between them, and the milestones.
+local derived = {}
+
+-- The times any span starts or ends, in order: between two of them the
+-- gear worn stays the same.
+local function Cuts(all)
+    local key = all and "cutsAll" or "cuts"
+    if derived[key] then return derived[key] end
+    local seen, list = {}, {}
+    for _, spans in pairs(all and timeline.slots or timeline.kept) do
+        for _, span in ipairs(spans) do
+            for _, t in ipairs({ span.t, span.endT }) do
+                if not seen[t] then
+                    seen[t] = true
+                    list[#list + 1] = t
+                end
+            end
+        end
+    end
+    table.sort(list)
+    derived[key] = list
+    return list
+end
+
+-- Index of the last cut at or before t, 0 before the first.
+local function CutIndex(cuts, t)
+    local lo, hi = 0, #cuts
+    while lo < hi do
+        local mid = math.floor((lo + hi + 1) / 2)
+        if cuts[mid] <= t then lo = mid else hi = mid - 1 end
+    end
+    return lo
+end
+
 -- The average item level and quality of the gear worn at t: only items
 -- whose level is known (not empty slots, not ones still loading), so the
 -- curve does not dip while items load. nil when nothing known is worn.
-local function Average(t)
+-- Worked out once for each stretch between cuts.
+local function AverageNow(t)
     local sum, quality, n = 0, 0, 0
     for slot, span in pairs(G.WornAt(timeline, t, false)) do
         if slot ~= 4 and slot ~= 19 then
@@ -154,6 +200,21 @@ local function Average(t)
     end
     if n == 0 then return nil end
     return sum / n, quality / n
+end
+
+local function Average(t)
+    local cuts = Cuts(false)
+    local i = CutIndex(cuts, t)
+    if i == 0 then return AverageNow(t) end
+    derived.averages = derived.averages or {}
+    local cached = derived.averages[i]
+    if cached == nil then
+        local average, quality = AverageNow(cuts[i])
+        cached = average and { average, quality } or false
+        derived.averages[i] = cached
+    end
+    if cached then return cached[1], cached[2] end
+    return nil
 end
 
 -- A colour between the quality colours for an average quality (2.5 is
@@ -196,22 +257,12 @@ end
 -- then 60 plus WEEK_WIDTH for each week since reaching it.
 
 local function U(t)
-    if timeline.capAt and t >= timeline.capAt then return G.CAP + (t - timeline.capAt) / WEEK * WEEK_WIDTH end
-    return G.LevelAt(timeline, t)
+    return G.U(timeline, t, WEEK_WIDTH)
 end
 
 -- The time at u: U run backwards.
 local function TimeAt(u)
-    if timeline.capAt and u >= G.CAP then return timeline.capAt + (u - G.CAP) / WEEK_WIDTH * WEEK end
-    local levels, level = timeline.levels, math.floor(u)
-    for i, entry in ipairs(levels) do
-        if entry[1] == level then
-            local nextEntry = levels[i + 1]
-            if nextEntry and nextEntry[1] == level + 1 then return entry[2] + (u - level) * (nextEntry[2] - entry[2]) end
-            return entry[2]
-        end
-    end
-    return levels[1] and levels[1][2] or timeline.start
+    return G.TimeAt(timeline, u, WEEK_WIDTH)
 end
 
 -- The whole journey's extent, after a new timeline.
@@ -275,12 +326,18 @@ local function SourceText(span)
     elseif how == "ah" then return "Won at the auction house"
     elseif how == "craft" then return "Made it yourself"
     elseif how == "roll" then return "Won in a roll"
-    elseif how == "start" then return "Starting gear"
     end
     return "Where it came from was not seen"
 end
 
 local function ShowTip(owner, span)
+    -- An item not cached yet: the game redraws the tooltip from the link
+    -- when it arrives, dropping the lines below, so it is shown again then.
+    if Info(span).pending and Item and Item.CreateFromItemID then
+        Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
+            if GameTooltip:IsOwned(owner) then ShowTip(owner, span) end
+        end)
+    end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     if not pcall(GameTooltip.SetHyperlink, GameTooltip, ItemKey(span)) then
         GameTooltip:AddLine(Info(span).name)
@@ -330,6 +387,14 @@ local function Spin(texture, seconds)
     turn:SetDuration(seconds)
     group:SetLooping("REPEAT")
     group:Play()
+    return group
+end
+
+-- Hiding a frame can stop the animations in it; this starts them again.
+local function KeepPlaying(groups)
+    for _, group in ipairs(groups) do
+        if not group:IsPlaying() then group:Play() end
+    end
 end
 
 -- The paperdoll ----------------------------------------------------------------------
@@ -342,7 +407,7 @@ local function NewItemButton(parent)
 end
 
 -- The sheet's enchant swirl, turning and breathing behind the slot, cut to
--- a square a little bigger than it so only a rim shows (G4).
+-- a square a little bigger than it so only a rim shows.
 local function EnchantRim(parent, button)
     local fx = CreateFrame("Frame", nil, parent)
     fx:SetPoint("TOPLEFT", button, -5, 5)
@@ -357,8 +422,9 @@ local function EnchantRim(parent, button)
     swirl:SetPoint("CENTER")
     swirl:SetBlendMode("ADD")
     swirl:AddMaskTexture(mask)
-    Spin(swirl, 14)
-    Pulse(swirl, 0.35, 1, 1.6):Play()
+    local pulse = Pulse(swirl, 0.35, 1, 1.6)
+    pulse:Play()
+    fx.anims = { Spin(swirl, 14), pulse }
     fx:Hide()
     return fx
 end
@@ -388,7 +454,7 @@ local function PlaceSlot(slot, x, y)
 end
 
 -- A panel in the map's frame style: the tooltip border on a dark ground.
-local function Panel(parent)
+local function Pane(parent)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", insets = { left = 3, right = 3, top = 3, bottom = 3 } })
@@ -411,7 +477,7 @@ local function CreateDoll()
     ui.dollFrame, ui.doll = doll, {}
 
     local sheetW = DOLL_W - 12
-    local sheet = Panel(doll)
+    local sheet = Pane(doll)
     sheet:SetPoint("TOPLEFT", 6, 0)
     sheet:SetSize(sheetW, 8 + 8 * SLOT_STEP + SLOT + 10)
     ui.sheet = sheet
@@ -442,7 +508,7 @@ local function CreateDoll()
     ui.modelNote:SetWidth(modelRight - modelLeft - 12)
     ui.modelNote:SetText("The model shows for the character you are playing")
 
-    local stats = Panel(doll)
+    local stats = Pane(doll)
     stats:SetPoint("TOPLEFT", sheet, "BOTTOMLEFT", 0, -8)
     stats:SetPoint("TOPRIGHT", sheet, "BOTTOMRIGHT", 0, -8)
     stats:SetHeight(44 + 46 + #STAT_ROWS * 20 + 8)
@@ -475,12 +541,15 @@ local function CreateDoll()
     end
 end
 
--- The doll is laid out once, as the sheet is; nothing to do for a resize.
-local function LayoutDoll()
-end
-
 local lastDressed
+local shownAt                   -- { cut index, every } the paperdoll shows, to skip repeats
 local function UpdateDoll(t)
+    ui.when:SetText(t >= timeline.finish and "Now" or ("At " .. When(t)))
+    -- The gear only changes at a cut: between two, the cursor moving or the
+    -- replay playing changes nothing else.
+    local cut = CutIndex(Cuts(every), t)
+    if shownAt and shownAt[1] == cut and shownAt[2] == every then return end
+    shownAt = { cut, every }
     local worn = G.WornAt(timeline, t, every)
     local epics, rares, enchanted = 0, 0, 0
     local dressed = {}
@@ -492,6 +561,7 @@ local function UpdateDoll(t)
             SetItemButtonTexture(button, item.icon)
             SetItemButtonQuality(button, item.quality, ItemKey(span))
             button.rim:SetShown(EnchantOf(span) ~= nil)
+            if button.rim:IsShown() then KeepPlaying(button.rim.anims) end
             if item.quality >= 4 then epics = epics + 1 elseif item.quality == 3 then rares = rares + 1 end
             if EnchantOf(span) then enchanted = enchanted + 1 end
             dressed[#dressed + 1] = ItemKey(span)
@@ -501,7 +571,6 @@ local function UpdateDoll(t)
             button.rim:Hide()
         end
     end
-    ui.when:SetText(t >= timeline.finish and "Now" or ("At " .. When(t)))
     -- The item level big, in the colour of the gear's average quality.
     local average, quality = Average(t)
     ui.ilvl:SetText(average and tostring(math.floor(average + 0.5)) or "...")
@@ -521,6 +590,13 @@ local function UpdateDoll(t)
         ui.model:Undress()
         for _, item in ipairs(dressed) do pcall(ui.model.TryOn, ui.model, item) end
     end
+end
+
+-- Forgets what was worked out, after a new timeline or items arriving; the
+-- paperdoll is dressed again.
+local function ResetDerived()
+    derived = {}
+    shownAt, lastDressed = nil, nil
 end
 
 -- The lanes ----------------------------------------------------------------------------
@@ -603,7 +679,7 @@ local function NewBar()
     bar.sparkles:SetTexture(GEAR_ART .. "sparkles")
     bar.sparkles:SetBlendMode("ADD")
     bar.sparkles:SetPoint("CENTER", bar.icon)
-    Spin(bar.sparkles, 16)
+    bar.spin = { Spin(bar.sparkles, 16) }
     bar.text = bar.top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bar.text:SetPoint("LEFT", bar.icon, "RIGHT", 4, 0)
     bar.text:SetPoint("RIGHT", -2, 0)
@@ -627,12 +703,13 @@ local function NewBar()
     return bar
 end
 
--- Moves the fire along every bar shown; elapsed seconds since the last frame.
+-- Moves the fire along every bar shown; elapsed seconds since the last
+-- frame. Bars with no fire (Classic, or too thin to see it) are skipped.
 local function MoveFire(elapsed)
     fireClock = fireClock + elapsed
     for i = 1, barCount do
         local bar = bars[i]
-        for k = 1, bar.classic and 0 or 2 do
+        for k = 1, bar.burning and 2 or 0 do
             local fire = bar.flames[k]
             local u = (bar.phase + fireClock * fire.speed) % 1
             fire:SetTexCoord(u, u + fire.reps, 0, 1)
@@ -654,12 +731,20 @@ local function PlaceBar(bar, span, left, right, laneY, barH, w)
     bar:SetPoint("TOPLEFT", ui.track, "TOPLEFT", left + 1, laneY)
     bar:SetSize(width, barH)
 
-    bar.classic = style.classic
-    bar.base:SetColorTexture(0, 0, 0, style.base or 0)
-    if style.classic then
-        Fade(bar.fill, r, g, b, 1, 1)
-    else
-        Fade(bar.fill, r, g, b, style.fill * WEIGHT[q], style.fill > 0.5 and 0.08 or style.fill * 0.1)
+    -- Colours are set again only when the look or the item's quality
+    -- changes: each fade makes new colour objects, and bars are placed again
+    -- on every frame of a drag.
+    local look = style[1] .. q
+    local recolour = bar.look ~= look
+    bar.look = look
+    bar.burning = not style.classic and width >= 12
+    if recolour then
+        bar.base:SetColorTexture(0, 0, 0, style.base or 0)
+        if style.classic then
+            Fade(bar.fill, r, g, b, 1, 1)
+        else
+            Fade(bar.fill, r, g, b, style.fill * WEIGHT[q], style.fill > 0.5 and 0.08 or style.fill * 0.1)
+        end
     end
     -- Fire over the whole bar, or along its top and bottom edges with the
     -- middle clear for the name.
@@ -674,14 +759,16 @@ local function PlaceBar(bar, span, left, right, laneY, barH, w)
             fire:SetHeight(edgeH)
             fire.speed = FIRE_SPEED.edges[k]
             fire.reps = width * 1.6 / (FLAME_W * edgeH / 32)
-            Fade(fire, r, g, b, WEIGHT[q], 0.1)
+            if recolour then Fade(fire, r, g, b, WEIGHT[q], 0.1) end
         else
             fire:SetAllPoints()
             fire.speed = FIRE_SPEED[k]
             fire.reps = width * (k == 1 and 1 or 1.7) / (FLAME_W * barH / 32)
-            Fade(fire, r, g, b, WEIGHT[q] * (k == 1 and 1 or 0.55), style.fire == "single" and 0.08 or 0.05)
+            if recolour then
+                Fade(fire, r, g, b, WEIGHT[q] * (k == 1 and 1 or 0.55), style.fire == "single" and 0.08 or 0.05)
+            end
         end
-        fire:SetShown(not style.classic and (k == 1 or style.fire ~= "single"))
+        fire:SetShown(bar.burning and (k == 1 or style.fire ~= "single"))
         local u = (bar.phase + fireClock * fire.speed) % 1
         fire:SetTexCoord(u, u + fire.reps, 0, 1)
     end
@@ -699,6 +786,7 @@ local function PlaceBar(bar, span, left, right, laneY, barH, w)
     bar.sparkles:SetAlpha(SPARKLE[q])
     local glow = bar.icon:IsShown() and not style.classic
     bar.sparkles:SetShown(glow and SPARKLE[q] > 0 and not style.flare)
+    if bar.sparkles:IsShown() then KeepPlaying(bar.spin) end
     bar.flare:SetShown(glow)
     bar.core:SetShown(glow and not style.flare)
     bar.text:SetFontObject(barH >= 22 and "GameFontHighlight" or "GameFontHighlightSmall")
@@ -742,6 +830,7 @@ end
 -- Milestones: the first green, blue and epic, level 60, and the first visit
 -- to each raid.
 local function Milestones()
+    if derived.milestones then return derived.milestones end
     local list, firstOf = {}, {}
     for _, slot in ipairs(LANES) do
         for _, span in ipairs(timeline.kept[slot] or {}) do
@@ -766,6 +855,7 @@ local function Milestones()
         end
     end
     table.sort(list, function(a, b) return a[1] < b[1] end)
+    derived.milestones = list
     return list
 end
 
@@ -804,7 +894,6 @@ local function Layout()
     local h = ui.lanes:GetHeight()
     local laneH = Clamp(math.floor((h - FLAGS_H - AXIS_H - CURVE_H - OVERVIEW_H - 40) / #LANES), 20, 36)
     ui.track:SetHeight(laneH * #LANES)
-    LayoutDoll()
     return laneH, Clamp(laneH - 6, 16, 28)
 end
 
@@ -814,6 +903,7 @@ function GearScreen:Redraw()
         local now = ns.Roster:IsMe(ns.Roster:ViewEntry()) and ns.Now() or nil
         timeline = G.Build(ns.view, now)
         dirty = false
+        ResetDerived()
         SetExtent()
         stripDirty = true
         -- Open on the map's date range (Range.lua), or else the last part of
@@ -955,7 +1045,7 @@ function GearScreen:Redraw()
     local stepV = highest - lowest > 30 and 20 or 10
     local bottom = math.floor(lowest / stepV) * stepV
     local top = math.max(bottom + stepV, math.ceil(highest / stepV) * stepV)
-    curveScale = { bottom = bottom, top = top, points = points }
+    curveScale = { bottom = bottom, top = top }
     local function Y(v) return 8 + (v - bottom) / (top - bottom) * h end
     local guides = 0
     for v = bottom, top, stepV do
@@ -1212,8 +1302,10 @@ local function Dragging()
         local f = Clamp(CursorFraction(ui.overview) or 0, 0, 1)
         local span = axis.hi - axis.lo
         local centre = axis.first + f * (axis.last - axis.first)
+        local lo = axis.lo
         SetWindow(centre - span / 2, centre + span / 2)
-        GearScreen:Redraw()
+        -- Holding still on the strip moves nothing: no redraw.
+        if math.abs(axis.lo - lo) > span / 2000 then GearScreen:Redraw() end
         return
     end
     local dx = (GetCursorPosition() - drag.x) / ui.track:GetEffectiveScale()
@@ -1232,8 +1324,9 @@ function GearScreen:PinAtCursor()
     if not t then return end
     -- The replay goes to the same moment. It stops at the path's last point
     -- before it, which can be long before when standing still, so the pin
-    -- keeps the time clicked.
-    ns.Map:JumpTo(t)
+    -- keeps the time clicked. The replay holds only the date range's part
+    -- of the journey (Range.lua), so a moment outside it is pinned here alone.
+    if ns.Range:Has(t) then ns.Map:JumpTo(t) end
     pinT = t
     self:ShowMoment()
 end
@@ -1241,15 +1334,24 @@ end
 -- Map.lua calls this whenever the replay moment changes. The moment stays in
 -- view: when it passes the window's edge (a replay playing, History jumping),
 -- the window moves on and puts it a fifth of the way in. Not while the player
--- is dragging the window, and not at the journey's end when the window
--- already reaches it.
+-- is dragging the window, and not near the right edge when the window
+-- already reaches the journey's end (or the date range's), with nothing
+-- further to move to.
 function GearScreen:Follow(t)
+    -- With a date range the replay ends where the range does (Range.lua),
+    -- and the window, opened on the range, already reaches it.
+    local last = axis.last
+    if not ns.Range:IsAll() then
+        t = math.min(t, ns.Range.to)
+        if timeline then last = math.min(last, U(math.min(ns.Range.to, timeline.finish))) end
+    end
     pinT = t
-    if mode ~= "gear" or not (view and view:IsShown()) or not timeline then return end
+    if mode ~= "gear" or not (view and view:IsVisible()) or not timeline then return end
     local u = U(math.min(t, timeline.finish))
     local span = axis.hi - axis.lo
-    local atEnd = u >= axis.last - 1e-6 and axis.hi >= axis.last - 1e-6
-    if not drag and not atEnd and (u < axis.lo or u > axis.hi - span * 0.05) then
+    local reachesEnd = axis.hi >= last - 1e-6
+    local pastRight = u > axis.hi - span * 0.05 and not (reachesEnd and u <= axis.hi + 1e-6)
+    if not drag and (u < axis.lo or pastRight) then
         SetWindow(u - span * 0.2, u + span * 0.8)
         self:Redraw()
         return
@@ -1447,25 +1549,42 @@ local function CreateView()
     ui.hoverLabel:SetPoint("BOTTOMLEFT", ui.hover, "TOPRIGHT", 3, -12)
 
     -- Follow the cursor over the track; move the window while dragging.
+    -- Through SafeShow, so an error here is counted in /rts check and the
+    -- player is told once in chat.
     local lastX
-    view:SetScript("OnUpdate", function(_, elapsed)
+    local function Update(elapsed)
         if not timeline then return end
         MoveFire(elapsed)
         if drag then Dragging() end
+        -- Shift brings the game's comparison back on an item tooltip; a past
+        -- item compared with today's gear only confuses.
+        local owner = GameTooltip:IsShown() and GameTooltip:GetOwner()
+        ---@diagnostic disable-next-line: undefined-field
+        if owner and owner.span and GameTooltip_HideShoppingTooltips then GameTooltip_HideShoppingTooltips(GameTooltip) end
         local over = track:IsMouseOver()
         local x = over and GetCursorPosition() or nil
         if x == lastX then return end
         lastX = x
         hoverT = over and CursorTime() or nil
         GearScreen:ShowMoment()
+    end
+    view:SetScript("OnUpdate", function(_, elapsed) ns.SafeShow(Update, elapsed) end)
+    view:SetScript("OnSizeChanged", function() ns.SafeShow(GearScreen.Redraw, GearScreen) end)
+    -- Shown with the window too, when it was closed on the gear screen.
+    view:SetScript("OnShow", function() ns.SafeShow(GearScreen.ShowGear, GearScreen) end)
+    -- The wheel over the screen zooms the timeline when over its width, and
+    -- never reaches the map under it.
+    view:EnableMouseWheel(true)
+    view:SetScript("OnMouseWheel", function(_, delta)
+        local f = CursorFraction(ui.track)
+        if f and f >= 0 and f <= 1 then GearScreen:Zoom(delta) end
     end)
-    view:SetScript("OnSizeChanged", function() GearScreen:Redraw() end)
 end
 
 -- Map | Gear, on the character sheet's title plaque, over the top left corner.
 local function CreateModeTabs()
     for k, m in ipairs({ { "map", "Map" }, { "gear", "Gear" } }) do
-        local tab = Tab(window, m[2], 94, function() GearScreen:SetMode(m[1]) end)
+        local tab = Tab(window, m[2], 94, function() ns.SafeShow(GearScreen.SetMode, GearScreen, m[1]) end)
         tab:SetFrameLevel(canvas:GetFrameLevel() + 100)
         tab:SetPoint("TOPLEFT", canvas, "TOPLEFT", 6 + (k - 1) * 98, -6)
         tab.mode = m[1]
@@ -1483,24 +1602,38 @@ function GearScreen:Attach(frame, mapCanvas, sidePanel, sidePanelEdges)
     UpdateModeTabs()
 end
 
+-- The gear view has just come into sight (switched to, or the window opened
+-- on it), or the journey changed while it shows: the model, then a redraw.
+-- The model is dressed again a moment later, as one dressed before it or
+-- its items loaded keeps what it had.
+function GearScreen:ShowGear()
+    local isMe = ns.Roster:IsMe(ns.Roster:ViewEntry())
+    ui.model:SetShown(isMe)
+    ui.modelNote:SetShown(not isMe)
+    if isMe then ui.model:SetUnit("player") end
+    shownAt, lastDressed = nil, nil
+    self:Redraw()
+    C_Timer.After(0.5, function()
+        if not view:IsVisible() then return end
+        shownAt, lastDressed = nil, nil
+        ns.SafeShow(GearScreen.ShowMoment, GearScreen)
+    end)
+end
+
+-- The map's canvas is hidden under the gear screen, so the game does not
+-- draw its paths and markers there; the replay runs on the window.
 function GearScreen:SetMode(newMode)
     mode = newMode
     UpdateModeTabs()
     if mode == "gear" then
         if not view then CreateView() end
-        local isMe = ns.Roster:IsMe(ns.Roster:ViewEntry())
-        ui.model:SetShown(isMe)
-        ui.modelNote:SetShown(not isMe)
-        if isMe then
-            ui.model:SetUnit("player")
-            lastDressed = nil
-        end
         panel:Hide()
         panelEdges:Hide()
-        view:Show()
+        canvas:Hide()
         viewEdges:Show()
-        self:Redraw()
+        if view:IsShown() then self:ShowGear() else view:Show() end
     else
+        canvas:Show()
         panel:Show()
         panelEdges:Show()
         if view then
@@ -1511,20 +1644,25 @@ function GearScreen:SetMode(newMode)
     end
 end
 
--- The journey shown changed (Map:Open): build again when next shown.
+-- The journey shown changed (Map:Open): build again now if the gear view
+-- is in sight, else when it next shows.
 function GearScreen:Rebuild()
     dirty = true
-    if mode == "gear" and view and view:IsShown() then self:SetMode("gear") end
+    if mode == "gear" and view and view:IsVisible() then self:ShowGear() end
 end
 
 -- Items asked for arrive one by one; redraw once a burst of them is in.
 local redrawQueued = false
+-- While the screen is hidden, the next redraw picks them up.
 QueueRedraw = function()
+    stripDirty = true
+    ResetDerived()
     if redrawQueued or not (view and view:IsShown()) then return end
     redrawQueued = true
     C_Timer.After(0.3, function()
         redrawQueued = false
         stripDirty = true
-        ns.SafeCall(GearScreen.Redraw, GearScreen)
+        ResetDerived()
+        ns.SafeShow(GearScreen.Redraw, GearScreen)
     end)
 end
