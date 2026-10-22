@@ -330,12 +330,13 @@ local function SourceText(span)
     return "Where it came from was not seen"
 end
 
-local function ShowTip(owner, span)
+local function ShowTip(owner, span, again)
     -- An item not cached yet: the game redraws the tooltip from the link
-    -- when it arrives, dropping the lines below, so it is shown again then.
-    if Info(span).pending and Item and Item.CreateFromItemID then
+    -- when it arrives, dropping the lines below, so it is shown again then,
+    -- once (again), so the re-show never asks a second time.
+    if not again and Info(span).pending and Item and Item.CreateFromItemID then
         Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
-            if GameTooltip:IsOwned(owner) then ShowTip(owner, span) end
+            if GameTooltip:IsOwned(owner) then ShowTip(owner, span, true) end
         end)
     end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
