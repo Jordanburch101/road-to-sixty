@@ -7,14 +7,19 @@ local _, ns = ...
 -- It lasts the session; nothing saved changes, and paths are copied when
 -- cut, never changed in place.
 --
---   Range:Set(key)          one of the PRESETS keys; the bounds are worked
---                           out from now (Refresh does it again)
+--   Range.Bounds(key, now)  from and to of a preset at time now; nil for all time
+--   Range:Set(key, now)     one of the PRESETS keys; the bounds are worked
+--                           out from now (ns.Now() if not given)
+--   Range:Refresh(now)      the bounds again, for "today" after midnight
 --   Range:Has(t)            whether time t is inside
 --   Range:IsAll()           true for all time
+--   Range:Label()           the preset's name, for the map's button
 --   Range:TrimPaths(paths)  the paths cut to the range (Recorder.lua's format)
 --
--- Days start at the player's own midnight (times are Unix seconds, ns.Now).
--- No game calls but date, so it is tested offline (tests/range_test.lua).
+-- Days start at the player's own midnight (times are Unix seconds, ns.Now),
+-- found again on days the clocks change. The last 7 and 30 days are today
+-- and the days before it, from a midnight, so their start only moves once
+-- a day. No game calls but date, so it is tested offline (tests/range_test.lua).
 
 local Range = { key = "all" }
 ns.Range = Range
@@ -24,23 +29,35 @@ Range.PRESETS = {
     { "week", "Last 7 days" }, { "month", "Last 30 days" },
 }
 
-local DAY = 86400
-
--- The last midnight at or before now, by the player's clock.
+-- The last midnight at or before now, by the player's clock. Taking the
+-- hours off is an hour out on a day the clocks change, so the hour it gives
+-- is checked and put right.
 local function Midnight(now)
     local d = date("*t", now)
-    return now - (d.hour * 3600 + d.min * 60 + d.sec)
+    local midnight = now - (d.hour * 3600 + d.min * 60 + d.sec)
+    local hour = date("*t", midnight).hour
+    if hour ~= 0 then
+        midnight = midnight - (hour < 12 and hour or hour - 24) * 3600
+    end
+    return midnight
 end
 
--- from and to for a preset at time now; nil for all time.
+-- The midnight days whole days before the last one, a day at a time, so a
+-- 23 or 25 hour day in between counts as one.
+local function DaysBack(now, days)
+    local midnight = Midnight(now)
+    for _ = 1, days do midnight = Midnight(midnight - 1) end
+    return midnight
+end
+
 function Range.Bounds(key, now)
     if key == "today" then return Midnight(now), now end
     if key == "yesterday" then
         local midnight = Midnight(now)
-        return midnight - DAY, midnight - 1
+        return DaysBack(now, 1), midnight - 1
     end
-    if key == "week" then return now - 7 * DAY, now end
-    if key == "month" then return now - 30 * DAY, now end
+    if key == "week" then return DaysBack(now, 6), now end
+    if key == "month" then return DaysBack(now, 29), now end
     return nil, nil
 end
 

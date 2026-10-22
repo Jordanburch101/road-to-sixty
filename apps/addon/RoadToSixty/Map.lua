@@ -20,9 +20,9 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- 1-10 replays in about two minutes, a 1-60 in tens of minutes. Yards rather
 -- than points, as the recorder stores more points where the path bends (#57).
 -- Half the 40 points a second it first went at (points were about 20 yards
--- apart walking, 80 flying): players found that too fast to follow. jumps:
--- the same for hearthstones, teleports and boats, which take a time of their
--- own (Style.lua, Portals.lua), as a share of it.
+-- apart walking, 80 flying): players found that too fast to follow.
+-- Hearthstones, teleports and boats each take a time of their own (Style.lua,
+-- Portals.lua); jumps scales that time the same way, here to half.
 local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
 local MIN_PIXELS = 2            -- points closer than this on screen are merged
 local MAX_LINES = 3000          -- line budget per build; past it, points merge further
@@ -2062,7 +2062,7 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
-    ns.GearScreen:Follow(state.markerNow)
+    ns.SafeShow(ns.GearScreen.Follow, ns.GearScreen, state.markerNow)
 
     PlaceHead()
     if seq >= 1 and seq <= state.n then
@@ -2387,6 +2387,10 @@ local function OnUpdate(_, elapsed)
         FollowHead()
         -- At the end, markerNow is math.huge: everything up to now has passed.
         local now = state.markerNow == math.huge and ns.Now() or state.markerNow
+        -- Only what is inside the date range pops up (Range.lua).
+        if not ns.Range:IsAll() then
+            before, now = math.max(before, ns.Range.from - 1), math.min(now, ns.Range.to)
+        end
         ns.QuestPop:Passed(before, now)
         ns.GuildPop:Passed(before, now)
         ns.LevelPop:Passed(before, now)
@@ -2782,10 +2786,10 @@ local function CreateWindow()
     return worldLayer
 end
 
--- Opening runs through SafeCall, so an error in it is counted and shown by
+-- Opening runs through SafeShow, so an error in it is counted and shown by
 -- /rts check rather than lost when Lua errors are hidden.
 function Map:Open()
-    ns.SafeCall(Map.OpenNow, Map)
+    ns.SafeShow(Map.OpenNow, Map)
 end
 
 function Map:OpenNow()
@@ -2811,6 +2815,7 @@ function Map:OpenNow()
     -- whenever it changes.
     ns.Range:Refresh()
     local view = ns.view
+    -- The range's start moves only at midnight (Range.lua), so the cache holds through the day.
     local journey = table.concat({ tostring(view), ns.Range.key, ns.Range.from or 0, #view.segments, ns.Recorder.stored,
         #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0 }, ":")
     if journey == state.journey then

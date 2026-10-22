@@ -27,6 +27,27 @@ local paths = {
 }
 check(Range:TrimPaths(paths) == paths, "all time returns the paths themselves")
 
+-- A deep copy of the paths, to prove trimming changes none of them.
+local function Snapshot(list)
+    local copy = {}
+    for k, v in pairs(list) do copy[k] = type(v) == "table" and Snapshot(v) or v end
+    return copy
+end
+local function Same(a, b)
+    for k, v in pairs(a) do
+        if type(v) == "table" then
+            if type(b[k]) ~= "table" or not Same(v, b[k]) then return false end
+        elseif b[k] ~= v then
+            return false
+        end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+local before = Snapshot(paths)
+
 -- 2. Today: from the player's midnight to now.
 Range:Set("today")
 check(Range.from == midnight and Range.to == clock, "today starts at midnight")
@@ -35,7 +56,7 @@ check(Range:Label() == "Today", "label")
 local trimmed = Range:TrimPaths(paths)
 check(#trimmed == 2, "two paths reach into today, got " .. #trimmed)
 check(trimmed[1] ~= paths[1] and #trimmed[1].x == 1 and trimmed[1].x[1] == 3, "a path cut to its points in today")
-check(#paths[1].x == 3 and paths[1].t[1] == midnight - 2 * DAY, "the path itself is not changed")
+check(Same(paths, before), "trimming changes none of the paths")
 check(trimmed[2].j == "h" and #trimmed[2].x == 2, "a path wholly inside keeps its jump")
 
 -- 3. Yesterday: the whole day before, not today.
@@ -44,19 +65,45 @@ check(Range.from == midnight - DAY and Range.to == midnight - 1, "yesterday is t
 trimmed = Range:TrimPaths(paths)
 check(#trimmed == 1 and #trimmed[1].x == 1 and trimmed[1].x[1] == 2 and trimmed[1].j == nil, "only yesterday's point, no jump into it")
 
--- 4. Last 7 and 30 days, and Refresh after the clock moves on.
+-- 4. Last 7 and 30 days: today and the days before it, from a midnight, so
+-- the start moves only once a day; and Refresh after the clock moves on.
 Range:Set("week")
-check(Range.from == clock - 7 * DAY and Range.to == clock, "last 7 days")
+-- Midnights by the calendar: a clock change in between makes a day 23 or 25 hours.
+local function MidnightOf(day) return os.time({ year = 2026, month = 10, day = day, hour = 0 }) end
+check(Range.from == MidnightOf(22 - 6) and Range.to == clock, "last 7 days from midnight six days back")
+Range:Set("week", clock + 3600)
+check(Range.from == MidnightOf(22 - 6), "the start stays put through the day")
 Range:Set("month")
-check(Range:Has(clock - 29 * DAY) and not Range:Has(clock - 31 * DAY), "last 30 days")
+check(Range.from == MidnightOf(22 - 29) and not Range:Has(MidnightOf(22 - 29) - 1), "last 30 days")
 Range:Set("today")
 clock = clock + DAY
 Range:Refresh()
 check(Range.from == midnight + DAY, "today moves on after midnight")
 
--- 5. Back to all time.
+-- 5. A range with nothing in it trims to no paths; a missing time is
+-- outside any range but all time.
+Range:Set("yesterday", clock - 100 * DAY)
+check(#Range:TrimPaths(paths) == 0 and not Range:Has(nil), "nothing in the range")
+check(Same(paths, before), "still unchanged")
+
+-- 6. Back to all time.
 Range:Set("all")
 check(Range:IsAll() and Range:TrimPaths(paths) == paths and Range:Has(nil), "all time again")
+
+-- 7. A day the clocks go forward an hour at 02:00 (a 23 hour day): the
+-- midnight is still that day's, and yesterday is still a whole day.
+local dayStart = math.floor(1790000000 / DAY) * DAY     -- a midnight, in the made-up zone's time
+local switch = dayStart + 2 * 3600
+date = function(format, t)
+    assert(format == "*t")
+    return os.date("!*t", t + (t >= switch and 3600 or 0))
+end
+local afternoon = dayStart + 15 * 3600                   -- 16:00 there
+Range:Set("today", afternoon)
+check(Range.from == dayStart, "today from that day's midnight, got " .. (Range.from - dayStart))
+Range:Set("yesterday", afternoon)
+check(Range.from == dayStart - DAY and Range.to == dayStart - 1, "yesterday is the whole day before")
+date = os.date
 
 if failures == 0 then
     print("Range tests passed.")
