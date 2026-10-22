@@ -924,10 +924,15 @@ function GearScreen:Redraw()
     elseif not whole and (not timeline.capAt or axis.hi <= G.CAP + 0.01) then
         part = "lvl"
     end
+    -- Endgame only for a character that has reached 60.
+    local lastTab
     for _, tab in ipairs(ui.phaseTabs) do
         SetTabOn(tab, tab.phase == part)
-        tab:SetEnabled(tab.phase ~= "end" or timeline.capAt ~= nil)
+        tab:SetShown(tab.phase ~= "end" or timeline.capAt ~= nil)
+        if tab:IsShown() then lastTab = tab end
     end
+    ui.help:ClearAllPoints()
+    ui.help:SetPoint("LEFT", lastTab, "RIGHT", 12, 0)
     for _, tab in ipairs(ui.swapTabs) do SetTabOn(tab, tab.every == every) end
 
     local laneH, barH = Layout()
@@ -1402,9 +1407,9 @@ local function CreateView()
         x = x + p[3] + 4
         ui.phaseTabs[#ui.phaseTabs + 1] = tab
     end
-    local help = view:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    help:SetPoint("LEFT", view, "TOPLEFT", x + 12, -21)
-    help:SetText("Wheel: zoom   Drag: move   Click: pin the moment")
+    -- After the last tab shown (Redraw places it: Endgame shows only at 60).
+    ui.help = view:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ui.help:SetText("Wheel: zoom   Drag: move   Click: pin the moment")
     local right = -10
     for _, s in ipairs({ { true, "Every swap", 108 }, { false, "Kept gear", 100 } }) do
         local tab = Tab(view, s[2], s[3], function()
