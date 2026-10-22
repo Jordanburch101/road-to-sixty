@@ -69,6 +69,12 @@ end
 
 ns.Now = function() return time() end
 ns.pc = "seedpc"
+CopyTable = function(t)
+    local copy = {}
+    for k, v in pairs(t) do copy[k] = v end
+    return copy
+end
+assert(loadfile("RoadToSixty/SeedGear.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Seed.lua"))("RoadToSixty", ns)
 local started = os.clock()
 commands.seed("confirm")
@@ -194,6 +200,64 @@ local last = 0
 for _, e in ipairs(char.events) do
     check(e[1] >= last, "event times in order")
     last = e[1]
+end
+
+-- The stress seed's gear plan, on a made-up 1-60 journey: every slot
+-- dressed with real items over time, quick swaps and enchants, raid weeks
+-- at 60, and snapshots that match the events.
+do
+    local H = 3600
+    local fake = { events = {}, levels = {} }
+    for level = 1, 60 do
+        fake.levels[level] = { t = 1000000 + (level - 1) * 3 * H }
+        fake.events[#fake.events + 1] = { 1000000 + (level - 1) * 3 * H + 100, "qd", 0, -9000, 400, level * 7, 100, 0, "Quest" }
+    end
+    fake.levels[1].gear = { [4] = 38, [7] = 39, [8] = 40, [16] = 25, [17] = 2362 }
+    ns.SeedPlanGear(fake, 12)
+    local bySlot, raids, enchants, swaps, epics, sources = {}, 0, 0, 0, 0, {}
+    local quality = {}
+    for _, list in pairs(ns.SeedGear.slots) do
+        for _, e in ipairs(list) do quality[e[1]] = e[3] end
+    end
+    local last = 0
+    local ordered, placed = true, true
+    for i, e in ipairs(fake.events) do
+        ordered = ordered and e[1] >= last
+        last = e[1]
+        if e[2] == "eq" then
+            bySlot[e[6]] = (bySlot[e[6]] or 0) + 1
+            if quality[e[7]] == 4 then epics = epics + 1 end
+            if type(e[10]) == "table" then sources[e[10].how] = true end
+            local back = fake.events[i - 2]
+            if back and back[2] == "eq" and back[6] == e[6] and back[7] == e[7] and e[1] - back[1] < 300 then swaps = swaps + 1 end
+            placed = placed and e[3] == 0 and e[4] == -9000
+        elseif e[2] == "in" and e[8] == "raid" then
+            raids = raids + 1
+        elseif e[2] == "ench" then
+            enchants = enchants + 1
+        end
+    end
+    local thin = {}
+    for _, slot in ipairs({ 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18 }) do
+        if (bySlot[slot] or 0) < 3 then thin[#thin + 1] = slot .. "=" .. (bySlot[slot] or 0) end
+    end
+    check(#thin == 0, "every slot changes at least three times, not " .. table.concat(thin, ", "))
+    check(epics >= 15, "epics worn, got " .. epics)
+    check(raids >= 20, "raid nights over twelve weeks, got " .. raids)
+    check(enchants >= 5 and swaps >= 1, ("enchants and quick swaps, got %d and %d"):format(enchants, swaps))
+    check(sources.drop and sources.quest and sources.vendor and sources.ah, "gear from drops, quests, vendors and the auction house")
+    check(ordered and placed, "events in time order, each where the path was")
+    -- The level 30 snapshot holds what the events before it put on.
+    local worn = {}
+    for slot, id in pairs(fake.levels[1].gear) do worn[slot] = id end
+    for _, e in ipairs(fake.events) do
+        if e[1] > fake.levels[30].t then break end
+        if e[2] == "eq" then worn[e[6]] = e[7] ~= 0 and e[7] or nil end
+    end
+    local same = true
+    for slot = 1, 19 do same = same and fake.levels[30].gear[slot] == worn[slot] end
+    check(same and fake.levels[30].links ~= nil, "snapshots rebuilt from the plan")
+    print(("gear plan: %d epics, %d raid nights, %d enchants, %d quick swaps"):format(epics, raids, enchants, swaps))
 end
 
 if failures == 0 then

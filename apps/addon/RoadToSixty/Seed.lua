@@ -55,26 +55,11 @@ local function QuestName(id)
 end
 
 
--- Gear the stress seed's character puts on as it levels: { item ID, level }.
--- Real Classic items; each item's slot comes from the client
--- (GetItemInfoInstant), so a wrong ID is left out rather than worn in the
--- wrong place. The realistic seed has its own, REALISTIC_GEAR.
+-- The stress seed's starting kit: { item ID, level }. The rest of its gear
+-- comes after the run, from PlanGear. The realistic seed has its own,
+-- REALISTIC_GEAR.
 local GEAR_POOL = {
-    -- starting gear
     { 38, 1 }, { 39, 1 }, { 40, 1 }, { 25, 1 }, { 2362, 1 },
-    { 2504, 5 }, { 15210, 8 }, { 15211, 12 },
-    -- Deadmines: Blackened Defias set, Cruel Barb
-    { 10399, 17 }, { 10400, 17 }, { 10401, 18 }, { 10402, 18 }, { 10403, 19 }, { 5191, 19 },
-    -- Shadowfang Keep: Wolfmaster Cape, Shadowfang
-    { 6314, 22 }, { 1482, 23 }, { 1981, 26 },
-    -- Scarlet Monastery: Scarlet set, Herod's Shoulder, Raging Berserker's Helm, Ravager
-    { 10328, 29 }, { 10330, 29 }, { 10331, 30 }, { 10332, 30 }, { 10329, 30 }, { 10333, 30 },
-    { 7719, 33 }, { 7718, 34 }, { 7717, 36 },
-    { 810, 40 }, { 2244, 45 }, { 1728, 50 },
-    -- Battlegear of Valor
-    { 16731, 54 }, { 16733, 55 }, { 16730, 56 }, { 16737, 56 }, { 16732, 57 }, { 16734, 57 },
-    { 16736, 58 }, { 16735, 58 },
-    { 647, 60 },
 }
 
 -- Professions and recipes, as Crafts.lua logs them, for both seeds: a warrior
@@ -579,7 +564,9 @@ end
 
 -- Fills any levels up to maxLevel the point budget fell short of, logs off,
 -- and reports.
-local function Finish(maxLevel, started, label)
+-- extra, if given, runs after the last log off, while the generator state is
+-- still there.
+local function Finish(maxLevel, started, label, extra)
     while G.level < maxLevel do
         G.level = G.level + 1
         Log("lvl", G.level)
@@ -589,6 +576,7 @@ local function Finish(maxLevel, started, label)
     end
     CloseSegment()
     Log("off")
+    if extra then extra() end
 
     ns.char.kills.d = table.concat(G.killBuf)
     ns.char.played = G.played
@@ -604,6 +592,238 @@ local function Finish(maxLevel, started, label)
     ns.Print(("Seeded %s: %d points, %d segments, %d events in %.0f ms. Type /reload to save it now."):format(
         label, points, #ns.char.segments, #ns.char.events, debugprofilestop() - started))
 end
+
+-- Gear plan (stress seed) ------------------------------------------------------
+-- After the 1-60 run: every slot upgraded every few levels with real items
+-- from SeedGear.lua (scripts/seed-gear.py), put on at some point within a
+-- level rather than all at the level up, got from a mix of places, with a
+-- quick swap back and forth now and then (the noise "kept gear" hides) and
+-- enchants from level 40; pre-raid gear at 59; then weeks of raiding at 60.
+-- The level snapshots are rebuilt from it at the end (issue #64).
+
+local ENDGAME_WEEKS = 12
+-- Slots in the order they are planned, with the level each first gets an item.
+local PLAN_SLOTS = {
+    { 16, 2 }, { 17, 3 }, { 5, 2 }, { 7, 2 }, { 8, 2 }, { 9, 3 }, { 10, 4 }, { 6, 4 }, { 15, 5 },
+    { 1, 8 }, { 3, 10 }, { 18, 6 }, { 2, 14 }, { 11, 11 }, { 12, 17 }, { 13, 28 }, { 14, 38 },
+}
+local POOL_OF = { [12] = 11, [14] = 13 }      -- the second ring and trinket share the first's list
+local VENDORS = { "Brother Danil", "Corina Steele", "Gunther Weller", "Wilhelm Strang", "Thurman Grant", "Kurran Steele" }
+local ENCHANTERS = { "Ellinor", "Glimmerbright", "Thistlewick" }   -- made up
+-- Dungeon bosses by the level they drop for.
+local BOSSES = {
+    { 18, "Edwin VanCleef" }, { 22, "Wolf Master Nandos" }, { 26, "Mutanus the Devourer" }, { 30, "Herod" },
+    { 34, "Arcanist Doan" }, { 40, "Archaedas" }, { 45, "Chief Ukorz Sandscalp" }, { 50, "Hakkar's Avatar" },
+    { 54, "Emperor Dagran Thaurissan" }, { 57, "Overlord Wyrmthalak" }, { 58, "General Drakkisath" },
+    { 59, "Baron Rivendare" }, { 60, "Darkmaster Gandling" },
+}
+-- { instance ID, name, first week, bosses }
+local RAIDS = {
+    { 409, "Molten Core", 1, { "Lucifron", "Magmadar", "Gehennas", "Garr", "Baron Geddon", "Shazzrah",
+        "Golemagg the Incinerator", "Sulfuron Harbinger", "Majordomo Executus", "Ragnaros" } },
+    { 249, "Onyxia's Lair", 2, { "Onyxia" } },
+    { 469, "Blackwing Lair", 6, { "Razorgore the Untamed", "Vaelastrasz the Corrupt", "Broodlord Lashlayer",
+        "Firemaw", "Ebonroc", "Flamegor", "Chromaggus", "Nefarian" } },
+}
+local RAID_ITEM_LEVEL = 66
+
+local function PlanGear(char, weeks)
+    local pool = ns.SeedGear
+    if not pool then return end
+    local levelT = {}
+    for level, snapshot in pairs(char.levels) do levelT[level] = snapshot.t end
+    -- The time at a fraction of a level (23.4: 40% through level 23).
+    local function TimeAt(f)
+        local level = floor(f)
+        local from = levelT[level]
+        if not from then return nil end
+        return from + (f - level) * ((levelT[level + 1] or from + 3600) - from)
+    end
+    local quests = {}
+    for _, e in ipairs(char.events) do
+        if e[2] == "qd" then quests[#quests + 1] = { e[1], e[6] } end
+    end
+
+    local added = {}
+    local worn = {}
+    for slot, id in pairs(char.levels[1] and char.levels[1].gear or {}) do worn[slot] = { id = id, ilvl = 5 } end
+    local taken = {}
+
+    -- A random item of quality q in list, needing a level from lo to hi, better than above.
+    local function Pick(list, lo, hi, q, above, used, minLevel)
+        local found = {}
+        for _, e in ipairs(list) do
+            if e[2] >= lo and e[2] <= hi and e[3] == q and e[4] > above and e[4] >= (minLevel or 0) and not used[e[1]] then
+                found[#found + 1] = e
+            end
+        end
+        return found[1] and found[random(#found)]
+    end
+    local function Quality(level)
+        local r = random()
+        if level < 10 then return r < 0.7 and 1 or 2 end
+        if level < 40 then return r < 0.15 and 1 or r < 0.8 and 2 or 3 end
+        if level < 57 then return r < 0.5 and 2 or r < 0.95 and 3 or 4 end
+        return r < 0.15 and 2 or r < 0.75 and 3 or 4
+    end
+    local function Quest(t)
+        local id
+        for _, q in ipairs(quests) do
+            if q[1] > t then break end
+            id = q[2]
+        end
+        return { how = "quest", id = id }
+    end
+    local function Boss(level)
+        local name = BOSSES[1][2]
+        for _, b in ipairs(BOSSES) do
+            if b[1] <= level + 2 then name = b[2] end
+        end
+        return { how = random() < 0.3 and "roll" or "drop", kind = "Creature", name = name, id = random(1000, 12000) }
+    end
+    local function Source(level, q, t)
+        local r, s = random(), nil
+        if q <= 1 then
+            s = r < 0.5 and { how = "vendor", name = VENDORS[random(#VENDORS)], id = random(200, 2000) } or Quest(t)
+        elseif q == 2 then
+            local band = MOB_NAMES[math.min(#MOB_NAMES, floor(level / 10) + 1)]
+            s = r < 0.5 and { how = "drop", kind = "Creature", name = band[random(#band)], id = random(100, 12000) }
+                or r < 0.9 and Quest(t) or { how = "ah" }
+        elseif q == 3 then
+            s = r < 0.55 and Boss(level) or r < 0.8 and Quest(t) or r < 0.92 and { how = "ah" } or { how = "craft" }
+        else
+            s = r < 0.4 and { how = "ah" } or r < 0.8 and Boss(level) or { how = "craft" }
+        end
+        s.t, s.c, s.x, s.y = t - random(60, 1800), -1, 0, 0
+        return s
+    end
+    -- Puts entry on in slot at t, enchanted first if enchant; returns what it replaced.
+    local function Put(t, slot, entry, source, enchant)
+        local item = "item:" .. entry[1] .. (enchant and (":" .. enchant) or "")
+        if enchant then
+            local by = random() < 0.3 and "self" or ENCHANTERS[random(#ENCHANTERS)]
+            added[#added + 1] = { t - random(300, 3000), "ench", -1, 0, 0, entry[1], enchant, 0, 0, by }
+        end
+        added[#added + 1] = { t, "eq", -1, 0, 0, slot, entry[1], item, nil, source }
+        local before = worn[slot]
+        worn[slot] = { id = entry[1], ilvl = entry[4], item = item }
+        return before
+    end
+    local function Enchant(slot, chance)
+        local list = pool.enchants[slot]
+        return list and random() < chance and list[random(#list)] or nil
+    end
+
+    -- Levelling: each slot every few levels (weapons more often), then pre-raid gear at 59.
+    for _, planned in ipairs(PLAN_SLOTS) do
+        local slot, level = planned[1], planned[2]
+        local key = POOL_OF[slot] or slot
+        local list = pool.slots[key]
+        taken[key] = taken[key] or {}
+        while list and level < 60 do
+            local above = worn[slot] and worn[slot].ilvl or 0
+            local entry = Pick(list, level - 6, level, Quality(level), above, taken[key])
+                or Pick(list, level - 6, level, 2, above, taken[key]) or Pick(list, level - 10, level, 1, above, taken[key])
+            local t = entry and TimeAt(level + random())
+            if t then
+                taken[key][entry[1]] = true
+                local before = Put(t, slot, entry, Source(level, entry[3], t), level >= 40 and Enchant(slot, 0.35))
+                if before and before.item and random() < 0.08 then
+                    -- Swapped back for a moment, then on again.
+                    added[#added + 1] = { t + 90, "eq", -1, 0, 0, slot, before.id, before.item }
+                    added[#added + 1] = { t + 200, "eq", -1, 0, 0, slot, entry[1], worn[slot].item }
+                end
+            end
+            level = level + (slot == 16 and random(2, 5) or random(3, 8))
+        end
+        local above = worn[slot] and worn[slot].ilvl or 0
+        local entry = list and random() < 0.7 and (Pick(list, 55, 60, 4, above, taken[key]) or Pick(list, 55, 60, 3, above, taken[key]))
+        local t = TimeAt(59 + random())
+        if entry and t and entry[4] < RAID_ITEM_LEVEL then
+            taken[key][entry[1]] = true
+            Put(t, slot, entry, Source(59, entry[3], t), Enchant(slot, 0.6))
+        end
+    end
+
+    -- Raiding at 60: a night per raid each week from its first week, an epic or two from it.
+    local capAt = levelT[60]
+    for week = 1, capAt and weeks or 0 do
+        for _, raid in ipairs(RAIDS) do
+            if week >= raid[3] then
+                local t = capAt + (week - 1) * 7 * 86400 + random(1, 5) * 86400 + 19 * 3600
+                added[#added + 1] = { t, "on", -1, 0, 0, 60 }
+                added[#added + 1] = { t + 600, "in", -1, 0, 0, raid[1], raid[2], "raid" }
+                for drop = 1, random(0, 2) do
+                    local planned = PLAN_SLOTS[random(#PLAN_SLOTS)]
+                    local slot = planned[1]
+                    local key = POOL_OF[slot] or slot
+                    local list = pool.slots[key]
+                    local above = worn[slot] and worn[slot].ilvl or 0
+                    local entry = list and Pick(list, 60, 60, 4, above, taken[key], RAID_ITEM_LEVEL)
+                    if entry then
+                        taken[key][entry[1]] = true
+                        local at = t + 1200 + drop * random(1800, 4000)
+                        local boss = raid[4][random(#raid[4])]
+                        local source = { how = random() < 0.4 and "roll" or "drop", kind = "Creature", name = boss,
+                            id = random(10000, 15000), instance = raid[1], t = at - 120, c = -1, x = 0, y = 0 }
+                        Put(at, slot, entry, source, Enchant(slot, 0.5))
+                    end
+                end
+                added[#added + 1] = { t + 4 * 3600, "off", -1, 0, 0 }
+            end
+        end
+    end
+
+    -- Each new event where the path was at its time, then all in time order.
+    local events = char.events
+    local known = {}
+    for _, e in ipairs(events) do
+        if e[3] ~= -1 then known[#known + 1] = e end
+    end
+    for _, e in ipairs(added) do
+        local lo, hi = 1, #known
+        while lo < hi do
+            local mid = floor((lo + hi + 1) / 2)
+            if known[mid][1] <= e[1] then lo = mid else hi = mid - 1 end
+        end
+        local at = known[lo]
+        if at then e[3], e[4], e[5] = at[3], at[4], at[5] end
+        events[#events + 1] = e
+    end
+    for i, e in ipairs(events) do e.order = i end
+    table.sort(events, function(a, b)
+        if a[1] ~= b[1] then return a[1] < b[1] end
+        return a.order < b.order
+    end)
+    for _, e in ipairs(events) do e.order = nil end
+
+    -- Snapshots: the gear worn at each, from the kit and the events before it.
+    local gear, links = {}, {}
+    for slot, id in pairs(char.levels[1] and char.levels[1].gear or {}) do gear[slot], links[slot] = id, "item:" .. id end
+    local order = {}
+    for level in pairs(char.levels) do order[#order + 1] = level end
+    table.sort(order)
+    local next = 1
+    for _, level in ipairs(order) do
+        local snapshot = char.levels[level]
+        while events[next] and events[next][1] <= snapshot.t do
+            local e = events[next]
+            if e[2] == "eq" then
+                gear[e[6]] = e[7] ~= 0 and e[7] or nil
+                links[e[6]] = e[7] ~= 0 and e[8] or nil
+            end
+            next = next + 1
+        end
+        snapshot.gear, snapshot.links = CopyTable(gear), CopyTable(links)
+    end
+    while events[next] do
+        local e = events[next]
+        if e[2] == "eq" then gear[e[6]] = e[7] ~= 0 and e[7] or nil end
+        next = next + 1
+    end
+    char.gear = gear
+end
+ns.SeedPlanGear = PlanGear     -- for tests/seed_test.lua
 
 -- items: links by quality, { [2] = {...}, [3] = {...}, [4] = {...} }.
 local function SeedStress(total, items)
@@ -624,7 +844,7 @@ local function SeedStress(total, items)
         Wander(zone, perZone)
         MaybeDungeon()
     end
-    Finish(60, started, "stress 1-60")
+    Finish(60, started, "stress 1-60", function() PlanGear(G.char, ENDGAME_WEEKS) end)
 end
 
 -- Realistic 1-30 ---------------------------------------------------------------

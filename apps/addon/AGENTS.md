@@ -11,7 +11,7 @@ of what bites when you change the addon.
 - `tests/*_test.lua` are the offline tests; `tests/fixtures/` holds
   hand-made saved files with made-up names.
 - `scripts/` holds the release build (`package.ps1`), the changelog and
-  CurseForge helpers, the data generators (`zone-overlays.py` and the
+  CurseForge helpers, the data generators (`zone-overlays.py`, `seed-gear.py` and the
   texture scripts) and `sync-folder.lua`, which makes a sync folder by hand.
 - `check.ps1` runs every check CI runs.
 

@@ -6,6 +6,7 @@
         "${env:LOCALAPPDATA}/wow-api/Annotations/FrameXML"
     ],
     "workspace.checkThirdParty": false,
+    "workspace.ignoreDir": ["build", "dist"],
     "diagnostics.globals": [
         "RoadToSixtyDB",
         "RoadToSixtyCharDB",
@@ -37,6 +38,10 @@
         "LOOT_ITEM_SELF",
         "LOOT_ITEM_SELF_MULTIPLE",
         "ATTACHMENTS_MAX_RECEIVE",
+        "ITEM_QUALITY_COLORS",
+        "SetItemButtonTexture",
+        "SetItemButtonQuality",
+        "GameTooltip_HideShoppingTooltips",
         "PlayerFrame",
         "PlayerLevelText",
         "ERR_LEARN_RECIPE_S",
