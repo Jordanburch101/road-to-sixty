@@ -59,6 +59,9 @@ ns.Command("check", "check that recording is working", function()
         sessionEvents, ns.killsTracked and "on" or "|cffff4040unavailable|r"))
     Line(ns.Sync:Describe())
 
+    if ns.errors.shown > 0 then
+        Line(("Journey map: %d error(s) this session; recording is not affected."):format(ns.errors.shown))
+    end
     if ns.errors.last then
         Line("Last error: " .. tostring(ns.errors.last))
     end

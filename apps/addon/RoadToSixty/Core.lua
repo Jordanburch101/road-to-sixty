@@ -121,8 +121,9 @@ local function ApplyDefaults(db, source)
     end
 end
 
--- Errors caught by SafeCall this session, for /rts check.
-ns.errors = { count = 0 }
+-- Errors caught by SafeCall this session, for /rts check; shown, those
+-- SafeShow caught in the journey map and gear screen.
+ns.errors = { count = 0, shown = 0 }
 
 -- Calls fn, reporting any error instead of raising it, so one broken handler
 -- cannot stop the others or kill the recorder's ticker. WoW hides Lua errors
@@ -135,6 +136,21 @@ function ns.SafeCall(fn, ...)
         errors.last = err
         if errors.count == 1 then
             Print("|cffff4040An error happened while recording. Type /rts check for details.|r")
+        end
+        geterrorhandler()(err)
+    end
+end
+
+-- SafeCall for the journey map and the gear screen: their errors are counted
+-- apart, so a drawing bug is not reported as the recording breaking.
+function ns.SafeShow(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        local errors = ns.errors
+        errors.shown = errors.shown + 1
+        errors.last = err
+        if errors.shown == 1 then
+            Print("|cffff4040The journey map hit an error. Type /rts check for details.|r")
         end
         geterrorhandler()(err)
     end
