@@ -834,7 +834,8 @@ local function SeedStress(total, items)
     end
     local started = debugprofilestop()
     local first = route[1]
-    Begin(first, first.cx, first.cy, 45, items, { total = total })
+    -- Far enough back that the weeks of raiding after 60 end before today.
+    Begin(first, first.cx, first.cy, 45 + ENDGAME_WEEKS * 7, items, { total = total })
 
     local perZone = floor(total * 0.9 / #route)
     for i, zone in ipairs(route) do
