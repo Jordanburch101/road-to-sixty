@@ -6,6 +6,21 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.12.0
+
+### New
+- A Gear screen: switch the journey map to Gear to see every piece of gear
+  you wore, slot by slot, from your first level to 60 and your weeks of
+  raiding after. Hover an item for its tooltip, where it came from, who
+  enchanted it and how long you wore it. Move along the timeline and your
+  character is shown in the gear of that moment. The mouse wheel zooms,
+  dragging moves along, and the replay carries the view with it.
+- Under the gear, your average item level over the journey, with a mark
+  wherever a blue or epic went on.
+
+### Fixed
+- The replay played too fast to follow; it now plays at half the speed.
+
 ## 1.11.0
 
 ### New

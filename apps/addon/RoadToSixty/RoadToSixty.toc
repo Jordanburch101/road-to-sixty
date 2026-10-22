@@ -43,6 +43,8 @@ Style.lua
 Map.lua
 Panel.lua
 GearCard.lua
+GearTimeline.lua
+GearScreen.lua
 QuestPop.lua
 GuildPop.lua
 LevelPop.lua
@@ -53,6 +55,7 @@ MinimapButton.lua
 Options.lua
 #@debug@
 Probe.lua
+SeedGear.lua
 Seed.lua
 Swatch.lua
 IconBrowser.lua
@@ -62,4 +65,5 @@ LevelProbe.lua
 MountProbe.lua
 PortraitProbe.lua
 GearProbe.lua
+GearSwatch.lua
 #@end-debug@

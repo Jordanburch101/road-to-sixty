@@ -17,11 +17,11 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 
 -- Replay pace in world yards per second at 1x, by mode (Recorder.lua), so the
 -- star moves at the same map speed whatever the length of the journey: a
--- 1-10 replays in about a minute, a 1-60 in tens of minutes. Yards rather
--- than points, as the recorder stores more points where the path bends (#57);
--- these match the 40 points a second it used to go at (points were about 20
--- yards apart walking, 80 flying).
-local REPLAY_YARDS = { w = 800, g = 800, t = 3200 }
+-- 1-10 replays in about two minutes, a 1-60 in tens of minutes. Yards rather
+-- than points, as the recorder stores more points where the path bends (#57).
+-- Half the 40 points a second it first went at (points were about 20 yards
+-- apart walking, 80 flying): players found that too fast to follow.
+local REPLAY_YARDS = { w = 400, g = 400, t = 1600 }
 local MIN_PIXELS = 2            -- points closer than this on screen are merged
 local MAX_LINES = 3000          -- line budget per build; past it, points merge further
 local LINE_WIDTH = 2
@@ -2060,6 +2060,7 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
+    ns.GearScreen:Follow(state.markerNow)
 
     PlaceHead()
     if seq >= 1 and seq <= state.n then
@@ -2442,8 +2443,9 @@ end
 -- the replay; hover for the level, zone and date at that point.
 local function CreateScrub()
     scrub = CreateFrame("Frame", nil, frame)
-    -- Wider than the map by half a knob each side, so the strip is exactly
-    -- as wide as the map and the two frames line up.
+    -- Under the map and the side panel both (its right end is set once the
+    -- panel exists, in CreateWindow), wider by half a knob each side, so the
+    -- strip's ends line up with their frames.
     scrub:SetPoint("TOPLEFT", canvas, "BOTTOMLEFT", -SCRUB.KNOB / 2, -SCRUB.TOP)
     scrub:SetPoint("TOPRIGHT", canvas, "BOTTOMRIGHT", SCRUB.KNOB / 2, -SCRUB.TOP)
     scrub:SetHeight(SCRUB.ROW)
@@ -2729,17 +2731,19 @@ local function CreateWindow()
     infoText:SetJustifyH("LEFT")
 
     local help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    help:SetPoint("RIGHT", canvas, "BOTTOMRIGHT", MAP_BORDER,
-        -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT / 2))
     help:SetText("Wheel: zoom   Drag: move   Right-click: zoom out")
 
     local panel = ns.Panel:Create(frame)
     panel:SetPoint("TOPLEFT", canvas, "TOPRIGHT", PANEL_GAP, 0)
-    -- Down past the map to the window's bottom: its frame ends level with
-    -- the buttons' bottom.
-    panel:SetPoint("BOTTOMLEFT", canvas, "BOTTOMRIGHT", PANEL_GAP,
-        -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT - MAP_BORDER))
-    Outline(panel, 10)
+    -- As tall as the map, so the timeline runs under both, the whole width
+    -- of the window, and the gear screen (which covers both) has it too.
+    panel:SetPoint("BOTTOMLEFT", canvas, "BOTTOMRIGHT", PANEL_GAP, 0)
+    scrub:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", SCRUB.KNOB / 2, -SCRUB.TOP)
+    help:SetPoint("RIGHT", panel, "BOTTOMRIGHT", MAP_BORDER,
+        -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT / 2))
+    local panelEdges = Outline(panel, 10)
+    -- Map | Gear switch; the gear screen takes the map's and the panel's place (GearScreen.lua).
+    ns.GearScreen:Attach(frame, canvas, panel, panelEdges)
 
     return worldLayer
 end
@@ -2781,6 +2785,7 @@ function Map:Open()
         BuildPoints(paths)
         BuildMarkers()
         ns.GearCard:Rebuild()
+        ns.GearScreen:Rebuild()
         ns.QuestPop:Rebuild()
         ns.GuildPop:Rebuild()
         ns.LevelPop:Rebuild()

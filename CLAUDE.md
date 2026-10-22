@@ -42,10 +42,11 @@ for data, its exact format; read that before changing a module.
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
 | PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
+| GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
 | Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
-| MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/ | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo) |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua | developer tools, left out of releases |
+| MinimapTiles.lua, ZoneOverlays.lua, ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app
@@ -102,6 +103,7 @@ bun run typecheck                   # TypeScript in the server and packages
 ./scripts/package.ps1               # release build to build/ and dist/, plus a load test in toc order
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
+python scripts/seed-gear.py [build]       # regenerate SeedGear.lua, the stress seed's gear, from the client's item tables
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
 
 # From apps/server (Docker running)
