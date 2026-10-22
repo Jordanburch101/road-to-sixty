@@ -123,6 +123,32 @@ for _, t in ipairs({ 1000 + 2 * H, 1000 + 50 * H, 1000 + 100 * H, 1000 + 105 * H
     check(math.abs(back - t) < 1e-6, "TimeAt undoes U across the gap and after 60 at " .. t .. ", got " .. back)
 end
 
+-- 6b. Levels are spaced by time played: nine days logged out take no room,
+-- so gear put on in the next session is not squeezed to the edge (Liairene
+-- on the beta: epics from an event, nine days into level 17).
+local DAY = 86400
+local away = G.Build({
+    levels = { [17] = { t = 1000, gear = { [1] = 500 } } },
+    events = {
+        { 1000, "on", 0, 0, 0, 17 },
+        { 1000 + 2 * H, "off" },
+        { 1000 + 9 * DAY, "on", 0, 0, 0, 17 },
+        { 1000 + 9 * DAY + H, "eq", 0, 0, 0, 1, 900, "item:900" },
+    },
+}, 1000 + 9 * DAY + 2 * H)
+check(#away.sessions == 2 and away.sessions[2][3] == 2 * H, "two sessions, two hours played before the second")
+local uEpic = G.U(away, 1000 + 9 * DAY + H, 2)
+check(math.abs(uEpic - 17.75) < 1e-9, "the epic three quarters into level 17 by time played, got " .. uEpic)
+check(math.abs(G.U(away, 1000 + 5 * DAY, 2) - 17.5) < 1e-9, "logged out: where the first session ended")
+for _, t in ipairs({ 1000 + H, 1000 + 9 * DAY + H / 2, 1000 + 9 * DAY + 1.5 * H }) do
+    local back = G.TimeAt(away, G.U(away, t, 2), 2)
+    check(math.abs(back - t) < 1e-6, "TimeAt undoes U in a session at " .. t .. ", got " .. back)
+end
+check(G.TimeAt(away, 17.5, 2) == 1000 + 2 * H, "the moment between sessions is the end of the first")
+local crashed = G.Sessions({ { 100, "on" }, { 150, "qd" }, { 400, "on" }, { 450, "lvl" } }, 500)
+check(#crashed == 2 and crashed[1][2] == 150 and crashed[2][1] == 400 and crashed[2][2] == 500,
+    "a session with no off ends at its last event; the open one at finish")
+
 -- 7. A two-hander empties the off hand, and a shield comes back later:
 -- kept gear does not stretch the first shield over the empty time.
 local twoHand = G.Build({

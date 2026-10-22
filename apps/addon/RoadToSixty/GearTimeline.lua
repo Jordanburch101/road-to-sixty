@@ -23,9 +23,12 @@ local _, ns = ...
 --   GearTimeline.Kept(spans)   the spans without brief ones, the ones around
 --                              them stretched over the gap, or joined if the
 --                              same item came back
+--     sessions     { { from, to, played before }, ... }: the time logged in,
+--                  from the on and off events
 --   GearTimeline.LevelAt(timeline, t)  the level at t as a fraction (5.5 is
---                              halfway through level 5); CAP from capAt on.
---                              Levels not recorded share the time between
+--                              halfway through level 5, in time played, so
+--                              days logged out take no room); CAP from capAt
+--                              on. Levels not recorded share the time between
 --                              the ones around them; the last runs to finish
 --   GearTimeline.U(timeline, t, weekWidth)  the gear screen's axis: LevelAt,
 --                              then CAP plus weekWidth a week; TimeAt(timeline,
@@ -161,8 +164,68 @@ function GearTimeline.Build(journey, now)
     table.sort(zones, function(a, b) return a[1] < b[1] end)
     return {
         slots = slots, kept = kept, levels = levels, start = start, finish = finish, capAt = firstLevel[GearTimeline.CAP],
-        enchants = enchants, zones = zones, quests = quests,
+        enchants = enchants, zones = zones, quests = quests, sessions = GearTimeline.Sessions(journey.events or {}, finish),
     }
+end
+
+-- The time logged in: { from, to, played before } for each session, in
+-- order. A session runs from an on event to the next off; one with no off
+-- (a crash) ends at its last event, and the one still open at finish.
+-- Something recorded with no session open (journeys from before on events)
+-- opens one there.
+function GearTimeline.Sessions(events, finish)
+    local sessions, played, open, last = {}, 0, nil, nil
+    local function Close(to)
+        if open and to > open then
+            sessions[#sessions + 1] = { open, to, played }
+            played = played + to - open
+        end
+        open = nil
+    end
+    for _, e in ipairs(events) do
+        local t, kind = e[1], e[2]
+        if kind == "on" then
+            Close(last or t)
+            open = t
+        elseif kind == "off" then
+            Close(t)
+        elseif not open then
+            open = t
+        end
+        last = t
+    end
+    Close(finish)
+    return sessions
+end
+
+-- Seconds played by time t (sessions as Sessions gives them). Logged-out
+-- time adds nothing; before the first session and after the last, clock
+-- time counts, so the measure keeps growing.
+local function Played(sessions, t)
+    local first, lastSession = sessions[1], sessions[#sessions]
+    if not first or t < first[1] then return t - (first and first[1] or 0) end
+    local lo, hi = 1, #sessions
+    while lo < hi do
+        local mid = math.floor((lo + hi + 1) / 2)
+        if sessions[mid][1] <= t then lo = mid else hi = mid - 1 end
+    end
+    local s = sessions[lo]
+    if t <= s[2] then return s[3] + t - s[1] end
+    if s == lastSession then return s[3] + (s[2] - s[1]) + (t - s[2]) end
+    return s[3] + s[2] - s[1]
+end
+
+-- The time at which played seconds were reached: Played run backwards. A
+-- moment between sessions is the end of the one before.
+local function TimePlayed(sessions, played)
+    local first = sessions[1]
+    if not first then return played end
+    if played < 0 then return first[1] + played end
+    for _, s in ipairs(sessions) do
+        if played <= s[3] + s[2] - s[1] then return s[1] + played - s[3] end
+    end
+    local last = sessions[#sessions]
+    return last[2] + played - (last[3] + last[2] - last[1])
 end
 
 local function Short(span)
@@ -247,7 +310,11 @@ function GearTimeline.LevelAt(timeline, t)
     if not at then return levels[1] and levels[1][1] or 1 end
     local level, from, toLevel, to = Stretch(timeline, at)
     if to <= from or toLevel <= level then return level end
-    return level + (toLevel - level) * math.min(0.999, (t - from) / (to - from))
+    -- How far through the level by time played; by the clock if none was.
+    local sessions = timeline.sessions or {}
+    local a, b = Played(sessions, from), Played(sessions, to)
+    local f = b > a and (Played(sessions, t) - a) / (b - a) or (t - from) / (to - from)
+    return level + (toLevel - level) * math.max(0, math.min(0.999, f))
 end
 
 -- The axis unit of the gear screen: the level as a fraction (LevelAt) up to
@@ -273,7 +340,11 @@ function GearTimeline.TimeAt(timeline, u, weekWidth)
     if not at then return levels[1] and levels[1][2] or timeline.start end
     local level, from, toLevel, to = Stretch(timeline, at)
     if to <= from or toLevel <= level then return from end
-    return from + math.max(0, math.min(1, (u - level) / (toLevel - level))) * (to - from)
+    local f = math.max(0, math.min(1, (u - level) / (toLevel - level)))
+    local sessions = timeline.sessions or {}
+    local a, b = Played(sessions, from), Played(sessions, to)
+    if b <= a then return from + f * (to - from) end
+    return math.max(from, math.min(to, TimePlayed(sessions, a + f * (b - a))))
 end
 
 function GearTimeline.WornAt(timeline, t, every)
