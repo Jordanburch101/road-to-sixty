@@ -1,0 +1,107 @@
+-- Offline test of GearTimeline.lua. Run with LuaJIT from apps/addon:
+-- luajit tests/geartimeline_test.lua
+
+local failures = 0
+local function check(ok, message)
+    if not ok then
+        failures = failures + 1
+        print("FAIL: " .. message)
+    end
+end
+
+local ns = {}
+assert(loadfile("RoadToSixty/GearTimeline.lua"))("RoadToSixty", ns)
+local G = ns.GearTimeline
+
+-- A made-up journey: levels 1 to 3 (and 60 later), starting gear, a quest
+-- reward, a quick A-B-A swap, an enchant, a slot emptied, a suffix change.
+local H = 3600
+local journey = {
+    levels = {
+        [1] = { t = 1000, gear = {}, },                                 -- before #63's fix: no gear, says nothing
+        [2] = { t = 1000 + H, gear = { [5] = 200, [9] = 300, [16] = 25 }, links = { [9] = "item:300", [16] = "item:25" } },
+        [3] = { t = 1000 + 3 * H, gear = { [5] = 200, [9] = 310, [16] = 25 } },
+        [60] = { t = 1000 + 100 * H, gear = { [5] = 201, [9] = 310 } },
+    },
+    events = {
+        { 1000, "on", -1, 0, 0, 1 },
+        { 1100, "eq", 0, 0, 0, 5, 200, "item:200", nil, { how = "start" } },
+        { 1000 + H, "lvl", 0, 0, 0, 2 },
+        { 1000 + H + 60, "zone", 0, 0, 0, 1429 },
+        { 1000 + 2 * H, "qd", 0, 0, 0, 33, 170, 0, "Wolves Across the Border" },
+        { 1000 + 2 * H + 1, "eq", 0, 0, 0, 9, 310, "item:310::::::::::::11", nil, { how = "quest", id = 33 } },
+        { 1000 + 2 * H + 100, "eq", 0, 0, 0, 9, 300, "item:300" },               -- swapped back for 2 minutes
+        { 1000 + 2 * H + 220, "eq", 0, 0, 0, 9, 310, "item:310::::::::::::11" },
+        { 1000 + 3 * H, "lvl", 0, 0, 0, 3 },
+        { 1000 + 3 * H + 10, "ench", 0, 0, 0, 310, 41, 0, 9, "Enchanter", "Player-1-0000000A" },
+        { 1000 + 4 * H, "eq", 0, 0, 0, 16, 0 },                                  -- weapon taken off
+        { 1000 + 5 * H, "eq", 0, 0, 0, 13, 15210, "item:15210::::::1017" },
+        { 1000 + 5 * H + 30, "eq", 0, 0, 0, 13, 15210, "item:15210::::::1018" },  -- the same item, another suffix
+        { 1000 + 100 * H, "lvl", 0, 0, 0, 60 },
+    },
+}
+local finish = 1000 + 110 * H
+local tl = G.Build(journey, finish)
+
+-- 1. Levels and the axis.
+check(tl.start == 1000 and tl.finish == finish, "start and finish")
+check(tl.capAt == 1000 + 100 * H, "level 60 reached")
+check(G.LevelAt(tl, 1000) == 1, "level 1 at the start")
+check(math.abs(G.LevelAt(tl, 1000 + 2 * H) - 2.5) < 1e-9, "halfway through level 2, got " .. G.LevelAt(tl, 1000 + 2 * H))
+check(G.LevelAt(tl, 1000 + 50 * H) == 3, "past the last level up before 60, still 3")
+check(G.LevelAt(tl, finish) == 60, "60 from reaching it on")
+check(G.ZoneAt(tl, 1000) == nil and G.ZoneAt(tl, 1000 + 2 * H) == 1429, "zone over time")
+check(tl.quests[33] and tl.enchants["310:41"], "quests and enchants by key")
+
+-- 2. A snapshot with no gear (before #63's fix) says nothing; the chest
+-- comes from the eq event with its source, and the next snapshot repeats it.
+local chest = tl.slots[5]
+check(#chest == 2 and chest[1].id == 200 and chest[1].t == 1100, "the chest from its eq event, got " .. #chest)
+check(chest[1].source and chest[1].source.how == "start", "with its source")
+check(chest[2].id == 201 and chest[1].endT == chest[2].t and chest[1].next == chest[2] and chest[2].prev == chest[1], "replaced at 60, linked")
+
+-- 3. The quick swap A, B, A, B: the middle two are noise; kept gear shows
+-- the reward from the first time it was put on, with its source.
+local wrist = tl.slots[9]
+check(#wrist == 4, "wrist: 300, 310, 300 again, 310 again, got " .. #wrist)
+check(wrist[2].brief and wrist[3].brief and not wrist[1].brief and not wrist[4].brief, "A, B, A, B: the two in the middle are noise")
+local kept = tl.kept[9]
+check(#kept == 2 and kept[1].id == 300 and kept[2].id == 310, "kept gear: 300 then 310, got " .. #kept)
+check(kept[2].t == 1000 + 2 * H + 1 and kept[2].endT == finish, "the quest reward from when it was got to now")
+check(kept[2].source and kept[2].source.how == "quest", "keeping its source")
+check(wrist[2].item == "item:310::::::::::::11", "the item string from the event")
+
+-- A quick chain of real upgrades stays; a blink in it does not.
+local function Span(id, t, endT) return { id = id, t = t, endT = endT } end
+local list = { Span(1, 0, 100), Span(2, 100, 400), Span(3, 400, 430), Span(4, 430, 5000) }
+for k = 1, #list do list[k].prev, list[k].next = list[k - 1], list[k + 1] end
+G.MarkBrief(list)
+check(not list[2].brief and list[3].brief, "A, B, C, D quickly: B stays, the 30 second C is a blink")
+check(#G.Kept(list) == 3, "kept: A, B, D")
+
+-- The level 1 snapshot has no gear (#63): the level 2 snapshot's gear was
+-- worn from the start; gear first seen in an event keeps its own time.
+check(wrist[1].t == 1000 and wrist[1].seenAt == 1000 + H, "gear first seen later reaches back to the empty snapshot")
+check(chest[1].t == 1100 and chest[1].seenAt == nil, "gear seen in an event before keeps its time")
+
+-- 4. Worn at a time; an emptied slot is empty after it.
+local worn = G.WornAt(tl, 1000 + 2 * H + 150)
+check(worn[9] and worn[9].id == 310, "kept gear at the swap: the reward")
+worn = G.WornAt(tl, 1000 + 2 * H + 150, true)
+check(worn[9] and worn[9].id == 300, "every swap at the swap: the old bracers")
+check(G.WornAt(tl, 1000 + 3 * H)[16] and G.WornAt(tl, 1000 + 3 * H)[16].id == 25, "the weapon before it was taken off")
+check(G.WornAt(tl, 1000 + 4 * H + 1)[16] == nil, "nothing in the weapon slot after")
+check(G.WornAt(tl, 999)[5] == nil, "nothing before the first record")
+check(G.WornAt(tl, math.huge)[5].id == 201, "the last item at the end")
+
+-- 5. A suffix change is a new item; a moment-long span before it is brief.
+local trinket = tl.slots[13]
+check(#trinket == 2 and trinket[1].brief and not trinket[2].brief, "the same item with another suffix replaces it")
+check(G.Plain("item:310:41:::::1017") == "item:310::::::1017" and G.ItemID("item:310:41") == 310, "helpers")
+
+if failures == 0 then
+    print("GearTimeline tests passed.")
+else
+    print(failures .. " gear timeline test(s) failed.")
+    os.exit(1)
+end
