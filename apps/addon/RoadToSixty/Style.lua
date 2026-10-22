@@ -95,7 +95,11 @@ local EVENT_ICONS = {
     mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
+    ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
 }
+-- A kind with no icon of its own gets this, rather than an error that
+-- stops the whole side panel (as enchants did in 1.11.0).
+local UNKNOWN_ICON = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 }
 
 local INSTANCE_TYPES = {
     party = "Dungeon",
@@ -186,7 +190,7 @@ end
 -- loot). Level icons are the player frame's level badge with the level
 -- number in white on top. Returns the icon size.
 function ns.SetEventIcon(icon, text, kind, level, file)
-    local style = EVENT_ICONS[kind]
+    local style = EVENT_ICONS[kind] or UNKNOWN_ICON
     if file or style.file then
         icon:SetTexture(file or style.file)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
