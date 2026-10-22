@@ -2707,9 +2707,6 @@ local function CreateWindow()
     end)
     speedButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
 
-    local fitButton = CreateButton(44, "Fit", FitPath)
-    fitButton:SetPoint("LEFT", speedButton, "RIGHT", 4, 0)
-
     terrainButton = CreateButton(90, "", function()
         ns.db.terrain = not ns.db.terrain
         UpdateTerrainButton()
@@ -2759,7 +2756,7 @@ local function CreateWindow()
             end
         end
     end)
-    rangeButton:SetPoint("LEFT", fitButton, "RIGHT", 4, 0)
+    rangeButton:SetPoint("LEFT", speedButton, "RIGHT", 4, 0)
 
     CreateScrub()
 
