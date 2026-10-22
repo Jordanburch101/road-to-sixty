@@ -26,6 +26,8 @@ broken and now works. Leave out internal changes. Sections are
 - Once a character had an enchant recorded, the journey map's History,
   Stats and Characters tabs could stay empty. They now fill in, and
   enchants show in History with their own icon.
+- In the options, the Erase section no longer runs into the line below
+  it on smaller windows; the options scroll instead.
 
 ## 1.11.0
 

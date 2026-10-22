@@ -2,7 +2,8 @@ local addonName, ns = ...
 
 -- Options panel in the game's settings, under AddOns > Road to Sixty. Opened
 -- with /rts options, a right-click on the minimap button or from the game
--- menu. Every change applies at once; there is nothing to save.
+-- menu. Every change applies at once; there is nothing to save. The panel
+-- scrolls, so a short window cannot squeeze its last sections together.
 
 local Options = {}
 ns.Options = Options
@@ -14,7 +15,9 @@ local ROW = 30           -- height of one checkbox row
 local BUTTON_WIDTH = 160
 
 local panel, category
+local body               -- what the panel scrolls; everything is built on it
 local checks = {}        -- checkbox -> its option
+local radios = {}        -- radio button -> { option, the choice it stands for }
 local statusText
 
 -- Each option reads and writes a saved setting, then brings whatever shows
@@ -93,6 +96,25 @@ local SECTIONS = {
             set = function(on) ns.db.showGear = on end,
         },
     },
+    {
+        title = "Gear screen",
+        {
+            label = "Item bars",
+            -- { key, name, tip }
+            choices = {
+                { "classic", "Classic", "A plain bar in the item's colour." },
+                { "glow", "Glow", "The bar glows in the item's colour from where you put it on, with fire running over it." },
+                { "edges", "Fire edges", "Fire along the top and bottom edges, the middle clear for the name." },
+                { "both", "Glow and fire edges", "The glow, with fire along both edges." },
+                { "comet", "Comet", "A flare where you put the item on, its fire trailing to the end, on a dark bar." },
+            },
+            get = function() return ns.db.gearBars end,
+            set = function(key)
+                ns.db.gearBars = key
+                ns.GearScreen:Redraw()
+            end,
+        },
+    },
 }
 
 StaticPopupDialogs.ROADTOSIXTY_RESET = {
@@ -151,11 +173,11 @@ local y
 -- A gold heading with a thin rule under it.
 local function Heading(text)
     y = y - SECTION_GAP
-    local heading = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    local heading = body:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     heading:SetPoint("TOPLEFT", LEFT, y)
     heading:SetText(text)
 
-    local rule = panel:CreateTexture(nil, "ARTWORK")
+    local rule = body:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(1, 0.82, 0, 0.25)
     rule:SetHeight(1)
     rule:SetPoint("TOPLEFT", LEFT, y - 16)
@@ -164,7 +186,7 @@ local function Heading(text)
 end
 
 local function Check(option)
-    local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+    local check = CreateFrame("CheckButton", nil, body, "UICheckButtonTemplate")
     check:SetSize(26, 26)
     check:SetPoint("TOPLEFT", LEFT - 2, y)
     y = y - ROW
@@ -189,24 +211,79 @@ local function Check(option)
     return check
 end
 
+-- A choice of a few: its label, then a radio button for each, in a row.
+local function Choice(option)
+    local label = body:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", LEFT + 2, y - 6)
+    label:SetText(option.label .. ":")
+    local previous
+    for _, choice in ipairs(option.choices) do
+        local radio = CreateFrame("CheckButton", nil, body, "UIRadioButtonTemplate")
+        radio:SetSize(18, 18)
+        if previous then
+            radio:SetPoint("LEFT", previous.text, "RIGHT", 16, -1)
+        else
+            radio:SetPoint("LEFT", label, "RIGHT", 10, -1)
+        end
+        radio.text = radio:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        radio.text:SetPoint("LEFT", radio, "RIGHT", 4, 1)
+        radio.text:SetText(choice[2])
+        radio:SetHitRectInsets(0, -radio.text:GetStringWidth() - 6, 0, 0)
+        radio:SetScript("OnClick", function()
+            option.set(choice[1])
+            for other, r in pairs(radios) do
+                if r[1] == option then other:SetChecked(r[2] == choice[1]) end
+            end
+        end)
+        radio:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(choice[2])
+            GameTooltip:AddLine(choice[3], 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        radio:SetScript("OnLeave", GameTooltip_Hide)
+        radios[radio] = { option, choice[1] }
+        previous = radio
+    end
+    y = y - ROW
+end
+
 local function Button(text, width, onClick)
-    local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local button = CreateFrame("Button", nil, body, "UIPanelButtonTemplate")
     button:SetSize(width or BUTTON_WIDTH, 22)
     button:SetText(text)
     button:SetScript("OnClick", onClick)
     return button
 end
 
+-- The scrolling part of the panel: the game's scroll frame with its bar at
+-- the right; body is as wide as the panel and as tall as what is built on it.
+local function CreateBody()
+    local ok, scroll = pcall(CreateFrame, "ScrollFrame", nil, panel, "ScrollFrameTemplate")
+    if not ok then
+        scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    end
+    scroll:SetPoint("TOPLEFT", 0, -4)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 4)
+    body = CreateFrame("Frame", nil, scroll)
+    body:SetSize(math.max(400, scroll:GetWidth()), 600)
+    scroll:SetScrollChild(body)
+    scroll:SetScript("OnSizeChanged", function(_, width)
+        body:SetWidth(math.max(400, width))
+    end)
+end
+
 local function Build()
-    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    CreateBody()
+    local title = body:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", LEFT, -16)
     title:SetText(TITLE)
 
-    local version = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    local version = body:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     version:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 1)
     version:SetText(Version())
 
-    local notes = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local notes = body:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     notes:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
     notes:SetText("Records your journey from 1 to 60 and replays it on the map.")
 
@@ -214,7 +291,8 @@ local function Build()
     for _, section in ipairs(SECTIONS) do
         Heading(section.title)
         for _, option in ipairs(section) do
-            Check(option)
+            ---@diagnostic disable-next-line: undefined-field
+            if option.choices then Choice(option) else Check(option) end
         end
     end
 
@@ -239,7 +317,7 @@ local function Build()
     end)
     checkButton:SetScript("OnLeave", GameTooltip_Hide)
 
-    statusText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    statusText = body:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     statusText:SetPoint("TOPLEFT", LEFT, y - 32)
     statusText:SetPoint("TOPRIGHT", -LEFT, y - 32)
     statusText:SetJustifyH("LEFT")
@@ -254,13 +332,16 @@ local function Build()
     end)
     resetButton:SetPoint("TOPLEFT", LEFT, y)
 
-    local resetNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    local resetNote = body:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     resetNote:SetPoint("LEFT", resetButton, "RIGHT", 10, 0)
     resetNote:SetText("Other characters' journeys are kept.")
 
-    local help = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    help:SetPoint("BOTTOMLEFT", LEFT, 16)
+    -- Below the rest, not pinned to the panel's bottom, where a short
+    -- window put it over the Erase button.
+    local help = body:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    help:SetPoint("TOPLEFT", LEFT, y - 36)
     help:SetText("Type /rts in chat for the commands.")
+    body:SetHeight(-y + 60)
 end
 
 -- Updates the checkboxes and counts, after a change made somewhere else.
@@ -268,6 +349,9 @@ function Options:Refresh()
     if not (panel and statusText and panel:IsShown()) then return end
     for check, option in pairs(checks) do
         check:SetChecked(option.get())
+    end
+    for radio, r in pairs(radios) do
+        radio:SetChecked(r[1].get() == r[2])
     end
     UpdateStatus()
 end
