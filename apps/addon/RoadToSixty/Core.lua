@@ -51,6 +51,7 @@ local defaults = {
     questPops = true,   -- quest turn-ins popping up on the map during the replay
     killPops = true,    -- kills popping up at the arrow during the replay
     killMarks = true,   -- faint marks on the map where kills happened
+    gearBars = "classic",   -- the gear screen's item bars: classic, glow, edges, both or comet (GearScreen.BAR_STYLES)
 }
 
 -- Layout of RoadToSixtyCharDB; bump it at every change to what is saved

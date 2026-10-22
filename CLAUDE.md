@@ -105,6 +105,7 @@ bun run typecheck                   # TypeScript in the server and packages
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
 python scripts/seed-gear.py [build]       # regenerate SeedGear.lua, the stress seed's gear, from the client's item tables
+python scripts/gear-bar-textures.py       # redraw Gear/, the gear screen's bar art (needs Pillow)
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
 
 # From apps/server (Docker running)

@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- /rts gearswatch: candidate looks for the gear timeline screen (issue #64),
 -- built from the Forever client's own character sheet art (its Camelot
@@ -556,7 +556,292 @@ local function CreateWindow()
         LABEL_W, -650, W - LABEL_W - 10):SetTextColor(0.7, 0.7, 0.7)
 end
 
-ns.Command("gearswatch", "compare candidate looks for the gear screen (developer)", function()
+-- Bar candidates, round 2 ----------------------------------------------------------------
+-- /rts gearswatch bars: lanes at the gear screen's own size, each a run of
+-- bars touching end to end as on the screen, in grey, white, green, blue
+-- and purple, so the whole look can be judged and not one bar alone.
+
+local LANE_H, LANE_BAR = 28, 22
+local LANE_QUALITIES = {
+    { 0, 1, 2, 3 }, { 1, 2, 2, 4 }, { 2, 3, 4, 4 },
+}
+local LANE_SHARES = { 0.18, 0.27, 0.3, 0.25 }
+
+-- Horizontal alpha fade on a texture, from a to b, in colour r, g, b.
+local function Fade(texture, r, g, b, a1, a2)
+    if CreateColor and texture.SetGradient then
+        texture:SetGradient("HORIZONTAL", CreateColor(r, g, b, a1), CreateColor(r, g, b, a2))
+    else
+        texture:SetVertexColor(r, g, b, (a1 + a2) / 2)
+    end
+end
+
+local function Solid(bar, layer, sub, r, g, b, a)
+    local t = bar:CreateTexture(nil, layer, nil, sub)
+    t:SetColorTexture(r, g, b, a)
+    return t
+end
+
+-- Textures drawn for the bars (scripts/gear-bar-textures.py), in RoadToSixty/Gear.
+local GEAR_ART = "Interface\\AddOns\\" .. addonName .. "\\Gear\\"
+
+local function GearTexture(parent, layer, sub, name)
+    local t = parent:CreateTexture(nil, layer, nil, sub)
+    t:SetTexture(GEAR_ART .. name)
+    return t
+end
+
+-- Textures that repeat along the bar, some moving: { texture, repeats, speed, offset }.
+local scrollers = {}
+
+-- A texture of the art that repeats along x; speed (repeats a second,
+-- negative to the right) makes it move.
+local function Tile(parent, layer, sub, name, _, speed, folder)
+    local t = parent:CreateTexture(nil, layer, nil, sub)
+    t:SetTexture(folder and ("Interface\\AddOns\\" .. addonName .. "\\" .. folder .. "\\" .. name) or (GEAR_ART .. name),
+        "REPEAT", "CLAMP")
+    scrollers[#scrollers + 1] = { t, 1, speed or 0, 0 }
+    t.scroller = scrollers[#scrollers]
+    return t
+end
+
+-- Repeats t's art over width so it keeps its shape at the bar's height
+-- (the art is 32 high, tileW wide).
+local function Repeat(t, width, tileW)
+    local s = t.scroller
+    s[2] = width / (tileW * LANE_BAR / 32)
+    t:SetTexCoord(s[4], s[4] + s[2], 0, 1)
+end
+
+local function Scroll(elapsed)
+    for _, s in ipairs(scrollers) do
+        if s[3] ~= 0 then
+            s[4] = (s[4] + s[3] * elapsed) % 1
+            s[1]:SetTexCoord(s[4], s[4] + s[2], 0, 1)
+        end
+    end
+end
+
+-- How strongly a quality shows: grey and white quiet, epics loud.
+local WEIGHT = { [0] = 0.35, [1] = 0.5, [2] = 0.75, [3] = 0.9, [4] = 1, [5] = 1 }
+
+-- A shade under the bar's effects that fades out along it, so the name
+-- reads without the bar looking like a box.
+local function Underlay(bar)
+    local t = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+    t:SetAllPoints()
+    t:SetColorTexture(1, 1, 1, 1)
+    if t.SetGradient and CreateColor then
+        t:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0.6), CreateColor(0, 0, 0, 0.15))
+    else
+        t:SetColorTexture(0, 0, 0, 0.4)
+    end
+end
+
+-- A flare behind the item's icon, size times the bar's height.
+local function Head(icon, r, g, b, q, size)
+    local head = GearTexture(icon:GetParent(), "ARTWORK", 0, "flare")
+    head:SetBlendMode("ADD")
+    head:SetSize(LANE_BAR * size, LANE_BAR * size)
+    head:SetPoint("CENTER", icon)
+    head:SetVertexColor(r, g, b, WEIGHT[q])
+    return head
+end
+
+-- Sparkles round the icon: a round field of stars (our own art, fading out
+-- before its edges, so turning shows no corners), close round the icon and
+-- turning slowly. alpha by quality (SPARKLE).
+local function EnchantSwirl(icon, q, alpha)
+    local field = GearTexture(icon:GetParent(), "ARTWORK", 2, "sparkles")
+    field:SetBlendMode("ADD")
+    field:SetSize(LANE_BAR * 1.7, LANE_BAR * 1.7)
+    field:SetPoint("CENTER", icon)
+    field:SetAlpha(alpha or 0.4)
+    Spin(field, 16, 360)
+end
+
+-- How strong the enchant sparkles and the flare are, by quality: a green's
+-- faint, an epic's strongest.
+local SPARKLE = { [0] = 0, [1] = 0, [2] = 0.12, [3] = 0.25, [4] = 0.45, [5] = 0.5 }
+local FLARE = { [0] = 1.3, [1] = 1.5, [2] = 1.8, [3] = 2.2, [4] = 2.6, [5] = 2.8 }
+
+-- Two layers of fire flowing back from the start, at strength (1 as V5).
+local function Fire(bar, r, g, b, q, strength)
+    for k, speed in ipairs({ -0.06, -0.11 }) do
+        local fire = Tile(bar, "ARTWORK", k, "flame", 256, speed)
+        fire:SetAllPoints()
+        fire:SetBlendMode("ADD")
+        Repeat(fire, bar:GetWidth() * (k == 1 and 1 or 1.7), 256)
+        Fade(fire, r, g, b, math.min(1, WEIGHT[q] * strength * (k == 1 and 1 or 0.55)), 0.05)
+    end
+end
+
+-- The flare at the icon, sized by quality, with a white-hot centre.
+local function Flare(icon, r, g, b, q)
+    local head = Head(icon, r, g, b, q, FLARE[q])
+    local core = GearTexture(icon:GetParent(), "ARTWORK", 1, "flare")
+    core:SetBlendMode("ADD")
+    core:SetSize(LANE_BAR * 1.2, LANE_BAR * 1.2)
+    core:SetPoint("CENTER", icon)
+    core:SetVertexColor(1, 1, 1, 0.5 * WEIGHT[q])
+    return head
+end
+
+-- count sparks in the quality's colour rising from the bar between from
+-- and to (fractions of its width), each on its own beat.
+local function Embers(bar, count, r, g, b, from, to)
+    if count == 0 then return end
+    local w = bar:GetWidth()
+    for k = 1, count do
+        local spark = bar:CreateTexture(nil, "OVERLAY", nil, 2)
+        spark:SetTexture(STAR)
+        spark:SetBlendMode("ADD")
+        spark:SetVertexColor(math.min(1, r + 0.3), math.min(1, g + 0.3), math.min(1, b + 0.3))
+        local size = math.random(4, 7)
+        spark:SetSize(size, size)
+        spark:SetPoint("CENTER", bar, "BOTTOMLEFT", w * (from + (to - from) * math.random()), 4)
+        Drift(spark, math.random(-4, 4), LANE_BAR + math.random(0, 6), 1.3 + math.random() * 0.9,
+            0.3 + math.random() * 1.4, math.random() * 2)
+    end
+end
+
+-- Each draws bar (a frame of LANE_BAR height) for quality q and sets its
+-- name's colour; icon is the item's icon texture, to restyle if wanted.
+local LANE_STYLES = {
+    { "X2 N2 + V5: your fade in the quality's colour, the fire running over it", function(bar, q, text, _, icon)
+        local r, g, b = QualityColor(q)
+        Solid(bar, "BACKGROUND", -1, 0, 0, 0, 0.45):SetAllPoints()
+        local fill = bar:CreateTexture(nil, "BACKGROUND")
+        fill:SetAllPoints()
+        fill:SetTexture(STATUS_BAR)
+        Fade(fill, r, g, b, 0.75 * WEIGHT[q], 0.08)
+        Fire(bar, r, g, b, q, 1)
+        Flare(icon, r, g, b, q)
+        if q >= 2 then EnchantSwirl(icon, q, SPARKLE[q]) end
+        text:SetTextColor(1, 1, 1)
+        text:SetShadowOffset(1, -1)
+    end },
+    { "X4 fire frame: fire along the top and bottom edges, the middle clear for the name", function(bar, q, text, _, icon)
+        local r, g, b = QualityColor(q)
+        Solid(bar, "BACKGROUND", -1, 0, 0, 0, 0.5):SetAllPoints()
+        local wash = bar:CreateTexture(nil, "BACKGROUND")
+        wash:SetAllPoints()
+        wash:SetTexture(STATUS_BAR)
+        Fade(wash, r, g, b, 0.3 * WEIGHT[q], 0.03)
+        for k, point in ipairs({ "TOP", "BOTTOM" }) do
+            local fire = Tile(bar, "ARTWORK", k, "flame", 256, k == 1 and -0.07 or -0.1)
+            fire:SetPoint(point .. "LEFT", 0, k == 1 and 5 or -5)
+            fire:SetPoint(point .. "RIGHT", 0, k == 1 and 5 or -5)
+            fire:SetHeight(LANE_BAR * 0.6)
+            fire:SetBlendMode("ADD")
+            Repeat(fire, bar:GetWidth() * 1.6, 256)
+            Fade(fire, r, g, b, WEIGHT[q], 0.1)
+        end
+        Flare(icon, r, g, b, q)
+        if q >= 2 then EnchantSwirl(icon, q, SPARKLE[q]) end
+        text:SetTextColor(1, 1, 1)
+        text:SetShadowOffset(1, -1)
+    end },
+    { "X6 X2 + X4: the fade in the quality's colour, fire along both edges", function(bar, q, text, _, icon)
+        local r, g, b = QualityColor(q)
+        Solid(bar, "BACKGROUND", -1, 0, 0, 0, 0.45):SetAllPoints()
+        local fill = bar:CreateTexture(nil, "BACKGROUND")
+        fill:SetAllPoints()
+        fill:SetTexture(STATUS_BAR)
+        Fade(fill, r, g, b, 0.7 * WEIGHT[q], 0.08)
+        for k, point in ipairs({ "TOP", "BOTTOM" }) do
+            local fire = Tile(bar, "ARTWORK", k, "flame", 256, k == 1 and -0.07 or -0.1)
+            fire:SetPoint(point .. "LEFT", 0, k == 1 and 5 or -5)
+            fire:SetPoint(point .. "RIGHT", 0, k == 1 and 5 or -5)
+            fire:SetHeight(LANE_BAR * 0.6)
+            fire:SetBlendMode("ADD")
+            Repeat(fire, bar:GetWidth() * 1.6, 256)
+            Fade(fire, r, g, b, WEIGHT[q], 0.1)
+        end
+        Flare(icon, r, g, b, q)
+        if q >= 2 then EnchantSwirl(icon, q, SPARKLE[q]) end
+        text:SetTextColor(1, 1, 1)
+        text:SetShadowOffset(1, -1)
+    end },
+}
+
+-- A sample: three lanes of bars in style, at x, y, width wide.
+local function Lanes(parent, style, items, x, y, width)
+    for lane, qualities in ipairs(LANE_QUALITIES) do
+        local left = 0
+        local ground = Solid(parent, "BACKGROUND", -2, 1, 1, 1, lane % 2 == 0 and 0.03 or 0)
+        ground:SetPoint("TOPLEFT", x, y - (lane - 1) * LANE_H)
+        ground:SetSize(width, LANE_H)
+        for k, q in ipairs(qualities) do
+            local item = items[(lane + k) % #items + 1]
+            local w = LANE_SHARES[k] * width
+            local bar = CreateFrame("Frame", nil, parent)
+            bar:SetPoint("TOPLEFT", x + left * width + 1, y - (lane - 1) * LANE_H - (LANE_H - LANE_BAR) / 2)
+            bar:SetSize(w - 2, LANE_BAR)
+            local top = CreateFrame("Frame", nil, bar)
+            top:SetAllPoints()
+            top:SetFrameLevel(bar:GetFrameLevel() + 5)
+            local icon = top:CreateTexture(nil, "OVERLAY", nil, 3)
+            icon:SetSize(LANE_BAR - 4, LANE_BAR - 4)
+            icon:SetPoint("LEFT", 3, 0)
+            icon:SetTexture(item.icon)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local text = top:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
+            text:SetPoint("RIGHT", -3, 0)
+            text:SetJustifyH("LEFT")
+            text:SetWordWrap(false)
+            text:SetText(item.name)
+            style[2](bar, q, text, lane * 4 + k, icon)
+            Hover(bar, item)
+            left = left + LANE_SHARES[k]
+        end
+    end
+end
+
+local barsFrame
+
+local function CreateBarsWindow()
+    local width, height = 1100, 600
+    barsFrame = CreateFrame("Frame", "RoadToSixtyGearBarsFrame", UIParent, "BasicFrameTemplateWithInset")
+    barsFrame:SetSize(width + 24, height + 44)
+    barsFrame:SetPoint("CENTER")
+    barsFrame:SetFrameStrata("HIGH")
+    barsFrame:SetClampedToScreen(true)
+    barsFrame:SetMovable(true)
+    barsFrame:EnableMouse(true)
+    barsFrame:RegisterForDrag("LeftButton")
+    barsFrame:SetScript("OnDragStart", barsFrame.StartMoving)
+    barsFrame:SetScript("OnDragStop", barsFrame.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "RoadToSixtyGearBarsFrame")
+    local title = barsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Gear screen bars, round 6 (#64): grey, white, green, blue, purple")
+    local inner = CreateFrame("Frame", nil, barsFrame)
+    inner:SetSize(width, height)
+    inner:SetPoint("TOPLEFT", 12, -30)
+    local bg = inner:CreateTexture(nil, "BACKGROUND", nil, -8)
+    bg:SetAllPoints()
+    bg:SetAtlas("UI-Character-Info-General-BG")
+
+    barsFrame:SetScript("OnUpdate", function(_, elapsed) Scroll(elapsed) end)
+
+    local items = WornItems()
+    local colW = (width - 30) / 2
+    for i, style in ipairs(LANE_STYLES) do
+        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+        local x, y = 10 + col * (colW + 10), -10 - row * (3 * LANE_H + 34)
+        Lanes(inner, style, items, x, y, colW)
+        Label(inner, style[1], x, y - 3 * LANE_H - 4, colW)
+    end
+end
+
+ns.Command("gearswatch", "compare candidate looks for the gear screen; 'bars' for bar styles (developer)", function(arg)
+    if arg == "bars" then
+        if not barsFrame then CreateBarsWindow() end
+        barsFrame:Show()
+        return
+    end
     if not frame then CreateWindow() end
     frame:Show()
 end)

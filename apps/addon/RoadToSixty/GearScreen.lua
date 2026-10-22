@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- The gear screen (issue #64): a mode of the journey map window that puts
 -- the whole gearing story where the map and the side panel were. A row per
@@ -13,9 +13,10 @@ local _, ns = ...
 -- jump to those parts. It opens on the last part of the journey.
 --
 -- The look is Forever's own character sheet art (picked in /rts gearswatch):
--- its slots and background, the status bar texture tinted by item quality,
--- stars drifting through epics, and the sheet's
--- gold enchant swirl as a breathing rim around enchanted items. Hovering an
+-- its slots and background, and the sheet's gold enchant swirl as a
+-- breathing rim around enchanted items. The item bars are the status bar
+-- in the item's quality colour (Classic, the default), or one of four looks
+-- of fire in that colour, our own art (picked in /rts gearswatch bars). Hovering an
 -- item shows the game's item tooltip from the saved item string, then where
 -- and how it was got, how long it was worn and who enchanted it.
 --
@@ -46,7 +47,6 @@ local MIN_SPAN = 3              -- the closest zoom, in levels
 local OPEN_SPAN = 24            -- how much the screen opens on, in levels
 local ZOOM_STEP = 1.25
 local STATUS_BAR = "Interface\\TargetingFrame\\UI-StatusBar"
-local STAR = "Interface\\Cooldown\\star4"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local GOLD = { 1, 0.82, 0 }
 
@@ -332,29 +332,6 @@ local function Spin(texture, seconds)
     group:Play()
 end
 
--- A star drifting up through a bar, fading in and out, now and then.
-local function Drift(texture, rise, seconds, rest, delay)
-    texture:SetAlpha(0)
-    local group = texture:CreateAnimationGroup()
-    local move = group:CreateAnimation("Translation")
-    move:SetOffset(5, rise)
-    move:SetDuration(seconds)
-    move:SetStartDelay(delay)
-    move:SetEndDelay(rest)
-    local fadeIn = group:CreateAnimation("Alpha")
-    fadeIn:SetFromAlpha(0)
-    fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(seconds * 0.25)
-    fadeIn:SetStartDelay(delay)
-    local fadeOut = group:CreateAnimation("Alpha")
-    fadeOut:SetFromAlpha(1)
-    fadeOut:SetToAlpha(0)
-    fadeOut:SetDuration(seconds * 0.35)
-    fadeOut:SetStartDelay(delay + seconds * 0.65)
-    group:SetLooping("REPEAT")
-    return group
-end
-
 -- The paperdoll ----------------------------------------------------------------------
 
 local function NewItemButton(parent)
@@ -548,27 +525,98 @@ end
 
 -- The lanes ----------------------------------------------------------------------------
 
+-- Bars are the status bar in the item's quality colour (Classic), or fire
+-- in that colour, picked in /rts gearswatch bars (scripts/gear-bar-textures.py
+-- draws the art): a flare where the item went on, the fire flowing back from
+-- it, sparkles turning round the icon. How strongly each shows grows with
+-- rarity, so greys and whites stay quiet and epics stand out. ns.db.gearBars
+-- picks the look (Options.lua).
+local GEAR_ART = "Interface\\AddOns\\" .. addonName .. "\\Gear\\"
+local FLAME_W = 256             -- the flame art's width, at 32 high
+GearScreen.BAR_STYLES = {
+    -- key, name, then: the colour fade's strength, the dark under it, fire
+    -- over the whole bar or along its edges; comet is one layer of fire and
+    -- a plain flare of one size, without the white centre or sparkles.
+    -- Classic is the first look: the status bar in the quality's colour,
+    -- and no fire.
+    { "classic", "Classic", classic = true },
+    { "glow", "Glow", fill = 0.75, base = 0.45, fire = "whole" },
+    { "edges", "Fire edges", fill = 0.3, base = 0.5, fire = "edges" },
+    { "both", "Glow and fire edges", fill = 0.7, base = 0.45, fire = "edges" },
+    { "comet", "Comet", fill = 0, base = 0.55, fire = "single", flare = 2.4 },
+}
+-- How strongly a quality shows, the sparkles' strength and the flare's size
+-- (times the bar's height), from grey (0) to legendary (5).
+local WEIGHT = { [0] = 0.35, [1] = 0.5, [2] = 0.75, [3] = 0.9, [4] = 1, [5] = 1 }
+local SPARKLE = { [0] = 0, [1] = 0, [2] = 0.12, [3] = 0.25, [4] = 0.45, [5] = 0.5 }
+local FLARE = { [0] = 1.3, [1] = 1.5, [2] = 1.8, [3] = 2.2, [4] = 2.6, [5] = 2.8 }
+local FIRE_SPEED = { -0.06, -0.11, edges = { -0.07, -0.1 } }   -- art widths a second, flowing right
+local barCount = 0              -- bars[1..barCount] are shown
+local fireClock = 0
+
+local function BarStyle()
+    for _, style in ipairs(GearScreen.BAR_STYLES) do
+        if style[1] == ns.db.gearBars then return style end
+    end
+    return GearScreen.BAR_STYLES[1]
+end
+
+-- A horizontal fade on texture in colour r, g, b, from alpha a1 to a2.
+local function Fade(texture, r, g, b, a1, a2)
+    if CreateColor and texture.SetGradient then
+        texture:SetGradient("HORIZONTAL", CreateColor(r, g, b, a1), CreateColor(r, g, b, a2))
+    else
+        texture:SetVertexColor(r, g, b, (a1 + a2) / 2)
+    end
+end
+
 local function NewBar()
     local bar = CreateFrame("Frame", nil, ui.track)
+    bar.base = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bar.base:SetAllPoints()
     bar.fill = bar:CreateTexture(nil, "BACKGROUND")
     bar.fill:SetAllPoints()
     bar.fill:SetTexture(STATUS_BAR)
+    bar.flames = {}
+    for k = 1, 2 do
+        local fire = bar:CreateTexture(nil, "ARTWORK", nil, k)
+        fire:SetTexture(GEAR_ART .. "flame", "REPEAT", "CLAMP")
+        fire:SetBlendMode("ADD")
+        bar.flames[k] = fire
+    end
     bar.top = CreateFrame("Frame", nil, bar)
     bar.top:SetAllPoints()
     bar.top:SetFrameLevel(bar:GetFrameLevel() + 3)
     bar.icon = bar.top:CreateTexture(nil, "OVERLAY")
     bar.icon:SetPoint("LEFT", 1, 0)
     bar.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- The flare and its white-hot centre behind the icon, the sparkles round it.
+    bar.flare = bar.top:CreateTexture(nil, "ARTWORK", nil, 0)
+    bar.flare:SetTexture(GEAR_ART .. "flare")
+    bar.flare:SetBlendMode("ADD")
+    bar.flare:SetPoint("CENTER", bar.icon)
+    bar.core = bar.top:CreateTexture(nil, "ARTWORK", nil, 1)
+    bar.core:SetTexture(GEAR_ART .. "flare")
+    bar.core:SetBlendMode("ADD")
+    bar.core:SetPoint("CENTER", bar.icon)
+    bar.sparkles = bar.top:CreateTexture(nil, "ARTWORK", nil, 2)
+    bar.sparkles:SetTexture(GEAR_ART .. "sparkles")
+    bar.sparkles:SetBlendMode("ADD")
+    bar.sparkles:SetPoint("CENTER", bar.icon)
+    Spin(bar.sparkles, 16)
     bar.text = bar.top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bar.text:SetPoint("LEFT", bar.icon, "RIGHT", 4, 0)
     bar.text:SetPoint("RIGHT", -2, 0)
     bar.text:SetJustifyH("LEFT")
     bar.text:SetWordWrap(false)
-    bar.outline = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bar.text:SetShadowOffset(1, -1)
+    bar.outline = bar:CreateTexture(nil, "BACKGROUND", nil, -2)
     bar.outline:SetPoint("TOPLEFT", -1, 1)
     bar.outline:SetPoint("BOTTOMRIGHT", 1, -1)
     bar.outline:SetColorTexture(1, 0.82, 0, 0.9)
     bar.outline:Hide()
+    -- Each bar's fire starts at its own point, so neighbours do not move as one.
+    bar.phase = math.random()
     bar:EnableMouse(true)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnEnter", function(self) ShowTip(self, self.span) end)
@@ -579,57 +627,83 @@ local function NewBar()
     return bar
 end
 
--- Stars drifting through an epic bar, made the first time one needs them.
-local function Stars(bar)
-    if bar.stars then return bar.stars end
-    local fx = CreateFrame("Frame", nil, bar)
-    fx:SetAllPoints()
-    fx:SetClipsChildren(true)
-    fx:SetFrameLevel(bar:GetFrameLevel() + 1)
-    fx.anims = {}
-    for k = 1, 4 do
-        local star = fx:CreateTexture(nil, "OVERLAY")
-        star:SetTexture(STAR)
-        star:SetBlendMode("ADD")
-        star:SetSize(9, 9)
-        fx.anims[k] = Drift(star, 30, 1.8 + (k % 3) * 0.4, 0.6 * k, k * 0.45)
-        fx[k] = star
+-- Moves the fire along every bar shown; elapsed seconds since the last frame.
+local function MoveFire(elapsed)
+    fireClock = fireClock + elapsed
+    for i = 1, barCount do
+        local bar = bars[i]
+        for k = 1, bar.classic and 0 or 2 do
+            local fire = bar.flames[k]
+            local u = (bar.phase + fireClock * fire.speed) % 1
+            fire:SetTexCoord(u, u + fire.reps, 0, 1)
+        end
     end
-    bar.stars = fx
-    return fx
 end
 
 -- left and right are where the span starts and ends across the track; the
 -- bar is cut to the track, so its icon and name stay in sight.
 local function PlaceBar(bar, span, left, right, laneY, barH, w)
     local item = Info(span)
-    local r, g, b = QualityColor(item.quality)
+    local q = math.max(0, math.min(5, item.quality or 1))
+    local r, g, b = QualityColor(q)
+    local style = BarStyle()
     left, right = math.max(left, 0), math.min(right, w)
+    local width = math.max(2, right - left - 2)
     bar.span = span
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", ui.track, "TOPLEFT", left + 1, laneY)
-    bar:SetSize(math.max(2, right - left - 2), barH)
-    bar.fill:SetVertexColor(r, g, b)
-    local width = right - left
-    bar.icon:SetSize(barH - 2, barH - 2)
-    bar.icon:SetShown(width > barH + 2)
-    bar.icon:SetTexture(item.icon)
-    bar.text:SetFontObject(barH >= 22 and "GameFontHighlight" or "GameFontHighlightSmall")
-    bar.text:SetShown(width > barH + 40)
-    bar.text:SetText(item.name)
-    if item.quality >= 4 and width > 24 then
-        local stars = Stars(bar)
-        for k = 1, 4 do
-            local star = stars[k]
-            star:ClearAllPoints()
-            star:SetPoint("CENTER", stars, "BOTTOMLEFT", width * (k - 0.5) / 4, -2)
-            if not stars.anims[k]:IsPlaying() then stars.anims[k]:Play() end
-        end
-        stars:Show()
-    elseif bar.stars then
-        for k = 1, 4 do bar.stars.anims[k]:Stop() end
-        bar.stars:Hide()
+    bar:SetSize(width, barH)
+
+    bar.classic = style.classic
+    bar.base:SetColorTexture(0, 0, 0, style.base or 0)
+    if style.classic then
+        Fade(bar.fill, r, g, b, 1, 1)
+    else
+        Fade(bar.fill, r, g, b, style.fill * WEIGHT[q], style.fill > 0.5 and 0.08 or style.fill * 0.1)
     end
+    -- Fire over the whole bar, or along its top and bottom edges with the
+    -- middle clear for the name.
+    local edgeH, edgeOut = barH * 0.6, barH * 0.22
+    for k, fire in ipairs(bar.flames) do
+        fire:ClearAllPoints()
+        if style.fire == "edges" then
+            local point = k == 1 and "TOP" or "BOTTOM"
+            local out = k == 1 and edgeOut or -edgeOut
+            fire:SetPoint(point .. "LEFT", 0, out)
+            fire:SetPoint(point .. "RIGHT", 0, out)
+            fire:SetHeight(edgeH)
+            fire.speed = FIRE_SPEED.edges[k]
+            fire.reps = width * 1.6 / (FLAME_W * edgeH / 32)
+            Fade(fire, r, g, b, WEIGHT[q], 0.1)
+        else
+            fire:SetAllPoints()
+            fire.speed = FIRE_SPEED[k]
+            fire.reps = width * (k == 1 and 1 or 1.7) / (FLAME_W * barH / 32)
+            Fade(fire, r, g, b, WEIGHT[q] * (k == 1 and 1 or 0.55), style.fire == "single" and 0.08 or 0.05)
+        end
+        fire:SetShown(not style.classic and (k == 1 or style.fire ~= "single"))
+        local u = (bar.phase + fireClock * fire.speed) % 1
+        fire:SetTexCoord(u, u + fire.reps, 0, 1)
+    end
+
+    local iconSize = barH - 2
+    bar.icon:SetSize(iconSize, iconSize)
+    bar.icon:SetShown(right - left > barH + 2)
+    bar.icon:SetTexture(item.icon)
+    local flare = style.flare or FLARE[q]
+    bar.flare:SetSize(barH * flare, barH * flare)
+    bar.flare:SetVertexColor(r, g, b, WEIGHT[q])
+    bar.core:SetSize(barH * 1.2, barH * 1.2)
+    bar.core:SetVertexColor(1, 1, 1, 0.5 * WEIGHT[q])
+    bar.sparkles:SetSize(barH * 1.7, barH * 1.7)
+    bar.sparkles:SetAlpha(SPARKLE[q])
+    local glow = bar.icon:IsShown() and not style.classic
+    bar.sparkles:SetShown(glow and SPARKLE[q] > 0 and not style.flare)
+    bar.flare:SetShown(glow)
+    bar.core:SetShown(glow and not style.flare)
+    bar.text:SetFontObject(barH >= 22 and "GameFontHighlight" or "GameFontHighlightSmall")
+    bar.text:SetShown(right - left > barH + 40)
+    bar.text:SetText(item.name)
     bar:Show()
 end
 
@@ -790,10 +864,8 @@ function GearScreen:Redraw()
     end
     for k = count + 1, #bars do
         bars[k]:Hide()
-        if bars[k].stars then
-            for s = 1, 4 do bars[k].stars.anims[s]:Stop() end
-        end
     end
+    barCount = count
 
     local marks = Marks()
     for k, m in ipairs(marks) do
@@ -1376,8 +1448,9 @@ local function CreateView()
 
     -- Follow the cursor over the track; move the window while dragging.
     local lastX
-    view:SetScript("OnUpdate", function()
+    view:SetScript("OnUpdate", function(_, elapsed)
         if not timeline then return end
+        MoveFire(elapsed)
         if drag then Dragging() end
         local over = track:IsMouseOver()
         local x = over and GetCursorPosition() or nil
