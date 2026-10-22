@@ -409,10 +409,11 @@ local function BuildHistory()
     local zoneAt = ZoneTimeline()
     local level
 
+    -- Only what is inside the map's date range (Range.lua) is listed.
     local function Add(item, t, c, x, y, detail)
         item.detail = detail or ""
         item.t, item.c, item.x, item.y = t, c, x, y
-        items[#items + 1] = item
+        if ns.Range:Has(t) then items[#items + 1] = item end
         return item
     end
 

@@ -108,7 +108,8 @@ function KillMarks:Rebuild()
             span = span + 1
         end
         local x, y
-        if not (spans[span] and t >= spans[span][1]) then
+        -- Kills outside the map's date range (Range.lua) are left out.
+        if ns.Range:Has(t) and not (spans[span] and t >= spans[span][1]) then
             x, y = ns.Map:PositionAt(t)
         end
         if x and y then

@@ -518,7 +518,7 @@ function GearCard:Follow(t)
     if not dockCard then
         dockCard = NewCard(dockParent, "HIGH", true)
         dockCard.frame:SetFrameLevel(dockParent:GetFrameLevel() + 20)
-        dockCard.frame:SetPoint("BOTTOMLEFT", dockParent, "BOTTOMLEFT", 12, 12)
+        dockCard.frame:SetPoint("BOTTOMLEFT", dockParent, "BOTTOMLEFT", 12, 40)   -- above the map's buttons
     end
     local index = IndexAt(t)
     if index == shownIndex and dockCard.frame:IsShown() then return end

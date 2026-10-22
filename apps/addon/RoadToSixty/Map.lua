@@ -20,8 +20,10 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- 1-10 replays in about two minutes, a 1-60 in tens of minutes. Yards rather
 -- than points, as the recorder stores more points where the path bends (#57).
 -- Half the 40 points a second it first went at (points were about 20 yards
--- apart walking, 80 flying): players found that too fast to follow.
-local REPLAY_YARDS = { w = 400, g = 400, t = 1600 }
+-- apart walking, 80 flying): players found that too fast to follow. jumps:
+-- the same for hearthstones, teleports and boats, which take a time of their
+-- own (Style.lua, Portals.lua), as a share of it.
+local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
 local MIN_PIXELS = 2            -- points closer than this on screen are merged
 local MAX_LINES = 3000          -- line budget per build; past it, points merge further
 local LINE_WIDTH = 2
@@ -1634,7 +1636,7 @@ local function UpdateMarkers()
     for i = 1, state.markerCount do
         local m = markers[i]
         -- A quest marker with a pop playing on it waits for the pop to end.
-        if m.t <= now and z >= m.minZoom and ns.FilterShown(m.category) and not m.popping then
+        if m.t <= now and ns.Range:Has(m.t) and z >= m.minZoom and ns.FilterShown(m.category) and not m.popping then
             m.cx, m.cy = ToCanvas(m.x, m.y)
             shown[#shown + 1] = m
         else
@@ -1983,7 +1985,7 @@ local function BuildScrub()
     local count = 0
     if state.n > 0 then
         for _, e in ipairs(ns.view.events) do
-            if e[2] == "lvl" then
+            if e[2] == "lvl" and ns.Range:Has(e[1]) then
                 count = count + 1
                 local tick = scrub.ticks[count] or NewScrubTick()
                 scrub.ticks[count] = tick
@@ -2067,7 +2069,8 @@ local function ApplyCursor()
         local t = state.pt[seq]
         infoText:SetText(("Level %d - %s - %s"):format(LevelAt(t), ZoneAt(t), FormatTime(t)))
     else
-        infoText:SetText(state.n == 0 and "No path recorded yet." or "Start of journey")
+        infoText:SetText(state.n == 0 and (ns.Range:IsAll() and "No path recorded yet." or "Nothing recorded in this range.")
+            or "Start of journey")
     end
 
     UpdateScrub(seq)
@@ -2354,7 +2357,7 @@ local function OnUpdate(_, elapsed)
             -- jump (PlaceHead).
             local jump = state.headJump
             local seconds = jump and jump.i == seq + 1 and jump.seconds or style.replay or 1
-            cur = cur + budget / seconds
+            cur = cur + budget * REPLAY_YARDS.jumps / seconds
         else
             -- Along the path by yards; a break passes as a point a yard on.
             -- Fast replays cover many points a frame: stop where the next
@@ -2402,7 +2405,7 @@ local function UpdateTerrainButton()
 end
 
 local function UpdateGearButton()
-    gearButton:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
+    gearButton:SetText(ns.db.showGear and "Gear card: On" or "Gear card: Off")
     if not ns.db.showGear then
         ns.GearCard:Undock()
     elseif frame:IsShown() then
@@ -2712,22 +2715,56 @@ local function CreateWindow()
         UpdateTerrainButton()
         ApplyView()
     end)
-    terrainButton:SetPoint("LEFT", fitButton, "RIGHT", 4, 0)
+    -- Terrain and the gear card only change the map, so they sit on it, in
+    -- its bottom left corner (the gear screen covers them).
+    terrainButton:SetParent(overlay)
+    terrainButton:SetFrameLevel(overlay:GetFrameLevel() + 30)
+    terrainButton:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", 8, 8)
     UpdateTerrainButton()
 
-    -- Gear card in the map's corner, following the replay.
+    -- Gear card in the map's corner, above those buttons, following the replay.
     ns.GearCard:Dock(overlay)
-    gearButton = CreateButton(80, "", function()
+    gearButton = CreateButton(116, "", function()
         ns.db.showGear = not ns.db.showGear
         UpdateGearButton()
     end)
+    gearButton:SetParent(overlay)
+    gearButton:SetFrameLevel(overlay:GetFrameLevel() + 30)
     gearButton:SetPoint("LEFT", terrainButton, "RIGHT", 4, 0)
-    gearButton:SetText(ns.db.showGear and "Gear: On" or "Gear: Off")
+    gearButton:SetText(ns.db.showGear and "Gear card: On" or "Gear card: Off")
+
+    -- The date range shown (Range.lua, #66): a menu of the presets, or on a
+    -- client without the menu, each click the next one. Choosing one opens
+    -- the map again on it.
+    local rangeButton = CreateButton(104, ns.Range:Label(), function(self)
+        local function Choose(key)
+            ns.Range:Set(key)
+            self:SetText(ns.Range:Label())
+            Map:Open()
+        end
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(_, root)
+                for _, preset in ipairs(ns.Range.PRESETS) do
+                    root:CreateRadio(preset[2], function() return ns.Range.key == preset[1] end,
+                        function() Choose(preset[1]) end)
+                end
+            end)
+        else
+            local presets = ns.Range.PRESETS
+            for k, preset in ipairs(presets) do
+                if preset[1] == ns.Range.key then
+                    Choose(presets[k % #presets + 1][1])
+                    break
+                end
+            end
+        end
+    end)
+    rangeButton:SetPoint("LEFT", fitButton, "RIGHT", 4, 0)
 
     CreateScrub()
 
     infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    infoText:SetPoint("LEFT", gearButton, "RIGHT", 14, 0)
+    infoText:SetPoint("LEFT", rangeButton, "RIGHT", 14, 0)
     infoText:SetJustifyH("LEFT")
 
     local help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -2748,7 +2785,13 @@ local function CreateWindow()
     return worldLayer
 end
 
+-- Opening runs through SafeCall, so an error in it is counted and shown by
+-- /rts check rather than lost when Lua errors are hidden.
 function Map:Open()
+    ns.SafeCall(Map.OpenNow, Map)
+end
+
+function Map:OpenNow()
     if not frame then
         local worldLayer = CreateWindow()
         local started = debugprofilestop()
@@ -2767,8 +2810,11 @@ function Map:Open()
     -- The journey shown and how far it has grown. If nothing was recorded
     -- since the last open, the points, markers and replay effects still
     -- hold, and only the pops' animations are cleared.
+    -- The date range (Range.lua): its bounds again from now, and a rebuild
+    -- whenever it changes.
+    ns.Range:Refresh()
     local view = ns.view
-    local journey = table.concat({ tostring(view), #view.segments, ns.Recorder.stored,
+    local journey = table.concat({ tostring(view), ns.Range.key, ns.Range.from or 0, #view.segments, ns.Recorder.stored,
         #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0 }, ":")
     if journey == state.journey then
         state.perf.decode, state.perf.setup = 0, 0
@@ -2778,7 +2824,7 @@ function Map:Open()
         ns.KillPop:Clear()
     else
         local started = debugprofilestop()
-        local paths = ns.Roster:ViewPaths()
+        local paths = ns.Range:TrimPaths(ns.Roster:ViewPaths())
         state.perf.decode = debugprofilestop() - started
 
         started = debugprofilestop()
@@ -2858,7 +2904,7 @@ function Map:UpdateViewBanner()
     end
     if not banner then
         banner = CreateFrame("Frame", nil, overlay, "BackdropTemplate")
-        banner:SetPoint("TOPLEFT", 10, -10)
+        banner:SetPoint("TOPLEFT", 6, -40)     -- below the Map | Gear plaques
         banner:SetHeight(30)
         banner:SetFrameLevel(overlay:GetFrameLevel() + 20)
         banner:EnableMouse(true)

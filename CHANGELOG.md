@@ -17,9 +17,15 @@ broken and now works. Leave out internal changes. Sections are
   dragging moves along, and the replay carries the view with it.
 - Under the gear, your average item level over the journey, with a mark
   wherever a blue or epic went on.
+- A date range for the journey map: see just today, yesterday, the last
+  7 or 30 days, or all time. The path, the replay, the markers and History
+  all follow it.
 
 ### Fixed
 - The replay played too fast to follow; it now plays at half the speed.
+- Once a character had an enchant recorded, the journey map's History,
+  Stats and Characters tabs could stay empty. They now fill in, and
+  enchants show in History with their own icon.
 
 ## 1.11.0
 

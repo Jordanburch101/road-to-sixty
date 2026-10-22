@@ -33,6 +33,7 @@ for data, its exact format; read that before changing a module.
 | Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua, Enchants.lua | guilds, reputation, riding and mounts, rare mobs, groups, enchants: each records its own events, listed in its header |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
+| Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
 | Style.lua | the journey's look: path colours, jump styles, event and class icons, History categories (`ns.Style`) |

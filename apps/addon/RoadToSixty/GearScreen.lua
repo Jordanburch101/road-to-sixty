@@ -653,8 +653,9 @@ local function Flag(index)
         flag:SetVertexColor(unpack(GOLD))
         flag:SetSize(8, 8)
         flag:SetRotation(math.rad(45))
-        flagStems[index] = ui.flags:CreateTexture(nil, "ARTWORK")
-        flagStems[index]:SetWidth(1)
+        -- A line, as a crowded label sits to the side of its diamond.
+        flagStems[index] = ui.flags:CreateLine(nil, "ARTWORK")
+        flagStems[index]:SetThickness(1)
         flagStems[index]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.6)
         flagPlates[index] = ui.flags:CreateTexture(nil, "ARTWORK", nil, 1)
         flagPlates[index]:SetColorTexture(0, 0, 0, 0.75)
@@ -741,8 +742,14 @@ function GearScreen:Redraw()
         dirty = false
         SetExtent()
         stripDirty = true
-        -- Open on the last part of the journey.
-        SetWindow(axis.last - OPEN_SPAN, axis.last)
+        -- Open on the map's date range (Range.lua), or else the last part of
+        -- the journey.
+        local range = ns.Range
+        if range and not range:IsAll() and range.from < timeline.finish then
+            SetWindow(U(math.max(range.from, timeline.start)), U(math.min(range.to, timeline.finish)))
+        else
+            SetWindow(axis.last - OPEN_SPAN, axis.last)
+        end
     end
     -- The part lit is the part the window is in: all of it, or across
     -- both, lights the whole journey.
@@ -817,7 +824,9 @@ function GearScreen:Redraw()
 
     -- Flags above the lanes: each label goes in the lowest of three rows
     -- where it fits beside the labels already there (kept inside the
-    -- screen), joined to its diamond by a stem.
+    -- screen), joined to its diamond by a stem. When none has room at the
+    -- diamond, the label moves right in the row where it moves least, and
+    -- the stem slants to it.
     local rowEnds = {}              -- row -> right edge of its last label
     local shown = 0
     for _, m in ipairs(Milestones()) do
@@ -829,14 +838,13 @@ function GearScreen:Redraw()
             label:SetText(m[2])
             label:SetTextColor(m[3], m[4], m[5])
             local width = label:GetStringWidth() + 10
-            local cx = Clamp(x, width / 2, w - width / 2)
-            local row = 3
+            local want = Clamp(x, width / 2, w - width / 2)
+            local row, cx
             for r = 1, 3 do
-                if not rowEnds[r] or cx - width / 2 > rowEnds[r] + 4 then
-                    row = r
-                    break
-                end
+                local at = math.max(want, (rowEnds[r] or -math.huge) + 4 + width / 2)
+                if not cx or at < cx then row, cx = r, at end
             end
+            cx = math.min(cx, w - width / 2)
             rowEnds[row] = cx + width / 2
             local y = 13 + (row - 1) * FLAG_ROW
             flag:ClearAllPoints()
@@ -846,9 +854,8 @@ function GearScreen:Redraw()
             plate:SetSize(width, FLAG_ROW - 2)
             label:ClearAllPoints()
             label:SetPoint("CENTER", plate, 0, 0)
-            stem:ClearAllPoints()
-            stem:SetPoint("BOTTOM", ui.track, "TOPLEFT", x, 8)
-            stem:SetHeight(y - 8)
+            stem:SetStartPoint("TOPLEFT", ui.track, x, 8)
+            stem:SetEndPoint("TOPLEFT", ui.track, cx, y)
             flag:Show()
             label:Show()
             stem:Show()

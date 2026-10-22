@@ -34,6 +34,7 @@ Enchants.lua
 Sources.lua
 Parties.lua
 Roster.lua
+Range.lua
 Health.lua
 Routes.lua
 Islands.lua
