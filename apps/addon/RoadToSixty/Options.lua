@@ -211,20 +211,18 @@ local function Check(option)
     return check
 end
 
--- A choice of a few: its label, then a radio button for each, in a row.
+-- A choice of a few: its label, then a radio button for each on a line of
+-- its own, so none is cut off in a narrow window.
 local function Choice(option)
     local label = body:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     label:SetPoint("TOPLEFT", LEFT + 2, y - 6)
     label:SetText(option.label .. ":")
-    local previous
+    y = y - 26
     for _, choice in ipairs(option.choices) do
         local radio = CreateFrame("CheckButton", nil, body, "UIRadioButtonTemplate")
         radio:SetSize(18, 18)
-        if previous then
-            radio:SetPoint("LEFT", previous.text, "RIGHT", 16, -1)
-        else
-            radio:SetPoint("LEFT", label, "RIGHT", 10, -1)
-        end
+        radio:SetPoint("TOPLEFT", LEFT + 14, y)
+        y = y - 24
         radio.text = radio:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         radio.text:SetPoint("LEFT", radio, "RIGHT", 4, 1)
         radio.text:SetText(choice[2])
@@ -243,9 +241,8 @@ local function Choice(option)
         end)
         radio:SetScript("OnLeave", GameTooltip_Hide)
         radios[radio] = { option, choice[1] }
-        previous = radio
     end
-    y = y - ROW
+    y = y - 6
 end
 
 local function Button(text, width, onClick)
