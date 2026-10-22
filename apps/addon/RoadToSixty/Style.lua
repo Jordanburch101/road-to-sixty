@@ -225,5 +225,6 @@ function Style.Jump(reason)
 end
 
 Style.LEVEL_COLORS = LEVEL_COLORS
+Style.EVENT_ICONS = EVENT_ICONS     -- for tests/style_test.lua
 Style.JUMP_CATEGORY, Style.CATEGORY = JUMP_CATEGORY, CATEGORY
 Style.LevelBand, Style.LineColor = LevelBand, LineColor
