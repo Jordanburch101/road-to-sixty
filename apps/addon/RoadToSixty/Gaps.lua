@@ -29,9 +29,7 @@ local Gaps = {}
 ns.Gaps = Gaps
 
 local ROOT = "Interface\\AddOns\\" .. addonName .. "\\Gaps\\"
--- (interfaces from 11600 up are Forever's, 16001 being 1.60.1; below is Era)
-local ERA = (select(4, GetBuildInfo()) or 0) < 11600
-local MEDIA = ERA and ROOT .. "Era\\" or ROOT
+local MEDIA = ns.Era and ROOT .. "Era\\" or ROOT
 Gaps.FEATHER = ROOT .. "feather"
 Gaps.RIM = ROOT .. "rim"
 

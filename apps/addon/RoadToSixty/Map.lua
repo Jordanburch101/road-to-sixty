@@ -2574,9 +2574,12 @@ local function CreateWindow()
     ButtonFrameTemplate_HideButtonBar(frame)
     if frame.Inset then frame.Inset:Hide() end
     -- Start the background below the title bar so the bar stays dark, as
-    -- Baganator does on this client.
-    frame.Bg:SetPoint("TOPLEFT", 6, -21)
-    if frame.TopTileStreaks then frame.TopTileStreaks:SetPoint("TOPLEFT", 6, -21) end
+    -- Baganator does on this client. Era's window has the classic border,
+    -- whose inside starts at the template's own offset: 6 left a strip of
+    -- the world showing down the left side there.
+    local left = ns.Era and select(4, frame.Bg:GetPoint(1)) or 6
+    frame.Bg:SetPoint("TOPLEFT", left, -21)
+    if frame.TopTileStreaks then frame.TopTileStreaks:SetPoint("TOPLEFT", left, -21) end
 
     -- Cog left of the close button, a small red button like the game's:
     -- opens or closes the options.

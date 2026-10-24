@@ -3,6 +3,9 @@ local addonName, ns = ...
 -- Shared ground for every module: saved variable defaults, ns.On (event
 -- bus), ns.Command (slash commands), ns.SafeCall and ns.Print.
 --
+-- ns.Era is true on Classic Era (#72): interfaces from 11600 up are
+-- Forever's (16001 is 1.60.1), those below Era's.
+--
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
 -- defaults below, plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
 -- which counts the merge can't rebuild are kept under (Tally.lua). The
@@ -34,6 +37,8 @@ local addonName, ns = ...
 -- placeholder, unfilled, in a developer install), so whatever reads it
 -- knows what wrote it. Never write the placeholder itself in a .lua file:
 -- the release build fails on any left after packaging.
+
+ns.Era = (GetBuildInfo and select(4, GetBuildInfo()) or 0) < 11600
 
 local defaults = {
     greet = true,
