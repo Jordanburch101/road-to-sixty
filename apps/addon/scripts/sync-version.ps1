@@ -1,11 +1,13 @@
 # Sets "## Interface" in the toc to match your installed WoW client, after a
 # patch. Reads the client version (such as 1.60.1.70235) from .build.info in
 # the WoW folder; the interface number is major * 10000 + minor * 100 + patch,
-# so 1.60.1 is 16001. The CurseForge upload works out its game version from
-# this same toc line, so this is the only thing to update after a patch.
+# so 1.60.1 is 16001. The toc lists one interface per client it supports;
+# only the one for this client changes. The CurseForge upload works out its
+# game versions from this same toc line, so this is the only thing to update
+# after a patch.
 #
-#   ./scripts/sync-version.ps1                         beta client
-#   ./scripts/sync-version.ps1 -Product wow_classic    another client
+#   ./scripts/sync-version.ps1                            beta client
+#   ./scripts/sync-version.ps1 -Product wow_classic_era   another client
 #   ./scripts/sync-version.ps1 -List                   show installed clients
 
 param(
@@ -51,18 +53,25 @@ $interface = [int]$parts[0] * 10000 + [int]$parts[1] * 100 + [int]$parts[2]
 $gameVersion = "{0}.{1}.{2}" -f $parts[0], $parts[1], $parts[2]
 
 $text = [System.IO.File]::ReadAllText($toc)
-$match = [regex]::Match($text, '(?m)^## Interface:\s*(\d+)')
+$match = [regex]::Match($text, '(?m)^## Interface:[ \t]*([\d, \t]+)')
 if (-not $match.Success) {
     Write-Host "No '## Interface:' line in $toc" -ForegroundColor Red
     exit 1
 }
-$current = [int]$match.Groups[1].Value
-if ($current -eq $interface) {
+
+# The line lists one interface per client (Forever first, as the app's
+# latest.json takes the first). Only the entry of the same major.minor as
+# this client changes; a client not listed yet is added at the end.
+$listed = @($match.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object { [int]$_ })
+$same = [array]::FindIndex([int[]]$listed, [Predicate[int]] { param($i) [math]::Floor($i / 100) -eq [math]::Floor($interface / 100) })
+if ($same -ge 0 -and $listed[$same] -eq $interface) {
     Write-Host "Toc already matches $Product $($client.Version) (interface $interface)."
     exit 0
 }
+$current = if ($same -ge 0) { $listed[$same] } else { "none" }
+if ($same -ge 0) { $listed[$same] = $interface } else { $listed += $interface }
 
-$text = $text.Substring(0, $match.Groups[1].Index) + $interface + $text.Substring($match.Groups[1].Index + $match.Groups[1].Length)
+$text = $text.Substring(0, $match.Groups[1].Index) + ($listed -join ", ") + $text.Substring($match.Groups[1].Index + $match.Groups[1].Length)
 [System.IO.File]::WriteAllText($toc, $text)
 Write-Host "Interface $current -> $interface ($Product $($client.Version), CurseForge game version $gameVersion)."
 Write-Host "Commit it, then tag a release: git tag v<version>; git push origin v<version>"
