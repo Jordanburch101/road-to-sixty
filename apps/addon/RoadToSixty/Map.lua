@@ -2659,6 +2659,11 @@ local function CreateWindow()
     -- Frame around the map like the timeline's, with a soft shadow along the
     -- inside of each edge. Above every map layer and marker; takes no mouse.
     local edges = Outline(canvas, 40)
+    -- (not the canvas's child, as the canvas clips what it holds; it goes
+    -- with the canvas, which the gear screen hides, else its right edge
+    -- showed as a line across the gear timeline)
+    canvas:HookScript("OnHide", function() edges:Hide() end)
+    canvas:HookScript("OnShow", function() edges:Show() end)
     local shadows = {
         { "TOPLEFT", "TOPRIGHT", "VERTICAL", 0, MAP_SHADOW[2] },
         { "BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", MAP_SHADOW[2], 0 },
