@@ -47,6 +47,9 @@ end
 GetTime = function() return 0 end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 TRADE_SKILLS = "Professions"
+-- Era has GetProfessions as well, but it lists nothing there.
+GetProfessions = function() end
+GetProfessionInfo = function() end
 
 -- The skill list: name, header, expanded, rank, max, abandonable.
 local lines = {

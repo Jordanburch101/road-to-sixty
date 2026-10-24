@@ -20,8 +20,8 @@ local _, ns = ...
 -- old character does not show them as learned today.
 --
 -- Forever uses the modern APIs (GetProfessions, C_TradeSkillUI); the classic
--- skill and trade skill functions do not exist there. Classic Era (#72) has
--- only the classic ones: the skill lines (GetSkillLineInfo), the trade skill
+-- skill and trade skill functions do not exist there. Classic Era (#72)
+-- works only with the classic ones: the skill lines (GetSkillLineInfo), the trade skill
 -- window (GetTradeSkillLine, GetTradeSkillInfo) and, for Enchanting, the
 -- craft window (GetCraftDisplaySkillLine, GetCraftInfo). Each is used only
 -- when the modern one is missing.
@@ -71,8 +71,11 @@ local function ReadSkillLines()
 end
 
 -- Professions now: name -> { rank, max, icon }, or nil without the API.
+-- Era has GetProfessions too, but it lists nothing there, so the skill
+-- lines go first wherever they exist (Forever has none).
 function Crafts:ReadSkills()
-    if not (GetProfessions and GetProfessionInfo) then return ReadSkillLines() end
+    if GetNumSkillLines and GetSkillLineInfo then return ReadSkillLines() end
+    if not (GetProfessions and GetProfessionInfo) then return end
     local skills = {}
     for _, index in ipairs({ GetProfessions() }) do
         local ok, name, icon, rank, max = pcall(GetProfessionInfo, index)
@@ -392,7 +395,7 @@ ns.Command("craftprobe", "check the profession and recipe APIs (developer)", fun
         end
         ns.Print("Professions: " .. (#list > 0 and table.concat(list, ", ") or "none"))
     else
-        ns.Print("No GetProfessions on this client.")
+        ns.Print("No profession API on this client (or a profession header is collapsed).")
     end
 
     local profession = OpenProfession()
