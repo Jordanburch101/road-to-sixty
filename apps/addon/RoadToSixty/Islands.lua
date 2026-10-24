@@ -29,7 +29,7 @@ local ISLANDS = {
     -- Bluff and Dalaran.
     { 2521, 0.48, 0.3 },
 }
-local LAYER_ABOVE_WORLD = 3     -- frame levels above the world art layer
+local LAYER_ABOVE_WORLD = 4     -- frame levels above the world art layer: over the zone art (Map.lua)
 local EXPLORED_FADE = { 1.6, 2.6 }  -- zoom where explored art starts to fade in and is fully shown, as the continent art
 local EXPLORED_SUBLEVEL = 2     -- above the unexplored art; its overlays go one above
 local TERRAIN_SUBLEVEL = 4      -- above the explored art and its overlays

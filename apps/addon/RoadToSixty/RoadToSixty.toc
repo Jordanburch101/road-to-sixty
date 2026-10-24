@@ -21,6 +21,7 @@ MinimapTiles.lua
 ZoneOverlays.lua
 ZoneOverlaysEra.lua
 ZoneArt.lua
+Gaps.lua
 Items.lua
 Recorder.lua
 Journal.lua

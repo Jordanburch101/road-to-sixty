@@ -239,8 +239,9 @@ local function MapTransform(uiMap)
 end
 ns.MapTransform = MapTransform
 
--- Covers the content rectangle x1, y1 - x2, y2 with uiMap's art.
-local function AddArt(parent, uiMap, x1, y1, x2, y2)
+-- Covers the content rectangle x1, y1 - x2, y2 with uiMap's art, through
+-- mask if given.
+local function AddArt(parent, uiMap, x1, y1, x2, y2, mask)
     local layers = C_Map.GetMapArtLayers(uiMap)
     local textures = C_Map.GetMapArtLayerTextures(uiMap, 1)
     local layer = layers and layers[1]
@@ -261,6 +262,7 @@ local function AddArt(parent, uiMap, x1, y1, x2, y2)
         tex:SetTexCoord(0, w / layer.tileWidth, 0, h / layer.tileHeight)
         tex:SetPoint("TOPLEFT", parent, "TOPLEFT", x1 + left * sx, -(y1 + top * sy))
         tex:SetSize(w * sx, h * sy)
+        if mask then tex:AddMaskTexture(mask) end
     end
 end
 ns.AddMapArt = AddArt
@@ -388,8 +390,13 @@ local function SetupWorld(worldLayer)
                 return x1 + u * sx, y1 + v * sy
             end
             state.toContent[continentID] = toContent
-            AddArt(continentLayer, child.mapID, x1, y1, x1 + sx, y1 + sy)
+            -- Each continent's art fades into the world map over a wide
+            -- border (#73): drawn whole, its rectangle, frame and painted
+            -- sea ended in a straight line across the world's sea.
+            AddArt(continentLayer, child.mapID, x1, y1, x1 + sx, y1 + sy,
+                ns.Gaps.Mask(continentLayer, ns.Gaps.FEATHER, x1, y1, x1 + sx, y1 + sy))
             zoneView:AddContinent(child.mapID, x1, y1, sx, sy)
+            ns.Gaps:Add(zoneView.gaps, child.mapID, x1, y1, x1 + sx, y1 + sy, zoneView.zones)
             AddTerrainTiles(continentID, child.mapID, toMap, toContent)
         end
     end
@@ -1832,6 +1839,7 @@ local function ApplyView()
     content:SetPoint("TOPLEFT", canvas, "TOPLEFT", -state.ox, state.oy)
     continentLayer:SetAlpha(Fade(z, CONTINENT_FADE))
     zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
+    zoneView.gaps:SetAlpha(zoneView.layer:GetAlpha())
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
     ns.Islands:SetZoom(z, ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
@@ -2606,11 +2614,19 @@ local function CreateWindow()
     content:SetFrameLevel(canvas:GetFrameLevel() + 1)
     local worldLayer = CreateLayer(1)
     continentLayer = CreateLayer(2)
-    zoneView = ns.CreateZoneView(CreateLayer(3))
-    terrainLayer = CreateLayer(4)
-    ns.KillMarks:Attach(CreateLayer(5))
-    othersLayer = CreateLayer(6)
-    pathLayer = CreateLayer(7)
+    -- Stable (#73): every zone without an outline always shows, so the art
+    -- does not change with the zone in the middle of the view. Under the
+    -- zones lies the gap art (Gaps.lua); each zone's painting round its own
+    -- land fades out over the wide feather, so its darkened edge is gone
+    -- before it meets that, and its own land over the rim mask, clear of
+    -- its burnt frame.
+    zoneView = ns.CreateZoneView(CreateLayer(4), true)
+    zoneView.gaps = CreateLayer(3)
+    zoneView.wideEdge, zoneView.rimEdge = ns.Gaps.FEATHER, ns.Gaps.RIM
+    terrainLayer = CreateLayer(5)
+    ns.KillMarks:Attach(CreateLayer(6))
+    othersLayer = CreateLayer(7)
+    pathLayer = CreateLayer(8)
 
     hoverLine = pathLayer:CreateLine(nil, "OVERLAY")
     hoverLine:SetColorTexture(1, 1, 1, 0.45)

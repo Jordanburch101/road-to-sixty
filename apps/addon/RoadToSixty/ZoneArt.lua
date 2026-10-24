@@ -165,7 +165,10 @@ end
 -- The highlight file of a zone and where the zone's shipped mask lies on
 -- the continent map: fileID, u1, v1, u2, v2 (the whole highlight file plus
 -- the mask's empty border), or nil, also for zones without a shipped mask.
--- zx1, zx2, zy1, zy2 is the zone's rectangle on the continent.
+-- zx1, zx2, zy1, zy2 is the zone's rectangle on the continent. Every probe
+-- in the zone is tried: some points of a zone have no highlight (Lake
+-- Everstill, in the middle of Redridge, gave none, so Redridge had no
+-- outline and showed its whole map, burnt rim and all; Jordan, 2026-10-23).
 local function ZoneOutline(continentMap, zoneMap, zx1, zx2, zy1, zy2)
     if not (ns.ZoneMasks and ns.ZoneMasks[zoneMap]) then return end
     if not (C_Map.GetMapHighlightInfoAtPosition and C_Map.GetMapInfoAtPosition) then return end
@@ -179,7 +182,6 @@ local function ZoneOutline(continentMap, zoneMap, zx1, zx2, zy1, zy2)
                 local px, py = w / usedX * pad, h / usedY * pad
                 return fileID, left - px, top - py, left + w / usedX + px, top + h / usedY + py
             end
-            return
         end
     end
 end
@@ -199,10 +201,11 @@ ns.OutlineMask = OutlineMask
 -- A mask on parent covering content x1, y1 - x2, y2: solid, with a soft
 -- border. Every zone map has a dark burnt edge, and some a torn parchment
 -- frame, so where a zone's shape reaches the edge of its art, this fades
--- the art out before them instead of ending in a hard line.
-local function EdgeMask(parent, x1, y1, x2, y2)
+-- the art out before them instead of ending in a hard line. file, if
+-- given, is another such mask's path (a wider fade).
+local function EdgeMask(parent, x1, y1, x2, y2, file)
     local mask = parent:CreateMaskTexture()
-    mask:SetTexture(MASK_PATH .. "edge", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetTexture(file or MASK_PATH .. "edge", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetPoint("TOPLEFT", parent, "TOPLEFT", x1, -y1)
     mask:SetPoint("BOTTOMRIGHT", parent, "TOPLEFT", x2, -y2)
     return mask
@@ -225,7 +228,11 @@ ns.EdgeMask = EdgeMask
 -- over the continent art below, which is far coarser than zone art.
 -- Any other zone without an outline paints the land around it too, so only
 -- the one under the middle of the view shows, with faded edges, and moving
--- to another cross-fades. Art is built the first time a zone is near the view.
+-- to another cross-fades. A view made with stable = true (Smooth Map, where
+-- the map must not change with what is in the middle) shows every such zone
+-- all the time instead, its whole art with faded edges, over the outlined
+-- zones' whole art and under their trimmed art, so their own land stays
+-- theirs. Art is built the first time a zone is near the view.
 
 local ZONE_SWITCH = 3   -- cross-fades per second
 local ZONE_MARGIN = 0.25    -- zones this far outside the view (in views) are built too
@@ -243,13 +250,23 @@ local ZoneView = {
 }
 ZoneView.__index = ZoneView
 
-function ns.CreateZoneView(layer)
+function ns.CreateZoneView(layer, stable)
     local view = setmetatable({
         layer = layer,
+        stable = stable,    -- zones without an outline always show (see above)
+        -- A mask's path to fade each zone's whole art (what it paints round
+        -- its own land) instead of the edge mask, set by a view with paper
+        -- of its own under the zones (Smooth Map): wider, so a zone map's
+        -- darkened edge is gone before it meets that paper.
+        wideEdge = nil,
+        -- The same for each zone's own land (trimmed to its outline), where
+        -- it reaches its map's edge: a mask clearing more of the burnt frame.
+        rimEdge = nil,
         continents = {},    -- { uiMapID, x1, y1, width, height } in content units
         -- uiMapID -> { x1, y1, x2, y2, alpha, textures, together = shown with
         -- others, outline = { fileID, x1, y1, x2, y2 } or host = uiMapID of
-        -- the zone whose art covers this city }
+        -- the zone whose art covers this city, lone = true for a stable
+        -- view's zone without either }
         zones = {},
         active = nil,       -- uiMapID of the zone under the middle of the view, if any
         fading = false,     -- true while some zone art is still fading
@@ -294,6 +311,9 @@ function ZoneView:AddContinent(uiMap, x1, y1, w, h)
             -- without a host, as its plan is cut to the city; with the city
             -- art option off, such a city shows nothing.
             city.together = city.host ~= nil or (ns.CityMasks and ns.CityMasks[cityID]) ~= nil
+            if self.stable and not city.together then
+                city.together, city.lone = true, true
+            end
         end
     end
 
@@ -343,7 +363,11 @@ local function SetZoneAlpha(zone, alpha)
 end
 
 -- Draw sublevel of the whole art under the zones trimmed to their outline.
-local UNDER_SUBLEVEL = -2
+local UNDER_SUBLEVEL = -4
+
+-- Draw sublevel of a stable view's zones without an outline: over the whole
+-- art above, under the trimmed art (base, and its overlays one above).
+local LONE_SUBLEVEL = -2
 
 -- Draw sublevel of a city's own street plan, above any zone's art.
 local CITY_SUBLEVEL = 2
@@ -358,10 +382,10 @@ function ZoneView:Build(id, zone)
     zone.textures, zone.plan = {}, nil
     if o then
         local masks = { OutlineMask(self.layer, id, o[2], o[3], o[4], o[5]),
-            EdgeMask(self.layer, zone[1], zone[2], zone[3], zone[4]) }
+            EdgeMask(self.layer, zone[1], zone[2], zone[3], zone[4], self.rimEdge) }
         zone.textures = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), 0, masks)
         for _, tex in ipairs(AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), 0,
-            { EdgeMask(self.layer, a[1], a[2], a[3], a[4]) }, UNDER_SUBLEVEL)) do
+            { EdgeMask(self.layer, a[1], a[2], a[3], a[4], self.wideEdge) }, UNDER_SUBLEVEL)) do
             zone.textures[#zone.textures + 1] = tex
         end
     elseif zone.host then
@@ -371,6 +395,11 @@ function ZoneView:Build(id, zone)
         local masks = { EdgeMask(self.layer, math.max(h[1], zone[1] - gx), math.max(h[2], zone[2] - gy),
             math.min(h[3], zone[3] + gx), math.min(h[4], zone[4] + gy)) }
         zone.textures = AddZoneArt(self.layer, zone.host, h[1], h[2], h[3], h[4], ZoneOverlays(zone.host), 0, masks)
+    elseif zone.lone then
+        -- (the edge mask clears the burnt rim, the wide fade of a zone shown
+        -- alone blends what is left: either alone left the rim as a dark band)
+        zone.textures = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id), nil,
+            { EdgeMask(self.layer, a[1], a[2], a[3], a[4], self.wideEdge) }, LONE_SUBLEVEL)
     elseif not zone.together then
         zone.textures = AddZoneArt(self.layer, id, a[1], a[2], a[3], a[4], ZoneOverlays(id))
     end
@@ -448,7 +477,7 @@ end
 function ns.RefreshCityArt()
     for _, view in ipairs(ZoneView.views) do
         for id, zone in pairs(view.zones) do
-            if not zone.outline and zone.together and zone.textures then
+            if not zone.outline and not zone.lone and zone.together and zone.textures then
                 local alpha = zone.alpha
                 SetZoneAlpha(zone, 0)
                 view:Build(id, zone)

@@ -39,6 +39,7 @@ for data, its exact format; read that before changing a module.
 | Style.lua | the journey's look: path colours, jump styles, event and class icons, History categories (`ns.Style`) |
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
+| Gaps.lua | land and sea no zone map covers, painted as zone maps paint theirs (`Gaps/`, an Era set in `Gaps/Era/`), and the soft feather and rim masks (#73) |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
 | PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
@@ -105,6 +106,9 @@ bun run typecheck                   # TypeScript in the server and packages
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
 python scripts/zone-overlays.py <Era build> --era   # regenerate ZoneOverlaysEra.lua after an Era patch
+python scripts/feather-mask.py            # redraw Gaps/feather.tga and rim.tga (needs Pillow)
+python scripts/gap-textures.py [build]    # redraw the gap tiles, then: python scripts/gap-masks.py [build] [preview] [cache]
+                                          # (Pillow, numpy; a 1.15 build writes Gaps/Era/; check the preview by eye)
 python scripts/seed-gear.py [build]       # regenerate SeedGear.lua, the stress seed's gear, from the client's item tables
 python scripts/gear-bar-textures.py       # redraw Gear/, the gear screen's bar art (needs Pillow)
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
