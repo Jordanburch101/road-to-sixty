@@ -20,7 +20,11 @@ local _, ns = ...
 -- old character does not show them as learned today.
 --
 -- Forever uses the modern APIs (GetProfessions, C_TradeSkillUI); the classic
--- skill and trade skill functions do not exist there.
+-- skill and trade skill functions do not exist there. Classic Era (#72) has
+-- only the classic ones: the skill lines (GetSkillLineInfo), the trade skill
+-- window (GetTradeSkillLine, GetTradeSkillInfo) and, for Enchanting, the
+-- craft window (GetCraftDisplaySkillLine, GetCraftInfo). Each is used only
+-- when the modern one is missing.
 
 local Crafts = {}
 ns.Crafts = Crafts
@@ -29,10 +33,46 @@ local Log = function(...) return ns.Journal:Log(...) end
 
 local trainerOpen = false
 local lastRecipe = { name = nil, t = 0, event = nil }   -- to log a recipe once when two sources report it
+local classicWindow             -- "trade" or "craft": the classic profession window open last
+
+-- The skill list's headers that professions sit under. The header names
+-- come from the game's data, so the client's own words for them are tried
+-- with the English ones.
+local function Words(...)
+    local set = {}
+    for i = 1, select("#", ...) do
+        local word = select(i, ...)
+        if type(word) == "string" then set[(word:gsub(":$", ""))] = true end
+    end
+    return set
+end
+local PROFESSION_HEADERS = Words(TRADE_SKILLS, SECONDARY_SKILLS, "Professions", "Secondary Skills")
+
+-- Classic skill lines: the professions under their headers (primary ones
+-- can be abandoned, so those count wherever they are). Riding sits under
+-- Secondary Skills too and is Mounts.lua's. A profession header that is
+-- collapsed hides its lines, and opening it from here would fire
+-- SKILL_LINES_CHANGED again, so nothing is read until it is open: a read
+-- missing a profession would log it as learned when it shows again.
+local function ReadSkillLines()
+    if not (GetNumSkillLines and GetSkillLineInfo) then return end
+    local skills, under = {}, false
+    for i = 1, GetNumSkillLines() do
+        local name, header, expanded, rank, _, _, max, abandonable = GetSkillLineInfo(i)
+        if header then
+            under = name and PROFESSION_HEADERS[name] or false
+            if under and not expanded then return end
+        elseif name and (under or abandonable) and max and max > 0
+            and not (ns.Mounts and ns.Mounts.IsRidingName(name)) then
+            skills[name] = { rank, max }
+        end
+    end
+    return skills
+end
 
 -- Professions now: name -> { rank, max, icon }, or nil without the API.
 function Crafts:ReadSkills()
-    if not (GetProfessions and GetProfessionInfo) then return end
+    if not (GetProfessions and GetProfessionInfo) then return ReadSkillLines() end
     local skills = {}
     for _, index in ipairs({ GetProfessions() }) do
         local ok, name, icon, rank, max = pcall(GetProfessionInfo, index)
@@ -78,11 +118,48 @@ end
 
 -- The profession the open profession window shows, if any.
 local function OpenProfession()
-    if not (C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo) then return end
+    if not (C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo) then
+        -- Classic: the trade skill window says "UNKNOWN" once closed; the
+        -- craft window, which also trains a hunter's pet, names only
+        -- Enchanting.
+        local ok, name
+        if classicWindow == "trade" and GetTradeSkillLine then
+            ok, name = pcall(GetTradeSkillLine)
+        elseif classicWindow == "craft" and GetCraftDisplaySkillLine then
+            ok, name = pcall(GetCraftDisplaySkillLine)
+        end
+        if ok and type(name) == "string" and name ~= "" and name ~= "UNKNOWN" then
+            return name
+        end
+        return
+    end
     local ok, info = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
     if ok and info and info.professionName and info.professionName ~= "" then
         return info.professionName
     end
+end
+
+-- Classic: the recipes listed in the open window. Its list holds only
+-- learned recipes, between headers; collapsed headers hide theirs.
+local function ReadClassicRecipes()
+    local count, info
+    if classicWindow == "trade" then
+        count, info = GetNumTradeSkills, GetTradeSkillInfo
+    elseif classicWindow == "craft" then
+        count, info = GetNumCrafts, GetCraftInfo
+    end
+    if not (count and info) then return end
+    local names = {}
+    for i = 1, count() do
+        local name, kind
+        if classicWindow == "craft" then
+            name, _, kind = info(i)
+        else
+            name, kind = info(i)
+        end
+        if name and kind ~= "header" then names[name] = true end
+    end
+    return names
 end
 
 -- The profession a recipe belongs to, from its spell ID. At a trainer no
@@ -101,7 +178,7 @@ end
 -- a moment, so each recipe's own profession is checked.
 function Crafts:ReadRecipes(profession)
     local ui = C_TradeSkillUI
-    if not (ui and ui.GetAllRecipeIDs and ui.GetRecipeInfo) then return end
+    if not (ui and ui.GetAllRecipeIDs and ui.GetRecipeInfo) then return ReadClassicRecipes() end
     local ok, ids = pcall(ui.GetAllRecipeIDs)
     if not (ok and ids) then return end
     local names = {}
@@ -259,19 +336,32 @@ end)
 ns.On("SKILL_LINES_CHANGED", function() if loggedIn then Crafts:CheckSkills() end end)
 ns.On("CHAT_MSG_SKILL", function() if loggedIn then Crafts:CheckSkills() end end)
 
-ns.On("TRADE_SKILL_SHOW", function() Crafts:CheckRecipes() end)
+ns.On("TRADE_SKILL_SHOW", function()
+    classicWindow = "trade"
+    Crafts:CheckRecipes()
+end)
+-- Classic Era's windows; the modern clients refuse these events.
+ns.On("TRADE_SKILL_CLOSE", function() if classicWindow == "trade" then classicWindow = nil end end)
+ns.On("CRAFT_SHOW", function()
+    classicWindow = "craft"
+    Crafts:CheckRecipes()
+end)
+ns.On("CRAFT_CLOSE", function() if classicWindow == "craft" then classicWindow = nil end end)
 
 -- The list updates on every craft and filter change, and each check reads
 -- every recipe, so a burst of updates is read once after it settles.
 local recipeCheckPending = false
-ns.On("TRADE_SKILL_LIST_UPDATE", function()
+local function RecipesChanged()
     if recipeCheckPending then return end
     recipeCheckPending = true
     C_Timer.After(0.5, function()
         recipeCheckPending = false
         ns.SafeCall(Crafts.CheckRecipes, Crafts)
     end)
-end)
+end
+ns.On("TRADE_SKILL_LIST_UPDATE", RecipesChanged)
+ns.On("TRADE_SKILL_UPDATE", RecipesChanged)
+ns.On("CRAFT_UPDATE", RecipesChanged)
 
 ns.On("TRAINER_SHOW", function() trainerOpen = true end)
 ns.On("TRAINER_CLOSED", function() trainerOpen = false end)

@@ -6,6 +6,12 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.13.0
+
+### New
+- Road to Sixty now runs on Classic Era as well as WoW Forever, and
+  records your professions and recipes there too.
+
 ## 1.12.0
 
 ### New

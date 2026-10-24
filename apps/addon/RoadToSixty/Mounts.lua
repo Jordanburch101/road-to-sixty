@@ -54,6 +54,8 @@ local function IsRidingName(name)
     end
     return false
 end
+-- Crafts.lua leaves riding out of the classic skill lines' professions.
+Mounts.IsRidingName = IsRidingName
 
 ---@diagnostic disable-next-line: deprecated
 local IsPlayerSpell = IsPlayerSpell

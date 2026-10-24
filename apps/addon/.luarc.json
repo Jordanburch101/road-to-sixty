@@ -45,6 +45,7 @@
         "PlayerFrame",
         "PlayerLevelText",
         "ERR_LEARN_RECIPE_S",
+        "SECONDARY_SKILLS",
         "ERR_GUILD_REMOVE_SELF",
         "ERR_GUILD_DISBANDED",
         "SetLargeGuildTabardTextures",
