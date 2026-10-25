@@ -21,15 +21,16 @@ local addonName, ns = ...
 -- not. Made by scripts/gap-textures.py and scripts/gap-masks.py; MIX must
 -- match the latter's, which works out the field for it.
 --
--- Forever repainted every map, so Classic Era has a set of its own, made
--- from its own art, in Gaps/Era/. Gaps/feather.tga and rim.tga, the soft
+-- Forever repainted every map, so the clients with the classic art
+-- (ns.Classic: Era, and Anniversary, whose Azeroth art is Era's) have a set
+-- of their own, made from Era's art, in Gaps/Era/. Gaps/feather.tga and rim.tga, the soft
 -- masks Map.lua and ZoneArt.lua use (scripts/feather-mask.py), serve both.
 
 local Gaps = {}
 ns.Gaps = Gaps
 
 local ROOT = "Interface\\AddOns\\" .. addonName .. "\\Gaps\\"
-local MEDIA = ns.Era and ROOT .. "Era\\" or ROOT
+local MEDIA = ns.Classic and ROOT .. "Era\\" or ROOT
 Gaps.FEATHER = ROOT .. "feather"
 Gaps.RIM = ROOT .. "rim"
 

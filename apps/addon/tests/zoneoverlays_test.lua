@@ -1,6 +1,7 @@
 -- Offline test of the zone overlay tables (#72): Forever keeps
--- ZoneOverlays.lua's file IDs, Classic Era gets ZoneOverlaysEra.lua's
--- (Forever's draw green there), and both keep the zone masks.
+-- ZoneOverlays.lua's file IDs, the clients with the classic art (Classic
+-- Era, Anniversary) get ZoneOverlaysEra.lua's (Forever's draw green
+-- there), and all keep the zone masks.
 -- Run with LuaJIT from the repo root: luajit tests/zoneoverlays_test.lua
 
 local failures = 0
@@ -14,6 +15,8 @@ end
 local function Load(interface)
     GetBuildInfo = function() return "1.0.0", "1", "Jan 1 2026", interface end
     local ns = {}
+    -- (as Core.lua sets it, before the files that use it)
+    ns.Classic = interface < 16000 or interface >= 17000
     assert(loadfile("RoadToSixty/ZoneOverlays.lua"))("RoadToSixty", ns)
     local forever = ns.ZoneOverlayData
     assert(loadfile("RoadToSixty/ZoneOverlaysEra.lua"))("RoadToSixty", ns)
@@ -22,6 +25,8 @@ end
 
 local ns, forever = Load(16001)
 check(ns.ZoneOverlayData == forever, "Forever keeps its own overlays")
+ns, forever = Load(20506)
+check(ns.ZoneOverlayData ~= forever, "Anniversary gets the classic overlays")
 ns, forever = Load(11509)
 check(ns.ZoneOverlayData ~= forever, "Era gets its own overlays")
 check(ns.ZoneMasks and ns.ZoneMasks[1429], "Era keeps the zone masks")

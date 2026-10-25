@@ -3,8 +3,9 @@ local addonName, ns = ...
 -- Shared ground for every module: saved variable defaults, ns.On (event
 -- bus), ns.Command (slash commands), ns.SafeCall and ns.Print.
 --
--- ns.Era is true on Classic Era (#72): interfaces from 11600 up are
--- Forever's (16001 is 1.60.1), those below Era's.
+-- ns.Classic is true on the clients with the classic map art: Classic Era
+-- (#72, interface 11509) and the Anniversary realms (20506). Forever
+-- (16001 is 1.60.1) repainted every map, so its art has file IDs of its own.
 --
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
 -- defaults below, plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
@@ -38,7 +39,10 @@ local addonName, ns = ...
 -- knows what wrote it. Never write the placeholder itself in a .lua file:
 -- the release build fails on any left after packaging.
 
-ns.Era = (GetBuildInfo and select(4, GetBuildInfo()) or 0) < 11600
+do
+    local interface = GetBuildInfo and select(4, GetBuildInfo()) or 0
+    ns.Classic = interface < 16000 or interface >= 17000
+end
 
 local defaults = {
     greet = true,

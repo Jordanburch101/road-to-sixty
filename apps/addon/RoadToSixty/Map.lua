@@ -2577,7 +2577,7 @@ local function CreateWindow()
     -- Baganator does on this client. Era's window has the classic border,
     -- whose inside starts at the template's own offset: 6 left a strip of
     -- the world showing down the left side there.
-    local left = ns.Era and select(4, frame.Bg:GetPoint(1)) or 6
+    local left = ns.Classic and select(4, frame.Bg:GetPoint(1)) or 6
     frame.Bg:SetPoint("TOPLEFT", left, -21)
     if frame.TopTileStreaks then frame.TopTileStreaks:SetPoint("TOPLEFT", left, -21) end
 
