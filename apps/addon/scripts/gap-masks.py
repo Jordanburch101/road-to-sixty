@@ -1,5 +1,5 @@
 """Draws the per-continent textures Gaps.lua paints land and sea no zone map
-covers through, in RoadToSixty/Gaps/ (Gaps/Era/ for Era), each stretched over its continent's
+covers through, in RoadToSixty/Gaps/ (Gaps/Era/ for Era, Gaps/Anniversary/), each stretched over its continent's
 map art (uiMapID 1414 Kalimdor, 1415 Eastern Kingdoms):
 
   land_<id>.tga   where the continent is land: the parchment shows there
@@ -57,7 +57,7 @@ BUILD = sys.argv[1] if len(sys.argv) > 1 else "1.60.1.70245"
 PREVIEW = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 CACHE = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 CONTINENTS = (1414, 1415)       # Kalimdor, Eastern Kingdoms
-CITIES = {1453, 1454, 1455, 1456, 1457, 1458}   # street plans, not zone maps
+CITIES = {1453, 1454, 1455, 1456, 1457, 1458, 1947, 1954}   # street plans, not zone maps
 TILE = 256
 SIZE = 512                      # each mask's side; stretched over the continent's art
 FIELD_SIZE = 128
@@ -84,10 +84,26 @@ MOUNTAINS = (3, 6)              # in from the coast: mountains start here, and a
 FIELD_REACH = 0.45              # a zone's colour reaches this far from its middle, in its map's sizes
 MIX = (0.5, 1 / 3)              # Gaps.lua: the field's alpha over the first copy, the second copy's over that
 
-# Forever repainted every map, so a Classic Era build (1.15) gets its own
-# set, made from its own art, in Gaps/Era/ (Gaps.lua picks it on Era).
-ERA = BUILD.startswith("1.15.")
-OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / ("Era" if ERA else "")
+# Each game has its own map art: Forever repainted every map, and the
+# Anniversary realms (2.5) repainted the continents for the Blood Elf and
+# Draenei lands, under the same file IDs as Era's. So an Era build (1.15)
+# writes Gaps/Era/, an Anniversary build Gaps/Anniversary/ (Gaps.lua picks
+# the set for the client), and a Forever build Gaps/ itself.
+SET = "Era" if BUILD.startswith("1.15.") else "Anniversary" if BUILD.startswith("2.5.") else ""
+CLASSIC = SET != ""
+OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / SET
+
+# The classic continent art draws its coasts tens of pixels from where the
+# zone maps draw them (mountains showed on the sea round Eversong and the
+# Wetlands, Jordan 2026-10-25), so where a zone map clearly shows sea, it
+# takes the land away (zone_votes). Zone sea is grey-blue: blue at least
+# WATER_BLUE of red and saturation below WATER_SAT; mountains and fields are
+# far warmer. A zone counts from ZONE_TRUST[0] in from its map's edge (its
+# frame) and fully from ZONE_TRUST[1]; overlapping zones vote, and they only
+# take land away, never add it: a test that missed a range must not sink it.
+WATER_BLUE, WATER_SAT = 0.42, 0.6
+ZONE_TRUST = (0.06, 0.2)
+ZONE_WEIGHT = 0.3
 
 
 def fetch(url, cached=None):
@@ -242,8 +258,11 @@ def parchment_colour(uimap):
     return np.median(pick, axis=0) * 255
 
 
-def assignment(uimap):
-    return next(r for r in table("UiMapAssignment") if r["UiMapID"] == str(uimap) and r["OrderIndex"] == "0")
+def assignment(uimap, world=None):
+    """A map's placement in the world; world picks the row on that world
+    (a continent has one on 530 too, where the Blood Elf and Draenei lands are)."""
+    return next((r for r in table("UiMapAssignment") if r["UiMapID"] == str(uimap)
+                 and (r["MapID"] == world if world else r["OrderIndex"] == "0")), None)
 
 
 def to_art(a):
@@ -268,17 +287,70 @@ def from_art(a):
 
 def zone_rect(zone, continent):
     """A zone map's rect on its continent's map: u1, v1, u2, v2."""
-    za, ca = assignment(zone), assignment(continent)
-    if za["MapID"] != ca["MapID"]:
+    za = assignment(zone)
+    ca = za and assignment(continent, za["MapID"])
+    if not ca:
         return None
     y, x = from_art(za)
     u, v = to_art(ca)
     return u(y(0)), v(x(0)), u(y(1)), v(x(1))
 
 
+def zones_of(continent):
+    return [int(r["ID"]) for r in table("UiMap")
+            if r["ParentUiMapID"] == str(continent) and r["Type"] == "3" and int(r["ID"]) not in CITIES]
+
+
+def zone_water(zone):
+    """Where a zone map's own art is clearly sea: grey-blue, less its frame.
+    Lakes, rivers and snow come out as water too; inside land they are
+    filled again (fill_holes) once the votes are in."""
+    art = base_art(zone)
+    h, w = art.shape[:2]
+    soft = blur(art, BLUR)
+    r, b = soft[..., 0], soft[..., 2]
+    mx, mn = soft.max(2), soft.min(2)
+    sat = (mx - mn) / np.maximum(mx, 1e-6)
+    water = blur(((b > WATER_BLUE * r) & (sat < WATER_SAT)).astype(np.float32), 6) > 0.5
+    fy, fx = int(h * FRAME), int(w * FRAME)
+    water[:fy], water[h - fy:], water[:, :fx], water[:, w - fx:] = False, False, False, False
+    return grow(grow(water, -3), 3)
+
+
+def zone_votes(continent, solid):
+    """The continent's land, less where the zone maps covering it show sea."""
+    h, w = solid.shape
+    votes = np.zeros((h, w), np.float32)
+    weights = np.zeros((h, w), np.float32)
+    for zone in zones_of(continent):
+        rect = zone_rect(zone, continent)
+        if not rect:
+            continue
+        u1, v1, u2, v2 = rect
+        x1, x2 = sorted((u1 * w, u2 * w))
+        y1, y2 = sorted((v1 * h, v2 * h))
+        X1, Y1, X2, Y2 = max(0, int(x1)), max(0, int(y1)), min(w, int(np.ceil(x2))), min(h, int(np.ceil(y2)))
+        if X2 <= X1 or Y2 <= Y1:
+            continue
+        water = zone_water(zone).astype(np.float32)
+        zh, zw = water.shape
+        # (each continent px takes the zone art px at its middle)
+        xs = ((np.arange(X1, X2) + 0.5 - x1) / (x2 - x1) * zw).clip(0, zw - 1).astype(int)
+        ys = ((np.arange(Y1, Y2) + 0.5 - y1) / (y2 - y1) * zh).clip(0, zh - 1).astype(int)
+        part = water[np.ix_(ys, xs)]
+        fx = np.minimum(xs, zw - 1 - xs) / zw
+        fy = np.minimum(ys, zh - 1 - ys) / zh
+        edge = np.minimum(fx[None, :], fy[:, None])
+        trust = np.clip((edge - ZONE_TRUST[0]) / (ZONE_TRUST[1] - ZONE_TRUST[0]), 0, 1)
+        votes[Y1:Y2, X1:X2] += trust * part
+        weights[Y1:Y2, X1:X2] += trust
+        print(f"  zone {zone}: sea {part.mean():.2f} of its rect")
+    sea = (weights >= ZONE_WEIGHT) & (votes / np.maximum(weights, 1e-6) > 0.5)
+    return solid & ~sea
+
+
 def field_of(continent, land, parchment_mean):
-    zones = [int(r["ID"]) for r in table("UiMap")
-             if r["ParentUiMapID"] == str(continent) and r["Type"] == "3" and int(r["ID"]) not in CITIES]
+    zones = zones_of(continent)
     gu, gv = np.meshgrid((np.arange(FIELD_SIZE) + 0.5) / FIELD_SIZE, (np.arange(FIELD_SIZE) + 0.5) / FIELD_SIZE)
     total = np.zeros((FIELD_SIZE, FIELD_SIZE, 3), np.float64)
     weight = np.zeros((FIELD_SIZE, FIELD_SIZE), np.float64)
@@ -319,6 +391,8 @@ def main():
         print(f"continent {continent}")
         art = base_art(continent)
         solid = land_of(art)
+        if CLASSIC:
+            solid = fill_holes(zone_votes(continent, solid))
         land = np.clip(blur(grow(solid, -SHRINK).astype(np.float32), SOFT), 0, 1)
         save_alpha(land, f"land_{continent}.tga")
 

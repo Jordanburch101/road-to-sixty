@@ -1,5 +1,5 @@
 """Draws the tiles Gaps.lua paints land and sea no zone map covers with, in
-RoadToSixty/Gaps/ (Gaps/Era/ for a Classic Era build), all at zone map scale (one pixel is one pixel of a zone
+RoadToSixty/Gaps/ (Gaps/Era/ or Gaps/Anniversary/ for those builds), all at zone map scale (one pixel is one pixel of a zone
 map's art), from the zone maps' own art so the gaps look like the zones
 round them:
 
@@ -54,10 +54,14 @@ HATCH_ALPHA = 0.45
 HATCH_WIDTH = 0.45              # px, half a stroke's core
 HATCH_BREAKS = 0.35             # share of each line left out between strokes
 
-# Forever repainted every map, so a Classic Era build (1.15) gets its own
-# set, made from its own art, in Gaps/Era/ (Gaps.lua picks it on Era).
-ERA = BUILD.startswith("1.15.")
-OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / ("Era" if ERA else "")
+# Each game has its own map art: Forever repainted every map, and the
+# Anniversary realms (2.5) repainted the continents for the Blood Elf and
+# Draenei lands, under the same file IDs as Era's. So an Era build (1.15)
+# writes Gaps/Era/, an Anniversary build Gaps/Anniversary/ (Gaps.lua picks
+# the set for the client), and a Forever build Gaps/ itself.
+SET = "Era" if BUILD.startswith("1.15.") else "Anniversary" if BUILD.startswith("2.5.") else ""
+CLASSIC = SET != ""
+OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / SET
 
 
 def fetch(url):
