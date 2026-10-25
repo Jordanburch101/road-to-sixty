@@ -19,6 +19,39 @@ local WORLD_MAP = 947
 -- "atlas", "file" or "none" (just the number). Empty while no icon choice
 -- is open (level ups now use the player frame's level badge).
 local SECTIONS = {
+    -- Stand-ins on Era and Anniversary for atlases only Forever has (#72):
+    -- the zone discovered icon (Waypoint-MapPin-Untracked), the boat icon
+    -- (poi-islands-table) and the level marker (UI-HUD-UnitFrame-SmallCircle).
+    -- Every atlas here is in all three clients' tables; files may be missing.
+    { "Zone found", {
+        { "atlas", "poi-town", label = "poi town" },
+        { "atlas", "poi-majorcity", label = "poi city" },
+        { "atlas", "vignetteevent", label = "vignette" },
+        { "atlas", "taxinode_neutral", label = "taxi node" },
+        { "atlas", "adventuremaplabel-questdiscovered", label = "discovered" },
+        { "atlas", "flag-1", label = "flag" },
+        { "file", "Interface\\Icons\\INV_Misc_Map_01", crop = true, label = "map icon" },
+        { "file", "Interface\\Icons\\INV_Misc_Spyglass_03", crop = true, label = "spyglass" },
+    } },
+    { "Boat", {
+        { "file", "Interface\\Icons\\INV_Misc_Spyglass_02", crop = true, label = "spyglass 2" },
+        { "file", "Interface\\Icons\\Achievement_Dungeon_HordeAirship", crop = true, label = "airship" },
+        { "atlas", "shipmission_boatrarity-rare", label = "ship rare" },
+        { "atlas", "shipmission_boatrarity-epic", label = "ship epic" },
+        { "atlas", "poi-door-arrow-up", label = "door arrow" },
+        { "atlas", "flightmaster", label = "flightmaster" },
+        { "file", "Interface\\Icons\\INV_Misc_Map02", crop = true, label = "map 2" },
+    } },
+    { "Level marker", {
+        { "atlas", "collections-levelplate-gold", label = "plate gold", number = "14" },
+        { "atlas", "collections-levelplate-black", label = "plate black", number = "14" },
+        { "atlas", "garr_levelbadge_1", label = "badge 1", number = "14" },
+        { "atlas", "garr_levelbadge_2", label = "badge 2", number = "14" },
+        { "atlas", "capacitance-general-levelborder", label = "ring", number = "14" },
+        { "atlas", "garrmission_iconlevelbg", label = "mission bg", number = "14" },
+        { "atlas", "shipmission_iconlevelbg", label = "ship bg", number = "14" },
+        { "file", "Interface\\Icons\\LevelUpIcon", label = "levelup icon" },
+    } },
     -- The History filter's Social button (groups and guilds, issue #16).
     { "Social", {
         { "atlas", "socialqueuing-icon-group", label = "sq group" },
@@ -1014,7 +1047,17 @@ local function ShowBackground(index)
     frame.backgroundButton:SetText("Background: " .. BACKGROUND_NAMES[index])
 end
 
+-- /rts swatch icons: only the icon candidates (SECTIONS), large enough to
+-- judge, as the whole window shrinks to fit the screen.
+local iconsOnly = false
+
 local function CreateWindow()
+    -- (the other groups left out: their lists swapped for empty ones while building)
+    local kept = { TIMELINE_SAMPLES, PORTAL_SAMPLES, PATH_SAMPLES, LINE_SAMPLES, MAGIC_SAMPLES, JUMP_SAMPLES, LANE_SAMPLES }
+    if iconsOnly then
+        TIMELINE_SAMPLES, PORTAL_SAMPLES, PATH_SAMPLES, LINE_SAMPLES, MAGIC_SAMPLES, JUMP_SAMPLES, LANE_SAMPLES =
+            {}, {}, {}, {}, {}, {}, {}
+    end
     local rows = math.ceil(#TIMELINE_SAMPLES * TIMELINE_SPAN / COLUMNS)
     rows = rows + math.ceil(#PORTAL_SAMPLES * PORTAL_SPAN / COLUMNS)
     rows = rows + math.ceil(#PATH_SAMPLES * PATH_SPAN / COLUMNS)
@@ -1055,17 +1098,17 @@ local function CreateWindow()
     dark:SetColorTexture(0.05, 0.05, 0.05)
 
     local row = 0
-    AddSectionLabel(row, "Path")
+    if not iconsOnly then AddSectionLabel(row, "Path") end
     for i, sample in ipairs(PATH_SAMPLES) do
         AddPathCell(row * COLUMNS + (i - 1) * PATH_SPAN + 1, sample)
     end
     row = row + math.ceil(#PATH_SAMPLES * PATH_SPAN / COLUMNS)
-    AddSectionLabel(row, "Portals")
+    if not iconsOnly then AddSectionLabel(row, "Portals") end
     for i, sample in ipairs(PORTAL_SAMPLES) do
         AddPortalCell(row * COLUMNS + (i - 1) * PORTAL_SPAN + 1, sample)
     end
     row = row + math.ceil(#PORTAL_SAMPLES * PORTAL_SPAN / COLUMNS)
-    AddSectionLabel(row, "Timeline")
+    if not iconsOnly then AddSectionLabel(row, "Timeline") end
     for i, sample in ipairs(TIMELINE_SAMPLES) do
         AddTimelineCell(row * COLUMNS + (i - 1) * TIMELINE_SPAN + 1, sample)
     end
@@ -1077,22 +1120,22 @@ local function CreateWindow()
         end
         row = row + math.ceil(#section[2] / COLUMNS)
     end
-    AddSectionLabel(row, "Lines")
+    if not iconsOnly then AddSectionLabel(row, "Lines") end
     for i, sample in ipairs(LINE_SAMPLES) do
         AddLineCell(row * COLUMNS + i, sample)
     end
     row = row + math.ceil(#LINE_SAMPLES / COLUMNS)
-    AddSectionLabel(row, "Magic")
+    if not iconsOnly then AddSectionLabel(row, "Magic") end
     for i, sample in ipairs(MAGIC_SAMPLES) do
         AddMagicCell(row * COLUMNS + (i - 1) * MAGIC_SPAN + 1, sample)
     end
     row = row + math.ceil(#MAGIC_SAMPLES * MAGIC_SPAN / COLUMNS)
-    AddSectionLabel(row, "Jumps")
+    if not iconsOnly then AddSectionLabel(row, "Jumps") end
     for i, sample in ipairs(JUMP_SAMPLES) do
         AddJumpCell(row * COLUMNS + (i - 1) * MAGIC_SPAN + 1, sample)
     end
     row = row + math.ceil(#JUMP_SAMPLES * MAGIC_SPAN / COLUMNS)
-    AddSectionLabel(row, "Lanes")
+    if not iconsOnly then AddSectionLabel(row, "Lanes") end
     for i, sample in ipairs(LANE_SAMPLES) do
         AddLaneCell(row * COLUMNS + (i - 1) * LANE_SPAN + 1, sample)
     end
@@ -1117,11 +1160,20 @@ local function CreateWindow()
     hint:SetText("Hover an icon for its full name")
 
     ShowBackground(#backgrounds[1] > 0 and 1 or 2)
+    TIMELINE_SAMPLES, PORTAL_SAMPLES, PATH_SAMPLES, LINE_SAMPLES, MAGIC_SAMPLES, JUMP_SAMPLES, LANE_SAMPLES =
+        unpack(kept)
 end
 
-ns.Command("swatch", "compare candidate map icons and line styles", function()
+ns.Command("swatch", "compare candidate map icons and line styles (icons: only the icons)", function(arg)
+    local wanted = arg == "icons"
+    if frame and wanted ~= iconsOnly then
+        frame:Hide()
+        frame = nil
+    end
+    iconsOnly = wanted
     if not frame then
+        animated = {}
         CreateWindow()
     end
-    frame:Show()
+    if frame then frame:Show() end
 end)
