@@ -40,6 +40,7 @@ for data, its exact format; read that before changing a module.
 | Map.lua | journey map window, layers, replay, markers |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Gaps.lua | land and sea no zone map covers, painted as zone maps paint theirs (`Gaps/`, Era's set in `Gaps/Era/`, the Anniversary realms' in `Gaps/Anniversary/`), and the soft feather and rim masks (#73) |
+| Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
 | PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |

@@ -146,6 +146,8 @@ local state = {
     markerNow = math.huge,      -- markers up to this time are shown
 
     zoom = 1, targetZoom = 1,   -- current zoom, and where the animation is heading
+    minZoom = 1,                -- zoomed out to the whole area: below 1 with the Cosmic map (Cosmic.lua)
+    area = { 0, 0, 0, 0 },      -- content the view keeps to: x1, y1, x2, y2 (SetupWorld)
     anchorX = 0, anchorY = 0,   -- canvas pixel kept still while zooming
     ox = 0, oy = 0,             -- content coordinate at the top left of the view
 
@@ -377,8 +379,13 @@ local function SetupWorld(worldLayer)
 
     local W, H = layer.layerWidth, layer.layerHeight
     state.W, state.H = W, H
-    AddArt(worldLayer, world, 0, 0, W, H)
+    -- The view's limits and how far out it zooms: the world map, unless the
+    -- Cosmic map holds it (Cosmic.lua).
+    state.area, state.minZoom = { 0, 0, W, H }, 1
+    local cosmic = ns.Cosmic:Available(world)
+    AddArt(worldLayer, world, 0, 0, W, H, cosmic and ns.Gaps.Mask(worldLayer, ns.Gaps.FEATHER, 0, 0, W, H))
 
+    local continents = {}
     for _, child in ipairs(C_Map.GetMapChildrenInfo(world, Enum.UIMapType.Continent) or {}) do
         local continentID, toMap = MapTransform(child.mapID)
         local minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(child.mapID, world)
@@ -398,7 +405,14 @@ local function SetupWorld(worldLayer)
             zoneView:AddContinent(child.mapID, x1, y1, sx, sy)
             ns.Gaps:Add(zoneView.gaps, child.mapID, x1, y1, x1 + sx, y1 + sy, zoneView.zones)
             AddTerrainTiles(continentID, child.mapID, toMap, toContent)
+            continents[#continents + 1] = { child.mapID, x1, y1, sx, sy }
         end
+    end
+    if cosmic then
+        ns.Cosmic:Add(world, W, H, {
+            state = state, AddArt = AddArt, MapTransform = MapTransform, zoneView = zoneView,
+            cosmicLayer = state.cosmicLayer, worldLayer = worldLayer, continents = continents,
+        })
     end
     -- Islands the world map leaves out, such as Zephras Isle (Islands.lua).
     ns.Islands:Add(worldLayer, state.toContent, W, H)
@@ -703,9 +717,9 @@ end
 -- View ---------------------------------------------------------------------------
 
 local function ClampView()
-    local z = state.zoom
-    state.ox = math.max(0, math.min(state.W - state.W / z, state.ox))
-    state.oy = math.max(0, math.min(state.H - state.H / z, state.oy))
+    local z, a = state.zoom, state.area
+    state.ox = math.max(a[1], math.min(a[3] - state.W / z, state.ox))
+    state.oy = math.max(a[2], math.min(a[4] - state.H / z, state.oy))
 end
 
 -- Changes zoom while keeping the content under canvas pixel ax, ay still.
@@ -724,9 +738,9 @@ end
 
 -- The view, plus margin views on each side, clipped to the content.
 local function ViewArea(margin)
-    local vw, vh = state.W / state.zoom, state.H / state.zoom
-    return math.max(0, state.ox - vw * margin), math.max(0, state.oy - vh * margin),
-        math.min(state.W, state.ox + vw * (1 + margin)), math.min(state.H, state.oy + vh * (1 + margin))
+    local vw, vh, a = state.W / state.zoom, state.H / state.zoom, state.area
+    return math.max(a[1], state.ox - vw * margin), math.max(a[2], state.oy - vh * margin),
+        math.min(a[3], state.ox + vw * (1 + margin)), math.min(a[4], state.oy + vh * (1 + margin))
 end
 
 -- The tolerance stops rounding at the content edges from forcing rebuilds.
@@ -1843,6 +1857,7 @@ local function ApplyView()
     terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
     ns.Islands:SetZoom(z, ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
+    ns.Cosmic:SetZoom(z)
     if not ns.db.terrain and z >= zoneView.FADE[1] then
         zoneView:SetZoom(z)
         zoneView:Update(ViewArea(0))
@@ -2099,15 +2114,15 @@ local function FitPath()
     local x1, y1, x2, y2 = unpack(state.bounds)
     local zx = state.W / math.max((x2 - x1) * 1.25, 1e-6)
     local zy = state.H / math.max((y2 - y1) * 1.25, 1e-6)
-    SetZoomNow(math.max(1, math.min(MAX_ZOOM, zx, zy)))
+    SetZoomNow(math.max(state.minZoom, math.min(MAX_ZOOM, zx, zy)))
     CenterOn((x1 + x2) / 2, (y1 + y2) / 2)
     ApplyView()
 end
 
--- Animated zoom back out to the whole world.
+-- Animated zoom back out to the whole world (the Cosmic map, if there is one).
 local function ZoomOut()
     local w, h = canvas:GetSize()
-    state.targetZoom = 1
+    state.targetZoom = state.minZoom
     state.anchorX, state.anchorY = w / 2, h / 2
 end
 
@@ -2272,7 +2287,7 @@ end
 -- While zoomed in, keep the star on screen during a replay.
 local function FollowHead()
     local seq = math.floor(state.cur)
-    if state.zoom <= 1 or seq < 1 or not state.headX then return end
+    if state.zoom <= state.minZoom or seq < 1 or not state.headX then return end
     local x, y = state.headX, state.headY
     local fx = (x - state.ox) * state.zoom / state.W
     local fy = (y - state.oy) * state.zoom / state.H
@@ -2615,21 +2630,23 @@ local function CreateWindow()
     content = CreateFrame("Frame", nil, canvas)
     content:SetPoint("TOPLEFT")
     content:SetFrameLevel(canvas:GetFrameLevel() + 1)
-    local worldLayer = CreateLayer(1)
-    continentLayer = CreateLayer(2)
+    -- (under everything, the Cosmic art where the client has it: Cosmic.lua)
+    state.cosmicLayer = CreateLayer(1)
+    local worldLayer = CreateLayer(2)
+    continentLayer = CreateLayer(3)
     -- Stable (#73): every zone without an outline always shows, so the art
     -- does not change with the zone in the middle of the view. Under the
     -- zones lies the gap art (Gaps.lua); each zone's painting round its own
     -- land fades out over the wide feather, so its darkened edge is gone
     -- before it meets that, and its own land over the rim mask, clear of
     -- its burnt frame.
-    zoneView = ns.CreateZoneView(CreateLayer(4), true)
-    zoneView.gaps = CreateLayer(3)
+    zoneView = ns.CreateZoneView(CreateLayer(5), true)
+    zoneView.gaps = CreateLayer(4)
     zoneView.wideEdge, zoneView.rimEdge = ns.Gaps.FEATHER, ns.Gaps.RIM
-    terrainLayer = CreateLayer(5)
-    ns.KillMarks:Attach(CreateLayer(6))
-    othersLayer = CreateLayer(7)
-    pathLayer = CreateLayer(8)
+    terrainLayer = CreateLayer(6)
+    ns.KillMarks:Attach(CreateLayer(7))
+    othersLayer = CreateLayer(8)
+    pathLayer = CreateLayer(9)
 
     hoverLine = pathLayer:CreateLine(nil, "OVERLAY")
     hoverLine:SetColorTexture(1, 1, 1, 0.45)
@@ -2641,7 +2658,7 @@ local function CreateWindow()
 
     canvas:SetScript("OnMouseWheel", function(_, delta)
         local factor = delta > 0 and ZOOM_STEP or 1 / ZOOM_STEP
-        state.targetZoom = math.max(1, math.min(MAX_ZOOM, state.targetZoom * factor))
+        state.targetZoom = math.max(state.minZoom, math.min(MAX_ZOOM, state.targetZoom * factor))
         state.anchorX, state.anchorY = CursorOnCanvas()
     end)
     canvas:SetScript("OnMouseDown", function(_, button)
@@ -2720,7 +2737,7 @@ local function CreateWindow()
         end
         if state.cur >= state.n then
             state.cur = 0
-            if state.zoom > 1 and state.n > 0 then
+            if state.zoom > state.minZoom and state.n > 0 then
                 CenterOn(state.px[1], state.py[1])
                 ApplyView()
             end
@@ -3073,6 +3090,13 @@ end
 -- Content units per world yard, from the first continent on the map (they
 -- are drawn at about the same scale); nil before the world is set up.
 function Map:ContentPerYard()
+    -- (Azeroth's scale first: Outland's map is drawn at a scale of its own)
+    local azeroth = state.toContent[0] or state.toContent[1]
+    if azeroth then
+        local x1, y1 = azeroth(0, 0)
+        local x2, y2 = azeroth(1000, 0)
+        return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2) / 1000
+    end
     for _, toContent in pairs(state.toContent) do
         local x1, y1 = toContent(0, 0)
         local x2, y2 = toContent(1000, 0)

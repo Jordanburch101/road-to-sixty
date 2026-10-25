@@ -23,6 +23,7 @@ ZoneOverlaysEra.lua
 ZoneOverlaysAnniversary.lua
 ZoneArt.lua
 Gaps.lua
+Cosmic.lua
 Items.lua
 Recorder.lua
 Journal.lua
