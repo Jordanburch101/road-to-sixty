@@ -48,6 +48,24 @@ check(not Style.Instant(Style.Jump("b"), 0, 0, 20, 20), "a short boat ride is tr
 check(Style.Instant(Style.Jump("l"), 0, 0, 1, 0), "a login is always instant")
 check(not Style.Instant(Style.Jump("d"), 0, 0, 900, 0), "a death's run to the graveyard is never skipped")
 
+-- Where the client lacks the kind's own atlas (Era, Anniversary), its classic
+-- stand-in is used; where it has it (Forever), its own.
+local function FakeIcon(known)
+    return { SetAtlas = function(self, name) if known[name] then self.atlas = name return true end return false end,
+        SetTexture = function(self, file) self.file = file end, SetTexCoord = function() end,
+        SetVertexColor = function() end }
+end
+local text = { SetText = function() end, SetTextColor = function() end, SetShadowOffset = function() end }
+local classic = FakeIcon({ ["poi-town"] = true })
+ns.SetEventIcon(classic, text, "zone")
+check(classic.atlas == "poi-town", "zone discovered shows poi-town without Forever's pin")
+local forever = FakeIcon({ ["Waypoint-MapPin-Untracked"] = true, ["poi-town"] = true })
+ns.SetEventIcon(forever, text, "zone")
+check(forever.atlas == "Waypoint-MapPin-Untracked", "Forever keeps its pin")
+local level = FakeIcon({ ["collections-levelplate-black"] = true })
+ns.SetEventIcon(level, text, "lvl", 14)
+check(level.atlas == "collections-levelplate-black", "a level up shows the black plate without Forever's badge")
+
 if failures == 0 then
     print("Style tests passed.")
 else

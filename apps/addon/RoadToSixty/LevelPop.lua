@@ -13,6 +13,9 @@ ns.LevelPop = LevelPop
 
 local GLOW = "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"
 local BADGE_ATLAS = "UI-HUD-UnitFrame-SmallCircle"      -- the map's level marker
+-- (where the client lacks it, as Era and Anniversary do, the map marker's
+-- classic stand-in, Style.lua's; tried second, so a client that gains it uses it)
+local BADGE_CLASSIC = "collections-levelplate-black"
 local PALE = { 1, 0.95, 0.7 }
 
 local BADGE = 40
@@ -48,7 +51,7 @@ local function NewPop()
     pop.badge:SetFrameLevel(pop:GetFrameLevel() + 1)
     local circle = pop.badge:CreateTexture(nil, "ARTWORK")
     circle:SetAllPoints()
-    circle:SetAtlas(BADGE_ATLAS)
+    if not circle:SetAtlas(BADGE_ATLAS) then circle:SetAtlas(BADGE_CLASSIC) end
     pop.number = pop.badge:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     pop.number:SetPoint("CENTER", 0.5, 0)
     pop.number:SetTextColor(1, 1, 1)

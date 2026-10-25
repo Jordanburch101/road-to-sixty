@@ -72,13 +72,17 @@ local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 
 -- Event icons, shared with the side panel. { atlas, size }
 -- { atlas = name } or { file = texture path }, and size. Spell and item icons
--- (file) are cropped to hide their border.
+-- (file) are cropped to hide their border. classic names the atlas used
+-- where the client lacks the kind's own, as Era and Anniversary lack some
+-- of Forever's (#72, picked by Jordan in /rts swatch icons). The kind's
+-- own is always tried first, so a client that gains it later uses it.
+-- fallback is a texture path for when both are missing.
 local EVENT_ICONS = {
-    lvl = { atlas = "UI-HUD-UnitFrame-SmallCircle", size = 22 },
+    lvl = { atlas = "UI-HUD-UnitFrame-SmallCircle", classic = "collections-levelplate-black", size = 22 },
     die = { atlas = "DungeonSkull", size = 16 },
     ["in"] = { atlas = "Dungeon", size = 20 },
     run = { atlas = "Dungeon", size = 20 },
-    zone = { atlas = "Waypoint-MapPin-Untracked", size = 16 },
+    zone = { atlas = "Waypoint-MapPin-Untracked", classic = "poi-town", size = 16 },
     flight = { atlas = "TaxiNode_Neutral", size = 18 },
     hearth = { atlas = "Innkeeper", size = 18 },
     teleport = { atlas = "MagePortalAlliance", size = 20 },
@@ -194,7 +198,8 @@ function ns.SetEventIcon(icon, text, kind, level, file)
     if file or style.file then
         icon:SetTexture(file or style.file)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    elseif not icon:SetAtlas(style.atlas) and style.fallback then
+    elseif not icon:SetAtlas(style.atlas) and not (style.classic and icon:SetAtlas(style.classic))
+        and style.fallback then
         icon:SetTexture(style.fallback)
         icon:SetTexCoord(0, 1, 0, 1)
     end
