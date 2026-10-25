@@ -121,7 +121,9 @@ end
 
 -- Fades the world layer in as the view closes in on a world, and fits
 -- Outland's zones to the view, x1, y1 to x2, y2 in content units.
+local lastZoom
 function Cosmic:SetZoom(zoom, x1, y1, x2, y2)
+    lastZoom = zoom
     if not worldLayer then return end
     worldLayer:SetAlpha(Fade(zoom, WORLD_FADE))
     if outlandView then
@@ -132,3 +134,29 @@ function Cosmic:SetZoom(zoom, x1, y1, x2, y2)
         end
     end
 end
+
+--@debug@
+-- /rts cosmic: what the Outland zone view does at the map's current zoom.
+ns.Command("cosmic", "show the Cosmic layer and Outland zone view state (developer)", function()
+    if not worldLayer then
+        ns.Print("No Cosmic layer on this client (or the map has not been opened).")
+        return
+    end
+    ns.Print(("Zoom %.2f, world layer alpha %.2f."):format(lastZoom or 0, worldLayer:GetAlpha()))
+    if not outlandView then
+        ns.Print("No Outland zone view.")
+        return
+    end
+    local zones, together, outlined, built, shown = 0, 0, 0, 0, 0
+    for _, zone in pairs(outlandView.zones) do
+        zones = zones + 1
+        if zone.together then together = together + 1 end
+        if zone.outline then outlined = outlined + 1 end
+        if zone.textures then built = built + 1 end
+        if zone.alpha and zone.alpha > 0 then shown = shown + 1 end
+    end
+    ns.Print(("Outland zones: fade %.2f to %.2f, layer alpha %.2f, level %d; %d zones, %d outlined, %d shown together, %d built, %d at full alpha."):format(
+        outlandView.FADE[1], outlandView.FADE[2], outlandView.layer:GetAlpha(), outlandView.layer:GetFrameLevel(),
+        zones, outlined, together, built, shown))
+end)
+--@end-debug@

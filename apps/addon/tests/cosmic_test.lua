@@ -42,7 +42,8 @@ local function Frame()
 end
 CreateFrame = function() return Frame() end
 local views = {}
-local ns = { Gaps = { FEATHER = "feather", Mask = function() return "mask" end }, db = { terrain = false } }
+local ns = { Gaps = { FEATHER = "feather", Mask = function() return "mask" end }, db = { terrain = false },
+    Command = function() end, Print = function() end }
 ns.CreateZoneView = function(layer, stable)
     local view = { layer = layer, stable = stable, zooms = {}, areas = {} }
     function view:AddContinent(id, x, y, w, h) self.continent = { id, x, y, w, h } end
