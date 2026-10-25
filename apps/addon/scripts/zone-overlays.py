@@ -139,6 +139,12 @@ CITY_MASKS = {
         (140, 5), (375, 2), (380, 95), (425, 85), (470, 90), (470, 160), (380, 160), (375, 280),
         (330, 290), (330, 318), (175, 318), (170, 295), (115, 290), (110, 145), (25, 150), (25, 100),
         (110, 100), (125, 70)])]),
+    # Shattrath (Anniversary's Outland, --anniversary): the ring, the Aldor
+    # Rise and the Scryer's Tier, leaving out its banner and its crest.
+    1955: dict(soft=3, band=5, poly=[view_poly([
+        (84, 60), (120, 58), (160, 60), (225, 52), (300, 30), (360, 45), (395, 90), (405, 150), (400, 190),
+        (375, 225), (350, 250), (310, 260), (285, 300), (225, 320), (200, 310), (175, 280), (165, 235),
+        (150, 210), (115, 195), (90, 190), (82, 150), (80, 100), (82, 70)])]),
     1458: dict(soft=3, band=5, poly=[view_poly([                                             # Undercity
         (25, 25), (175, 25), (180, 75), (210, 70), (215, 20), (330, 5), (400, 15), (455, 40), (455, 120),
         (440, 150), (455, 200), (455, 270), (400, 285), (330, 280), (320, 330), (250, 330), (215, 250),
@@ -306,9 +312,10 @@ def city_mask(full, size, p):
     return shape.resize((CITY_SIZE, CITY_SIZE), Image.LANCZOS)
 
 
-def city_masks(maps_by_art):
+def city_masks(maps_by_art, only=None):
     """Writes a mask per city in CITY_MASKS and per island in ISLAND_MASKS,
-    and the paper tile; returns the cities' uiMap IDs."""
+    and the paper tile; returns the cities' uiMap IDs. only (--anniversary)
+    is the set of cities to write, and nothing else is written."""
     sizes = {r["UiMapArtStyleID"]: (int(r["LayerWidth"]), int(r["LayerHeight"]))
              for r in table("UiMapArtStyleLayer") if r["LayerIndex"] == "0"}
     styles = {r["ID"]: r["UiMapArtStyleID"] for r in table("UiMapArt")}
@@ -317,6 +324,8 @@ def city_masks(maps_by_art):
     for art, maps in sorted(maps_by_art.items()):
         for m in maps:
             if m not in CITY_MASKS and m not in ISLAND_MASKS and m != PAPER_CITY:
+                continue
+            if only is not None and m not in only:
                 continue
             full = map_art(art, rows)
             if m == PAPER_CITY:
@@ -396,6 +405,7 @@ def era(per_map):
 
 def anniversary(per_map, maps_by_art):
     masked = masks(maps_by_art, CONTINENTS | {OUTLAND}, new_only=True)
+    cities = city_masks(maps_by_art, only={1955})
     lines = [
         "local _, ns = ...",
         "",
@@ -404,7 +414,8 @@ def anniversary(per_map, maps_by_art):
         "-- Same format as ZoneOverlays.lua's. It replaces ZoneOverlaysEra.lua's on an",
         "-- Anniversary client (ns.Anniversary, Core.lua): the same art, plus the zones",
         "-- Era has not (the Blood Elf and Draenei lands, Outland) and a few pieces of",
-        "-- its own. It also lists the masks made for those zones.",
+        "-- its own. It also lists the masks made for those zones, and the city",
+        "-- masks of its own cities (Shattrath).",
         "",
         "if not ns.Anniversary then return end",
         "",
@@ -412,7 +423,9 @@ def anniversary(per_map, maps_by_art):
     ]
     lines += overlay_lines(per_map)
     lines += ["", "for _, uiMap in ipairs({ " + ", ".join(map(str, masked)) + " }) do",
-              "    ns.ZoneMasks[uiMap] = true", "end"]
+              "    ns.ZoneMasks[uiMap] = true", "end",
+              "for _, uiMap in ipairs({ " + ", ".join(map(str, cities)) + " }) do",
+              "    ns.CityMasks[uiMap] = true", "end"]
     ANNIVERSARY_OUT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     total = sum(len(v) for v in per_map.values())
     print(f"{total} overlays for {len(per_map)} maps, {len(masked)} zones with masks -> {ANNIVERSARY_OUT}")

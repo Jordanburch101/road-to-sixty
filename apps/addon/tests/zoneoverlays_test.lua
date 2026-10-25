@@ -48,6 +48,7 @@ for _, uiMap in ipairs({ 1941, 1942, 1943, 1950, 1957, 1944, 1951 }) do
     check(ns.ZoneMasks[uiMap], ("Anniversary has a mask for map %d"):format(uiMap))
 end
 check(not ns.ZoneMasks[1954] and not ns.ZoneMasks[1955], "cities have no mask")
+check(ns.CityMasks[1955], "Shattrath has a city mask, so its plan shows")
 check(ns.ZoneMasks[1429], "Anniversary keeps the zone masks")
 Whole(ns.ZoneOverlayData, "Anniversary")
 
@@ -55,6 +56,7 @@ ns, forever = Load(11509)
 check(ns.ZoneOverlayData ~= forever, "Era gets its own overlays")
 check(ns.ZoneMasks and ns.ZoneMasks[1429], "Era keeps the zone masks")
 check(not ns.ZoneMasks[1941], "Era has no Eversong mask")
+check(not ns.CityMasks[1955], "Era has no Shattrath")
 Whole(ns.ZoneOverlayData, "Era")
 
 -- Every classic zone Forever has overlays for is in Era's.

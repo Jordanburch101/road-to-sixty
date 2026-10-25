@@ -5,7 +5,8 @@ local _, ns = ...
 -- Same format as ZoneOverlays.lua's. It replaces ZoneOverlaysEra.lua's on an
 -- Anniversary client (ns.Anniversary, Core.lua): the same art, plus the zones
 -- Era has not (the Blood Elf and Draenei lands, Outland) and a few pieces of
--- its own. It also lists the masks made for those zones.
+-- its own. It also lists the masks made for those zones, and the city
+-- masks of its own cities (Shattrath).
 
 if not ns.Anniversary then return end
 
@@ -925,4 +926,7 @@ ns.ZoneOverlayData = {
 
 for _, uiMap in ipairs({ 1411, 1412, 1413, 1416, 1417, 1418, 1419, 1420, 1421, 1422, 1423, 1424, 1425, 1426, 1427, 1428, 1429, 1430, 1431, 1432, 1433, 1434, 1435, 1436, 1437, 1438, 1439, 1440, 1441, 1442, 1443, 1444, 1445, 1446, 1447, 1448, 1449, 1450, 1451, 1452, 1941, 1942, 1943, 1944, 1946, 1948, 1949, 1950, 1951, 1952, 1953, 1957 }) do
     ns.ZoneMasks[uiMap] = true
+end
+for _, uiMap in ipairs({ 1955 }) do
+    ns.CityMasks[uiMap] = true
 end
