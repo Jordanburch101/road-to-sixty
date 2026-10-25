@@ -11,6 +11,17 @@ broken and now works. Leave out internal changes. Sections are
 ### New
 - Road to Sixty now runs on Classic Era as well as WoW Forever, and
   records your professions and recipes there too.
+- A better looking journey map: land and sea between zones are painted
+  like the zone maps around them (parchment, mountains, coast and sea),
+  instead of a blurry close-up of the continent.
+- Continents fade softly into the world map instead of ending in a
+  straight line, and the map no longer changes as you pan across it.
+
+### Fixed
+- Redridge Mountains shows its own outline on the map again, instead of
+  its whole map with a burnt edge.
+- The gear screen no longer shows a line from the map's frame across the
+  timeline.
 
 ## 1.12.0
 
