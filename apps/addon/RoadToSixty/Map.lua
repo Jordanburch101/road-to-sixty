@@ -50,7 +50,7 @@ local CONTINENT_FADE = { 1.6, 2.6 }
 local TERRAIN_FADE = { 3, 5 }
 
 -- Minimap terrain folder per continent ID, matching MinimapTiles.lua
-ns.MinimapDirs = { [0] = "Azeroth", [1] = "Kalimdor", [2991] = "2991" }
+ns.MinimapDirs = { [0] = "Azeroth", [1] = "Kalimdor", [2991] = "2991", [530] = "Expansion01" }
 
 -- Arcane sparkles drifting along the visible path.
 local MOTES = 40                -- most at once
@@ -411,6 +411,7 @@ local function SetupWorld(worldLayer)
     if cosmic then
         ns.Cosmic:Add(world, W, H, {
             state = state, AddArt = AddArt, MapTransform = MapTransform, zoneView = zoneView,
+            AddTerrainTiles = AddTerrainTiles,
             cosmicLayer = state.cosmicLayer, worldLayer = worldLayer, continents = continents,
         })
     end
@@ -1514,7 +1515,8 @@ end
 -- Zooming in far enough for terrain can bring a thousand tiles into range
 -- at once, so they are queued and drawn over a few frames.
 local function UpdateTerrain()
-    local want = ns.db.terrain and state.zoom >= TERRAIN_FADE[1]
+    -- (Outland's terrain comes in at its own zoom: Cosmic.lua)
+    local want = ns.db.terrain and ns.Cosmic:ZoomAt(state.zoom, ViewArea(0)) >= TERRAIN_FADE[1]
     local built = state.terrainBuilt
     if want and built and ViewInside(built)
         and not (state.terrainCapped and state.zoom > built.zoom) then
@@ -1898,9 +1900,10 @@ local function ApplyView()
     continentLayer:SetAlpha(Fade(z, CONTINENT_FADE))
     zoneView.layer:SetAlpha(not ns.db.terrain and Fade(z, zoneView.FADE) or 0)
     zoneView.gaps:SetAlpha(zoneView.layer:GetAlpha())
-    terrainLayer:SetAlpha(ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
+    local tz = ns.Cosmic:ZoomAt(z, ViewArea(0))
+    terrainLayer:SetAlpha(ns.db.terrain and Fade(tz, TERRAIN_FADE) or 0)
     ns.KillMarks:SetZoom(z)
-    ns.Islands:SetZoom(z, ns.db.terrain and Fade(z, TERRAIN_FADE) or 0)
+    ns.Islands:SetZoom(z, ns.db.terrain and Fade(tz, TERRAIN_FADE) or 0)
     ns.Cosmic:SetZoom(z, ViewArea(0))
     if not ns.db.terrain and z >= zoneView.FADE[1] then
         zoneView:SetZoom(z)

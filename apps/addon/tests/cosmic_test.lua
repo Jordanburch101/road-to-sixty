@@ -72,13 +72,14 @@ local transforms = {
     [1429] = { 0, function(x, y) return x / 50, y / 50 end },
     [1945] = { 530, function(x, y) return (x - 1000) / 1000, (y - 1000) / 1000 end },
 }
-local art = {}
+local art, terrain = {}, {}
 local layer = { SetAlpha = function(self, a) self.alpha = a end }
 local state = { toContent = {} }
 Cosmic:Add(947, 1000, 600, {
     state = state,
     AddArt = function(parent, id, x1, y1, x2, y2, mask) art[id] = { parent, x1, y1, x2, y2, mask } end,
     MapTransform = function(id) local t = transforms[id]; if t then return t[1], t[2] end end,
+    AddTerrainTiles = function(c, map, toMap, toContent) terrain[map] = { c, toMap, toContent } end,
     zoneView = { layer = Frame(), FADE = { 4, 6 }, PLAN_FADE = { 9, 12 }, wideEdge = "wide", rimEdge = "rim",
         -- (Azeroth's outlined zones are 30 wide in the middle)
         zones = { { 0, 0, 20, 20, outline = {} }, { 0, 0, 30, 20, outline = {} }, { 0, 0, 40, 20, outline = {} } } },
@@ -111,6 +112,21 @@ check(near(x, 600 + 0.5 * 300) and near(y, 100 + 0.1 * 400), ("Eversong's middle
 local o = outland.continent
 x, y = toContent(1500, 1500)
 check(near(x, o[2] + o[4] / 2) and near(y, o[3] + o[5] / 2), "Outland's middle in Outland's place")
+
+-- Terrain: world 530's tiles placed once on Outland and once on the Eastern
+-- Kingdoms (through Eversong), each with its map's coordinates.
+check(terrain[1945] and terrain[1945][1] == 530, "world 530's terrain placed on Outland")
+check(terrain[1415] and terrain[1415][1] == 530, "world 530's terrain placed on the Eastern Kingdoms")
+local u, v = terrain[1415][2](50, 50)
+check(near(u, 0.5) and near(v, 0.1), ("Eversong's middle is at %.2f, %.2f on the Eastern Kingdoms"):format(u, v))
+u, v = terrain[1945][2](1500, 1500)
+check(near(u, 0.5) and near(v, 0.5), "Outland's middle is Outland's map's middle")
+
+-- Terrain's zoom: scaled as Outland's zones are when the view is on Outland.
+local oc = outland.continent
+local mx, my = oc[2] + oc[4] / 2, oc[3] + oc[5] / 2
+check(near(Cosmic:ZoomAt(2, mx - 1, my - 1, mx + 1, my + 1), 2 * k), "on Outland the zoom is scaled")
+check(Cosmic:ZoomAt(2, 400, 300, 402, 302) == 2, "on Azeroth the zoom is itself")
 
 -- Fading: hidden zoomed out on the Cosmic map, whole at the Azeroth view.
 Cosmic:SetZoom(0.34)

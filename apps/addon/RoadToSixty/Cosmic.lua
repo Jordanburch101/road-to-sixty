@@ -41,6 +41,8 @@ local WORLD_FADE = { 0.55, 0.85 }   -- zoom where the world layer starts to show
 
 local worldLayer   -- set while the Cosmic map is in use
 local outlandView  -- Outland's zones (ZoneArt.lua's ZoneView)
+local outlandArea  -- Outland's map in content units: x1, y1, x2, y2
+local outlandScale = 1  -- how much wider Outland's zones are than Azeroth's
 
 -- 0 below range[1], 1 above range[2], smooth in between on a log scale.
 local function Fade(zoom, range)
@@ -56,6 +58,31 @@ local function MiddleWidth(zones)
     end
     table.sort(widths)
     return widths[math.ceil(#widths / 2)]
+end
+
+-- World 530's minimap terrain (MinimapTilesExpansion01.lua), placed once on
+-- Outland and once on each continent with Blood Elf or Draenei zones; each
+-- pass keeps only the tiles inside its own map's zones (Map.lua's
+-- AddTerrainTiles), so every tile lands once.
+local function AddTerrain(m, regions)
+    if not m.AddTerrainTiles then return end
+    local done = {}
+    for _, r in ipairs(regions) do
+        local c = r.continent or { OUTLAND, r[2], r[3], r[4], r[5] }
+        if not done[c[1]] then
+            done[c[1]] = true
+            local toMap = r[1]
+            local function toContent(x, y)
+                local u, v = toMap(x, y)
+                return r[2] + u * r[4], r[3] + v * r[5]
+            end
+            local function toContinent(x, y)
+                local cx, cy = toContent(x, y)
+                return (cx - c[2]) / c[4], (cy - c[3]) / c[5]
+            end
+            m.AddTerrainTiles(OUTLAND_WORLD, c[1], toContinent, toContent)
+        end
+    end
 end
 
 -- True if this client's world map world sits on a Cosmic map with Outland.
@@ -97,6 +124,7 @@ function Cosmic:Add(world, W, H, m)
     local zf, pf = m.zoneView.FADE, m.zoneView.PLAN_FADE
     outlandView.FADE = { zf[1] / k, zf[2] / k }
     outlandView.PLAN_FADE = { pf[1] / k, pf[2] / k }
+    outlandArea, outlandScale = { ox, oy, ox + ow, oy + oh }, k
 
     -- World 530: each Blood Elf or Draenei zone map, placed on its continent,
     -- then Outland for everything else.
@@ -107,7 +135,7 @@ function Cosmic:Add(world, W, H, m)
             local minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(zone.mapID, c[1])
             if id == OUTLAND_WORLD and toMap and minX then
                 regions[#regions + 1] = { toMap, c[2] + minX * c[4], c[3] + minY * c[5],
-                    (maxX - minX) * c[4], (maxY - minY) * c[5] }
+                    (maxX - minX) * c[4], (maxY - minY) * c[5], continent = c }
             end
         end
     end
@@ -116,6 +144,7 @@ function Cosmic:Add(world, W, H, m)
         regions[#regions + 1] = { toOutland, ox, oy, ow, oh, whole = true }
     end
     if #regions == 0 then return end
+    AddTerrain(m, regions)
     m.state.toContent[OUTLAND_WORLD] = function(x, y)
         for _, r in ipairs(regions) do
             local u, v = r[1](x, y)
@@ -127,6 +156,20 @@ function Cosmic:Add(world, W, H, m)
         local u, v = r[1](x, y)
         return r[2] + u * r[4], r[3] + v * r[5]
     end
+end
+
+-- The zoom the view's fades should use, given zoom and the view x1, y1 to
+-- x2, y2: centred on Outland, scaled as Outland's zones are, so its terrain
+-- comes in when Outland's zones do; anywhere else, zoom itself.
+function Cosmic:ZoomAt(zoom, x1, y1, x2, y2)
+    local a = outlandArea
+    if a and x1 then
+        local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        if cx >= a[1] and cx <= a[3] and cy >= a[2] and cy <= a[4] then
+            return zoom * outlandScale
+        end
+    end
+    return zoom
 end
 
 -- Fades the world layer in as the view closes in on a world, and fits
