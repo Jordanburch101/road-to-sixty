@@ -501,13 +501,33 @@ end)
 -- the time it is turned in.
 local questTitles = {}
 
+-- Forever has C_QuestLog.GetTitleForQuestID; Era and Anniversary have only
+-- C_QuestLog.GetQuestInfo (#72: their turn-ins showed as "Quest 9921").
 local function QuestTitle(questID)
-    local ok, title = pcall(C_QuestLog.GetTitleForQuestID, questID)
-    if ok and title and title ~= "" then
-        questTitles[questID] = title
+    for _, name in ipairs({ "GetTitleForQuestID", "GetQuestInfo" }) do
+        local lookup = C_QuestLog and C_QuestLog[name]
+        local ok, title = false, nil
+        if lookup and questID then ok, title = pcall(lookup, questID) end
+        if ok and type(title) == "string" and title ~= "" then
+            questTitles[questID] = title
+            break
+        end
     end
     return questTitles[questID]
 end
+
+-- The quest window names the quest it shows, which is the surest source on
+-- the classic clients, where a quest's title may not be cached.
+local function NoteQuestWindow()
+    local id = GetQuestID and GetQuestID()
+    local title = GetTitleText and GetTitleText()
+    if id and id > 0 and type(title) == "string" and title ~= "" then
+        questTitles[id] = title
+    end
+end
+ns.On("QUEST_DETAIL", NoteQuestWindow)
+ns.On("QUEST_PROGRESS", NoteQuestWindow)
+ns.On("QUEST_COMPLETE", NoteQuestWindow)
 
 -- A turn-in's quest name: the one saved with it (from 1.1 on), else what
 -- the client knows now; nil if neither.

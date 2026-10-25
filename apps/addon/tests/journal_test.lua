@@ -326,6 +326,26 @@ check(eq11[7] == 103 and eq11[9] == nil and type(eq11[10]) == "table" and eq11[1
     "the eq event keeps the source as field 10")
 ns.Sources = nil
 
+-- Quest names on Era and Anniversary (#72): no GetTitleForQuestID, but
+-- GetQuestInfo; and the quest window's title when even that has none.
+local function LastQd()
+    local found
+    for _, e in ipairs(ns.char.events) do if e[2] == "qd" then found = e end end
+    return found
+end
+local savedQuestLog = C_QuestLog
+C_QuestLog = { GetQuestInfo = function(id) if id == 9921 then return "The Ring of Blood" end end }
+Fire("QUEST_TURNED_IN", 9921, 11000, 0)
+check(LastQd()[6] == 9921 and LastQd()[9] == "The Ring of Blood", "a classic client's turn-in is named through GetQuestInfo")
+C_QuestLog = {}
+GetQuestID, GetTitleText = function() return 9922 end, function() return "Wanted: Durn" end
+Fire("QUEST_COMPLETE")
+Fire("QUEST_TURNED_IN", 9922, 500, 0)
+check(LastQd()[9] == "Wanted: Durn", "a turn-in is named from the quest window when nothing else knows it")
+check(Journal:QuestName({ 0, "qd", 0, 0, 0, 9922 }) == "Wanted: Durn", "an older turn-in without a name finds it too")
+C_QuestLog = savedQuestLog
+GetQuestID, GetTitleText = function() return 0 end, function() return "" end
+
 if failures == 0 then
     print("Journal tests passed.")
 else
