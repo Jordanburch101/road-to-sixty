@@ -12,6 +12,13 @@ local _, ns = ...
 -- and Outland's map sit on the world layer, which fades in as you zoom in
 -- (WORLD_FADE), each through the soft feather mask (Gaps.lua).
 --
+-- Outland's map is drawn about as large as Azeroth's whole world, so its
+-- zones are several times larger on screen than Azeroth's at the same zoom:
+-- they have a zone view of their own, whose fades are the journey map's
+-- divided by how much larger Outland's map is than an Azeroth continent's,
+-- so they come in when Outland fills the view, as Azeroth's zones do when
+-- a continent does (Jordan, 2026-10-25: they needed far too much zooming).
+--
 -- World 530 holds Outland and also the Blood Elf and Draenei lands, which
 -- the maps show on the Eastern Kingdoms and Kalimdor: state.toContent[530]
 -- places a point by the first of those zone maps that holds it, else on
@@ -31,6 +38,7 @@ local PLACES = { [947] = { 0.775, 0.61, 0.34 }, [OUTLAND] = { 0.317, 0.35, 0.355
 local WORLD_FADE = { 0.55, 0.85 }   -- zoom where the world layer starts to show and is whole
 
 local worldLayer   -- set while the Cosmic map is in use
+local outlandView  -- Outland's zones (ZoneArt.lua's ZoneView)
 
 -- 0 below range[1], 1 above range[2], smooth in between on a log scale.
 local function Fade(zoom, range)
@@ -66,7 +74,19 @@ function Cosmic:Add(world, W, H, m)
     local ox, oy, ow, oh = x0 + (o[1] - o[3] / 2) * cw, y0 + (o[2] - o[3] / 2) * ch, o[3] * cw, o[3] * ch
     m.AddArt(m.worldLayer, OUTLAND, ox, oy, ox + ow, oy + oh,
         ns.Gaps.Mask(m.worldLayer, ns.Gaps.FEATHER, ox, oy, ox + ow, oy + oh))
-    m.zoneView:AddContinent(OUTLAND, ox, oy, ow, oh)
+    local layer = CreateFrame("Frame", nil, m.zoneView.layer:GetParent())
+    layer:SetAllPoints()
+    layer:SetFrameLevel(m.zoneView.layer:GetFrameLevel())
+    outlandView = ns.CreateZoneView(layer, true)
+    outlandView.wideEdge, outlandView.rimEdge = m.zoneView.wideEdge, m.zoneView.rimEdge
+    local widths = {}
+    for _, c in ipairs(m.continents) do widths[#widths + 1] = c[4] end
+    table.sort(widths)
+    local k = ow / (widths[math.ceil(#widths / 2)] or ow)
+    local zf, pf = m.zoneView.FADE, m.zoneView.PLAN_FADE
+    outlandView.FADE = { zf[1] / k, zf[2] / k }
+    outlandView.PLAN_FADE = { pf[1] / k, pf[2] / k }
+    outlandView:AddContinent(OUTLAND, ox, oy, ow, oh)
 
     -- World 530: each Blood Elf or Draenei zone map, placed on its continent,
     -- then Outland for everything else.
@@ -99,7 +119,16 @@ function Cosmic:Add(world, W, H, m)
     end
 end
 
--- Fades the world layer in as the view closes in on a world.
-function Cosmic:SetZoom(zoom)
-    if worldLayer then worldLayer:SetAlpha(Fade(zoom, WORLD_FADE)) end
+-- Fades the world layer in as the view closes in on a world, and fits
+-- Outland's zones to the view, x1, y1 to x2, y2 in content units.
+function Cosmic:SetZoom(zoom, x1, y1, x2, y2)
+    if not worldLayer then return end
+    worldLayer:SetAlpha(Fade(zoom, WORLD_FADE))
+    if outlandView then
+        outlandView.layer:SetAlpha(not ns.db.terrain and Fade(zoom, outlandView.FADE) or 0)
+        if not ns.db.terrain and zoom >= outlandView.FADE[1] and x1 then
+            outlandView:SetZoom(zoom)
+            outlandView:Update(x1, y1, x2, y2)
+        end
+    end
 end
