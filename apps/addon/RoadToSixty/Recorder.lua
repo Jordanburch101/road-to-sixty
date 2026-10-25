@@ -312,6 +312,23 @@ end
 -- than TELEPORT_DIST on one continent while alive. That was a teleport by
 -- something the recorder does not recognise: a quest, an NPC, a spell cast
 -- on the player. Not saved, so it also covers journeys recorded before.
+-- True when path carries on previous's flight: both on a flight path, on
+-- one continent, with no reason for a break but a login. A /reload during a
+-- flight starts a new segment while the flight goes on through the loading
+-- screen, so the next one starts hundreds of yards on, and read back as a
+-- teleport (Jordan, 2026-10-25; that reload was saved with no reason at
+-- all). The map draws it as one flight.
+function Recorder:Continues(previous, path)
+    return previous ~= nil and previous.m == "t" and path.m == "t" and previous.c == path.c
+        and (path.j == nil or path.j == "l") and #previous.x > 0 and path.x[1] ~= nil
+end
+
+-- The last position of a decoded path, or nil.
+function Recorder:LastPoint(path)
+    local last = path and #path.x or 0
+    if last > 0 then return path.x[last], path.y[last] end
+end
+
 -- World 530 (Outland, and on the Anniversary realms the Blood Elf and
 -- Draenei lands) is reached through portals: the Dark Portal, the cities'.
 -- A trip to or from it saved as a boat ("b", any continent change nothing
@@ -326,6 +343,7 @@ function Recorder:JumpReason(previous, path)
             and ns.Dock(previous.c, previous.x[last], previous.y[last]) and ns.Dock(path.c, path.x[1], path.y[1])
         if not docked then return "u" end
     end
+    if self:Continues(previous, path) then return nil end
     if path.j or not previous or previous.c ~= path.c or path.m == "g" then
         return path.j
     end

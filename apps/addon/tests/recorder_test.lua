@@ -264,6 +264,14 @@ check(JR(P(530, "w", nil, 0, 0), P(0, "w", "b", 5000, 0)) == "u", "out of Outlan
 check(JR(P(530, "w", nil, 1, 0), P(1, "w", "b", 1, 0)) == "b", "a boat from a dock on 530 to a dock stays a boat")
 check(JR(P(0, "w", nil, 0, 0), P(1, "w", "b", 5000, 0)) == "b", "a boat between Azeroth's continents stays a boat")
 ns.Dock = savedDock
+-- A /reload during a flight: the flight goes on through the loading screen,
+-- so the next segment starts far on. It is the same flight, not a teleport.
+check(JR(P(530, "t", nil, 0, 0), P(530, "t", nil, 2000, 0)) == nil, "a flight carried on after a reload is no teleport")
+check(Recorder:Continues(P(530, "t", nil, 0, 0), P(530, "t", nil, 2000, 0)), "a flight after a break with no reason continues")
+check(Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "l", 2000, 0)), "a flight after a reload continues")
+check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "h", 2000, 0)), "a flight after a hearthstone does not")
+check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "w", nil, 20, 0)), "landing does not continue the flight")
+check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(1, "t", nil, 20, 0)), "a flight on another continent does not")
 
 -- 11. Bends keep their shape (#57). Each walk is a segment of its own, one
 -- position a sample, rounded to whole yards as the game's are.

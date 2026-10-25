@@ -459,9 +459,13 @@ local function BuildPoints(paths)
                 end
                 n = n + 1
                 px[n], py[n] = toContent(path.x[i], path.y[i])
-                pt[n], pm[n], pb[n], brk[n] = t, path.m, band, i == 1
+                -- (a flight carried on after a /reload is one line: Recorder:Continues)
+                local continues = i == 1 and ns.Recorder:Continues(previous, path)
+                pt[n], pm[n], pb[n], brk[n] = t, path.m, band, i == 1 and not continues
                 -- Yards from the point before, for the replay's pace.
-                pd[n] = i > 1 and math.sqrt((path.x[i] - path.x[i - 1]) ^ 2 + (path.y[i] - path.y[i - 1]) ^ 2) or 0
+                local bx, by = path.x[i - 1], path.y[i - 1]
+                if continues then bx, by = ns.Recorder:LastPoint(previous) end
+                pd[n] = bx and math.sqrt((path.x[i] - bx) ^ 2 + (path.y[i] - by) ^ 2) or 0
                 if i == 1 then
                     pj[n] = ns.Recorder:JumpReason(previous, path)
                     if path.j == "b" and previous then
@@ -1314,10 +1318,11 @@ local function BuildOtherTracks()
             for _, path in ipairs(paths) do
                 local toContent = state.toContent[path.c]
                 if toContent and #path.x > 0 then
+                    local continues = ns.Recorder:Continues(previous, path)
                     for i = 1, #path.x do
                         n = n + 1
                         px[n], py[n] = toContent(path.x[i], path.y[i])
-                        pm[n], brk[n] = path.m, i == 1
+                        pm[n], brk[n] = path.m, i == 1 and not continues
                     end
                     pj[n - #path.x + 1] = ns.Recorder:JumpReason(previous, path)
                 end
