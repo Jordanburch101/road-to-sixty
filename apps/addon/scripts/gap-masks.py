@@ -102,6 +102,15 @@ OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / SET
 # frame) and fully from ZONE_TRUST[1]; overlapping zones vote, and they only
 # take land away, never add it: a test that missed a range must not sink it.
 WATER_BLUE, WATER_SAT = 0.42, 0.6
+
+# Fixes by hand, per set and continent, in shares of the art (x1, y1, x2,
+# y2): fill boxes are land, clear boxes are not. Anniversary's Eastern
+# Kingdoms: the M of its lettering meets the coast east of Redridge and
+# joined the land, a letter-shaped blob of parchment out at sea, while the
+# O beside it hid the coast's own strip of land (Jordan, 2026-10-25).
+LAND_FIX = {
+    ("Anniversary", 1415): dict(fill=[(0.534, 0.669, 0.564, 0.749)], clear=[(0.567, 0.677, 0.595, 0.713)]),
+}
 ZONE_TRUST = (0.06, 0.2)
 ZONE_WEIGHT = 0.3
 
@@ -392,7 +401,13 @@ def main():
         art = base_art(continent)
         solid = land_of(art)
         if CLASSIC:
-            solid = fill_holes(zone_votes(continent, solid))
+            solid = zone_votes(continent, solid)
+        fix = LAND_FIX.get((SET, continent), {})
+        h, w = solid.shape
+        for value, boxes in ((True, fix.get("fill", [])), (False, fix.get("clear", []))):
+            for x1, y1, x2, y2 in boxes:
+                solid[int(y1 * h):int(np.ceil(y2 * h)), int(x1 * w):int(np.ceil(x2 * w))] = value
+        solid = fill_holes(solid)
         land = np.clip(blur(grow(solid, -SHRINK).astype(np.float32), SOFT), 0, 1)
         save_alpha(land, f"land_{continent}.tga")
 
