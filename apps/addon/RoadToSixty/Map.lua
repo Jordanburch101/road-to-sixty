@@ -1605,8 +1605,9 @@ local function PlaceHead()
     local style = Style.Jump(state.pj[i])
     local portal = false
     -- A segment break without moving (a reload in place) has no curve, and
-    -- the arrow skips instant jumps.
-    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq]) and not style.instant then
+    -- the arrow skips instant jumps, long teleports and boat trips among them.
+    if i <= state.n and state.brk[i] and (px[i] ~= px[seq] or py[i] ~= py[seq])
+        and not Style.Instant(style, px[seq], py[seq], px[i], py[i]) then
         local trip = state.seaTrips[i]
         local curve = trip and (trip.curve or JumpCurve(trip[1], trip[2], trip[3], trip[4]))
             or JumpCurve(px[seq], py[seq], px[i], py[i], style.bend)
@@ -2379,8 +2380,8 @@ local function OnUpdate(_, elapsed)
         local style = seq >= 1 and seq < state.n and state.brk[seq + 1]
             and Style.Jump(state.pj[seq + 1])
         local cur = state.cur
-        if style and not style.instant
-            and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq]) then
+        if style and (state.px[seq + 1] ~= state.px[seq] or state.py[seq + 1] ~= state.py[seq])
+            and not Style.Instant(style, state.px[seq], state.py[seq], state.px[seq + 1], state.py[seq + 1]) then
             -- Its time follows its length, known once the arrow is on the
             -- jump (PlaceHead).
             local jump = state.headJump

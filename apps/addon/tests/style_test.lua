@@ -38,6 +38,16 @@ for kind, style in pairs(icons) do
     check((style.file or style.atlas) and style.size, "the icon for " .. kind .. " has art and a size")
 end
 
+-- The replay skips long teleports and boat trips and travels short ones;
+-- instant jumps (logins) are always skipped, deaths never.
+local Style = ns.Style
+check(Style.Instant(Style.Jump("h"), 0, 0, 400, 0), "a long hearthstone passes at once")
+check(not Style.Instant(Style.Jump("h"), 0, 0, 40, 0), "a short hearthstone is travelled")
+check(Style.Instant(Style.Jump("b"), 0, 0, 0, 300), "a long boat trip passes at once")
+check(not Style.Instant(Style.Jump("b"), 0, 0, 20, 20), "a short boat ride is travelled")
+check(Style.Instant(Style.Jump("l"), 0, 0, 1, 0), "a login is always instant")
+check(not Style.Instant(Style.Jump("d"), 0, 0, 900, 0), "a death's run to the graveyard is never skipped")
+
 if failures == 0 then
     print("Style tests passed.")
 else

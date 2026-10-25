@@ -224,6 +224,17 @@ function Style.Jump(reason)
     return JUMP_STYLES[reason] or JUMP_UNKNOWN
 end
 
+-- Whether the replay's arrow skips a jump of style from x1, y1 to x2, y2
+-- (map units): the instant ones, and long teleports and boat trips, which
+-- pass at once; only short ones are travelled (Jordan, 2026-10-25). Long is
+-- over LONG_JUMP between the ends (the world map is about 1000 wide).
+local LONG_JUMP = 150
+function Style.Instant(style, x1, y1, x2, y2)
+    if style.instant then return true end
+    if style.style ~= "portal" and style ~= JUMP_STYLES.b then return false end
+    return (x2 - x1) ^ 2 + (y2 - y1) ^ 2 > LONG_JUMP * LONG_JUMP
+end
+
 Style.LEVEL_COLORS = LEVEL_COLORS
 Style.EVENT_ICONS = EVENT_ICONS     -- for tests/style_test.lua
 Style.JUMP_CATEGORY, Style.CATEGORY = JUMP_CATEGORY, CATEGORY
