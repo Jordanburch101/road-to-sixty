@@ -312,7 +312,20 @@ end
 -- than TELEPORT_DIST on one continent while alive. That was a teleport by
 -- something the recorder does not recognise: a quest, an NPC, a spell cast
 -- on the player. Not saved, so it also covers journeys recorded before.
+-- World 530 (Outland, and on the Anniversary realms the Blood Elf and
+-- Draenei lands) is reached through portals: the Dark Portal, the cities'.
+-- A trip to or from it saved as a boat ("b", any continent change nothing
+-- explained) without a known dock at both ends was one of those, so it is
+-- a teleport ("u"), not a boat's red dots (Jordan, 2026-10-25).
+local PORTAL_WORLD = 530
+
 function Recorder:JumpReason(previous, path)
+    if path.j == "b" and previous and (previous.c == PORTAL_WORLD or path.c == PORTAL_WORLD) then
+        local last = #previous.x
+        local docked = ns.Dock and last > 0 and path.x[1]
+            and ns.Dock(previous.c, previous.x[last], previous.y[last]) and ns.Dock(path.c, path.x[1], path.y[1])
+        if not docked then return "u" end
+    end
     if path.j or not previous or previous.c ~= path.c or path.m == "g" then
         return path.j
     end

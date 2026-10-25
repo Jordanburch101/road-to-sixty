@@ -46,7 +46,12 @@ local ns = { Gaps = { FEATHER = "feather", Mask = function() return "mask" end }
     Command = function() end, Print = function() end }
 ns.CreateZoneView = function(layer, stable)
     local view = { layer = layer, stable = stable, zooms = {}, areas = {} }
-    function view:AddContinent(id, x, y, w, h) self.continent = { id, x, y, w, h } end
+    function view:AddContinent(id, x, y, w, h)
+        self.continent = { id, x, y, w, h }
+        -- (Outland's outlined zones are 100 wide; one city without an outline)
+        self.zones = { { 0, 0, 100, 60, outline = {} }, { 0, 0, 120, 60, outline = {} }, { 0, 0, 80, 60, outline = {} },
+            { 0, 0, 10, 10 } }
+    end
     function view:SetZoom(z) table.insert(self.zooms, z) end
     function view:Update(...) table.insert(self.areas, { ... }) end
     table.insert(views, view)
@@ -74,7 +79,9 @@ Cosmic:Add(947, 1000, 600, {
     state = state,
     AddArt = function(parent, id, x1, y1, x2, y2, mask) art[id] = { parent, x1, y1, x2, y2, mask } end,
     MapTransform = function(id) local t = transforms[id]; if t then return t[1], t[2] end end,
-    zoneView = { layer = Frame(), FADE = { 4, 6 }, PLAN_FADE = { 9, 12 }, wideEdge = "wide", rimEdge = "rim" },
+    zoneView = { layer = Frame(), FADE = { 4, 6 }, PLAN_FADE = { 9, 12 }, wideEdge = "wide", rimEdge = "rim",
+        -- (Azeroth's outlined zones are 30 wide in the middle)
+        zones = { { 0, 0, 20, 20, outline = {} }, { 0, 0, 30, 20, outline = {} }, { 0, 0, 40, 20, outline = {} } } },
     cosmicLayer = "cosmic", worldLayer = layer,
     continents = { { 1415, 600, 100, 300, 400 } },
 })
@@ -90,8 +97,8 @@ local outland = views[1]
 check(outland and outland.stable and outland.continent and outland.continent[1] == 1945, "Outland's zones have a stable view of their own")
 check(outland.continent[2] < 0 and outland.continent[3] < 0, "Outland's zones sit top left, outside Azeroth")
 check(outland.wideEdge == "wide" and outland.rimEdge == "rim", "Outland's view takes the journey map's edge masks")
--- Outland is 0.355 / 0.34 of the world map wide, the Eastern Kingdoms 300 of 1000.
-local k = (0.355 / 0.34 * 1000) / 300
+-- Outland's zones are 100 / 30 as wide as Azeroth's.
+local k = 100 / 30
 check(near(outland.FADE[1], 4 / k) and near(outland.FADE[2], 6 / k), ("Outland's zones fade in from %.2f"):format(outland.FADE[1]))
 check(near(outland.PLAN_FADE[1], 9 / k), "Outland's city plans scale too")
 

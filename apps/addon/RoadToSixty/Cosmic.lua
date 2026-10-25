@@ -15,9 +15,11 @@ local _, ns = ...
 -- Outland's map is drawn about as large as Azeroth's whole world, so its
 -- zones are several times larger on screen than Azeroth's at the same zoom:
 -- they have a zone view of their own, whose fades are the journey map's
--- divided by how much larger Outland's map is than an Azeroth continent's,
--- so they come in when Outland fills the view, as Azeroth's zones do when
--- a continent does (Jordan, 2026-10-25: they needed far too much zooming).
+-- divided by how much wider Outland's zones are than Azeroth's (the middle
+-- width of the outlined ones), so a zone comes in at the same size on
+-- screen either side (Jordan, 2026-10-25: they needed far too much zooming;
+-- scaling by the continents' widths was not enough, as the continent maps
+-- reach far past their land).
 --
 -- World 530 holds Outland and also the Blood Elf and Draenei lands, which
 -- the maps show on the Eastern Kingdoms and Kalimdor: state.toContent[530]
@@ -44,6 +46,16 @@ local outlandView  -- Outland's zones (ZoneArt.lua's ZoneView)
 local function Fade(zoom, range)
     local f = math.log(zoom / range[1]) / math.log(range[2] / range[1])
     return math.max(0, math.min(1, f))
+end
+
+-- The middle width of a zone view's outlined zones, in content units.
+local function MiddleWidth(zones)
+    local widths = {}
+    for _, zone in pairs(zones) do
+        if zone.outline then widths[#widths + 1] = zone[3] - zone[1] end
+    end
+    table.sort(widths)
+    return widths[math.ceil(#widths / 2)]
 end
 
 -- True if this client's world map world sits on a Cosmic map with Outland.
@@ -79,14 +91,12 @@ function Cosmic:Add(world, W, H, m)
     layer:SetFrameLevel(m.zoneView.layer:GetFrameLevel())
     outlandView = ns.CreateZoneView(layer, true)
     outlandView.wideEdge, outlandView.rimEdge = m.zoneView.wideEdge, m.zoneView.rimEdge
-    local widths = {}
-    for _, c in ipairs(m.continents) do widths[#widths + 1] = c[4] end
-    table.sort(widths)
-    local k = ow / (widths[math.ceil(#widths / 2)] or ow)
+    outlandView:AddContinent(OUTLAND, ox, oy, ow, oh)
+    local azeroth, outland = MiddleWidth(m.zoneView.zones), MiddleWidth(outlandView.zones)
+    local k = azeroth and outland and outland / azeroth or 1
     local zf, pf = m.zoneView.FADE, m.zoneView.PLAN_FADE
     outlandView.FADE = { zf[1] / k, zf[2] / k }
     outlandView.PLAN_FADE = { pf[1] / k, pf[2] / k }
-    outlandView:AddContinent(OUTLAND, ox, oy, ow, oh)
 
     -- World 530: each Blood Elf or Draenei zone map, placed on its continent,
     -- then Outland for everything else.

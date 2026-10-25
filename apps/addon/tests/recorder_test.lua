@@ -255,6 +255,15 @@ check(JR(P(0, "w", nil, 0, 0), P(0, "g", nil, 5000, 0)) == nil, "a ghost's jump 
 check(JR(P(0, "w", nil, 0, 0), P(0, "w", "h", 5000, 0)) == "h", "a saved reason is kept")
 check(JR(nil, P(0, "w", nil, 5000, 0)) == nil, "the first segment has no jump")
 check(JR({ c = 0, m = "w", x = {}, y = {} }, P(0, "w", nil, 5000, 0)) == nil, "an empty segment before is skipped")
+-- World 530 is reached by portals: a "boat" to or from it with no dock at
+-- both ends reads as a teleport; a boat between two docks stays a boat.
+local savedDock = ns.Dock
+ns.Dock = function(c, x) return x == 1 and { "Pier", c, x, 0 } or nil end
+check(JR(P(0, "w", nil, 0, 0), P(530, "w", "b", 5000, 0)) == "u", "into Outland with no dock is a teleport")
+check(JR(P(530, "w", nil, 0, 0), P(0, "w", "b", 5000, 0)) == "u", "out of Outland with no dock is a teleport")
+check(JR(P(530, "w", nil, 1, 0), P(1, "w", "b", 1, 0)) == "b", "a boat from a dock on 530 to a dock stays a boat")
+check(JR(P(0, "w", nil, 0, 0), P(1, "w", "b", 5000, 0)) == "b", "a boat between Azeroth's continents stays a boat")
+ns.Dock = savedDock
 
 -- 11. Bends keep their shape (#57). Each walk is a segment of its own, one
 -- position a sample, rounded to whole yards as the game's are.
