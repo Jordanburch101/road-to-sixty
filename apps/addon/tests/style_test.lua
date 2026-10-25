@@ -65,6 +65,9 @@ check(forever.atlas == "Waypoint-MapPin-Untracked", "Forever keeps its pin")
 local level = FakeIcon({ ["collections-levelplate-black"] = true })
 ns.SetEventIcon(level, text, "lvl", 14)
 check(level.atlas == "collections-levelplate-black", "a level up shows the black plate without Forever's badge")
+local boat = FakeIcon({ flightmaster = true })
+ns.SetEventIcon(boat, text, "boat")
+check(boat.atlas == "flightmaster", "a boat trip shows the flight master without Forever's boat")
 
 if failures == 0 then
     print("Style tests passed.")

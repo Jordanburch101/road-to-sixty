@@ -86,7 +86,7 @@ local EVENT_ICONS = {
     flight = { atlas = "TaxiNode_Neutral", size = 18 },
     hearth = { atlas = "Innkeeper", size = 18 },
     teleport = { atlas = "MagePortalAlliance", size = 20 },
-    boat = { atlas = "poi-islands-table", size = 20 },
+    boat = { atlas = "poi-islands-table", classic = "flightmaster", size = 20 },
     loot = { file = "Interface\\Icons\\INV_Misc_QuestionMark", size = 18 },
     qd = { atlas = "QuestTurnin", fallback = "Interface\\GossipFrame\\ActiveQuestIcon", size = 18 },
     prof = { file = "Interface\\Icons\\INV_Misc_Book_11", size = 18 },
