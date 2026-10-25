@@ -47,7 +47,7 @@ for data, its exact format; read that before changing a module.
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
 | Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
-| MinimapTiles.lua, ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
+| MinimapTiles.lua, ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
@@ -106,6 +106,7 @@ bun run typecheck                   # TypeScript in the server and packages
 ./scripts/sync-version.ps1          # set the toc Interface from the installed client after a patch
 python scripts/zone-overlays.py <build>   # regenerate ZoneOverlays.lua and ZoneMasks/ (needs Pillow)
 python scripts/zone-overlays.py <Era build> --era   # regenerate ZoneOverlaysEra.lua after an Era patch
+python scripts/zone-overlays.py <Anniversary build> --anniversary   # regenerate ZoneOverlaysAnniversary.lua and masks for zones without one
 python scripts/feather-mask.py            # redraw Gaps/feather.tga and rim.tga (needs Pillow)
 python scripts/gap-textures.py [build]    # redraw the gap tiles, then: python scripts/gap-masks.py [build] [preview] [cache]
                                           # (Pillow, numpy; a 1.15 build writes Gaps/Era/; check the preview by eye)
