@@ -1593,13 +1593,38 @@ end
 -- into the first, a comet flies the arc, and it comes out of the second.
 local function PlaceHead()
     local seq = math.floor(state.cur)
+    local lead = state.leadLine
+    if not lead then
+        lead = pathLayer:CreateLine(nil, "ARTWORK")
+        state.leadLine = lead
+    end
     if seq < 1 or seq > state.n then
         ns.Portals:Cross()
         head:Hide()
+        lead:Hide()
         return
     end
     local px, py = state.px, state.py
     local x, y, rotation = px[seq], py[seq], HeadRotation(seq)
+    -- Between two points of the path the arrow glides rather than hopping
+    -- from point to point, facing along the path half a point behind and
+    -- ahead, so it turns through bends instead of snapping at each point
+    -- (Jordan, 2026-10-25: jagged at the slower 1x).
+    local gliding = seq < state.n and not state.brk[seq + 1] and state.cur > seq
+    if gliding then
+        local function At(c)
+            local s = math.max(1, math.min(state.n, math.floor(c)))
+            local g = math.max(0, math.min(1, c - s))
+            if s >= state.n or state.brk[s + 1] then return px[s], py[s] end
+            return px[s] + (px[s + 1] - px[s]) * g, py[s] + (py[s + 1] - py[s]) * g
+        end
+        x, y = At(state.cur)
+        local ax, ay = At(math.max(seq, state.cur - 0.5))
+        local bx, by = At(math.min(seq + 1, state.cur + 0.5))
+        if ax ~= bx or ay ~= by then
+            rotation = math.atan2(-(by - ay), bx - ax) - math.pi / 2
+        end
+    end
     local size = 1
     local i = seq + 1
     local style = Style.Jump(state.pj[i])
@@ -1645,6 +1670,19 @@ local function PlaceHead()
     end
     if not portal then
         ns.Portals:Cross()
+    end
+    -- The trail is drawn a whole line at a time; a short line in the path's
+    -- own colour joins its end to the gliding arrow.
+    local spec = gliding and state.shown > 0 and state.drawn[state.shown]
+    local mode = state.pm[seq]
+    if spec and spec[5] ~= "j" and not spec.hidden and (mode ~= "t" or ns.FilterShown("flights")) then
+        lead:SetStartPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
+        lead:SetEndPoint("TOPLEFT", pathLayer, x, -y)
+        lead:SetColorTexture(Style.LineColor(mode, state.pb[seq]))
+        lead:SetThickness(LINE_WIDTH / state.zoom)
+        lead:Show()
+    else
+        lead:Hide()
     end
     state.headX, state.headY = x, y
     head:ClearAllPoints()
@@ -2726,6 +2764,9 @@ local function CreateWindow()
     head = headFrame:CreateTexture(nil, "OVERLAY")
     head:SetSize(HEAD.SIZE, HEAD.SIZE)
     head:SetTexture(HEAD.TEXTURE)
+    -- (placed to fractions of a pixel, so its glide does not step)
+    head:SetSnapToPixelGrid(false)
+    head:SetTexelSnappingBias(0)
     ns.Portals:Attach(pathLayer)
 
     for i = 1, MOTES do
