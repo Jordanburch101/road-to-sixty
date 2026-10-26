@@ -6,6 +6,31 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.14.0
+
+### New
+- Road to Sixty now runs on the Anniversary realms (The Burning Crusade).
+- Zoomed all the way out, the journey map shows the Cosmic map: Azeroth
+  bottom right and Outland top left. Zoom into either to go there, and
+  your journey through the Dark Portal follows you.
+- Outland's zones, Shattrath's city map, and the Blood Elf and Draenei
+  lands all have full map art, with terrain when you turn it on.
+- The gear screen's Endgame starts at the realm's level cap: 70 on the
+  Anniversary realms.
+- The replay is smoother: the arrow glides along your path and turns
+  through bends instead of hopping from point to point.
+- In the replay, long teleports and long boat trips now happen at once;
+  only short ones are travelled.
+
+### Fixed
+- On Classic Era, quests in History show their names instead of a number.
+- On Classic Era, the zone, level and boat icons show in History and its
+  filter.
+- On Classic Era, terrain no longer shows missing or wrong squares.
+- Trips through the Dark Portal and city portals are drawn as teleports,
+  not boat trips.
+- A /reload during a flight no longer breaks the flight into a teleport.
+
 ## 1.13.0
 
 ### New
