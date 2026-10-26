@@ -18,7 +18,8 @@ Merge.lua
 Sync.lua
 ChatPatterns.lua
 MinimapTiles.lua
-MinimapTilesExpansion01.lua
+MinimapTilesAnniversary.lua
+MinimapTilesEra.lua
 ZoneOverlays.lua
 ZoneOverlaysEra.lua
 ZoneOverlaysAnniversary.lua
