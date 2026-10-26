@@ -3,7 +3,8 @@ local addonName, ns = ...
 -- The gear screen (issue #64): a mode of the journey map window that puts
 -- the whole gearing story where the map and the side panel were. A row per
 -- slot with a bar per item from when it was put on to when it was replaced,
--- levels along the bottom and then weeks at 60; a paperdoll beside it with
+-- levels along the bottom and then weeks at the level cap (60, or 70 on the
+-- Anniversary realms); a paperdoll beside it with
 -- the gear worn at the moment under the cursor, or at the pinned one, which
 -- is the replay's moment (a click pins it and moves the replay there).
 --
@@ -41,7 +42,7 @@ local CURVE_STEPS = 80
 local OVERVIEW_H = 18
 local STRIP_STEPS = 120
 local WEEK = 7 * 86400
-local WEEK_WIDTH = 2            -- a week at 60 is as wide as this many levels
+local WEEK_WIDTH = 2            -- a week at the cap is as wide as this many levels
 local MIN_WEEKS = 4             -- the endgame part is at least this long
 local MIN_SPAN = 3              -- the closest zoom, in levels
 local OPEN_SPAN = 24            -- how much the screen opens on, in levels
@@ -253,8 +254,8 @@ local function SetTabOn(tab, on)
 end
 
 -- The axis ---------------------------------------------------------------------------
--- u is the axis unit: the level as a fraction up to 60 (GearTimeline.LevelAt),
--- then 60 plus WEEK_WIDTH for each week since reaching it.
+-- u is the axis unit: the level as a fraction up to the cap (GearTimeline.LevelAt),
+-- then the cap plus WEEK_WIDTH for each week since reaching it.
 
 local function U(t)
     return G.U(timeline, t, WEEK_WIDTH)
@@ -828,7 +829,7 @@ local function Flag(index)
     return flag
 end
 
--- Milestones: the first green, blue and epic, level 60, and the first visit
+-- Milestones: the first green, blue and epic, the level cap, and the first visit
 -- to each raid.
 local function Milestones()
     if derived.milestones then return derived.milestones end
@@ -902,6 +903,9 @@ function GearScreen:Redraw()
     if not (view and view:IsShown()) then return end
     if dirty or not timeline then
         local now = ns.Roster:IsMe(ns.Roster:ViewEntry()) and ns.Now() or nil
+        -- The level cap: 60 on Forever and Era, 70 on the Anniversary realms (#75).
+        local ok, cap = pcall(GetMaxPlayerLevel)
+        G.CAP = ok and type(cap) == "number" and cap >= 60 and cap or 60
         timeline = G.Build(ns.view, now)
         dirty = false
         ResetDerived()
@@ -925,7 +929,7 @@ function GearScreen:Redraw()
     elseif not whole and (not timeline.capAt or axis.hi <= G.CAP + 0.01) then
         part = "lvl"
     end
-    -- Endgame only for a character that has reached 60.
+    -- Endgame only for a character that has reached the cap.
     local lastTab
     for _, tab in ipairs(ui.phaseTabs) do
         SetTabOn(tab, tab.phase == part)
@@ -1408,7 +1412,7 @@ local function CreateView()
         x = x + p[3] + 4
         ui.phaseTabs[#ui.phaseTabs + 1] = tab
     end
-    -- After the last tab shown (Redraw places it: Endgame shows only at 60).
+    -- After the last tab shown (Redraw places it: Endgame shows only at the cap).
     ui.help = view:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.help:SetText("Wheel: zoom   Drag: move   Click: pin the moment")
     local right = -10

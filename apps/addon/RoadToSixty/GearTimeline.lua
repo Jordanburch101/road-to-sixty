@@ -40,6 +40,8 @@ local _, ns = ...
 local GearTimeline = {}
 ns.GearTimeline = GearTimeline
 
+-- The level cap; the gear screen sets the client's own (70 on the
+-- Anniversary realms) before each Build, as this file makes no game calls.
 GearTimeline.CAP = 60
 -- Kept gear leaves out swapping noise. A run of spans each shorter than
 -- SWAP is noise when an item comes back within it or right around it (A, B,

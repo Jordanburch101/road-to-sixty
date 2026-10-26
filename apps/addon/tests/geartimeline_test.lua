@@ -169,6 +169,17 @@ local empty = G.Build({}, 5000)
 check(empty.start == 5000 and empty.finish == 5000 and #empty.levels == 0, "an empty journey")
 check(next(G.WornAt(empty, 5000)) == nil and G.LevelAt(empty, 5000) == 1, "nothing worn, level 1")
 
+-- The Anniversary realms' cap is 70 (#75): reaching 60 there is not the
+-- cap, reaching 70 is, and the weeks count from it.
+G.CAP = 70
+local seventy = G.Build({
+    levels = { [1] = { t = 0, gear = {} }, [60] = { t = 600, gear = {} }, [70] = { t = 1000, gear = {} } },
+    events = { { 0, "on", -1, 0, 0, 1 }, { 600, "lvl", 0, 0, 0, 60 }, { 1000, "lvl", 0, 0, 0, 70 } },
+}, 2000)
+check(seventy.capAt == 1000, "the cap is reached at 70 when the cap is 70, got " .. tostring(seventy.capAt))
+check(G.LevelAt(seventy, 1500) == 70, "past the cap the level stays 70")
+G.CAP = 60
+
 if failures == 0 then
     print("GearTimeline tests passed.")
 else
