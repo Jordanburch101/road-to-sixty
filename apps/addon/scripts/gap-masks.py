@@ -87,9 +87,10 @@ MIX = (0.5, 1 / 3)              # Gaps.lua: the field's alpha over the first cop
 # Each game has its own map art: Forever repainted every map, and the
 # Anniversary realms (2.5) repainted the continents for the Blood Elf and
 # Draenei lands, under the same file IDs as Era's. So an Era build (1.15)
-# writes Gaps/Era/, an Anniversary build Gaps/Anniversary/ (Gaps.lua picks
-# the set for the client), and a Forever build Gaps/ itself.
-SET = "Era" if BUILD.startswith("1.15.") else "Anniversary" if BUILD.startswith("2.5.") else ""
+# writes Gaps/Era/, an Anniversary build (2.x, and the expansions after it)
+# Gaps/Anniversary/ (Gaps.lua picks the set for the client), and a Forever
+# build (1.60) Gaps/ itself.
+SET = "Era" if BUILD.startswith("1.15.") else "Anniversary" if int(BUILD.split(".")[0]) >= 2 else ""
 CLASSIC = SET != ""
 OUT = Path(__file__).resolve().parent.parent / "RoadToSixty" / "Gaps" / SET
 

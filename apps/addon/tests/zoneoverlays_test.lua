@@ -17,7 +17,7 @@ local function Load(interface)
     local ns = {}
     -- (as Core.lua sets them, before the files that use them)
     ns.Classic = interface < 16000 or interface >= 17000
-    ns.Anniversary = interface >= 20000 and interface < 30000
+    ns.Anniversary = interface >= 20000 and interface < 100000
     assert(loadfile("RoadToSixty/ZoneOverlays.lua"))("RoadToSixty", ns)
     local forever = ns.ZoneOverlayData
     assert(loadfile("RoadToSixty/ZoneOverlaysEra.lua"))("RoadToSixty", ns)
@@ -51,6 +51,10 @@ check(not ns.ZoneMasks[1954] and not ns.ZoneMasks[1955], "cities have no mask")
 check(ns.CityMasks[1955], "Shattrath has a city mask, so its plan shows")
 check(ns.ZoneMasks[1429], "Anniversary keeps the zone masks")
 Whole(ns.ZoneOverlayData, "Anniversary")
+
+-- A later expansion on the Anniversary realms (Wrath, 3xxxx) keeps TBC's art.
+local wrath = Load(30403)
+check(wrath.ZoneOverlayData[1941] and wrath.ZoneMasks[1941], "Wrath Anniversary keeps the Blood Elf lands")
 
 ns, forever = Load(11509)
 check(ns.ZoneOverlayData ~= forever, "Era gets its own overlays")

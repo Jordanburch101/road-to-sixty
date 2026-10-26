@@ -7,7 +7,10 @@ local addonName, ns = ...
 -- (#72, interface 11509) and the Anniversary realms (20506). Forever
 -- (16001 is 1.60.1) repainted every map, so its art has file IDs of its own.
 -- ns.Anniversary is true on the Anniversary realms (#75): Era's art, plus
--- zones Era has not (ZoneOverlaysAnniversary.lua) and Outland.
+-- zones Era has not (ZoneOverlaysAnniversary.lua) and Outland. It covers
+-- every expansion they move on to (TBC is 2xxxx, Wrath will be 3xxxx), up
+-- to retail's 1xxxxx: what TBC added stays, and the gear screen takes the
+-- level cap from the client (GetMaxPlayerLevel), so Wrath's 80 needs no change.
 --
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
 -- defaults below, plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
@@ -44,7 +47,7 @@ local addonName, ns = ...
 do
     local interface = GetBuildInfo and select(4, GetBuildInfo()) or 0
     ns.Classic = interface < 16000 or interface >= 17000
-    ns.Anniversary = interface >= 20000 and interface < 30000
+    ns.Anniversary = interface >= 20000 and interface < 100000
 end
 
 local defaults = {
