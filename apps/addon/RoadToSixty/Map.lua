@@ -283,14 +283,26 @@ local SKIPPED_TINT = { 1, 0.25, 0.25 }  -- skipped tiles when shown with /rts ti
 -- minimap files include unused and developer areas (flat green placeholder
 -- tiles, unreleased land) that belong to no zone, so those are left out.
 -- Without the API every tile is kept.
-local function TileInZone(continentMap, toMap, north, west)
+-- The zone must be on the tile's own world: on the Anniversary realms the
+-- Blood Elf and Draenei zones are on world 530 while their continents are
+-- worlds 0 and 1, whose own tiles there are open sea or blank, and drew over
+-- Ghostlands and Bloodmyst (Jordan, 2026-10-26).
+local function TileInZone(continentID, continentMap, toMap, north, west)
     if not C_Map.GetMapInfoAtPosition then return true end
+    state.zoneWorlds = state.zoneWorlds or {}
+    local worlds = state.zoneWorlds
     for _, probe in ipairs(TILE_PROBES) do
         local u, v = toMap(north - probe[2] * TILE_YARDS, west - probe[1] * TILE_YARDS)
         if u >= 0 and u <= 1 and v >= 0 and v <= 1 then
             local info = C_Map.GetMapInfoAtPosition(continentMap, u, v)
             if info and info.mapID ~= continentMap and info.mapType >= Enum.UIMapType.Zone then
-                return true
+                if worlds[info.mapID] == nil then
+                    worlds[info.mapID] = MapTransform(info.mapID) or false
+                end
+                local world = worlds[info.mapID]
+                if not world or world == continentID then
+                    return true
+                end
             end
         end
     end
@@ -341,7 +353,7 @@ local function AddTerrainTiles(continentID, continentMap, toMap, toContent)
     for key in pairs(ids) do
         local col, row = key:match("^(%d+)_(%d+)$")
         local north, west = (32 - tonumber(row)) * TILE_YARDS, (32 - tonumber(col)) * TILE_YARDS
-        if TileInZone(continentMap, toMap, north, west) then
+        if TileInZone(continentID, continentMap, toMap, north, west) then
             kept[key] = { tonumber(col), tonumber(row), north, west }
         else
             -- Kept in the list, but only drawn by /rts tiles, tinted.
