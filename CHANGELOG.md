@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.15.0
+
+### New
+- A screenshot is taken each time you level up, saved in the game's
+  Screenshots folder. Each level up on the journey map and in History says
+  whether one was taken. Turn it off in the options.
+
 ## 1.14.0
 
 ### New

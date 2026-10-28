@@ -711,7 +711,7 @@ local function BuildMarkers()
                 m.minZoom = l % 10 == 0 and MARKER_ZOOM.level10
                     or l % 5 == 0 and MARKER_ZOOM.level5 or MARKER_ZOOM.level
                 m.title = "Reached level " .. l
-                m.detail = ("%s\n%s"):format(Where(inside, zone), FormatTime(t))
+                m.detail = ns.LevelShot:Detail(l, ("%s\n%s"):format(Where(inside, zone), FormatTime(t)))
             elseif kind == "die" then
                 m.minZoom = MARKER_ZOOM.death
                 m.title = "Died"

@@ -3,7 +3,8 @@ local addonName, ns = ...
 -- Records what happened along the path, plus a stats snapshot at each level
 -- (ns.char.levels[level], including the equipped gear: slot -> item ID, and
 -- from 1.10.3 links: slot -> item string, see Items.lua; gearLater =
--- true when it was taken at a later login, not at the level up).
+-- true when it was taken at a later login, not at the level up; shot =
+-- true when a screenshot of the level up was saved, see LevelShot.lua).
 --
 -- Each event is an array: { time, kind, continentID, x, y, ... } with the
 -- kind's own fields from index 6 on (so e[6] is the first one below). The

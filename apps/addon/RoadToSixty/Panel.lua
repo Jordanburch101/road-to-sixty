@@ -220,11 +220,15 @@ local function CreateHistoryRow(parent)
                 GameTooltip:AddLine(line, 1, 1, 1)
             end
             GameTooltip:Show()
-        elseif item.kind == "lvl" and not ns.GearCard:Show(item.level, self, item.title, item.detail) then
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:AddLine(item.title)
-            GameTooltip:AddLine(item.detail, 1, 1, 1)
-            GameTooltip:Show()
+        elseif item.kind == "lvl" then
+            -- The row shows the place only; its tooltip also says if a screenshot was taken.
+            local detail = ns.LevelShot:Detail(item.level, item.detail)
+            if not ns.GearCard:Show(item.level, self, item.title, detail) then
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:AddLine(item.title)
+                GameTooltip:AddLine(detail, 1, 1, 1)
+                GameTooltip:Show()
+            end
         end
     end)
     row:SetScript("OnLeave", function()

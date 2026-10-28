@@ -29,6 +29,7 @@ for data, its exact format; read that before changing a module.
 | Recorder.lua | path segments (delta-packed world yards); segment format in its header |
 | Journal.lua | events, kills (packed), level snapshots; event kinds in its header |
 | LevelChat.lua | the summary in chat at each level up, with an Open map link |
+| LevelShot.lua | a screenshot at each level up, marked on the level up's tooltip |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
 | Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua, Enchants.lua | guilds, reputation, riding and mounts, rare mobs, groups, enchants: each records its own events, listed in its header |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |

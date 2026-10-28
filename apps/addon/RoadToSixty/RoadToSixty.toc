@@ -30,6 +30,7 @@ Items.lua
 Recorder.lua
 Journal.lua
 LevelChat.lua
+LevelShot.lua
 Crafts.lua
 Guilds.lua
 Reputation.lua

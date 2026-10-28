@@ -55,6 +55,7 @@ end
 local defaults = {
     greet = true,
     levelChat = true,       -- the addon's own summary in chat at each level up
+    levelShot = true,       -- a screenshot at each level up (LevelShot.lua)
     terrain = true,
     cityArt = true,     -- with terrain off, capitals show their own street plans
     motes = true,

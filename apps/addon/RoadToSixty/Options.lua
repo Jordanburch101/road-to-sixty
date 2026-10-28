@@ -47,6 +47,13 @@ local SECTIONS = {
             get = function() return ns.db.levelChat end,
             set = function(on) ns.db.levelChat = on end,
         },
+        {
+            label = "Take a screenshot at each level up",
+            tip = "Saved in the game's Screenshots folder, as Print Screen does. The level up on the journey map "
+                .. "says when one was taken.",
+            get = function() return ns.db.levelShot end,
+            set = function(on) ns.db.levelShot = on end,
+        },
     },
     {
         title = "Journey map",
