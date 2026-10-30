@@ -31,7 +31,8 @@ local addonName, ns = ...
 --                                  running), so its time and place are the
 --                                  login's; source is where and how the item
 --                                  was got, when known (Sources.lua)
---   prof, rec, skill               professions, recipes and skill points, see Crafts.lua
+--   prof, rec, skill, craft        professions, recipes, skill points and things
+--                                  made, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 --   rep                            reputation standing changed, see Reputation.lua
 --   ride, mount                    riding learned, new mount, see Mounts.lua
@@ -628,6 +629,7 @@ local function ItemQuality(link)
     local color = link:match("|c%x%x(%x%x%x%x%x%x)")
     return color and LINK_QUALITY[color:lower()]
 end
+Journal.ItemQuality = ItemQuality
 
 ns.On("CHAT_MSG_LOOT", function(msg)
     local link

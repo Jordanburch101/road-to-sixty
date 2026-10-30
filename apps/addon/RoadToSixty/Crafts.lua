@@ -15,6 +15,15 @@ local _, ns = ...
 --   rec   name, spellID, profession, source   a recipe learned; spellID and
 --                                         profession when the client says;
 --                                         source "t" when a trainer was open
+--   craft link, count, quality, profession, spellID   something made, from
+--                                         "You create: ..." (#85); the same
+--                                         item again within CRAFT_BUNDLE
+--                                         seconds adds to the last one's
+--                                         count, so "Create All" is one
+--                                         event. profession and spellID (the
+--                                         recipe) when known; things made
+--                                         outside a profession, such as a
+--                                         mage's conjured food, have neither
 --
 -- ns.char.skills is the last skill seen per profession: name -> { rank, max,
 -- icon }, icon a file ID when the client gives one.
@@ -249,6 +258,43 @@ function Crafts:CheckRecipes()
     ns.char.recipes[profession] = known
 end
 
+-- Crafting ----------------------------------------------------------------------
+
+local CRAFT_BUNDLE = 10     -- seconds: the same item made again within this joins the last craft
+local CAST_SECONDS = 5      -- a cast this recent is the craft's recipe
+local lastCast              -- { spellID, at } the player's last cast
+local lastCraft             -- { key, event, at } the craft logged last
+
+-- The profession something was made with: the recipe's own on modern
+-- clients, else the classic profession window open, as classic crafting
+-- needs it. Modern clients' window state is not known, so they never guess.
+local function CraftProfession(spellID)
+    local profession = Crafts:RecipeProfession(spellID)
+    if profession then return profession end
+    if classicWindow and not (C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo) then
+        return OpenProfession()
+    end
+end
+
+-- Logs count of the item in link made, or adds them to the last craft when
+-- it was the same item a moment ago.
+function Crafts:Crafted(link, count)
+    local now = GetTime()
+    count = tonumber(count) or 1
+    local key = ns.ItemString(link, true) or link
+    local last = lastCraft
+    if last and last.key == key and now - last.at <= CRAFT_BUNDLE then
+        last.event[7] = (last.event[7] or 1) + count
+        last.at = now
+        return last.event
+    end
+    local spellID = lastCast and now - lastCast.at <= CAST_SECONDS and lastCast.spellID or nil
+    local e = Log("craft", link, count, ns.Journal.ItemQuality and ns.Journal.ItemQuality(link) or nil,
+        CraftProfession(spellID), spellID)
+    lastCraft = { key = key, event = e, at = now }
+    return e
+end
+
 local function SpellName(spellID)
     if C_Spell and C_Spell.GetSpellName then
         return C_Spell.GetSpellName(spellID)
@@ -344,6 +390,11 @@ end
 
 -- "You have learned how to create a new item: %s."
 local matchRecipe = ns.ChatMatcher(ERR_LEARN_RECIPE_S or "You have learned how to create a new item: %s.")
+-- "You create: %sx%d." before "You create: %s.", which would take the "x5" into the item.
+local craftMatchers = {
+    ns.ChatMatcher(LOOT_ITEM_CREATED_SELF_MULTIPLE or "You create: %sx%d."),
+    ns.ChatMatcher(LOOT_ITEM_CREATED_SELF or "You create: %s."),
+}
 
 -- Skill events before login are left to the check after it: a "prof"
 -- logged before Sync.lua brings in the sync folder would make this PC's
@@ -405,6 +456,21 @@ ns.On("CHAT_MSG_SYSTEM", function(msg)
     end
 end)
 
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+    if unit ~= "player" or (issecretvalue and issecretvalue(spellID)) then return end
+    lastCast = { spellID = spellID, at = GetTime() }
+end)
+
+ns.On("CHAT_MSG_LOOT", function(msg)
+    for _, match in ipairs(craftMatchers) do
+        local link, count = match(msg)
+        if link then
+            Crafts:Crafted(link, count)
+            return
+        end
+    end
+end)
+
 --@debug@
 -- /rts craftprobe: what the profession and recipe APIs return now. Run it
 -- again with a profession window open.
@@ -435,22 +501,28 @@ ns.Command("craftprobe", "check the profession and recipe APIs (developer)", fun
         for _ in pairs(names) do count = count + 1 end
         known[#known + 1] = ("%s %d"):format(name, count)
     end
-    local logged, last, lastSkill = { prof = 0, rec = 0, skill = 0 }, nil, nil
+    local logged, last, lastSkill, lastMade = { prof = 0, rec = 0, skill = 0, craft = 0 }, nil, nil, nil
     for _, e in ipairs(ns.char.events) do
         if logged[e[2]] then logged[e[2]] = logged[e[2]] + 1 end
         if e[2] == "rec" then last = e end
         if e[2] == "skill" then lastSkill = e end
+        if e[2] == "craft" then lastMade = e end
     end
     if lastSkill then
         ns.Print(("Last skill point: %s %s to %s%s, %s."):format(tostring(lastSkill[6]), tostring(lastSkill[8]),
             tostring(lastSkill[7]), lastSkill[9] and " (found at login)" or "", date("%H:%M:%S", lastSkill[1])))
+    end
+    if lastMade then
+        ns.Print(("Last made: %s x%s, quality %s, profession %s, spell %s, %s."):format(tostring(lastMade[6]),
+            tostring(lastMade[7]), tostring(lastMade[8]), tostring(lastMade[9]), tostring(lastMade[10]),
+            date("%H:%M:%S", lastMade[1])))
     end
     if last then
         ns.Print(("Last recipe: %s, spell %s, saved profession %s, looked up %s, source %s."):format(
             tostring(last[6]), tostring(last[7]), tostring(last[8]),
             tostring((Crafts:RecipeProfession(last[7]))), tostring(last[9])))
     end
-    ns.Print(("Known recipes: %s. Events: %d prof, %d rec, %d skill."):format(
-        #known > 0 and table.concat(known, ", ") or "none", logged.prof, logged.rec, logged.skill))
+    ns.Print(("Known recipes: %s. Events: %d prof, %d rec, %d skill, %d craft."):format(
+        #known > 0 and table.concat(known, ", ") or "none", logged.prof, logged.rec, logged.skill, logged.craft))
 end)
 --@end-debug@

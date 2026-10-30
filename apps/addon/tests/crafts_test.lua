@@ -3,7 +3,8 @@
 -- Professions and Secondary Skills headers (riding, weapons and languages
 -- left out), nothing is read while a profession header is collapsed, and
 -- the trade skill and craft windows' recipes are counted, but not a
--- hunter's pet training in the craft window.
+-- hunter's pet training in the craft window. Skill points (#84) and things
+-- made (#85) are logged.
 -- Run with LuaJIT from the repo root: luajit tests/crafts_test.lua
 
 local failures = 0
@@ -34,7 +35,6 @@ end
 function ns.SafeCall(fn, ...) fn(...) end
 function ns.Command() end
 function ns.Print() end
-function ns.ChatMatcher() return function() end end
 local function Fire(event, ...)
     for _, fn in ipairs(handlers[event] or {}) do fn(...) end
 end
@@ -44,7 +44,8 @@ local function RunTimers()
     for _, fn in ipairs(due) do fn() end
 end
 
-GetTime = function() return 0 end
+local clock = 0
+GetTime = function() return clock end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 TRADE_SKILLS = "Professions"
 -- Era has GetProfessions as well, but it lists nothing there.
@@ -82,6 +83,8 @@ GetCraftDisplaySkillLine = function() return craftSkill, 5, 75 end
 GetNumCrafts = function() return #crafts end
 GetCraftInfo = function(i) return crafts[i][1], "", crafts[i][2] end
 
+assert(loadfile("RoadToSixty/ChatPatterns.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/Items.lua"))("RoadToSixty", ns)
 assert(loadfile("RoadToSixty/Crafts.lua"))("RoadToSixty", ns)
 local Crafts = ns.Crafts
 
@@ -165,6 +168,42 @@ Fire("CRAFT_SHOW")
 local count = 0
 for _ in pairs(ns.char.recipes) do count = count + 1 end
 check(count == 2, "pet training is not a profession, got " .. count .. " professions")
+
+-- 6. Things made (#85): with the recipe cast just before and the profession
+-- window open; Create All is one event; something made with no profession
+-- window open (conjured food) has no profession.
+local function Made(name, id, count)
+    local link = ("|cffffffff|Hitem:%d::::::::20:::::|h[%s]|h|r"):format(id, name)
+    Fire("CHAT_MSG_LOOT", count and ("You create: %sx%d."):format(link, count) or ("You create: %s."):format(link))
+end
+local before = #ns.char.events
+clock = 100
+Fire("TRADE_SKILL_SHOW")
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3275)
+Made("Linen Bandage", 1251)
+local made = ns.char.events[#ns.char.events]
+check(#ns.char.events == before + 1 and made[2] == "craft" and made[6]:find("Linen Bandage", 1, true) and made[7] == 1
+    and made[9] == "Tailoring" and made[10] == 3275, "a thing made is logged with its recipe and profession")
+for _ = 1, 3 do
+    clock = clock + 3
+    Made("Linen Bandage", 1251)
+end
+check(#ns.char.events == before + 1 and made[7] == 4, "the same item made again a moment later adds to its count")
+clock = clock + 3
+Made("Linen Bolt", 2996, 2)
+check(#ns.char.events == before + 2 and ns.char.events[#ns.char.events][7] == 2, "a stack made counts its size")
+Fire("TRADE_SKILL_CLOSE")
+clock = clock + 60
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 587)
+Made("Conjured Muffin", 5349, 20)
+local conjured = ns.char.events[#ns.char.events]
+check(#ns.char.events == before + 3 and conjured[7] == 20 and conjured[9] == nil and conjured[10] == 587,
+    "something made with no profession window open has no profession")
+clock = clock + 30
+Made("Conjured Muffin", 5349, 20)
+check(#ns.char.events == before + 4, "the same item made long after is a new craft")
+Fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:2589::::::::20:::::|h[Linen Cloth]|h|r.")
+check(#ns.char.events == before + 4, "loot is not a craft")
 
 if failures > 0 then
     print(failures .. " failure(s)")
