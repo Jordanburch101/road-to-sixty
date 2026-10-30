@@ -109,6 +109,7 @@ local MARKER_ZOOM = {
     mount = 1,                  -- riding is a milestone, like a dungeon
     rare = 2.5,
     group = 2.5,
+    gather = 5,                 -- gathering nodes, Gathering.lua
 }
 -- Turn-ins this close in place and time are one visit to a quest giver,
 -- shown as one marker listing them all.
@@ -542,7 +543,11 @@ local function GetMarker(i)
         m.group = nil
         m.icon:Show()
     end
-    if m then m.rare = nil end
+    if m then m.rare, m.node = nil, nil end
+    if m and m.gather then
+        m.gather:Hide()
+        m.icon:Show()
+    end
     if m then
         ns.MarkerPiles:Reset(m)
         return m
@@ -565,6 +570,10 @@ local function GetMarker(i)
         if self.group then
             ns.Parties:Spread(self.stack, true)
             ns.Parties:ShowCard(self, self.group)
+            return
+        end
+        if self.node then
+            ns.Gathering:ShowTooltip(self, self.node)
             return
         end
         -- Level ups with recorded gear show the gear card instead of a tooltip.
@@ -603,12 +612,17 @@ local function BuildMarkers()
     local function Where(instance, zoneID)
         return instance and ("Inside " .. instance) or ZoneName(zoneID)
     end
+    -- Inside a battleground, the place events have is where the player
+    -- queued from, not a door to it: nothing there gets a marker but
+    -- entering it (History lists them under its run).
+    local inBattleground = ns.Battlegrounds.Tracker()
     ns.Parties:Reset()
     for _, e in ipairs(ns.view.events) do
         local t, kind, c, x, y = e[1], e[2], e[3], e[4], e[5]
         if kind == "in" and state.toContent[c] then
             door = e
         end
+        local battleground = inBattleground(e)
         local inside
         if not state.toContent[c] and door then
             c, x, y, inside = door[3], door[4], door[5], door[7] or "an instance"
@@ -619,7 +633,9 @@ local function BuildMarkers()
         elseif kind == "zone" then
             zone = e[6]
         end
-        if toContent and kind == "qd" then
+        if battleground then
+            -- (no marker: see above)
+        elseif toContent and kind == "qd" then
             local name = ns.Journal:QuestName(e) or ("Quest " .. tostring(e[6]))
             local near = visit and visit.c == c and t - visit.last <= QUEST_VISIT.seconds
                 and (x - visit.x) ^ 2 + (y - visit.y) ^ 2 <= QUEST_VISIT.yards ^ 2
@@ -702,7 +718,7 @@ local function BuildMarkers()
             local m = GetMarker(count)
             m.t, m.popping = t, nil
             m.x, m.y = toContent(x, y)
-            m.category = Style.CATEGORY[kind]
+            m.category = kind == "in" and ns.Battlegrounds.IsPvP(e[8]) and "battlegrounds" or Style.CATEGORY[kind]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
             local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
             m:SetSize(size, size)
@@ -714,7 +730,7 @@ local function BuildMarkers()
                 m.detail = ns.LevelShot:Detail(l, ("%s\n%s"):format(Where(inside, zone), FormatTime(t)))
             elseif kind == "die" then
                 m.minZoom = MARKER_ZOOM.death
-                m.title = "Died"
+                m.title = ns.Deaths:Title(e)
                 m.detail = ("Level %d, %s\n%s"):format(
                     level or ns.Roster:ViewLevel(), Where(inside, zone), FormatTime(t))
             else
@@ -725,6 +741,8 @@ local function BuildMarkers()
             end
         end
     end
+    -- Gathering nodes, one marker each, after the events' (Gathering.lua).
+    count = ns.Gathering:AddMarkers(count, GetMarker, state.toContent, MARKER_ZOOM.gather)
     for i = count + 1, #markers do
         markers[i]:Hide()
     end
@@ -2596,6 +2614,8 @@ local function CreateScrub()
         if scrubbing and seq ~= math.floor(state.cur) then
             state.cur = seq
             ApplyCursor()
+            -- Zoomed in, the map follows the arrow as the replay does.
+            FollowHead()
         end
         if scrub:IsMouseOver() and seq ~= hovered then
             hovered = seq
@@ -2630,6 +2650,9 @@ local function CreateWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
+        -- Opening it again shows the same place at the same zoom, for the
+        -- journey it was showing; only for this session, not saved.
+        state.lastView = { view = ns.view, range = ns.Range.key, ox = state.ox, oy = state.oy, zoom = state.zoom }
         -- Opening the map again shows this character's journey.
         ns.Roster:SetView(nil)
         SetPlaying(false)
@@ -2920,7 +2943,8 @@ function Map:OpenNow()
     local view = ns.view
     -- The range's start moves only at midnight (Range.lua), so the cache holds through the day.
     local journey = table.concat({ tostring(view), ns.Range.key, ns.Range.from or 0, #view.segments, ns.Recorder.stored,
-        #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0 }, ":")
+        #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0,
+        ns.Gathering.changes }, ":")
     if journey == state.journey then
         state.perf.decode, state.perf.setup = 0, 0
         ns.QuestPop:Clear()
@@ -2951,11 +2975,24 @@ function Map:OpenNow()
     drag = nil
     state.built = nil
     state.cur = state.n
+    -- Only an open from closed goes back to where it was; opening again on
+    -- a new range (or journey) fits the path.
+    local last = not frame:IsShown() and state.lastView or nil
+    state.lastView = nil
     frame:Show()
     BuildScrub()
     BuildCharacters()
     BuildOtherTracks()
-    FitPath()
+    -- Where it was when closed, if it shows the same journey and range;
+    -- else the whole path.
+    if last and last.view == ns.view and last.range == ns.Range.key then
+        SetZoomNow(math.max(state.minZoom, math.min(MAX_ZOOM, last.zoom)))
+        state.ox, state.oy = last.ox, last.oy
+        ClampView()
+        ApplyView()
+    else
+        FitPath()
+    end
     ApplyCursor()
     ns.Panel:Refresh()
 end

@@ -6,6 +6,53 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.16.0
+
+### New
+- Mining, herbalism and fishing are recorded. Each mining and herb node
+  you gather shows on the journey map with its ore or herb icon, and a
+  count when you came back to the same spot. Hover it to see when, and
+  everything it gave you.
+- Places you fished show as fishing spots on the map, with how many times
+  you fished there. Hover one to see each trip and everything you caught.
+- History lists every gather and fishing trip with what it gave. Show or
+  hide them with Mining, Herbalism and Fishing under the Learned filter.
+- Dragging along the replay timeline while zoomed in moves the map with
+  your character, as the replay does.
+- The journey map opens where you left it, at the same zoom, until you
+  reload or log out.
+- Battlegrounds are recorded with their result: won or lost, how long,
+  your killing blows, honorable kills, deaths, honor, damage and healing,
+  the map's own score (towers, flags, bases) and the reputation you
+  gained. History shows them with their own Battlegrounds filter, under
+  Dungeons.
+- Deaths say what killed you, from the game's death recap: "Killed by
+  Gorehowl (Mortal Strike)", or "Died: Falling".
+- History folds what happened inside a dungeon, raid or battleground
+  (deaths, loot, level ups) under its row, and the green and better items
+  a node gave (silver ore, gems) under the gather. Click the row to open it.
+
+### Fixed
+- Deaths and other moments inside a battleground no longer show on the
+  map at the last dungeon you visited, or where you queued; History lists
+  them under the battleground.
+- History names the dungeon or battleground for deaths and other moments
+  inside it, instead of the zone outside.
+- Moments inside a dungeon or battleground after a reload there are placed
+  at its entrance too.
+- Battlegrounds no longer count everyone in them as your group.
+- Group members no longer seem to leave and rejoin after a loading screen.
+- A dungeon you logged out in ends when you logged out, instead of
+  lasting until your next login.
+- Your gear no longer seems to come off and go back on at login when it
+  loads slowly, and gear worn all along is not noted as just looted.
+- Professions you already had are no longer listed as learned on your
+  first login with Road to Sixty.
+- Rare mobs first killed in a dungeon are not counted again elsewhere.
+- Mage teleports to Exodar, Silvermoon and Shattrath show as teleports.
+- Characters viewed from another one no longer show a group or dungeon
+  that had already ended.
+
 ## 1.15.0
 
 ### New

@@ -100,6 +100,7 @@ local EVENT_ICONS = {
     rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
     ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
+    gath = { file = "Interface\\Icons\\INV_Ore_Copper_01", size = 18 },    -- a node shows its resource's icon instead
 }
 -- A kind with no icon of its own gets this, rather than an error that
 -- stops the whole side panel (as enchants did in 1.11.0).

@@ -36,6 +36,9 @@ Guilds.lua
 Reputation.lua
 Mounts.lua
 Rares.lua
+Gathering.lua
+Battlegrounds.lua
+Deaths.lua
 Groups.lua
 Enchants.lua
 Sources.lua
@@ -74,4 +77,5 @@ MountProbe.lua
 PortraitProbe.lua
 GearProbe.lua
 GearSwatch.lua
+BGProbe.lua
 #@end-debug@

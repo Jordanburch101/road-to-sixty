@@ -32,6 +32,9 @@ for data, its exact format; read that before changing a module.
 | LevelShot.lua | a screenshot at each level up, marked on the level up's tooltip |
 | Crafts.lua | professions and recipes (`prof`, `rec` events), `/rts craftprobe` |
 | Guilds.lua, Reputation.lua, Mounts.lua, Rares.lua, Groups.lua, Enchants.lua | guilds, reputation, riding and mounts, rare mobs, groups, enchants: each records its own events, listed in its header |
+| Gathering.lua | mining, herb and fishing gathers (`gath` events) and the nodes the map shows for them (#78) |
+| Battlegrounds.lua | a battleground's result, score, honor and reputation, kept on its run as `pvp` (#80) |
+| Deaths.lua | who killed the player, from the death recap, added to the `die` event (#81) |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
@@ -50,7 +53,7 @@ for data, its exact format; read that before changing a module.
 | Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua | developer tools, left out of releases |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app

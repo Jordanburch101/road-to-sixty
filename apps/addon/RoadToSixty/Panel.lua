@@ -11,6 +11,10 @@ ns.Panel = Panel
 
 local TAB_HEIGHT = 24
 local HISTORY_ROW = 32
+local NEST_INDENT = 12      -- how far rows folded under a run move in when it is open
+-- Runs opened to show what happened inside: run key -> true. For this
+-- session only; each run starts folded (FilterHistory).
+local expanded = {}
 local CHARACTER_ROW = 34
 local LEVEL_ROW = 16
 local SUMMARY_ROW = 16
@@ -195,9 +199,21 @@ local function CreateHistoryRow(parent)
     row.currentBar:SetWidth(2)
     row.currentBar:SetColorTexture(1, 0.82, 0, 0.9)
 
+    -- A run with rows folded under it: a plus or minus over its icon, as the
+    -- classic quest log has; the rows under it are moved in, by a thin line.
+    row.expand = row:CreateTexture(nil, "OVERLAY", nil, 2)
+    row.expand:SetSize(12, 12)
+    row.expand:SetPoint("CENTER", row.icon, "BOTTOMRIGHT", -1, 2)
+    row.nest = row:CreateTexture(nil, "ARTWORK")
+    row.nest:SetPoint("TOPLEFT", 10, 0)
+    row.nest:SetPoint("BOTTOMLEFT", 10, 0)
+    row.nest:SetWidth(1)
+    row.nest:SetColorTexture(1, 0.6, 0.2, 0.45)
+
     row:SetScript("OnClick", function(self)
         local item = self.item
         if item.header then return end
+        if (item.children or 0) > 0 then Panel:ToggleRun(item.key) end
         ns.Map:JumpTo(item.t, item.c, item.x, item.y)
     end)
     -- Loot shows the item's own tooltip; dungeon runs list their summary.
@@ -268,7 +284,7 @@ local function UpdateHistoryRow(row, item)
     local current = item == historyList.data[currentIndex] and currentTime ~= math.huge
     row.current:SetShown(current)
     row.currentBar:SetShown(current)
-    row:SetAlpha(item.t > currentTime and 0.35 or 1)
+    row:SetAlpha((item.t > currentTime and not current) and 0.35 or 1)
     local header = item.header ~= nil
     if row.badge then row.badge:Hide() end
     if row.stack then row.stack:Hide() end
@@ -278,6 +294,16 @@ local function UpdateHistoryRow(row, item)
     for _, part in ipairs({ row.icon, row.number, row.title, row.detail, row.time }) do
         part:SetShown(not header)
     end
+    local folds = not header and (item.children or 0) > 0 and item.key
+    row.expand:SetShown(folds and true or false)
+    if folds then
+        row.expand:SetTexture(expanded[item.key] and "Interface\\Buttons\\UI-MinusButton-Up"
+            or "Interface\\Buttons\\UI-PlusButton-Up")
+    end
+    row.nest:SetShown(not header and item.nested or false)
+    local indent = (not header and item.nested) and NEST_INDENT or 0
+    row.icon:SetPoint("CENTER", row, "LEFT", 14 + indent, 0)
+    row.title:SetPoint("TOPLEFT", 30 + indent, -3)
     if header then
         row.quality:Hide()
         row.header:SetText(item.header)
@@ -323,7 +349,7 @@ local HISTORY_FILTERS = {
     { "Levels", { "lvl", 10 }, { { "levels", "Levels" } } },
     { "Deaths", { "die" }, { { "deaths", "Deaths" } } },
     { "Rare mobs", { "rare" }, { { "rares", "Rare mobs killed" } } },
-    { "Dungeons", { "run" }, { { "dungeons", "Dungeons" } } },
+    { "Dungeons", { "run" }, { { "dungeons", "Dungeons" }, { "battlegrounds", "Battlegrounds" } } },
     { "Travel", { "flight" }, {
         { "flights", "Flight paths" }, { "hearths", "Hearthstones" },
         { "teleports", "Teleports" }, { "boats", "Boats and zeppelins" },
@@ -336,6 +362,7 @@ local HISTORY_FILTERS = {
     } },
     { "Learned", { atlas = "Profession" }, {
         { "professions", "Professions" }, { "recipes", "Recipes" },
+        { "mining", "Mining" }, { "herbs", "Herbalism" }, { "fishing", "Fishing" },
         { "reps", "Reputation" }, { "mounts", "Riding and mounts" },
     } },
     { "Social", { atlas = "socialqueuing-icon-group" }, { { "groups", "Groups" }, { "guilds", "Guild" } } },
@@ -357,21 +384,41 @@ local function Category(item)
     if item.kind == "loot" then
         return item.quality >= 3 and "blues" or "greens"
     end
+    if item.kind == "gath" then
+        return ns.Gathering.CATEGORY[item.prof]
+    end
+    if item.battleground then
+        return "battlegrounds"
+    end
     return ns.Style.CATEGORY[item.kind]
 end
 
 -- Shows the items the filter allows, with a header row starting each day.
+-- What happened inside an instance folds under its run's row (counted in
+-- its children) unless the run is opened; without a run row shown (still
+-- inside, or dungeons filtered out) it shows as any other row.
 local function FilterHistory()
-    local shown, day = {}, nil
+    local shown, day, runs = {}, nil, {}
+    for _, item in ipairs(historyItems) do
+        if item.key and ns.db.historyFilter[Category(item)] ~= false then
+            runs[item.key] = item
+            item.children = 0
+        end
+    end
     for _, item in ipairs(historyItems) do
         if ns.db.historyFilter[Category(item)] ~= false then
-            local itemDay = tostring(date("%A %d %B", item.t)):gsub(" 0", " ")
-            if itemDay ~= day then
-                day = itemDay
-                -- A header takes its day's newest time, keeping the list in time order.
-                shown[#shown + 1] = { header = itemDay, t = item.t }
+            local run = item.parent and runs[item.parent]
+            item.nested = run ~= nil
+            if run then run.children = run.children + 1 end
+            if not run or expanded[item.parent] then
+                local itemDay = tostring(date("%A %d %B", item.t)):gsub(" 0", " ")
+                if itemDay ~= day then
+                    day = itemDay
+                    -- A header takes its day's newest time, keeping the list in time order.
+                    shown[#shown + 1] = { header = itemDay, t = item.t }
+                end
+                shown[#shown + 1] = item
             end
-            shown[#shown + 1] = item
         end
     end
     historyList.data = shown
@@ -379,6 +426,12 @@ local function FilterHistory()
     currentIndex = nil
     Panel:SetTime(currentTime, true)
     historyList:Refresh()
+end
+
+-- Opens or folds the run with this key.
+function Panel:ToggleRun(key)
+    expanded[key] = not expanded[key] or nil
+    FilterHistory()
 end
 
 local function FormatMoney(copper)
@@ -405,18 +458,28 @@ end
 -- from the recorded path (hearthstones, teleports, boats, flight paths).
 -- Zones first seen during a flight are listed with the flight instead of on
 -- their own. Each item: { kind, title, detail, t, c, x, y } plus level,
--- quality, link, iconFile or lines where they apply.
+-- quality, link, iconFile or lines where they apply. Rows that fold others
+-- under them have key, and from, when what they hold began; the rows under
+-- them have parent, that key, so FilterHistory can fold them: what happens
+-- inside a dungeon, raid or battleground (its "Entered" row included) under
+-- its run ("run:" and when it was entered), and the green and better items
+-- a gather gave (silver ore, a gem) under the gather ("gath:" and its time).
 local function BuildHistory()
     local items, seenZones, instanceNames, flights = {}, {}, {}, {}
     local entered = {}      -- instance ID -> when it was last entered
     ns.Parties:Reset()
     local zoneAt = ZoneTimeline()
     local level
+    local parent            -- while inside: the run's key
+    -- The last gather outdoors, for the loot it gave: { key, t, ids = { [itemID] = true } }.
+    -- Its loot comes as each slot is taken, at most the visit's time later (a vein's next charge).
+    local gather
 
     -- Only what is inside the map's date range (Range.lua) is listed.
     local function Add(item, t, c, x, y, detail)
         item.detail = detail or ""
         item.t, item.c, item.x, item.y = t, c, x, y
+        item.parent = parent
         if ns.Range:Has(t) then items[#items + 1] = item end
         return item
     end
@@ -456,21 +519,39 @@ local function BuildHistory()
         end
     end
 
+    -- The instance the player is inside, between its "in" and "out": what
+    -- happens there is named by it, as the map's markers are, not by the
+    -- zone outside its door. A run left lately has no "out" yet: it ends
+    -- at leftAt, when it was left.
+    local inside
+    local ownRun = ns.view == ns.char and ns.char.run
+    local leftAt = ownRun and ownRun.left and ownRun.left.t or nil
     for _, e in ipairs(ns.view.events) do
         local kind, t, c, x, y = e[2], e[1], e[3], e[4], e[5]
         if kind == "on" or kind == "lvl" then
             level = e[6]
         end
-        local where = ZoneName(zoneAt(t))
+        local runKey
+        if kind == "out" then
+            inside, runKey, parent = nil, parent, nil
+        elseif leftAt and parent and t >= leftAt then
+            -- Left, its "out" not logged yet (Journal.lua waits in case of a run back in).
+            inside, parent, leftAt = nil, nil, nil
+        end
+        local where = inside and ("Inside " .. inside) or ZoneName(zoneAt(t))
+        if kind == "in" then
+            inside, parent = e[7] or "an instance", "run:" .. t
+        end
 
         if kind == "lvl" then
             Add({ kind = kind, level = e[6], title = "Reached level " .. e[6] }, t, c, x, y, where)
         elseif kind == "die" then
-            Add({ kind = kind, title = "Died" }, t, c, x, y, ("Level %s - %s"):format(level or "?", where))
+            Add({ kind = kind, title = ns.Deaths:Title(e) }, t, c, x, y, ("Level %s - %s"):format(level or "?", where))
         elseif kind == "in" then
             instanceNames[e[6]] = e[7]
             entered[e[6]] = t
-            Add({ kind = kind, title = "Entered " .. (e[7] or "an instance") }, t, c, x, y,
+            Add({ kind = kind, title = "Entered " .. (e[7] or "an instance"),
+                battleground = ns.Battlegrounds.IsPvP(e[8]) }, t, c, x, y,
                 ("%s, level %s"):format(ns.InstanceTypes[e[8]] or "Instance", level or "?"))
         elseif kind == "out" and type(e[7]) == "table" then
             local s = e[7]
@@ -487,9 +568,12 @@ local function BuildHistory()
             end
             -- The run's card shows it with who was in it; lines are for runs
             -- saved without their own name, which have no card.
+            local battleground = ns.Battlegrounds.IsPvP(s.type)
             Add({ kind = "run", title = s.name or instanceNames[e[6]] or "Instance", lines = lines,
-                run = s.name and e or nil, entered = entered[e[6]] or (t - s.duration) }, t, c, x, y,
-                ("%s, %d kills, %d items"):format(FormatDuration(s.duration), s.kills, #s.items))
+                run = s.name and e or nil, entered = entered[e[6]] or (t - s.duration), battleground = battleground,
+                key = runKey, from = runKey and tonumber(runKey:match("%d+")) },
+                t, c, x, y, battleground and ns.Battlegrounds:Detail(s, FormatDuration)
+                    or ("%s, %d kills, %d items"):format(FormatDuration(s.duration), s.kills, #s.items))
         elseif kind == "zone" and not seenZones[e[6]] then
             seenZones[e[6]] = true
             local flight = FlightAt(t)
@@ -508,8 +592,15 @@ local function BuildHistory()
         elseif kind == "loot" then
             ---@diagnostic disable-next-line: deprecated
             local getIcon = C_Item and C_Item.GetItemIconByID or GetItemIcon
-            Add({ kind = kind, quality = e[7], link = e[6], title = e[6], iconFile = getIcon and getIcon(e[6]) },
+            local item = Add({ kind = kind, quality = e[7], link = e[6], title = e[6], iconFile = getIcon and getIcon(e[6]) },
                 t, c, x, y, e[8] and (instanceNames[e[8]] or "Instance") or where)
+            -- An item the last gather gave, in its visit's time: folded under it.
+            local id = tonumber(tostring(e[6]):match("item:(%d+)"))
+            if gather and not parent and id and gather.ids[id] and t - gather.t <= ns.Gathering.VISIT_SECONDS then
+                item.parent = gather.key
+                -- The gather's row goes at its last pickup, so what it folds is under it, not above.
+                gather.row.t = math.max(gather.row.t, t)
+            end
         elseif kind == "prof" or kind == "rec" then
             local title, detail, icon = ns.Crafts:Describe(e)
             if title then
@@ -539,6 +630,15 @@ local function BuildHistory()
         elseif kind == "rare" then
             local title, detail = ns.Rares:Describe(e)
             Add({ kind = kind, title = title, rare = e, where = where }, t, c, x, y, detail .. " - " .. where)
+        elseif kind == "gath" and ns.Range:Has(t) then
+            -- (checked before Add does: describing asks for each item, and there can be thousands)
+            local title, detail, icon, lines = ns.Gathering:Describe(e)
+            lines[#lines + 1] = where
+            local key = not parent and ("gath:" .. t) or nil
+            local row = Add({ kind = kind, prof = e[6], title = title, iconFile = icon, lines = lines, key = key,
+                from = t }, t, c, x, y, detail .. " - " .. where)
+            -- (inside an instance it is folded under the run, its loot with it)
+            gather = key and { key = key, t = t, row = row, ids = ns.Gathering.ParseLoot(e[9]) } or nil
         end
     end
 
@@ -551,8 +651,10 @@ local function BuildHistory()
         end
     end
 
+    -- At the same second, a row that folds others goes first, above them.
     table.sort(items, function(a, b)
-        return a.t > b.t
+        if a.t ~= b.t then return a.t > b.t end
+        return a.key ~= nil and b.key == nil
     end)
     return items
 end
@@ -1206,6 +1308,12 @@ function Panel:SetTime(t, force)
     end
     if data[lo] and data[lo].header then
         lo = lo + 1
+    end
+    -- Inside a folded run (entered at its key, left at its t), the run is
+    -- the entry: what happened in it is hidden under it.
+    local above = data[lo - 1]
+    if above and above.key and (above.children or 0) > 0 and not expanded[above.key] and (above.from or math.huge) <= t then
+        lo = lo - 1
     end
     local index = data[lo] and lo or nil
     -- Same entry: the same rows are dimmed, so nothing to redraw, unless the

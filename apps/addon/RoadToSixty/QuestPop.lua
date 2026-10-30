@@ -191,12 +191,14 @@ local function Draw(pop)
     pop:Show()
 end
 
--- Reads the journey's turn-ins again; call when the map opens.
+-- Reads the journey's turn-ins again; call when the map opens. Those in a
+-- battleground have no pop: their place is where the player queued.
 function QuestPop:Rebuild()
     self:Clear()
     wipe(turnins)
+    local inBattleground = ns.Battlegrounds.Tracker()
     for _, e in ipairs(ns.view.events) do
-        if e[2] == "qd" then
+        if not inBattleground(e) and e[2] == "qd" then
             turnins[#turnins + 1] = { t = e[1], c = e[3], x = e[4], y = e[5], id = e[6], xp = e[7], event = e }
         end
     end

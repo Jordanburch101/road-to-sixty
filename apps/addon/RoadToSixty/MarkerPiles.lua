@@ -89,6 +89,8 @@ local function SetPile(m, members)
     if m.group and m.stack then
         ns.Parties:SetStack(m.stack, members and GroupsInfo(members) or ns.Parties:Info(m.group))
     end
+    -- A gathering node's own count gives way to the pile's.
+    ns.Gathering:ShowCount(m, not members)
     if members then
         local badge = Badge(m)
         badge.text:SetText(tostring(#members))

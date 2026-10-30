@@ -520,7 +520,7 @@ local function FillRunCard(out, from)
     local s = out[7]
     local people = Parties:PeopleTable()
     card.title:SetText(s.name or "Instance")
-    card.led:SetText(s.type == "raid" and "Raid" or "Dungeon")
+    card.led:SetText(ns.InstanceTypes[s.type] or "Dungeon")
     card.when:SetText((tostring(date("%A %d %B, %H:%M", from)):gsub(" 0", " ")) .. "  -  " .. Duration(s.duration))
     card.classes:Hide()
     card.known:Hide()
@@ -545,6 +545,16 @@ local function FillRunCard(out, from)
         list = info.members
     end
     y = Rows(list, y, e, info)
+
+    -- A battleground: its result and score instead of kills and xp.
+    if ns.Battlegrounds.IsPvP(s.type) then
+        local text = table.concat(ns.Battlegrounds:Lines(s), "\n")
+        if #s.items > 0 then
+            text = text .. "\n|cffffd100Loot|r\n" .. table.concat(s.items, "\n")
+        end
+        Footer(y, text)
+        return
+    end
 
     local parts = {}
     if s.kills > 0 then parts[#parts + 1] = Count(s.kills, "kill") end

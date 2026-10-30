@@ -123,15 +123,18 @@ local function Draw()
 end
 
 -- Reads the journey's levels again; call when the map opens. The level the
--- character had when tracking began has no "lvl" event, so no pop.
+-- character had when tracking began has no "lvl" event, so no pop; nor has
+-- one reached in a battleground, whose place is where the player queued.
 function LevelPop:Rebuild()
     self:Clear()
     wipe(levels)
     local door
+    local inBattleground = ns.Battlegrounds.Tracker()
     for _, e in ipairs(ns.view.events) do
+        local battleground = inBattleground(e)
         if e[2] == "in" and e[3] ~= -1 then
             door = e
-        elseif e[2] == "lvl" then
+        elseif e[2] == "lvl" and not battleground then
             local c, x, y = e[3], e[4], e[5]
             if c == -1 and door then
                 c, x, y = door[3], door[4], door[5]
