@@ -7,6 +7,9 @@ local _, ns = ...
 -- PvP function. The log goes to chat (short) and to RoadToSixtyDB.bgProbe
 -- (in full, saved at /reload), the newest MAX_LINES. Other players' names are
 -- left out of score reads; chat messages are kept as they came.
+-- Off unless turned on (RoadToSixtyDB.bgProbeOn, kept across reloads); off,
+-- it does nothing, and its saved log goes at the next login.
+--   /rts bgprobe on|off  start or stop it
 --   /rts bgprobe         a read now, and how long the log is
 --   /rts bgprobe quiet   stop or start printing to chat (logging goes on)
 --   /rts bgprobe clear   empty the saved log
@@ -56,7 +59,12 @@ local function ShowAll(...)
     return table.concat(parts, ", ")
 end
 
+local function On()
+    return ns.db ~= nil and ns.db.bgProbeOn == true
+end
+
 local function Log(text)
+    if not On() then return end
     local db = ns.db
     db.bgProbe = db.bgProbe or {}
     local log = db.bgProbe
@@ -152,6 +160,7 @@ local function Read(why)
 end
 
 local function OnEvent(event, ...)
+    if not On() then return end
     if NOISY[event] then
         local n = noisy[event] or { 0, 0 }
         noisy[event] = n
@@ -190,6 +199,7 @@ local hits = {}             -- the last HITS combat log lines that hit the playe
 local diedAt = 0            -- GetTime() of the last death
 
 local function OnCombatLog()
+    if not On() then return end
     local getInfo = _G["CombatLogGetCurrentEventInfo"]
     if type(getInfo) ~= "function" then return end
     local e = { getInfo() }
@@ -243,6 +253,7 @@ local function ReadRecap(why)
 end
 
 local function OnDeath()
+    if not On() then return end
     diedAt = GetTime()
     local inside, kind = IsInInstance()
     Log(("-- died (in instance %s, %s)"):format(tostring(inside), tostring(kind)))
@@ -288,11 +299,24 @@ for _, event in ipairs(EVENTS) do
 end
 
 ns.On("PLAYER_LOGIN", function()
+    if not On() then
+        ns.db.bgProbe = nil     -- a log left from when it was on
+        return
+    end
     Log(("-- login: %d events registered; not on this client: %s; combat log %s"):format(#registered,
         #missing > 0 and table.concat(missing, ", ") or "none", combatLog and "registered" or "refused"))
 end)
 
-ns.Command("bgprobe", "log what battlegrounds tell the addon; quiet, clear (developer)", function(arg)
+ns.Command("bgprobe", "log what battlegrounds and deaths tell the addon; on, off, quiet, clear (developer)", function(arg)
+    if arg == "on" or arg == "off" then
+        ns.db.bgProbeOn = arg == "on" or nil
+        ns.Print("bgprobe " .. arg .. (arg == "off" and " (its saved log goes at the next login)." or "."))
+        return
+    end
+    if not On() then
+        ns.Print("bgprobe is off. /rts bgprobe on to start it.")
+        return
+    end
     if arg == "quiet" then
         quiet = not quiet
         ns.Print("bgprobe chat lines " .. (quiet and "off" or "on") .. " (the saved log goes on).")
