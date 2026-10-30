@@ -5,6 +5,13 @@ local _, ns = ...
 --                                         of it (maxRank went up); baseline =
 --                                         true for ones already known when
 --                                         tracking began
+--   skill name, rank, from, late          a profession's skill went up, from
+--                                         from to rank (more than one point
+--                                         when raised while the addon was not
+--                                         running, or by a racial bonus);
+--                                         late = true when found before the
+--                                         check at login, so its time and
+--                                         place are the login's (#84)
 --   rec   name, spellID, profession, source   a recipe learned; spellID and
 --                                         profession when the client says;
 --                                         source "t" when a trainer was open
@@ -86,7 +93,8 @@ function Crafts:ReadSkills()
     return skills
 end
 
--- Compares the professions with the last ones seen and logs what is new.
+-- Compares the professions with the last ones seen and logs what is new: a
+-- profession learned or a new tier as "prof", each rise in skill as "skill".
 function Crafts:CheckSkills()
     -- A seeded test journey has made-up professions; the real ones would not fit it.
     if ns.char.seeded then return end
@@ -103,8 +111,15 @@ function Crafts:CheckSkills()
         local old = known[name]
         if not old then
             Log("prof", name, s[1], s[2], baseline or nil)
-        elseif (s[2] or 0) > (old[2] or 0) then
-            Log("prof", name, s[1], s[2])
+        else
+            if (s[2] or 0) > (old[2] or 0) then
+                Log("prof", name, s[1], s[2])
+            end
+            -- Nothing is raised in the seconds before the check at login, so a
+            -- rise found then happened while the addon was not running.
+            if (s[1] or 0) > (old[1] or 0) then
+                Log("skill", name, s[1], old[1] or 0, not self.settled or nil)
+            end
         end
         -- This runs on every weapon and defence skill point too, so leave the
         -- saved table alone when nothing about the profession changed.
@@ -420,17 +435,22 @@ ns.Command("craftprobe", "check the profession and recipe APIs (developer)", fun
         for _ in pairs(names) do count = count + 1 end
         known[#known + 1] = ("%s %d"):format(name, count)
     end
-    local logged, last = { prof = 0, rec = 0 }, nil
+    local logged, last, lastSkill = { prof = 0, rec = 0, skill = 0 }, nil, nil
     for _, e in ipairs(ns.char.events) do
         if logged[e[2]] then logged[e[2]] = logged[e[2]] + 1 end
         if e[2] == "rec" then last = e end
+        if e[2] == "skill" then lastSkill = e end
+    end
+    if lastSkill then
+        ns.Print(("Last skill point: %s %s to %s%s, %s."):format(tostring(lastSkill[6]), tostring(lastSkill[8]),
+            tostring(lastSkill[7]), lastSkill[9] and " (found at login)" or "", date("%H:%M:%S", lastSkill[1])))
     end
     if last then
         ns.Print(("Last recipe: %s, spell %s, saved profession %s, looked up %s, source %s."):format(
             tostring(last[6]), tostring(last[7]), tostring(last[8]),
             tostring((Crafts:RecipeProfession(last[7]))), tostring(last[9])))
     end
-    ns.Print(("Known recipes: %s. Events: %d prof, %d rec."):format(
-        #known > 0 and table.concat(known, ", ") or "none", logged.prof, logged.rec))
+    ns.Print(("Known recipes: %s. Events: %d prof, %d rec, %d skill."):format(
+        #known > 0 and table.concat(known, ", ") or "none", logged.prof, logged.rec, logged.skill))
 end)
 --@end-debug@

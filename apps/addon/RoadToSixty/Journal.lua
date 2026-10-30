@@ -31,7 +31,7 @@ local addonName, ns = ...
 --                                  running), so its time and place are the
 --                                  login's; source is where and how the item
 --                                  was got, when known (Sources.lua)
---   prof, rec                      professions and recipes, see Crafts.lua
+--   prof, rec, skill               professions, recipes and skill points, see Crafts.lua
 --   gj, gl, gr                     guild joined, left, rank changed, see Guilds.lua
 --   rep                            reputation standing changed, see Reputation.lua
 --   ride, mount                    riding learned, new mount, see Mounts.lua

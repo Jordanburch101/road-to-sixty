@@ -115,6 +115,34 @@ lines[5][3] = true
 Fire("SKILL_LINES_CHANGED")
 check(#ns.char.events == 3, "no prof events from a collapsed header, got " .. #ns.char.events)
 
+-- 3b. Each rise in skill is a skill event (#84), with the rank it rose from;
+-- weapon skills log nothing, and a check that changes nothing logs nothing.
+lines[4][4] = 2
+Fire("CHAT_MSG_SKILL")
+last = ns.char.events[#ns.char.events]
+check(#ns.char.events == 4 and last[2] == "skill" and last[6] == "Tailoring" and last[7] == 2 and last[8] == 1
+    and last[9] == nil, "a skill point is logged with the rank it rose from")
+lines[6][4] = 45
+Fire("SKILL_LINES_CHANGED")
+last = ns.char.events[#ns.char.events]
+check(#ns.char.events == 5 and last[6] == "Cooking" and last[7] == 45 and last[8] == 30, "a jump of several points is one event")
+lines[10][4] = 41
+Fire("SKILL_LINES_CHANGED")
+Fire("SKILL_LINES_CHANGED")
+check(#ns.char.events == 5, "weapon skills and repeated checks log nothing, got " .. #ns.char.events)
+-- A new tier and a point in one read log both.
+lines[4][4], lines[4][5] = 3, 225
+Fire("SKILL_LINES_CHANGED")
+check(#ns.char.events == 7 and ns.char.events[6][2] == "prof" and ns.char.events[7][2] == "skill"
+    and ns.char.events[7][7] == 3, "a new tier and a point in one read are both logged")
+-- A rise found before the check at login settles happened while the addon was not running.
+Crafts.settled = false
+lines[6][4] = 50
+Fire("SKILL_LINES_CHANGED")
+Crafts.settled = true
+last = ns.char.events[#ns.char.events]
+check(#ns.char.events == 8 and last[6] == "Cooking" and last[8] == 45 and last[9] == true, "a rise found at login is late")
+
 -- 4. Recipes from the trade skill window, headers left out.
 Fire("TRADE_SKILL_SHOW")
 local tailoring = ns.char.recipes.Tailoring

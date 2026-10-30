@@ -116,6 +116,9 @@ m = Merge.Merge(Journey({ events = { { 150, "zone", 0, 0, 0, 1429 } } }), Journe
 check(#m.events == 2, "events about different things don't match")
 check(Same(m, Merge.Merge(Journey({ events = { { 150, "zone", 0, 0, 0, 1436 } } }), Journey({ events = { { 150, "zone", 0, 0, 0, 1429 } } }))),
     "and they come out in the same order either way round")
+m = Merge.Merge(Journey({ events = { { 151, "skill", 0, 0, 0, "Mining", 120, 119 }, { 151, "skill", 0, 0, 0, "Cooking", 80, 79 } } }),
+    Journey({ events = { { 151, "skill", 0, 0, 0, "Cooking", 80, 79 } } }))
+check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "skill points of two professions in one second are matched by name")
 
 m = Merge.Merge(
     Journey({ events = {
