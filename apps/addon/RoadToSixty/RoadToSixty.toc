@@ -54,8 +54,11 @@ Style.lua
 Map.lua
 Panel.lua
 GearCard.lua
+Screens.lua
 GearTimeline.lua
+Stats.lua
 GearScreen.lua
+StatsScreen.lua
 QuestPop.lua
 GuildPop.lua
 LevelPop.lua

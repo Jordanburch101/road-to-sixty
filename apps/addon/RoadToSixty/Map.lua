@@ -2162,7 +2162,7 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
-    ns.SafeShow(ns.GearScreen.Follow, ns.GearScreen, state.markerNow)
+    ns.Screens:Follow(state.markerNow)
 
     PlaceHead()
     if seq >= 1 and seq <= state.n then
@@ -2906,8 +2906,8 @@ local function CreateWindow()
     help:SetPoint("RIGHT", panel, "BOTTOMRIGHT", MAP_BORDER,
         -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT / 2))
     local panelEdges = Outline(panel, 10)
-    -- Map | Gear switch; the gear screen takes the map's and the panel's place (GearScreen.lua).
-    ns.GearScreen:Attach(frame, canvas, panel, panelEdges)
+    -- Map | Gear | Stats; the screens take the map's and the panel's place (Screens.lua).
+    ns.Screens:Attach(frame, canvas, panel, panelEdges)
 
     return worldLayer
 end
@@ -2960,7 +2960,7 @@ function Map:OpenNow()
         BuildPoints(paths)
         BuildMarkers()
         ns.GearCard:Rebuild()
-        ns.GearScreen:Rebuild()
+        ns.Screens:Rebuild()
         ns.QuestPop:Rebuild()
         ns.GuildPop:Rebuild()
         ns.LevelPop:Rebuild()
