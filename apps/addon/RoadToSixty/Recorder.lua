@@ -43,6 +43,8 @@ local MAX_HELD = 120            -- positions held for the bend check (30 seconds
 local HEARTH_SPELLS = { [8690] = true, [556] = true }  -- Hearthstone, Astral Recall
 local TELEPORT_SPELLS = {   -- mage city teleports
     [3561] = true, [3562] = true, [3563] = true, [3565] = true, [3566] = true, [3567] = true,
+    -- The Burning Crusade's (Anniversary): Exodar, Silvermoon, Shattrath for each faction
+    [32271] = true, [32272] = true, [33690] = true, [35715] = true,
 }
 local PENDING_SECONDS = 60  -- a cast or login explains a jump within this long
 -- Yards from where the player went into an instance that they can come out
@@ -108,8 +110,21 @@ end
 
 -- Live position if available, otherwise the last outdoor one.
 function Recorder:Position()
-    local c, x, y = ns.GetWorldPosition()
-    if c then return c, x, y end
+    -- Inside any instance the last outdoor position, as Sample keeps it:
+    -- dungeons hide the position, but battlegrounds give one on a map of
+    -- their own, which the journey map cannot place.
+    if not IsInInstance() then
+        local c, x, y = ns.GetWorldPosition()
+        if c then return c, x, y end
+    end
+    -- After a /reload inside, nothing outdoors has been seen this session:
+    -- the saved path ends where the player went in.
+    if not lastKnown.c and #ns.char.segments > 0 then
+        local path = self:GetPath(#ns.char.segments)
+        if path and #path.x > 0 then
+            lastKnown.c, lastKnown.x, lastKnown.y = path.c, path.x[#path.x], path.y[#path.y]
+        end
+    end
     return lastKnown.c, lastKnown.x, lastKnown.y
 end
 

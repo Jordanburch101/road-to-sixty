@@ -13,7 +13,8 @@ local addonName, ns = ...
 --   on   level                     session start
 --   off                            session end
 --   lvl  level                     level reached
---   die                            death
+--   die  killer, kind, spell       death; who killed the player, filled in
+--                                  a moment later when known, see Deaths.lua
 --   qa   questID                   quest accepted
 --   qd   questID, xp, money, title quest turned in; title from 1.1 on, when
 --                                  the client knows it
@@ -37,6 +38,7 @@ local addonName, ns = ...
 --   rare                           first kill of a rare mob, see Rares.lua
 --   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
 --   ench                           an enchant put on gear, see Enchants.lua
+--   gath                           mining, herb or fishing gather, see Gathering.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}
@@ -106,25 +108,44 @@ end
 -- before 1.10.3 it was often empty or partial (issue #63), and a missing
 -- slot is unknown, not empty. So a slot filled while away from an empty one
 -- is missed. A read that finds nothing is not compared either, as it may
--- not have worked.
+-- not have worked, and a slot the read finds empty is never logged as taken
+-- off: gear can load a few items at a time, so it may only be late. So an
+-- item taken off while away is missed until that slot changes again.
 local GEAR_RETRY, GEAR_TRIES = 1, 30
 local waitingGear = false
 
 -- level: the level whose snapshot waits for the login gear, or nil.
-local function ReadLoginGear(level, tries)
+-- Items may come in a few at a time. A read with every slot the gear last
+-- seen had counts at once; one missing some may be part loaded, and would
+-- log each slot still loading as emptied, so it counts only once the next
+-- read, GEAR_RETRY later, finds as many. lastCount is the read before's.
+local function ReadLoginGear(level, tries, lastCount)
     local gear, links = ns.CaptureGear()
-    if next(gear) == nil and tries > 1 then
+    local count = 0
+    for _ in pairs(gear) do count = count + 1 end
+    local complete = count > 0
+    for slot in pairs(type(ns.char.gear) == "table" and ns.char.gear or {}) do
+        if not gear[slot] then complete = false end
+    end
+    if tries > 1 and not complete and (count == 0 or count ~= lastCount) then
         waitingGear = true
-        C_Timer.After(GEAR_RETRY, function() ns.SafeCall(ReadLoginGear, level, tries - 1) end)
+        C_Timer.After(GEAR_RETRY, function() ns.SafeCall(ReadLoginGear, level, tries - 1, count) end)
         return
     end
     waitingGear = false
+    -- Gear worn all along is no new arrival for Sources.lua either.
+    if ns.Sources then ns.Sources:Rebase() end
     local before = ns.char.gear
     if type(before) == "table" and next(gear) then
         for slot = 1, 19 do
             local was = before[slot]
-            if was and was ~= (gear[slot] or 0) then
-                Journal:Log("eq", slot, gear[slot] or 0, links[slot], true)
+            if was and gear[slot] and was ~= gear[slot] then
+                Journal:Log("eq", slot, gear[slot], links[slot], true)
+            elseif was and not gear[slot] then
+                -- Empty in the read: maybe still loading, so unknown, not
+                -- taken off. Kept as it was, so its item turning up later
+                -- is no change either.
+                gear[slot] = was
             end
         end
     end
@@ -133,6 +154,11 @@ local function ReadLoginGear(level, tries)
     if snapshot and (not snapshot.gear or next(snapshot.gear) == nil) then
         snapshot.gear, snapshot.links = CopyTable(gear), CopyTable(links)
     end
+end
+
+-- Whether the gear worn at login is still loading (see ReadLoginGear).
+function Journal:WaitingGear()
+    return waitingGear
 end
 
 -- Logs real equipment changes, so a replay can show gear changing between
@@ -237,9 +263,10 @@ end
 -- The run so far: { name, duration (seconds), kills, xp, deaths, money
 -- (copper), levels, items = { itemLink, ... }, party = guids of everyone
 -- else who was in the group at any point during the run, if any (see
--- Groups.lua), type = the instance type, "party" or "raid" }. This is the
--- summary its "out" event gets.
-local function RunSummary(run)
+-- Groups.lua), type = the instance type, "party", "raid", "pvp" or "arena",
+-- pvp = a battleground's result and score (Battlegrounds.lua) }. This is
+-- the summary its "out" event gets.
+local function RunSummary(run, endT)
     local t = ns.char.totals
     local seen, party = {}, {}
     for guid in pairs(run.party or {}) do
@@ -251,7 +278,7 @@ local function RunSummary(run)
     end
     return {
         name = run.name,
-        duration = ns.Now() - run.t,
+        duration = (endT or ns.Now()) - run.t,
         kills = t.kills - run.kills,
         xp = t.killXP + t.questXP - run.xp,
         deaths = t.deaths - run.deaths,
@@ -260,6 +287,7 @@ local function RunSummary(run)
         items = { unpack(run.items) },
         party = #party > 0 and party or nil,
         type = run.type,
+        pvp = run.pvp,      -- a battleground's result and score (Battlegrounds.lua)
     }
 end
 
@@ -269,22 +297,38 @@ local function FinishRun()
     ns.char.run = nil
     local left = run and run.left
     if not left then return end
-    ns.Groups:CountRun(left.summary.party, run.type == "raid", run.pc)
+    -- A battleground is no dungeon run with the group.
+    if run.type ~= "pvp" and run.type ~= "arena" then
+        ns.Groups:CountRun(left.summary.party, run.type == "raid", run.pc)
+    end
     Insert({ left.t, "out", left.c, left.x, left.y, left.id, left.summary })
 end
 
 -- Notes leaving instanceID; the run ends later unless it is entered again.
-local function LeaveRun(instanceID)
+-- at, when given, is when and where it was left: { t, c, x, y }, for an
+-- instance logged out in and found left at the next login.
+local function LeaveRun(instanceID, at)
     local run = ns.char.run
     if not run then
-        Journal:Log("out", instanceID)
+        if at then
+            Insert({ at.t, "out", at.c, at.x, at.y, instanceID })
+        else
+            Journal:Log("out", instanceID)
+        end
         return
     end
     local c, x, y = ns.Recorder:Position()
+    if at then c, x, y = at.c, at.x, at.y end
+    local t = at and at.t or ns.Now()
     run.left = {
-        t = ns.Now(), c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run),
+        t = t, c = c or -1, x = x or 0, y = y or 0, id = instanceID, summary = RunSummary(run, t),
         group = ns.char.group and ns.char.group.t or false,
     }
+    -- A battleground left is over: the next one, even of the same map, is a match of its own.
+    if ns.Now() - t >= RUN_GAP or run.type == "pvp" or run.type == "arena" then
+        FinishRun()
+        return
+    end
     local left = run.left
     C_Timer.After(RUN_GAP + 1, function()
         ns.SafeCall(function()
@@ -293,8 +337,15 @@ local function LeaveRun(instanceID)
     end)
 end
 
+-- When and where the last session ended, { t, c, x, y } from its last
+-- event, until the first instance check after login: an instance logged
+-- out in and not logged back into was left then, not at this login.
+local lastSession
+
 local function CheckInstance()
     local char = ns.char
+    local offline = lastSession
+    lastSession = nil
     local run = char.run
     -- A run left too long ago, or left before a logout, has ended.
     if run and run.left and ns.Now() - run.left.t >= RUN_GAP then
@@ -325,7 +376,7 @@ local function CheckInstance()
             StartRun(name, instanceType)
         end
     elseif char.instance then
-        LeaveRun(char.instance)
+        LeaveRun(char.instance, offline)
         char.instance = nil
     end
 end
@@ -351,6 +402,8 @@ ns.On("PLAYER_LOGIN", function()
         snapshot.gearLater = true
         fillLevel = level
     end
+    local last = ns.char.events[#ns.char.events]
+    lastSession = last and { t = last[1], c = last[3], x = last[4], y = last[5] } or nil
     -- After the session start, so gear changed while away is logged in it.
     Journal:Log("on", level)
     ReadLoginGear(fillLevel, GEAR_TRIES)
@@ -563,12 +616,15 @@ local lootMatchers = {
 local MIN_LOOT_QUALITY = 2      -- uncommon (green)
 local LINK_QUALITY = { ["1eff00"] = 2, ["0070dd"] = 3, ["a335ee"] = 4, ["ff8000"] = 5 }
 
--- Item quality from the client, or from the link's colour if the item is not cached yet.
+-- Item quality from the client, or from the link if the item is not cached
+-- yet: newer clients write it in the link ("|cnIQ2:"), older ones colour it.
 local function ItemQuality(link)
     ---@diagnostic disable-next-line: deprecated
     local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
     local quality = getInfo and select(3, getInfo(link))
     if quality then return quality end
+    local tagged = link:match("|cnIQ(%d+):")
+    if tagged then return tonumber(tagged) end
     local color = link:match("|c%x%x(%x%x%x%x%x%x)")
     return color and LINK_QUALITY[color:lower()]
 end

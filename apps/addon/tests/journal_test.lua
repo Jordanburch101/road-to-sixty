@@ -269,6 +269,19 @@ Fire("PLAYER_LOGIN")
 for _ = 1, 100 do RunTimers() end   -- also runs the other modules' login timers
 check(ns.char.levels[7].gear[1] == 102, "a snapshot that has gear is left alone")
 check(next(ns.char.gear) == nil and #timers == 0, "a character wearing nothing stops being read and stays empty")
+
+-- Gear loading a few items at a time: a slot the reads find empty is
+-- unknown, never logged as taken off, and kept as it was.
+readable = true
+wearing = { [5] = 200 }                 -- slot 1 not loaded yet
+ns.char.gear = { [1] = 102, [5] = 200 }
+eqLogged = EqCount()
+Fire("PLAYER_LOGIN")
+for _ = 1, 5 do RunTimers() end
+check(EqCount() == eqLogged and ns.char.gear[1] == 102, "a slot still loading is not logged as taken off")
+wearing = { [1] = 102, [5] = 200 }
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+check(EqCount() == eqLogged, "its item turning up later is no change either")
 C_Timer.After = realAfter
 readable = true
 

@@ -78,10 +78,12 @@ local function ReadUnit(unit, subgroup)
     }
 end
 
--- The others in the group now: guid -> member, the kind of group, and
--- the player's own subgroup in a raid.
+-- The others in the group now: guid -> member, the kind of group, the
+-- player's own subgroup in a raid, and the GUIDs of members there whose
+-- name the client has not loaded yet (after a loading screen, or far off),
+-- who have not left.
 function Groups:Read()
-    local roster, mySub = {}, nil
+    local roster, mySub, unknown = {}, nil, {}
     local raid = IsInRaid()
     local count = raid and GetNumGroupMembers() or GetNumSubgroupMembers()
     for i = 1, count do
@@ -91,10 +93,23 @@ function Groups:Read()
             mySub = subgroup
         else
             local m = ReadUnit(unit, subgroup)
-            if m then roster[m[1]] = m end
+            if m then
+                roster[m[1]] = m
+            else
+                local guid = UnitGUID(unit)
+                if guid then unknown[guid] = true end
+            end
         end
     end
-    return roster, raid and "raid" or "party", mySub
+    return roster, raid and "raid" or "party", mySub, unknown
+end
+
+-- Inside a battleground or arena the group and unit calls give its group,
+-- not the home group this records, whose members cannot be read there.
+-- Only there: a dungeon group from a finder is one to record.
+local function InBattleground()
+    local _, kind = IsInInstance()
+    return kind == "pvp" or kind == "arena"
 end
 
 -- Notes a member in ns.char.people: met now, or seen again. newGroup is
@@ -218,7 +233,9 @@ function Groups:Check()
         if g then End(t) end
         return
     end
-    local roster, kind, mySub = self:Read()
+    -- (the home group's own state still reads right there: it ends above)
+    if InBattleground() then return end
+    local roster, kind, mySub, unknown = self:Read()
     if not g then
         Start(roster, kind, mySub, t)
         return
@@ -241,7 +258,7 @@ function Groups:Check()
     end
 
     for guid, since in pairs(g.members) do
-        if not roster[guid] then
+        if not roster[guid] and not unknown[guid] then
             Part(guid, since, t, g.kind, g.pc)
             g.members[guid] = nil
             ns.Journal:Log("grpl", guid, g.levels[guid])

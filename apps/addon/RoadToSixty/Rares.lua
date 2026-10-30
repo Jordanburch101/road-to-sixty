@@ -125,6 +125,16 @@ local function KnownByName(name)
     end
 end
 
+-- The entry of rares (a journey's) for key, or for NPC ID npc: an entry
+-- saved under its name inside an instance learns its NPC ID later.
+local function Known(rares, key, npc)
+    if rares[key] then return rares[key] end
+    if not npc then return end
+    for _, r in pairs(rares) do
+        if r[4] == npc then return r end
+    end
+end
+
 -- Records a rare's kill: logs the first of each, counts the rest. info is
 -- its unit info, name the best name known for it, how as in the header.
 local function Record(info, name, how)
@@ -143,7 +153,7 @@ local function Record(info, name, how)
     ns.char.rares = rares
     -- One with neither (no XP inside an instance) is a kill of its own.
     local key = info.npc or name or ("%s %d"):format(tostring(info.class), ns.Now())
-    local known = rares[key]
+    local known = Known(rares, key, info.npc)
     if known then
         ns.Tally.Add(known, 1, ns.pc, 1)
         known[3] = known[3] or name
@@ -313,6 +323,11 @@ function Rares:Looted()
         if e[1] < ns.Now() - SAME_CORPSE then break end
         if e[2] == "rare" and not e[9] and e[7] == target.class and e[8] == target.level then
             e[9] = npc
+            -- Its entry keeps its key (moving it would make two after a
+            -- sync merge with a copy saved before) but learns the NPC ID,
+            -- by which a kill in the open world finds it (Known).
+            local entry = ns.char.rares and e[6] and ns.char.rares[e[6]]
+            if entry and not entry[4] then entry[4] = npc end
             return
         end
     end
@@ -440,7 +455,7 @@ function Rares:ShowCard(owner, e, where, side)
     lines[#lines + 1] = tostring(date("%d %b %Y, %H:%M", e[1]))
     local level = LevelAt(e[1])
     if level then lines[#lines + 1] = ("You were level %d"):format(level) end
-    local known = ns.view.rares and ns.view.rares[e[9] or e[6] or ""]
+    local known = ns.view.rares and (Known(ns.view.rares, e[9] or e[6] or "", e[9]) or e[6] and ns.view.rares[e[6]])
     local kills = known and ns.Tally.Total(known[1]) or 0
     if kills > 1 then lines[#lines + 1] = ("Killed %d times"):format(kills) end
     if HOW[e[10]] then lines[#lines + 1] = "|cff999999" .. HOW[e[10]] .. "|r" end

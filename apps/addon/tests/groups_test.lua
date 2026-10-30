@@ -13,7 +13,7 @@ end
 
 local ns = { pc = "pcB" }
 ns.Now = function() return 1000 end
-ns.On = function() return true end
+ns.On = function() return true end   ---@diagnostic disable-line: duplicate-set-field
 ns.Command = function() end
 ns.SafeCall = function(fn, ...) fn(...) end
 ns.Recorder = { Position = function() return 0, 10, 20 end }
@@ -40,6 +40,43 @@ ns.char.group = { t = 100, kind = "party", members = { G1 = 100 }, everMet = { G
     levels = {}, subs = {}, seen = 200, met = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0 }
 ns.Groups:Resume()
 check((ns.char.people.G1.seconds or {}).pcB == 100, "an older group without a pc counts as this PC's")
+
+-- A member whose name the client has not loaded yet (after a loading
+-- screen) is still in the group: no leave, no rejoin. And inside a
+-- battleground the home group is left alone. Groups.lua is loaded again
+-- with its handlers kept, so the login can make it ready.
+local handlers, logged = {}, {}
+ns.On = function(event, fn) handlers[event] = fn return true end   ---@diagnostic disable-line: duplicate-set-field
+ns.Journal.Log = function(_, kind) logged[#logged + 1] = kind end
+C_Timer = { After = function(_, fn) fn() end }
+UNKNOWNOBJECT = "Unknown"
+local name, inBattleground = "Brightmane", false
+IsInGroup = function(category) return category == 1 end
+IsInInstance = function() return inBattleground, inBattleground and "pvp" or "none" end
+LE_PARTY_CATEGORY_INSTANCE = 2
+IsInRaid = function() return false end
+GetNumSubgroupMembers = function() return 1 end
+UnitIsUnit = function() return false end
+UnitGUID = function(unit) return unit == "party1" and "G2" or nil end
+UnitName = function(unit) return unit == "party1" and name or nil end
+UnitRace = function() return "Human", "Human" end
+UnitClass = function() return "Priest", "PRIEST" end
+UnitLevel = function() return 20 end
+UnitSex = function() return 3 end
+GetGuildInfo = function() return nil end
+UnitIsGroupLeader = function() return false end
+assert(loadfile("RoadToSixty/Groups.lua"))("RoadToSixty", ns)
+ns.char.people, ns.char.group = {}, nil
+handlers.PLAYER_LOGIN()
+check(ns.char.group and ns.char.group.members.G2, "the group starts with its member")
+local before = #logged
+name = "Unknown"
+ns.Groups:Check()
+check(#logged == before and ns.char.group.members.G2, "a member not loaded yet has not left: " .. table.concat(logged, ",", before + 1))
+inBattleground, name = true, "Brightmane"
+UnitGUID = function(unit) return unit == "party1" and "BG1" or nil end     -- a battleground stranger
+ns.Groups:Check()
+check(#logged == before and not ns.char.group.members.BG1, "in a battleground the home group is left alone")
 
 if failures == 0 then
     print("Groups tests passed.")

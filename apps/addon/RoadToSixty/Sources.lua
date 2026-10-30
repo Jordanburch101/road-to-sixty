@@ -177,6 +177,12 @@ function Sources:Scan()
     if not loggedIn then return end
     Prune()
     local now = ns.CountItems(Key)
+    -- While the login gear loads (late on Forever, #63), items turning up
+    -- were worn all along: counted, not noted as got.
+    if ns.Journal and ns.Journal:WaitingGear() then
+        counts = now
+        return
+    end
     if counts and not bankOpen then
         local keys = {}
         for key in pairs(now) do keys[#keys + 1] = key end
@@ -188,6 +194,11 @@ function Sources:Scan()
         end
     end
     counts = now
+end
+
+-- Counts again, noting nothing: the login gear has loaded (Journal.lua).
+function Sources:Rebase()
+    if loggedIn then counts = ns.CountItems(Key) end
 end
 
 -- The newest note for an item being put on, taken out of the saved notes;

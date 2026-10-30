@@ -220,6 +220,48 @@ now = 9100 + 31 * 60
 Fire("PLAYER_ENTERING_WORLD")
 check(countedFor == "pcA", "a run counts under the PC that started it: " .. tostring(countedFor))
 
+-- Logged out inside, logged in the next day outside: the run ended at the
+-- logout, not at the login a day later.
+ns.char = NewChar()
+ns.char.totals.distance, ns.char.totals.flown = 0, 0     -- the login's level snapshot reads them
+ns.view = ns.char
+ns.db = {}
+C_Timer.NewTicker = function() end   ---@diagnostic disable-line: duplicate-set-field
+now, inside = 20000, true
+Fire("PLAYER_ENTERING_WORLD")
+now = 20600
+Fire("PLAYER_LOGOUT")
+now, inside = 20600 + 86400, false
+Fire("PLAYER_LOGIN")
+Fire("PLAYER_ENTERING_WORLD")
+local out
+for _, e in ipairs(ns.char.events) do if e[2] == "out" then out = e end end
+---@diagnostic disable-next-line: undefined-field
+check(out and out[1] == 20600 and type(out[7]) == "table" and out[7].duration == 600,
+    "a run logged out in ends at the logout: " .. tostring(out and out[1]) .. ", "
+    ---@diagnostic disable-next-line: undefined-field
+    .. tostring(out and type(out[7]) == "table" and out[7].duration))
+check(Kinds() == "in@20000 out@20600", "one in and one out, in time order: " .. Kinds())
+check(ns.char.run == nil and ns.char.instance == nil, "nothing left open")
+
+-- A battleground left ends at once, and the next match of the same map,
+-- minutes later, is one of its own: not carried on, nor joined at login.
+ns.char = NewChar()
+ns.view = ns.char
+IsInInstance = function() return inside, inside and "pvp" or "none" end
+now, inside, instanceID = 30000, true, 30
+Fire("PLAYER_ENTERING_WORLD")
+check(ns.char.run and ns.char.run.type == "pvp", "a battleground is a run of type pvp")
+now, inside = 30600, false
+Fire("PLAYER_ENTERING_WORLD")
+check(Kinds() == "in@30000 out@30600" and ns.char.run == nil, "a battleground left ends at once: " .. Kinds())
+now, inside = 30700, true
+Fire("PLAYER_ENTERING_WORLD")
+now, inside = 31300, false
+Fire("PLAYER_ENTERING_WORLD")
+ns.Tidy.Runs(ns.char)
+check(Kinds() == "in@30000 out@30600 in@30700 out@31300", "two matches stay two: " .. Kinds())
+
 if failures > 0 then
     print(failures .. " failure(s)")
     os.exit(1)

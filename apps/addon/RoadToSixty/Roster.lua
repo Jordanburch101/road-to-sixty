@@ -74,6 +74,12 @@ function Roster:Sync()
             journey[k] = v
         end
     end
+    -- What the journey no longer has (a run or group ended) goes from the copy too.
+    for k in pairs(journey) do
+        if k ~= "segments" and ns.char[k] == nil then
+            journey[k] = nil
+        end
+    end
     local count = #ns.char.segments
     for i = math.max(1, math.min(#segments, count)), count do
         segments[i] = Copy(ns.Recorder:GetPath(i))
