@@ -156,6 +156,7 @@ local ABOUT = {
     gj = Field6, gl = Field6, gr = Field6, lvl = Field6, zone = Field6, grpl = Field6, grps = Field6,
     grpa = function(e) return type(e[6]) == "table" and e[6][1] or nil end,
     rare = function(e) return e[9] or e[6] end,     -- the rares key: NPC ID, else name
+    gath = function(e) return e[7] end,             -- the main resource's item ID
 }
 
 local function EventKey(e)
