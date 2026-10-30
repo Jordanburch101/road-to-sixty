@@ -8,8 +8,8 @@ local _, ns = ...
 --     Running totals over the whole journey, built once and kept while the
 --     journey does not change (Stats.Changed says when it has): kills and
 --     their XP (packed kills), quests turned in with their XP and money
---     ("qd"), deaths ("die"), dungeon and raid runs ("in"; battlegrounds and
---     arenas left out), yards walked and flown (the path segments, counted
+--     ("qd"), deaths ("die"), dungeon and raid runs ("in") and battlegrounds
+--     and arenas apart from them, yards walked and flown (the path segments, counted
 --     as the recorder counts them: flight paths are flown, the rest walked),
 --     the play sessions ("on" and "off"), level ups (the level snapshots),
 --     zones entered ("zone") and gold held (each snapshot's, then money, the
@@ -19,18 +19,21 @@ local _, ns = ...
 --     What happened from time from to time to (Unix seconds; nil for the
 --     journey's start and end), each a binary search, so the replay can ask
 --     every frame: { from, to, played (seconds logged in), kills, killXP,
---     quests, questXP, questMoney, deaths, dungeons, walked, flown, gold
+--     quests, questXP, questMoney, deaths, dungeons, battlegrounds, walked,
+--     flown, gold
 --     (change in gold held; nil before the first snapshot), levelFrom,
 --     levelTo (level at from and at to), zones = { { uiMapID, seconds
 --     played }, ... } most first }.
 --   Stats.LevelAt(index, t) -> level, fraction
 --     The level at t, and how far through it by time played (0 to 1).
+--   Stats.ZoneAt(index, t) -> uiMapID of the zone at t, or nil
 --   Stats.Levels(journey, current, now) -> rows
 --     One row per level with a snapshot, its numbers the change from
 --     reaching it to reaching the next; the level now (current, with now's
---     totals: { played, money }) runs to now: { level, partial, time, kills,
---     deaths, quests, xp, killXP, questXP, dungeons, walked, flown, gold }.
---     Fields a snapshot lacks are nil.
+--     totals: { played, money }) runs to now: { level, t, c, x, y, partial,
+--     current, time, kills, deaths, quests, xp, killXP, questXP, dungeons,
+--     walked, flown, gold }; t is when it was reached, c, x, y where (its
+--     "lvl" event's place). Fields a snapshot lacks are nil.
 
 local Stats = {}
 ns.Stats = Stats
@@ -141,8 +144,8 @@ function Stats.Index(journey, now, money)
             quests[#quests + 1] = { t = t, quests = 1, questXP = e[7], questMoney = e[8] }
         elseif kind == "die" then
             deaths[#deaths + 1] = { t = t, deaths = 1 }
-        elseif kind == "in" and not PVP[e[8]] then
-            runs[#runs + 1] = { t = t, dungeons = 1 }
+        elseif kind == "in" then
+            runs[#runs + 1] = { t = t, [PVP[e[8]] and "battlegrounds" or "dungeons"] = 1 }
         elseif kind == "zone" then
             zones[#zones + 1] = { t = t, id = e[6] }
         end
@@ -168,7 +171,7 @@ function Stats.Index(journey, now, money)
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
         quests = Build({ "quests", "questXP", "questMoney" }, quests),
         deaths = Build({ "deaths" }, deaths),
-        runs = Build({ "dungeons" }, runs),
+        runs = Build({ "dungeons", "battlegrounds" }, runs),
         path = Path(journey.segments),
     }
     local firsts = { levels[1] and levels[1].t or nil, index.kills.t[1], index.path.t[1] }
@@ -206,6 +209,11 @@ local function At(list, t)
         if list[mid].t <= t then lo = mid else hi = mid - 1 end
     end
     return list[lo], lo
+end
+
+function Stats.ZoneAt(index, t)
+    local entry = At(index.zones, t)
+    return entry and entry.id
 end
 
 function Stats.LevelAt(index, t)
@@ -250,7 +258,7 @@ function Stats.Window(index, from, to)
     local w = { from = from, to = to }
     w.played = Played(index, to) - Played(index, from)
     for _, part in ipairs({ { index.kills, { "kills", "killXP" } }, { index.quests, { "quests", "questXP", "questMoney" } },
-        { index.deaths, { "deaths" } }, { index.runs, { "dungeons" } }, { index.path, { "walked", "flown" } } }) do
+        { index.deaths, { "deaths" } }, { index.runs, { "dungeons", "battlegrounds" } }, { index.path, { "walked", "flown" } } }) do
         for _, key in ipairs(part[2]) do
             w[key] = Between(part[1], key, from, to)
         end
@@ -282,11 +290,18 @@ function Stats.Levels(journey, current, now)
         quests = totals.quests, killXP = totals.killXP, questXP = totals.questXP, instances = totals.instances,
         distance = totals.distance, flown = totals.flown,
     }
+    -- Where each level up happened, from its "lvl" event.
+    local places = {}
+    for _, e in ipairs(journey.events or {}) do
+        if e[2] == "lvl" and e[6] then places[e[6]] = e end
+    end
     local rows = {}
     for _, level in ipairs(keys) do
         local s = levels[level]
         local after = levels[level + 1] or (level == current and live)
-        local row = { level = level, partial = s.partial, current = level == current or nil }
+        local place = places[level]
+        local row = { level = level, t = s.t, partial = s.partial, current = level == current or nil,
+            c = place and place[3], x = place and place[4], y = place and place[5] }
         if after then
             row.time = Diff(s, after, "played")
             row.kills, row.deaths, row.quests = Diff(s, after, "kills"), Diff(s, after, "deaths"), Diff(s, after, "quests")

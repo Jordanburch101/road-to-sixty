@@ -58,7 +58,7 @@ check(all.played == 2000, "played is the time logged in, got " .. all.played)
 check(all.kills == 3 and all.killXP == 180, "kills and their XP")
 check(all.quests == 2 and all.questXP == 800 and all.questMoney == 100, "quests, their XP and money")
 check(all.deaths == 1, "deaths")
-check(all.dungeons == 1, "a battleground is not a dungeon run, got " .. all.dungeons)
+check(all.dungeons == 1 and all.battlegrounds == 1, "a battleground is counted apart from dungeon runs")
 check(all.walked == 15 and all.flown == 50, "yards walked and flown, got " .. all.walked .. " and " .. all.flown)
 check(all.gold == 2500, "gold is the change in gold held, up to the gold held now, got " .. tostring(all.gold))
 check(all.levelFrom == 10 and all.levelTo == 11, "the levels at its start and end")
@@ -99,6 +99,10 @@ check(level == 11 and math.abs(fraction - 0.5) < 1e-9, "level 11, halfway to the
 local rows = Stats.Levels(journey, 11, { played = 2000, money = 3500 })
 check(#rows == 2 and rows[1].partial and rows[1].time == 1100 and rows[1].kills == 3 and rows[1].xp == 980
     and rows[1].gold == 2000 and rows[1].dungeons == 2 and rows[1].walked == 15, "level 10's row")
+check(rows[2].t == 5100 and rows[2].c == 0 and rows[1].t == 1000 and rows[1].c == nil,
+    "each row has when its level was reached, and where when its lvl event says")
+check(Stats.ZoneAt(index, 1499) == 1429 and Stats.ZoneAt(index, 1500) == 1436 and Stats.ZoneAt(index, 999) == nil,
+    "the zone at a time")
 check(rows[2].current and rows[2].time == 900 and rows[2].kills == 0 and rows[2].gold == 500 and rows[2].flown == 50,
     "the level now runs to now")
 
