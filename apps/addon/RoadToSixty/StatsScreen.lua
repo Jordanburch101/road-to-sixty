@@ -18,6 +18,9 @@ local _, ns = ...
 --   the range or past the replay's moment are dimmed. Hovering a bar shows
 --   that level in the card beside it (else the card shows the replay's
 --   level); clicking one moves the replay to its level up.
+--   Records: ten bests and worsts inside the window (Stats.Records),
+--   each opening the map where it happened, the longest worn item the gear
+--   screen.
 
 local StatsScreen = {}
 ns.StatsScreen = StatsScreen
@@ -39,9 +42,12 @@ local QUEST_COLOR = { 1, 0.82, 0 }
 local WALK_COLOR = { 0.9, 0.8, 0.5 }
 local FLY_COLOR = { 0.35, 0.75, 1 }
 
+local RECORDS_SECONDS = 0.25   -- records go through every kill inside the window, so at most this often
+
 local view, viewEdges
 local ui = {}
-local index, rows, builtAt, builtFor
+local index, rows, timeline, builtAt, builtFor
+local records, recordsKey, recordsAt, recordsPending
 local dirty = true
 local followT = math.huge   -- the replay's moment
 local hoverLevel            -- the level under the cursor on the chart
@@ -87,7 +93,8 @@ local function Index()
     index = Stats.Index(journey, now, isMe and GetMoney() or nil)
     local played = isMe and ns.Journal:PlayedAt(now) or journey.played
     rows = Stats.Levels(journey, ns.Roster:ViewLevel(), { played = played, money = isMe and GetMoney() or nil })
-    builtAt, builtFor, dirty = GetTime(), journey, false
+    timeline = ns.GearTimeline.Build(journey, index.finish)
+    builtAt, builtFor, dirty, recordsKey = GetTime(), journey, false, nil
     return index
 end
 
@@ -457,11 +464,211 @@ local function FillCard(row)
     ui.toMap:SetEnabled(row.c ~= nil)
 end
 
--- The screen -------------------------------------------------------------------------
+-- Records ----------------------------------------------------------------------------
 
 local function Day(t)
     return (tostring(date("%d %b", t)):gsub("^0", ""))
 end
+
+local SLOT_NAMES = {
+    [1] = "Head", [2] = "Neck", [3] = "Shoulder", [5] = "Chest", [6] = "Waist", [7] = "Legs", [8] = "Feet", [9] = "Wrist",
+    [10] = "Hands", [11] = "Ring", [12] = "Ring", [13] = "Trinket", [14] = "Trinket", [15] = "Back", [16] = "Main hand",
+    [17] = "Off hand", [18] = "Ranged",
+}
+
+-- An item's name in its quality's colour and its icon; while the client has
+-- not loaded it, it is asked for and the records drawn again when it comes.
+local function Item(id)
+    ---@diagnostic disable-next-line: deprecated
+    local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
+    local name, _, quality, _, _, _, _, _, _, icon = getInfo(id)
+    if not name then
+        if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+        return ("Item %d"):format(id)
+    end
+    local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    return color and (color.hex .. name .. "|r") or name, icon, quality
+end
+
+local function LevelZone(t)
+    local level = Stats.LevelAt(index, t)
+    local zone = ZoneName(Stats.ZoneAt(index, t))
+    return level and (zone ~= "" and ("Level %d, %s"):format(level, zone) or ("Level %d"):format(level)) or zone
+end
+
+local function Count(n, one, many)
+    return ("%s %s"):format(Commas(n), n == 1 and one or many)
+end
+
+local function Levels(a, b)
+    if not (a and b) then return nil end
+    return a == b and ("Level %d"):format(a) or ("Levels %d to %d"):format(a, b)
+end
+
+-- Each record: key in Stats.Records, its name, its icon, and a function
+-- giving its value (a line of its own, so names have room), the line under
+-- it and, for items, the item's own icon and quality. Stats.Records also
+-- finds the best and longest session; they are left off the screen for now.
+local RECORDS = {
+    { "slowest", "Slowest level", "Interface\\Icons\\INV_Misc_PocketWatch_01",
+        function(r) return Duration(r.seconds), LevelZone(r.t) end },
+    { "bestRate", "Best XP per hour", "Interface\\Icons\\Spell_Holy_SealOfWisdom",
+        function(r) return Commas(r.perHour) .. " xp", LevelZone(r.t) end },
+    { "deadliest", "Deadliest level", "Interface\\Icons\\Ability_Rogue_FeignDeath",
+        function(r) return Count(r.deaths, "death", "deaths"), LevelZone(r.t) end },
+    { "nemesis", "Nemesis", "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+        function(r) return r.name, ("Killed you %s"):format(Count(r.count, "time", "times")) end },
+    { "mostKilled", "Most killed", "Interface\\Icons\\INV_Sword_04",
+        function(r) return r.name, Commas(r.count) .. " killed" end },
+    { "longestWorn", "Longest worn", "Interface\\Icons\\INV_Misc_QuestionMark",
+        function(r)
+            local name, icon, quality = Item(r.id)
+            return name, ("%s worn, %s"):format(Duration(r.seconds), SLOT_NAMES[r.slot] or "gear"), icon, quality
+        end, gear = true },
+    { "richest", "Most gold held", "Interface\\Icons\\INV_Misc_Coin_01",
+        function(r) return Money(r.money), LevelZone(r.t) end },
+    { "deathless", "Longest without dying", "Interface\\Icons\\Spell_Holy_Resurrection",
+        function(r)
+            local levels = Levels(Stats.LevelAt(index, r.from), Stats.LevelAt(index, r.to)) or ""
+            return Duration(r.seconds), r.ongoing and (levels .. ", still going") or levels
+        end },
+    { "favouriteDungeon", "Favourite dungeon", "Interface\\Icons\\INV_Misc_Key_03",
+        function(r)
+            local levels = Levels(Stats.LevelAt(index, r.first), Stats.LevelAt(index, r.last))
+            return r.name, levels and ("%s, %s"):format(Count(r.count, "run", "runs"), levels:lower()) or Count(r.count, "run", "runs")
+        end },
+    { "mostGathered", "Most gathered", "Interface\\Icons\\INV_Pick_02",
+        function(r)
+            local name, icon, quality = Item(r.item)
+            local zone = ZoneName(Stats.ZoneAt(index, r.t))
+            return name, Commas(r.count) .. " gathered" .. (zone ~= "" and (", " .. zone) or ""), icon, quality
+        end },
+}
+
+local ICON = 36
+
+local function OpenRecord(spec, r)
+    if spec.gear then
+        ns.Map:JumpTo(r.t)
+        ns.Screens:SetMode("gear")
+    else
+        ns.Screens:SetMode("map")
+        ns.Map:JumpTo(r.t, r.c, r.x, r.y)
+    end
+end
+
+local function CreateRecords()
+    local box = Pane(view)
+    ui.records = box
+    local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetText("Records")
+    local note = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    note:SetPoint("LEFT", title, "RIGHT", 10, 0)
+    note:SetText("Click one to see it on the map")
+    ui.recordRows = {}
+    for i, spec in ipairs(RECORDS) do
+        local row = CreateFrame("Button", nil, box)
+        -- The icon in the game's item button art, as in the bags; the row takes the mouse.
+        row.frame = ns.Screens.ItemButton(row, ICON)
+        row.frame:SetPoint("LEFT", 1, 0)
+        row.frame:EnableMouse(false)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.label:SetPoint("TOPLEFT", row.frame, "TOPRIGHT", 9, 1)
+        row.label:SetText(spec[2])
+        row.value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.value:SetPoint("LEFT", row.frame, "RIGHT", 9, 0)
+        row.value:SetPoint("RIGHT", -4, 0)
+        row.value:SetJustifyH("LEFT")
+        row.value:SetWordWrap(false)
+        row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        row.sub:SetPoint("BOTTOMLEFT", row.frame, "BOTTOMRIGHT", 9, -1)
+        row.sub:SetPoint("RIGHT", -4, 0)
+        row.sub:SetJustifyH("LEFT")
+        row.sub:SetWordWrap(false)
+        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints()
+        highlight:SetColorTexture(1, 1, 1, 0.06)
+        row:SetScript("OnEnter", function(self)
+            if not self.record then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(spec[2])
+            GameTooltip:AddLine(self.value:GetText(), 1, 1, 1)
+            GameTooltip:AddLine(self.sub:GetText(), 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(spec.gear and "Click to see it on the gear screen" or "Click to see it on the map",
+                1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", GameTooltip_Hide)
+        row:SetScript("OnClick", function(self)
+            if self.record then ns.SafeShow(OpenRecord, spec, self.record) end
+        end)
+        ui.recordRows[i] = row
+    end
+end
+
+local function LayoutRecords()
+    local box = ui.records
+    local inner = box:GetWidth() - 24
+    local colW = (inner - 16) / 2
+    local rowH = math.max(ICON + 8, (box:GetHeight() - 44) / math.ceil(#ui.recordRows / 2))
+    for i, row in ipairs(ui.recordRows) do
+        local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 12 + col * (colW + 16), -38 - line * rowH)
+        row:SetSize(colW, rowH - 6)
+    end
+end
+
+-- Records for the window, worked out again at most every RECORDS_SECONDS;
+-- one put off is done once the replay has moved on.
+local function Records(w)
+    local key = w.from .. ":" .. w.to
+    if key == recordsKey then return records end
+    if records and recordsAt and GetTime() - recordsAt < RECORDS_SECONDS then
+        if not recordsPending then
+            recordsPending = true
+            C_Timer.After(RECORDS_SECONDS, function()
+                recordsPending = false
+                ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+            end)
+        end
+        return records
+    end
+    records = Stats.Records(index, w.from, w.to, rows, timeline)
+    recordsKey, recordsAt = key, GetTime()
+    return records
+end
+
+local function FillRecords(w)
+    local found = Records(w)
+    for i, spec in ipairs(RECORDS) do
+        local row, r = ui.recordRows[i], found[spec[1]]
+        row.record = r
+        local value, sub, icon, quality
+        if r then value, sub, icon, quality = spec[4](r) end
+        row.value:SetText(value or "-")
+        row.sub:SetText(r and (sub or "") or "Nothing in this range yet")
+        SetItemButtonTexture(row.frame, icon or spec[3])
+        SetItemButtonQuality(row.frame, quality)
+        -- Nothing in the range: the whole record greyed, not only its icon.
+        local desaturate = _G["SetItemButtonDesaturated"]   -- the item button's own, missing from the type stubs
+        if desaturate then desaturate(row.frame, not r) end
+        row:SetAlpha(r and 1 or 0.45)
+    end
+end
+
+ns.On("GET_ITEM_INFO_RECEIVED", function()
+    if not (view and view:IsVisible()) or recordsPending then return end
+    recordsPending = true
+    C_Timer.After(0.3, function()
+        recordsPending = false
+        recordsKey = nil
+        ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+    end)
+end)
+
+-- The screen -------------------------------------------------------------------------
 
 local function Layout()
     local width = view:GetWidth() - 2 * PAD
@@ -471,6 +678,13 @@ local function Layout()
         tile:SetPoint("TOPLEFT", PAD + (i - 1) * (tileW + GAP), -TOP)
         tile:SetWidth(tileW)
     end
+    -- The bottom row: records on the left, the rest to come beside them.
+    local below = TOP + TILE_H + GAP + CHART_H + GAP
+    ui.records:ClearAllPoints()
+    ui.records:SetPoint("TOPLEFT", PAD, -below)
+    ui.records:SetPoint("BOTTOMLEFT", PAD, PAD)
+    ui.records:SetWidth(width * 0.42)
+    LayoutRecords()
 end
 
 function StatsScreen:Redraw()
@@ -483,6 +697,7 @@ function StatsScreen:Redraw()
     local shown = hoverLevel or w.levelTo
     DrawChart(w, shown)
     FillCard(RowOf(shown) or rows[#rows])
+    FillRecords(w)
 end
 
 local function CreateView(frames)
@@ -510,6 +725,7 @@ local function CreateView(frames)
     CreateTiles()
     CreateChart()
     CreateCard()
+    CreateRecords()
 
     view:SetScript("OnShow", function() ns.SafeShow(StatsScreen.Redraw, StatsScreen) end)
     view:SetScript("OnSizeChanged", function()

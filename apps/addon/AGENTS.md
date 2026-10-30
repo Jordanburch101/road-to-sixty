@@ -59,5 +59,10 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
 - Map.lua is near Lua's 200-local limit: new map features go in their own file.
 - Developer-only code sits between `--@debug@` and `--@end-debug@`; release
   builds strip it.
+- An icon shown in our own windows goes in the game's item button art, as
+  the bags have it: `ns.Screens.ItemButton(parent, size)` with
+  `SetItemButtonTexture` (and `SetItemButtonQuality` for items), never a
+  bare texture or a border drawn from colour squares. Jordan's call on the
+  Stats screen's records (#83).
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.

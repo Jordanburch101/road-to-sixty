@@ -383,10 +383,7 @@ end
 -- The paperdoll ----------------------------------------------------------------------
 
 local function NewItemButton(parent)
-    local ok, button = pcall(CreateFrame, "ItemButton", nil, parent)
-    if not ok then button = CreateFrame("Button", nil, parent, "ItemButtonTemplate") end
-    button:SetSize(SLOT, SLOT)
-    return button
+    return ns.Screens.ItemButton(parent, SLOT)
 end
 
 -- The sheet's enchant swirl, turning and breathing behind the slot, cut to

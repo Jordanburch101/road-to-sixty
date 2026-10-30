@@ -54,6 +54,15 @@ function Screens.Pane(parent)
     return pane
 end
 
+-- The game's own item button, the bags' art round an icon; the older
+-- clients without the ItemButton type have its template.
+function Screens.ItemButton(parent, size)
+    local ok, button = pcall(CreateFrame, "ItemButton", nil, parent)
+    if not ok then button = CreateFrame("Button", nil, parent, "ItemButtonTemplate") end
+    button:SetSize(size, size)
+    return button
+end
+
 function Screens:Add(key, label, screen)
     list[#list + 1] = { key = key, label = label, screen = screen }
 end

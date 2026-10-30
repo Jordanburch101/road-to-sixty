@@ -27,6 +27,27 @@ local _, ns = ...
 --   Stats.LevelAt(index, t) -> level, fraction
 --     The level at t, and how far through it by time played (0 to 1).
 --   Stats.ZoneAt(index, t) -> uiMapID of the zone at t, or nil
+--   Stats.Records(index, from, to, rows, timeline) -> records
+--     The bests and worsts inside the window, each nil when nothing in it
+--     makes one, and each with t (when) and, when known, c, x, y (where):
+--       slowest, bestRate   { level, seconds or perHour }: levels 10 and
+--                     up begun and finished inside it (rows from Stats.Levels,
+--                     their time played)
+--       bestSession   { xp, seconds, from, to }: the most XP from kills and
+--                     quests in one session (the part inside the window)
+--       deadliest     { level, deaths }
+--       nemesis       { name, count }: the killer named most (#81)
+--       mostKilled    { name, count }: no place, kills keep none
+--       longestSession { seconds }
+--       longestWorn   { slot, id, item, seconds }: the kept gear from
+--                     GearTimeline (timeline, when given), shirt and tabard
+--                     left out, by time played worn inside the window
+--       richest       { level, money }: the most gold held at a level up
+--       deathless     { seconds, from, to, ongoing }: the most time played
+--                     between deaths (or the window's ends)
+--       favouriteDungeon { name, count, first, last }: the dungeon or raid
+--                     entered most, by name
+--       mostGathered  { item, count }: the resource gathered most (#78)
 --   Stats.Levels(journey, current, now) -> rows
 --     One row per level with a snapshot, its numbers the change from
 --     reaching it to reaching the next; the level now (current, with now's
@@ -53,6 +74,7 @@ end
 local function Build(keys, entries)
     table.sort(entries, function(a, b) return a.t < b.t end)
     local s = Series(keys)
+    s.entries = entries     -- in the same order, with whatever else they hold
     for i, entry in ipairs(entries) do
         s.t[i] = entry.t
         for _, key in ipairs(keys) do
@@ -127,7 +149,7 @@ local function Kills(kills)
         ns.Packed.DecodeKills(kills.d, kills.names or {}, 0, list)
     end
     for i, k in ipairs(list) do
-        entries[i] = { t = k.t, kills = 1, killXP = k.xp }
+        entries[i] = { t = k.t, kills = 1, killXP = k.xp, name = k.name }
     end
     return entries
 end
@@ -135,7 +157,7 @@ end
 local PVP = { pvp = true, arena = true }
 
 function Stats.Index(journey, now, money)
-    local quests, deaths, runs, zones = {}, {}, {}, {}
+    local quests, deaths, runs, zones, gathers, places = {}, {}, {}, {}, {}, {}
     local first, last
     for _, e in ipairs(journey.events or {}) do
         local t, kind = e[1], e[2]
@@ -143,11 +165,17 @@ function Stats.Index(journey, now, money)
         if kind == "qd" then
             quests[#quests + 1] = { t = t, quests = 1, questXP = e[7], questMoney = e[8] }
         elseif kind == "die" then
-            deaths[#deaths + 1] = { t = t, deaths = 1 }
+            deaths[#deaths + 1] = { t = t, deaths = 1, killer = e[6], c = e[3], x = e[4], y = e[5] }
         elseif kind == "in" then
-            runs[#runs + 1] = { t = t, [PVP[e[8]] and "battlegrounds" or "dungeons"] = 1 }
+            local pvp = PVP[e[8]]
+            runs[#runs + 1] = { t = t, [pvp and "battlegrounds" or "dungeons"] = 1, name = not pvp and e[7] or nil,
+                c = e[3], x = e[4], y = e[5] }
         elseif kind == "zone" then
             zones[#zones + 1] = { t = t, id = e[6] }
+        elseif kind == "gath" then
+            gathers[#gathers + 1] = { t = t, item = e[7], c = e[3], x = e[4], y = e[5] }
+        elseif kind == "lvl" and e[6] then
+            places[e[6]] = e
         end
     end
     now = now or last or 0
@@ -156,17 +184,20 @@ function Stats.Index(journey, now, money)
     local levels, gold = {}, {}
     for level, s in pairs(journey.levels or {}) do
         if s.t then
-            levels[#levels + 1] = { t = s.t, level = level }
-            if s.money then gold[#gold + 1] = { t = s.t, money = s.money } end
+            local place = places[level]
+            local c, x, y = place and place[3], place and place[4], place and place[5]
+            levels[#levels + 1] = { t = s.t, level = level, c = c, x = x, y = y }
+            if s.money then gold[#gold + 1] = { t = s.t, money = s.money, level = level, c = c, x = x, y = y } end
         end
     end
     table.sort(levels, function(a, b) return a.t < b.t end)
     table.sort(gold, function(a, b) return a.t < b.t end)
     if money then gold[#gold + 1] = { t = now, money = money } end
     table.sort(zones, function(a, b) return a.t < b.t end)
+    table.sort(gathers, function(a, b) return a.t < b.t end)
 
     local index = {
-        start = first or now, finish = now, levels = levels, gold = gold, zones = zones,
+        start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers,
         sessions = ns.GearTimeline.Sessions(journey.events or {}, now),
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
         quests = Build({ "quests", "questXP", "questMoney" }, quests),
@@ -272,6 +303,166 @@ function Stats.Window(index, from, to)
     w.levelTo = Stats.LevelAt(index, to)
     w.zones = Zones(index, from, to)
     return w
+end
+
+-- Records -------------------------------------------------------------------------
+
+local function Bounds(index, from, to)
+    from = math.max(from or index.start, index.start)
+    return from, math.max(from, math.min(to or index.finish, index.finish))
+end
+
+-- The first and last entry of a series from time from to time to, both included.
+local function Inside(s, from, to)
+    return Count(s, from, false) + 1, Count(s, to, true)
+end
+
+-- The tally counted most; ties go to the one reached first.
+local function Most(counts)
+    local best
+    for _, c in pairs(counts) do
+        if not best or c.count > best.count or (c.count == best.count and c.first < best.first) then best = c end
+    end
+    return best
+end
+
+local function Place(record, entry)
+    record.t, record.c, record.x, record.y = entry.t, entry.c, entry.x, entry.y
+    return record
+end
+
+-- Levels 10 and up whose whole time lies inside the window.
+local function LevelRecords(out, rows, from, to)
+    local byLevel = {}
+    for _, row in ipairs(rows or {}) do byLevel[row.level] = row end
+    for _, row in ipairs(rows or {}) do
+        local nextRow = byLevel[row.level + 1]
+        if row.level >= 10 and row.t and nextRow and nextRow.t and row.t >= from and nextRow.t <= to
+            and row.time and row.time > 0 and not row.partial then
+            local perHour = row.xp and row.xp / row.time * 3600
+            if not out.slowest or row.time > out.slowest.seconds then
+                out.slowest = Place({ level = row.level, seconds = row.time }, row)
+            end
+            if perHour and (not out.bestRate or perHour > out.bestRate.perHour) then
+                out.bestRate = Place({ level = row.level, perHour = perHour }, row)
+            end
+        end
+    end
+end
+
+local function Worn(index, timeline, from, to)
+    local best
+    for slot, spans in pairs(timeline and timeline.kept or {}) do
+        if slot ~= 4 and slot ~= 19 then
+            for _, span in ipairs(spans) do
+                local a, b = math.max(span.t, from), math.min(span.endT or to, to)
+                if span.id and span.id ~= 0 and b > a then
+                    local seconds = Played(index, b) - Played(index, a)
+                    if not best or seconds > best.seconds then
+                        best = { slot = slot, id = span.id, item = span.item, seconds = seconds, t = span.t }
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+function Stats.Records(index, from, to, rows, timeline)
+    from, to = Bounds(index, from, to)
+    local out = {}
+    LevelRecords(out, rows, from, to)
+
+    -- Deaths: by level, by killer, and the time played between them.
+    local a, b = Inside(index.deaths, from, to)
+    local byLevel, byKiller = {}, {}
+    local marks = { from }
+    for i = a, b do
+        local d = index.deaths.entries[i]
+        marks[#marks + 1] = d.t
+        local level = Stats.LevelAt(index, d.t)
+        if level then
+            local l = byLevel[level] or { level = level, count = 0, first = d.t, entry = d }
+            l.count = l.count + 1
+            byLevel[level] = l
+        end
+        if d.killer then
+            local k = byKiller[d.killer] or { name = d.killer, count = 0, first = d.t }
+            k.count, k.entry = k.count + 1, d
+            byKiller[d.killer] = k
+        end
+    end
+    local l = Most(byLevel)
+    if l then out.deadliest = Place({ level = l.level, deaths = l.count }, l.entry) end
+    local k = Most(byKiller)
+    if k then out.nemesis = Place({ name = k.name, count = k.count }, k.entry) end
+    marks[#marks + 1] = to
+    for i = 2, #marks do
+        local seconds = Played(index, marks[i]) - Played(index, marks[i - 1])
+        if seconds > 0 and (not out.deathless or seconds > out.deathless.seconds) then
+            out.deathless = { seconds = seconds, from = marks[i - 1], to = marks[i], ongoing = i == #marks or nil,
+                t = marks[i - 1] }
+        end
+    end
+
+    a, b = Inside(index.kills, from, to)
+    local byName = {}
+    for i = a, b do
+        local kill = index.kills.entries[i]
+        if kill.name and kill.name ~= "?" then
+            local n = byName[kill.name] or { name = kill.name, count = 0, first = kill.t }
+            n.count, n.last = n.count + 1, kill.t
+            byName[kill.name] = n
+        end
+    end
+    local n = Most(byName)
+    if n then out.mostKilled = { name = n.name, count = n.count, t = n.last } end
+
+    for _, s in ipairs(index.sessions) do
+        local sa, sb = math.max(s[1], from), math.min(s[2], to)
+        if sb - sa > 0 then
+            if not out.longestSession or sb - sa > out.longestSession.seconds then
+                out.longestSession = { seconds = sb - sa, t = sa }
+            end
+            local xp = Between(index.kills, "killXP", sa, sb) + Between(index.quests, "questXP", sa, sb)
+            if xp > 0 and (not out.bestSession or xp > out.bestSession.xp) then
+                out.bestSession = { xp = xp, seconds = sb - sa, from = sa, to = sb, t = sa }
+            end
+        end
+    end
+
+    out.longestWorn = Worn(index, timeline, from, to)
+
+    for _, g in ipairs(index.gold) do
+        if g.level and g.t >= from and g.t <= to and (not out.richest or g.money > out.richest.money) then
+            out.richest = Place({ level = g.level, money = g.money }, g)
+        end
+    end
+
+    a, b = Inside(index.runs, from, to)
+    local byDungeon = {}
+    for i = a, b do
+        local run = index.runs.entries[i]
+        if run.name then
+            local d = byDungeon[run.name] or { name = run.name, count = 0, first = run.t, entry = run }
+            d.count, d.last = d.count + 1, run.t
+            byDungeon[run.name] = d
+        end
+    end
+    local d = Most(byDungeon)
+    if d then out.favouriteDungeon = Place({ name = d.name, count = d.count, first = d.first, last = d.last }, d.entry) end
+
+    local byItem = {}
+    for _, g in ipairs(index.gathers) do
+        if g.item and g.t >= from and g.t <= to then
+            local item = byItem[g.item] or { item = g.item, count = 0, first = g.t }
+            item.count, item.entry = item.count + 1, g
+            byItem[g.item] = item
+        end
+    end
+    local gathered = Most(byItem)
+    if gathered then out.mostGathered = Place({ item = gathered.item, count = gathered.count }, gathered.entry) end
+    return out
 end
 
 -- Level rows ----------------------------------------------------------------------

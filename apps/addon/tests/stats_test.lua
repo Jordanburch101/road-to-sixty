@@ -111,6 +111,71 @@ check(not Stats.Changed(index, journey), "an unchanged journey keeps its index")
 table.insert(journey.events, { 6100, "die", 0, 0, 0 })
 check(Stats.Changed(index, journey), "a new event changes it")
 
+-- 8a. Records: one session from 0 to 10000, levels 10 to 13.
+local rj = {
+    events = {
+        { 0, "on", 0, 0, 0, 10 },
+        { 500, "die", 0, 0, 0, "Wolf" },
+        { 1000, "lvl", 0, 10, 20, 11 },
+        { 1500, "die", 0, 30, 40, "Wolf" },
+        { 1600, "die", 0, 0, 0, "Bear" },
+        { 2000, "gath", 0, 0, 0, "m", 2770 },
+        { 2100, "gath", 0, 0, 0, "m", 2770 },
+        { 2200, "gath", 0, 0, 0, "h", 2447 },
+        { 2500, "in", 0, 0, 0, 36, "Deadmines", "party" },
+        { 3000, "lvl", 0, 0, 0, 12 },
+        { 3500, "in", 0, 0, 0, 36, "Deadmines", "party" },
+        { 4000, "lvl", 0, 0, 0, 13 },
+        { 4500, "in", 0, 0, 0, 34, "The Stockade", "party" },
+        { 4600, "in", 0, 0, 0, 489, "Warsong Gulch", "pvp" },
+        { 5000, "die", 0, 0, 0 },
+        { 10000, "off", 0, 0, 0 },
+    },
+    kills = ns.Packed.PackKills({
+        { t = 100, xp = 10, name = "Kobold" }, { t = 200, xp = 10, name = "Wolf" },
+        { t = 1200, xp = 10, name = "Kobold" }, { t = 2600, xp = 10, name = "Kobold" },
+    }),
+    levels = {
+        [10] = { t = 0, played = 0, killXP = 0, questXP = 0, money = 100 },
+        [11] = { t = 1000, played = 1000, killXP = 500, questXP = 500, money = 900 },
+        [12] = { t = 3000, played = 3000, killXP = 600, questXP = 400, money = 500 },
+        [13] = { t = 4000, played = 4000, killXP = 1500, questXP = 1000, money = 2000 },
+    },
+}
+local ri = Stats.Index(rj, 10000, 2500)
+local rrows = Stats.Levels(rj, 13, { played = 10000, money = 2500 })
+local timeline = { kept = {
+    [1] = { { t = 0, endT = 6000, id = 100 }, { t = 6000, endT = 10000, id = 101 } },
+    [4] = { { t = 0, endT = 10000, id = 5 } },     -- a shirt, left out
+} }
+local rec = Stats.Records(ri, nil, nil, rrows, timeline)
+check(rec.bestSession and rec.bestSession.xp == 40 and rec.bestSession.from == 0 and rec.bestSession.to == 10000,
+    "best session, by XP from kills and quests")
+check(rec.slowest and rec.slowest.level == 11 and rec.slowest.seconds == 2000 and rec.slowest.c == 0 and rec.slowest.x == 10,
+    "slowest level, placed at its level up")
+check(rec.bestRate and rec.bestRate.level == 12 and rec.bestRate.perHour == 5400, "best XP per hour")
+check(rec.deadliest and rec.deadliest.level == 11 and rec.deadliest.deaths == 2, "deadliest level")
+check(rec.nemesis and rec.nemesis.name == "Wolf" and rec.nemesis.count == 2 and rec.nemesis.x == 30,
+    "nemesis, placed at its last kill of you")
+check(rec.mostKilled and rec.mostKilled.name == "Kobold" and rec.mostKilled.count == 3 and rec.mostKilled.t == 2600,
+    "most killed")
+check(rec.longestSession and rec.longestSession.seconds == 10000, "longest session")
+check(rec.longestWorn and rec.longestWorn.id == 100 and rec.longestWorn.seconds == 6000, "longest worn, shirts left out")
+check(rec.richest and rec.richest.level == 13 and rec.richest.money == 2000, "most gold held at a level up")
+check(rec.deathless and rec.deathless.seconds == 5000 and rec.deathless.from == 5000 and rec.deathless.ongoing,
+    "longest without dying, still going at the end")
+check(rec.favouriteDungeon and rec.favouriteDungeon.name == "Deadmines" and rec.favouriteDungeon.count == 2,
+    "favourite dungeon, battlegrounds left out")
+check(rec.mostGathered and rec.mostGathered.item == 2770 and rec.mostGathered.count == 2, "most gathered")
+
+rec = Stats.Records(ri, 1100, 2900, rrows, timeline)
+check(not rec.slowest and not rec.richest, "no level begun and finished inside a narrow window")
+check(rec.bestSession.xp == 20 and rec.bestSession.from == 1100, "best session, the part inside the window")
+check(rec.deadliest.deaths == 2 and rec.deathless.seconds == 1300 and rec.deathless.ongoing,
+    "deaths and the time between them inside the window")
+check(rec.mostKilled.count == 2 and rec.favouriteDungeon.count == 1 and rec.longestWorn.seconds == 1800,
+    "kills, runs and gear counted inside the window only")
+
 -- 8b. Path steps out of time order (a clock put right) still count once each.
 local stepped = Stats.Index({ events = {}, segments = {
     { m = "w", c = 0, t = 100, x = 0, y = 0, d = "10,3,4" }, { m = "t", c = 0, t = 50, x = 0, y = 0, d = "10,6,8" },
