@@ -44,8 +44,10 @@ function Tidy.Runs(char)
             k = k + 1
             back = events[k]
         end
+        -- (never battlegrounds or arenas: each time in is a match of its own)
         if out[2] == "out" and not regrouped and back and back[2] == "in" and back[6] == out[6]
-            and back[1] - out[1] < Tidy.RUN_GAP and type(out[7]) == "table" then
+            and back[1] - out[1] < Tidy.RUN_GAP and type(out[7]) == "table"
+            and out[7].type ~= "pvp" and out[7].type ~= "arena" and back[8] ~= "pvp" and back[8] ~= "arena" then
             local first = out[7]
             -- Where the second part's summary goes: its own "out", or the
             -- run still going on.
