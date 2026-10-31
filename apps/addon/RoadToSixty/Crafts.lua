@@ -20,10 +20,11 @@ local _, ns = ...
 --                                         item again within CRAFT_BUNDLE
 --                                         seconds adds to the last one's
 --                                         count, so "Create All" is one
---                                         event. profession and spellID (the
---                                         recipe) when known; things made
---                                         outside a profession, such as a
---                                         mage's conjured food, have neither
+--                                         event. spellID is the player's cast
+--                                         just before (the recipe, or a spell
+--                                         such as a mage's conjured food),
+--                                         profession when known; things made
+--                                         outside a profession have none
 --
 -- ns.char.skills is the last skill seen per profession: name -> { rank, max,
 -- icon }, icon a file ID when the client gives one.
@@ -104,7 +105,8 @@ end
 
 -- Compares the professions with the last ones seen and logs what is new: a
 -- profession learned or a new tier as "prof", each rise in skill as "skill".
-function Crafts:CheckSkills()
+-- atLogin: this is the check 5 seconds after login.
+function Crafts:CheckSkills(atLogin)
     -- A seeded test journey has made-up professions; the real ones would not fit it.
     if ns.char.seeded then return end
     local skills = self:ReadSkills()
@@ -124,10 +126,10 @@ function Crafts:CheckSkills()
             if (s[2] or 0) > (old[2] or 0) then
                 Log("prof", name, s[1], s[2])
             end
-            -- Nothing is raised in the seconds before the check at login, so a
-            -- rise found then happened while the addon was not running.
+            -- Nothing is raised in the seconds up to the check at login, so a
+            -- rise found by then happened while the addon was not running.
             if (s[1] or 0) > (old[1] or 0) then
-                Log("skill", name, s[1], old[1] or 0, not self.settled or nil)
+                Log("skill", name, s[1], old[1] or 0, (atLogin or not self.settled) or nil)
             end
         end
         -- This runs on every weapon and defence skill point too, so leave the
@@ -406,7 +408,7 @@ ns.On("PLAYER_LOGIN", function()
     -- Professions can be missing for a moment at login.
     C_Timer.After(5, function()
         Crafts.settled = true
-        ns.SafeCall(Crafts.CheckSkills, Crafts)
+        ns.SafeCall(Crafts.CheckSkills, Crafts, true)
     end)
 end)
 ns.On("SKILL_LINES_CHANGED", function() if loggedIn then Crafts:CheckSkills() end end)

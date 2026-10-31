@@ -145,6 +145,11 @@ Fire("SKILL_LINES_CHANGED")
 Crafts.settled = true
 last = ns.char.events[#ns.char.events]
 check(#ns.char.events == 8 and last[6] == "Cooking" and last[8] == 45 and last[9] == true, "a rise found at login is late")
+-- So is one the check 5 seconds after login finds, though settled by then.
+lines[6][4] = 52
+Crafts:CheckSkills(true)
+last = ns.char.events[#ns.char.events]
+check(#ns.char.events == 9 and last[7] == 52 and last[8] == 50 and last[9] == true, "a rise the login check finds is late")
 
 -- 4. Recipes from the trade skill window, headers left out.
 Fire("TRADE_SKILL_SHOW")

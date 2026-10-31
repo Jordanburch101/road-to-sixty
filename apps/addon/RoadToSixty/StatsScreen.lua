@@ -74,6 +74,7 @@ local ui = {}
 local index, rows, timeline, builtAt, builtFor
 local records, recordsKey, recordsAt, recordsPending
 local alts                  -- the other characters to compare with (Others)
+local people                -- the players grouped with most, for the life pane
 local dirty = true
 local followT = math.huge   -- the replay's moment
 local hoverRow              -- the chart's bar under the cursor: a level's row or a week's
@@ -120,7 +121,8 @@ local function Index()
     local played = isMe and ns.Journal:PlayedAt(now) or journey.played
     rows = Stats.Levels(journey, ns.Roster:ViewLevel(), { played = played, money = isMe and GetMoney() or nil })
     timeline = ns.GearTimeline.Build(journey, index.finish)
-    alts = nil
+    -- The bar hovered was one of the old rows.
+    alts, people, hoverRow = nil, nil, nil
     builtAt, builtFor, dirty, recordsKey = GetTime(), journey, false, nil
     return index
 end
@@ -536,6 +538,18 @@ local CARD_FIELDS = {
     { "Gold", function(s) return not s.soFar and Money(s.gold) or nil end },
 }
 
+-- Opens the map (or the gear screen, for spec.gear) at the moment of r: a
+-- record, a level's or week's card, with its place when it has one.
+local function OpenRecord(spec, r)
+    if spec.gear then
+        ns.Map:JumpTo(r.t)
+        ns.Screens:SetMode("gear")
+    else
+        ns.Screens:SetMode("map")
+        ns.Map:JumpTo(r.t, r.c, r.x, r.y)
+    end
+end
+
 local function CreateCard()
     local card = Pane(view)
     card:SetPoint("TOPRIGHT", -PAD, -(TOP + TILE_H + GAP))
@@ -578,15 +592,11 @@ local function CreateCard()
     ui.toMap:SetText("Show on map")
     ui.toGear:SetScript("OnClick", function()
         local row = ui.cardRow
-        if not row then return end
-        ns.Map:JumpTo(row.t)
-        ns.Screens:SetMode("gear")
+        if row then ns.SafeShow(OpenRecord, { gear = true }, row) end
     end)
     ui.toMap:SetScript("OnClick", function()
         local row = ui.cardRow
-        if not row then return end
-        ns.Screens:SetMode("map")
-        ns.Map:JumpTo(row.t, row.c, row.x, row.y)
+        if row then ns.SafeShow(OpenRecord, {}, row) end
     end)
 end
 
@@ -664,15 +674,23 @@ local SLOT_NAMES = {
 }
 
 -- An item's name in its quality's colour and its icon; while the client has
--- not loaded it, it is asked for and the records drawn again when it comes.
+-- not loaded it, it is asked for once and the records drawn again when it
+-- comes. An item this client does not have is never asked for.
+local asked = {}            -- item ID -> true once asked for
+local waiting = 0           -- items asked for and not come yet
 local function Item(id)
     ---@diagnostic disable-next-line: deprecated
     local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
     local name, _, quality, _, _, _, _, _, _, icon = getInfo(id)
     if not name then
-        if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+        local exists = not (C_Item and C_Item.DoesItemExistByID) or C_Item.DoesItemExistByID(id)
+        if exists and not asked[id] and C_Item and C_Item.RequestLoadItemDataByID then
+            asked[id], waiting = true, waiting + 1
+            C_Item.RequestLoadItemDataByID(id)
+        end
         return ("Item %d"):format(id)
     end
+    if asked[id] == true then asked[id], waiting = "loaded", math.max(0, waiting - 1) end
     local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
     return color and (color.hex .. name .. "|r") or name, icon, quality
 end
@@ -748,16 +766,6 @@ local ENDGAME_RECORDS = {
 }
 
 local ICON = 36
-
-local function OpenRecord(spec, r)
-    if spec.gear then
-        ns.Map:JumpTo(r.t)
-        ns.Screens:SetMode("gear")
-    else
-        ns.Screens:SetMode("map")
-        ns.Map:JumpTo(r.t, r.c, r.x, r.y)
-    end
-end
 
 local function CreateRecords()
     local box = Pane(view)
@@ -872,12 +880,12 @@ local function FillRecords(w)
     end
 end
 
+-- The records read item names afresh at each redraw, so one is enough.
 ns.On("GET_ITEM_INFO_RECEIVED", function()
-    if not (view and view:IsVisible()) or recordsPending then return end
+    if waiting == 0 or not (view and view:IsVisible()) or recordsPending then return end
     recordsPending = true
     C_Timer.After(0.3, function()
         recordsPending = false
-        recordsKey = nil
         ns.SafeShow(StatsScreen.Redraw, StatsScreen)
     end)
 end)
@@ -1223,10 +1231,11 @@ local function WindowRow(k)
         local key = self.key
         if not key then return end
         ns.db.compare = ns.db.compare or {}
-        -- Only characters still in the roster count; a deleted one's tick is forgotten.
+        -- Only characters still in the roster count; a deleted one's tick is
+        -- forgotten. The one shown counts too, for when another is shown.
         local count = 0
-        for _, a in ipairs(Others()) do
-            if ns.db.compare[a.entry.key] then count = count + 1 end
+        for _, e in ipairs(ns.Roster:Entries()) do
+            if e.key and ns.db.compare[e.key] then count = count + 1 end
         end
         if self:GetChecked() and count >= PANE_ALTS then
             self:SetChecked(false)
@@ -1663,7 +1672,8 @@ local function FillLife(w)
     if #life.reputation == 0 then Add("|cff999999None yet|r") end
 
     Add("GROUPED WITH MOST, ALL TIME", nil, nil, true)
-    local people = ns.Parties:People()
+    -- All time, so the replay never changes it: worked out with the index.
+    people = people or ns.Parties:People()
     for k = 1, math.min(3, #people) do
         local p = people[k][2]
         local r, g, b = ns.ClassColor(p.class)
@@ -1804,9 +1814,24 @@ function StatsScreen:Hide()
     GameTooltip_Hide()
 end
 
+-- The replay moves its moment every frame; drawing the screen again a few
+-- times a second is enough, and the last moment is always drawn.
+local FOLLOW_SECONDS = 0.15
+local followAt, followPending = 0, false
 function StatsScreen:Follow(t)
     followT = t or math.huge
-    self:Redraw()
+    if followPending then return end
+    local wait = followAt + FOLLOW_SECONDS - GetTime()
+    if wait <= 0 then
+        followAt = GetTime()
+        return self:Redraw()
+    end
+    followPending = true
+    C_Timer.After(wait, function()
+        followPending = false
+        followAt = GetTime()
+        ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+    end)
 end
 
 function StatsScreen:Rebuild()

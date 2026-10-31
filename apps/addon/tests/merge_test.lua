@@ -119,6 +119,19 @@ check(Same(m, Merge.Merge(Journey({ events = { { 150, "zone", 0, 0, 0, 1436 } } 
 m = Merge.Merge(Journey({ events = { { 151, "skill", 0, 0, 0, "Mining", 120, 119 }, { 151, "skill", 0, 0, 0, "Cooking", 80, 79 } } }),
     Journey({ events = { { 151, "skill", 0, 0, 0, "Cooking", 80, 79 } } }))
 check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "skill points of two professions in one second are matched by name")
+-- The other way round too: matched on time and kind alone, Cooking would be
+-- joined to Mining and lost.
+m = Merge.Merge(Journey({ events = { { 151, "skill", 0, 0, 0, "Cooking", 80, 79 }, { 151, "skill", 0, 0, 0, "Mining", 120, 119 } } }),
+    Journey({ events = { { 151, "skill", 0, 0, 0, "Mining", 120, 119 } } }))
+check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "skill points matched by name whichever comes first")
+local bandage = "|cffffffff|Hitem:1251:0|h[Linen Bandage]|h|r"
+local bolt = "|cffffffff|Hitem:2996:0|h[Bolt of Linen Cloth]|h|r"
+m = Merge.Merge(Journey({ events = { { 152, "craft", 0, 0, 0, bolt, 1 }, { 152, "craft", 0, 0, 0, bandage, 2 } } }),
+    Journey({ events = { { 152, "craft", 0, 0, 0, bandage, 3 } } }))
+check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "crafts of two items in one second are matched by item")
+local count
+for _, e in ipairs(m.events) do if e[6] == bandage then count = e[7] end end
+check(count == 3, "a craft in both copies keeps the larger count, never the sum")
 
 m = Merge.Merge(
     Journey({ events = {

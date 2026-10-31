@@ -83,10 +83,12 @@ function Range:Set(key, now)
     self.key = key
     local from, to = Range.Bounds(key, now or ns.Now())
     local phase = Phase(self)
+    -- The second the cap was reached (the kill that gave it, the level up)
+    -- is the levelling's; the endgame starts the second after.
     if phase == "lvl" then
         to = to and math.min(to, self.capAt) or self.capAt
     elseif phase == "end" then
-        from = from and math.max(from, self.capAt) or self.capAt
+        from = from and math.max(from, self.capAt + 1) or self.capAt + 1
     end
     -- Code reading the bounds takes both or neither.
     if from or to then from, to = from or 0, to or math.huge end

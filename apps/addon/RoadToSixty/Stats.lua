@@ -384,8 +384,14 @@ function Stats.Window(index, from, to)
     end
     w.levelFrom = Stats.LevelAt(index, from)
     w.levelTo = Stats.LevelAt(index, to)
-    w.zones = Zones(index, from, to)
-    return w
+    -- The zones cost the most, and most windows (a card's, a week's) never
+    -- read them, so they are worked out when first read.
+    return setmetatable(w, { __index = function(_, key)
+        if key ~= "zones" then return nil end
+        local zones = Zones(index, from, to)
+        rawset(w, "zones", zones)
+        return zones
+    end })
 end
 
 -- Records -------------------------------------------------------------------------
@@ -451,12 +457,13 @@ local function Worn(index, timeline, from, to)
     return best
 end
 
+-- Weeks start the second after the cap, as the endgame does (Range.lua).
 function Stats.Weeks(index, capAt)
     local weeks = {}
     if not capAt then return weeks end
-    local week = 0
-    while capAt + week * WEEK <= index.finish do
-        weeks[#weeks + 1] = { week = week + 1, from = capAt + week * WEEK, to = capAt + (week + 1) * WEEK - 1 }
+    local start, week = capAt + 1, 0
+    while start + week * WEEK <= index.finish do
+        weeks[#weeks + 1] = { week = week + 1, from = start + week * WEEK, to = start + (week + 1) * WEEK - 1 }
         week = week + 1
     end
     return weeks
@@ -695,6 +702,10 @@ function Stats.Levels(journey, current, now)
             row.dungeons = Diff(s, after, "instances")
             row.walked, row.flown = Diff(s, after, "distance"), Diff(s, after, "flown")
             row.gold = Diff(s, after, "money")
+            -- A next level first seen at a login (levelled without the addon)
+            -- has its time played and gold from then, so the difference
+            -- holds some of that level too; the counts are recorded ones.
+            if after.partial then row.time, row.gold = nil, nil end
         end
         rows[#rows + 1] = row
     end

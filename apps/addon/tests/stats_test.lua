@@ -99,6 +99,10 @@ check(level == 11 and math.abs(fraction - 0.5) < 1e-9, "level 11, halfway to the
 local rows = Stats.Levels(journey, 11, { played = 2000, money = 3500 })
 check(#rows == 2 and rows[1].partial and rows[1].time == 1100 and rows[1].kills == 3 and rows[1].xp == 980
     and rows[1].gold == 2000 and rows[1].dungeons == 2 and rows[1].walked == 15, "level 10's row")
+-- A next level first seen at a login holds time from the level before it.
+local gap = Stats.Levels({ levels = { [20] = { t = 0, played = 1000, money = 10, kills = 5 },
+    [21] = { t = 9000, played = 51000, money = 90, kills = 9, partial = true } } }, 21, {})
+check(gap[1].time == nil and gap[1].gold == nil and gap[1].kills == 4, "a level before a partial one has no time or gold")
 check(rows[2].t == 5100 and rows[2].c == 0 and rows[1].t == 1000 and rows[1].c == nil,
     "each row has when its level was reached, and where when its lvl event says")
 check(Stats.ZoneAt(index, 1499) == 1429 and Stats.ZoneAt(index, 1500) == 1436 and Stats.ZoneAt(index, 999) == nil,
@@ -247,7 +251,8 @@ check(ew.dungeons == 5 and ew.raids == 3, "raids are dungeons too, and counted a
 check(Stats.Window(ei, 0, 600).gold == 8000 and Stats.Window(ei, WEEK, WEEK + 3000).gold == -5000,
     "gold over time from the logins and logouts")
 local weeks = Stats.Weeks(ei, 100)
-check(#weeks == 2 and weeks[1].from == 100 and weeks[2].from == 100 + WEEK and weeks[2].week == 2, "weeks since the cap")
+check(#weeks == 2 and weeks[1].from == 101 and weeks[2].from == 101 + WEEK and weeks[2].week == 2,
+    "weeks since the cap, from the second after it")
 check(#Stats.Weeks(ei, nil) == 0, "no weeks without the cap")
 local er = Stats.Records(ei, nil, nil, Stats.Levels(ej, 60), nil, 100)
 check(er.favouriteRaid and er.favouriteRaid.name == "Molten Core" and er.favouriteRaid.count == 2, "favourite raid")
@@ -282,6 +287,8 @@ for i = 1, 300 do
 end
 for i = 1, 30000 do
     big.events[i] = { 1791712544 + i * 7, i % 3 == 0 and "die" or "qd", 0, 0, 0, i, 100 }
+    -- A thousand zone changes, more than a whole 1-60 has.
+    if i % 30 == 0 then big.events[i] = { 1791712544 + i * 7, "zone", 0, 0, 0, 1400 + i % 20 } end
 end
 for level = 2, 60 do
     big.levels[level] = { t = 1791712544 + level * 3500, played = level * 3600, money = level * 1000 }
@@ -294,9 +301,13 @@ local bigIndex = Stats.Index(big, 1791712544 + 210000)
 local built = os.clock()
 for i = 1, 1000 do Stats.Window(bigIndex, 1791712544 + i * 50, 1791712544 + i * 200) end
 local asked = os.clock()
-print(("Stats on a full-size journey: index in %d ms, 1000 windows in %d ms."):format(
-    math.floor((built - started) * 1000), math.floor((asked - built) * 1000)))
+-- The zones pane's window, the one a replay frame reads the zones of.
+for i = 1, 100 do local _ = Stats.Window(bigIndex, nil, 1791712544 + i * 2000).zones end
+local zoned = os.clock()
+print(("Stats on a full-size journey: index in %d ms, 1000 windows in %d ms, 100 with zones in %d ms."):format(
+    math.floor((built - started) * 1000), math.floor((asked - built) * 1000), math.floor((zoned - asked) * 1000)))
 check(asked - built < 1, "1000 windows take under a second")
+check(zoned - asked < 1, "100 windows with their zones take under a second")
 
 if failures > 0 then
     print(failures .. " failure(s)")
