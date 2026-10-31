@@ -99,6 +99,16 @@ end
 -- the server never sends would otherwise stay "..." for good.
 local RETRY = 10
 
+-- Calls fn once the game has loaded item id. An item this client does not
+-- have (a journey from another client, a seeded one) is never asked for:
+-- the game's own loader fails on it ("table index is nil").
+local function WhenLoaded(id, fn)
+    if not (Item and Item.CreateFromItemID) or type(id) ~= "number" or id <= 0 then return end
+    local exists = C_Item and C_Item.DoesItemExistByID
+    if exists and not exists(id) then return end
+    pcall(function() Item:CreateFromItemID(id):ContinueOnItemLoad(fn) end)
+end
+
 -- name, quality, icon and item level of a span's item, from the game's cache;
 -- asks for it when not cached, and the screen is redrawn when it comes.
 -- Until then it is kept as pending, so it is not looked up on every redraw.
@@ -112,14 +122,12 @@ local function Info(span)
     local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(span.id)
     if not name then
         -- Ask the game for it; the screen is redrawn when it comes.
-        if Item and Item.CreateFromItemID then
-            Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
-                for k, v in pairs(info) do
-                    if v.pending and v.id == span.id then info[k] = nil end
-                end
-                QueueRedraw()
-            end)
-        end
+        WhenLoaded(span.id, function()
+            for k, v in pairs(info) do
+                if v.pending and v.id == span.id then info[k] = nil end
+            end
+            QueueRedraw()
+        end)
         known = { name = "...", quality = 1, icon = icon, pending = true, id = span.id, asked = GetTime() }
         info[key] = known
         return known
@@ -316,8 +324,8 @@ local function ShowTip(owner, span, again)
     -- An item not cached yet: the game redraws the tooltip from the link
     -- when it arrives, dropping the lines below, so it is shown again then,
     -- once (again), so the re-show never asks a second time.
-    if not again and Info(span).pending and Item and Item.CreateFromItemID then
-        Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
+    if not again and Info(span).pending then
+        WhenLoaded(span.id, function()
             if GameTooltip:IsOwned(owner) then ShowTip(owner, span, true) end
         end)
     end
@@ -891,24 +899,6 @@ function GearScreen:Redraw()
             SetWindow(axis.last - OPEN_SPAN, axis.last)
         end
     end
-    -- The part lit is the part the window is in: all of it, or across
-    -- both, lights the whole journey.
-    local part = "all"
-    local whole = axis.lo <= axis.first + 0.01 and axis.hi >= axis.last - 0.01
-    if not whole and timeline.capAt and axis.lo >= G.CAP - 0.01 then
-        part = "end"
-    elseif not whole and (not timeline.capAt or axis.hi <= G.CAP + 0.01) then
-        part = "lvl"
-    end
-    -- Endgame only for a character that has reached the cap.
-    local lastTab
-    for _, tab in ipairs(ui.phaseTabs) do
-        SetTabOn(tab, tab.phase == part)
-        tab:SetShown(tab.phase ~= "end" or timeline.capAt ~= nil)
-        if tab:IsShown() then lastTab = tab end
-    end
-    ui.help:ClearAllPoints()
-    ui.help:SetPoint("LEFT", lastTab, "RIGHT", 12, 0)
     for _, tab in ipairs(ui.swapTabs) do SetTabOn(tab, tab.every == every) end
 
     local laneH, barH = Layout()
@@ -1364,28 +1354,13 @@ local function CreateView()
 
     CreateDoll()
 
-    -- Header: where to look (whole, levelling, endgame), kept gear or every
-    -- swap, and how to move around.
-    ui.phaseTabs, ui.swapTabs = {}, {}
-    local presets = {
-        { "all", "Whole journey", 124, function() return axis.first, axis.last end },
-        { "lvl", "Levelling", 100, function() return axis.first, timeline.capAt and G.CAP or axis.last end },
-        { "end", "Endgame", 100, function() return timeline.capAt and G.CAP or axis.first, axis.last end },
-    }
-    local x = math.max(DOLL_W, ns.Screens:TabsRight()) + 8
-    for _, p in ipairs(presets) do
-        local tab = Tab(view, p[2], p[3], function()
-            SetWindow(p[4]())
-            GearScreen:Redraw()
-        end)
-        tab.phase = p[1]
-        tab:SetPoint("TOPLEFT", x, -6)
-        x = x + p[3] + 4
-        ui.phaseTabs[#ui.phaseTabs + 1] = tab
-    end
-    -- After the last tab shown (Redraw places it: Endgame shows only at the cap).
+    -- Header: how to move around, after the mode switch, then kept gear or
+    -- every swap. Which part of the journey shows is the map window's phase
+    -- and date range (Range.lua), which the window opens on.
+    ui.swapTabs = {}
     ui.help = view:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.help:SetText("Wheel: zoom   Drag: move   Click: pin the moment")
+    ui.help:SetPoint("LEFT", view, "TOPLEFT", math.max(DOLL_W, ns.Screens:TabsRight()) + 12, -20)
     local right = -10
     for _, s in ipairs({ { true, "Every swap", 108 }, { false, "Kept gear", 100 } }) do
         local tab = Tab(view, s[2], s[3], function()

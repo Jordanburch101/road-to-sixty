@@ -1,19 +1,30 @@
 local _, ns = ...
 
--- The date range the journey map shows (issue #66): all time, or a part of
--- the journey such as today or the last seven days. Map.lua builds its path,
--- replay and replay bar from the paths inside it and shows only the markers
--- in it, History lists only what is in it, and the gear screen opens on it.
--- It lasts the session; nothing saved changes, and paths are copied when
--- cut, never changed in place.
+-- The part of the journey every mode of the map window shows (issue #66):
+-- a date range (all time, or a part such as today or the last seven days)
+-- and a phase (the whole journey, levelling up to the level cap, or the
+-- endgame after it), the two together. Map.lua builds its path, replay
+-- and replay bar from the paths inside it and shows only the markers in
+-- it, History lists only what is in it, the gear screen opens on it and
+-- the Stats screen counts only what is in it. It lasts the session;
+-- nothing saved changes, and paths are copied when cut, never changed in
+-- place.
 --
 --   Range.Bounds(key, now)  from and to of a preset at time now; nil for all time
 --   Range:Set(key, now)     one of the PRESETS keys; the bounds are worked
---                           out from now (ns.Now() if not given)
+--                           out from now (ns.Now() if not given), cut to
+--                           the phase
+--   Range:SetCap(t)         when the journey shown reached the level cap, or
+--                           nil: where levelling ends and the endgame starts.
+--                           Without it every phase is the whole journey
+--   Range:SetPhase(key, now)  one of the PHASES keys
 --   Range:Refresh(now)      the bounds again, for "today" after midnight
 --   Range:Has(t)            whether time t is inside
---   Range:IsAll()           true for all time
+--   Range:IsAll()           true for all time and the whole journey; from and
+--                           to are both nil then, else both numbers
 --   Range:Label()           the preset's name, for the map's button
+--   Range:PhaseLabel()      the phase's name, for its button
+--   Range:Key()             the preset and the phase in force, for caches
 --   Range:TrimPaths(paths)  the paths cut to the range (Recorder.lua's format)
 --
 -- Days start at the player's own midnight (times are Unix seconds, ns.Now),
@@ -21,13 +32,14 @@ local _, ns = ...
 -- and the days before it, from a midnight, so their start only moves once
 -- a day. No game calls but date, so it is tested offline (tests/range_test.lua).
 
-local Range = { key = "all" }
+local Range = { key = "all", phase = "all" }
 ns.Range = Range
 
 Range.PRESETS = {
     { "all", "All time" }, { "today", "Today" }, { "yesterday", "Yesterday" },
     { "week", "Last 7 days" }, { "month", "Last 30 days" },
 }
+Range.PHASES = { { "all", "Whole journey" }, { "lvl", "Levelling" }, { "end", "Endgame" } }
 
 -- The last midnight at or before now, by the player's clock. Taking the
 -- hours off is an hour out on a day the clocks change, so the hour it gives
@@ -61,9 +73,45 @@ function Range.Bounds(key, now)
     return nil, nil
 end
 
+-- The phase in force: the one chosen, or the whole journey for a journey
+-- that has not reached the cap.
+local function Phase(self)
+    return self.capAt and self.phase or "all"
+end
+
 function Range:Set(key, now)
     self.key = key
-    self.from, self.to = Range.Bounds(key, now or ns.Now())
+    local from, to = Range.Bounds(key, now or ns.Now())
+    local phase = Phase(self)
+    if phase == "lvl" then
+        to = to and math.min(to, self.capAt) or self.capAt
+    elseif phase == "end" then
+        from = from and math.max(from, self.capAt) or self.capAt
+    end
+    -- Code reading the bounds takes both or neither.
+    if from or to then from, to = from or 0, to or math.huge end
+    self.from, self.to = from, to
+end
+
+function Range:SetCap(t)
+    self.capAt = t
+end
+
+function Range:SetPhase(key, now)
+    self.phase = key
+    self:Set(self.key, now)
+end
+
+function Range:PhaseLabel()
+    local phase = Phase(self)
+    for _, p in ipairs(Range.PHASES) do
+        if p[1] == phase then return p[2] end
+    end
+    return "Whole journey"
+end
+
+function Range:Key()
+    return self.key .. "|" .. Phase(self)
 end
 
 -- Works the bounds out again from now, for "today" after midnight.

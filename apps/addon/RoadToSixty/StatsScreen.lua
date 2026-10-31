@@ -1522,7 +1522,11 @@ function StatsScreen:Redraw()
     FillTiles(w)
     local covers = ("%s to %s"):format(Day(w.from), Day(w.to))
     if followT < index.finish then covers = covers .. ", up to the replay's moment" end
-    ui.range:SetText(("|cffffd100%s|r  %s"):format(ns.Range:Label(), covers))
+    local label = ns.Range:Label()
+    if ns.Range:Key():find("|lvl", 1, true) or ns.Range:Key():find("|end", 1, true) then
+        label = ns.Range:PhaseLabel() .. ", " .. label:lower()
+    end
+    ui.range:SetText(("|cffffd100%s|r  %s"):format(label, covers))
     local shown = hoverLevel or w.levelTo
     DrawChart(w, shown)
     FillCard(RowOf(shown) or rows[#rows])
