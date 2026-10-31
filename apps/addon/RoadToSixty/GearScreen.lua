@@ -101,6 +101,16 @@ end
 -- the server never sends would otherwise stay "..." for good.
 local RETRY = 10
 
+-- Calls fn once the game has loaded item id. An item this client does not
+-- have (a journey from another client, a seeded one) is never asked for:
+-- the game's own loader fails on it ("table index is nil").
+local function WhenLoaded(id, fn)
+    if not (Item and Item.CreateFromItemID) or type(id) ~= "number" or id <= 0 then return end
+    local exists = C_Item and C_Item.DoesItemExistByID
+    if exists and not exists(id) then return end
+    pcall(function() Item:CreateFromItemID(id):ContinueOnItemLoad(fn) end)
+end
+
 -- name, quality, icon and item level of a span's item, from the game's cache;
 -- asks for it when not cached, and the screen is redrawn when it comes.
 -- Until then it is kept as pending, so it is not looked up on every redraw.
@@ -114,14 +124,12 @@ local function Info(span)
     local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(span.id)
     if not name then
         -- Ask the game for it; the screen is redrawn when it comes.
-        if Item and Item.CreateFromItemID then
-            Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
-                for k, v in pairs(info) do
-                    if v.pending and v.id == span.id then info[k] = nil end
-                end
-                QueueRedraw()
-            end)
-        end
+        WhenLoaded(span.id, function()
+            for k, v in pairs(info) do
+                if v.pending and v.id == span.id then info[k] = nil end
+            end
+            QueueRedraw()
+        end)
         known = { name = "...", quality = 1, icon = icon, pending = true, id = span.id, asked = GetTime() }
         info[key] = known
         return known
@@ -335,8 +343,8 @@ local function ShowTip(owner, span, again)
     -- An item not cached yet: the game redraws the tooltip from the link
     -- when it arrives, dropping the lines below, so it is shown again then,
     -- once (again), so the re-show never asks a second time.
-    if not again and Info(span).pending and Item and Item.CreateFromItemID then
-        Item:CreateFromItemID(span.id):ContinueOnItemLoad(function()
+    if not again and Info(span).pending then
+        WhenLoaded(span.id, function()
             if GameTooltip:IsOwned(owner) then ShowTip(owner, span, true) end
         end)
     end
@@ -702,6 +710,9 @@ local function NewBar()
     bar:SetScript("OnMouseDown", function(_, button) GearScreen:MouseDown(button) end)
     bar:SetScript("OnMouseUp", function(_, button) GearScreen:MouseUp(button) end)
     bar:SetScript("OnMouseWheel", function(_, delta) GearScreen:Zoom(delta) end)
+    -- Hidden until PlaceBar has drawn it, so a bar it could not finish never
+    -- shows without its span.
+    bar:Hide()
     return bar
 end
 
@@ -1254,7 +1265,7 @@ function GearScreen:ShowMoment()
     ui.stripPin:SetHeight(ui.stripInner:GetHeight() + 6)
     local t = hoverT or pinT
     for _, bar in ipairs(bars) do
-        if bar:IsShown() then
+        if bar:IsShown() and bar.span then
             local span = bar.span
             bar.outline:SetShown(span.t <= t and (t < span.endT or not span.next and not span.closed) and not span.brief)
         end
