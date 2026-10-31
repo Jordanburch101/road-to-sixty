@@ -10,8 +10,11 @@ local addonName, ns = ...
 -- kind's own fields from index 6 on (so e[6] is the first one below). The
 -- position is in world yards; when none is known it is -1, 0, 0. Kinds and
 -- extra fields:
---   on   level                     session start
---   off                            session end
+--   on   level, money              session start; money the gold held (copper),
+--                                  from #86: nil in older journeys, and filled
+--                                  in a moment later when the client said 0 at
+--                                  login (its money can come late)
+--   off  money                     session end, with the gold held (from #86)
 --   lvl  level                     level reached
 --   die  killer, kind, spell       death; who killed the player, filled in
 --                                  a moment later when known, see Deaths.lua
@@ -406,12 +409,18 @@ ns.On("PLAYER_LOGIN", function()
     local last = ns.char.events[#ns.char.events]
     lastSession = last and { t = last[1], c = last[3], x = last[4], y = last[5] } or nil
     -- After the session start, so gear changed while away is logged in it.
-    Journal:Log("on", level)
+    -- The gold held marks gold over time at the cap too, where no level ups
+    -- come to snapshot it (#86); a 0 may only be the client not knowing yet.
+    local money = GetMoney()
+    local on = Journal:Log("on", level, money > 0 and money or nil)
+    if money <= 0 then
+        C_Timer.After(5, function() ns.SafeCall(Journal.Amend, Journal, on, nil, GetMoney()) end)
+    end
     ReadLoginGear(fillLevel, GEAR_TRIES)
 end)
 
 ns.On("PLAYER_LOGOUT", function()
-    Journal:Log("off")
+    Journal:Log("off", GetMoney())
 end)
 
 ns.On("PLAYER_ENTERING_WORLD", function()
