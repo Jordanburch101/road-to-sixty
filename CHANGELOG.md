@@ -6,6 +6,39 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.17.0
+
+### New
+- A Stats screen beside Map and Gear at the top of the journey map, in
+  place of the old Stats tab. It shows your time played, distance
+  travelled, kills, quests, deaths, gold and dungeons, and a bar for each
+  level: time, kills, deaths, gold or XP an hour. Hover a bar to see that
+  level, or click it to replay from its level up. The numbers follow the
+  date range you pick and grow as the replay plays.
+- Records on the Stats screen: your slowest level, best XP an hour,
+  deadliest level, nemesis, most killed mob, longest worn item, most gold
+  held, longest without dying, favourite dungeon and most gathered. Click
+  one to see where it happened.
+- Compare your time to each level with your other characters, with a
+  larger window to choose which ones to show and to compare kills,
+  deaths, quests or gold too.
+- Zones by time, coloured by the levels you spent there, and your
+  professions, reputation and guild at any point of the journey.
+- A new switch at the bottom right of the journey map shows the whole journey,
+  only the levelling, or only the endgame after reaching the level cap.
+  It works on the map, the gear screen and the Stats screen. With the
+  endgame picked, the Stats screen counts weeks at the cap: raids,
+  dungeons and a bar for each week.
+- Every profession skill point is now recorded, with where and when you
+  earned it.
+- What you craft is now recorded: the item, how many, its profession and
+  where you made it.
+- Your gold is now recorded at each login and logout.
+
+### Fixed
+- The gear screen no longer floods errors on characters whose items the
+  game has not loaded.
+
 ## 1.16.0
 
 ### New

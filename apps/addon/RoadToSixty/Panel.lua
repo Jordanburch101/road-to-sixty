@@ -2,9 +2,9 @@ local _, ns = ...
 
 -- Side panel of the journey map. History lists the journey's milestones,
 -- travel, loot and dungeon runs, newest first, with a filter; clicking one
--- jumps the map and replay to that moment. Stats shows totals and a
--- breakdown per level from the level-up snapshots. Characters lists the
--- account's characters from the roster.
+-- jumps the map and replay to that moment. Characters lists the account's
+-- characters from the roster. The numbers are on the Stats screen
+-- (StatsScreen.lua), a mode of the map window.
 
 local Panel = { WIDTH = 280 }
 ns.Panel = Panel
@@ -16,26 +16,12 @@ local NEST_INDENT = 12      -- how far rows folded under a run move in when it i
 -- session only; each run starts folded (FilterHistory).
 local expanded = {}
 local CHARACTER_ROW = 34
-local LEVEL_ROW = 16
-local SUMMARY_ROW = 16
 local SCROLL_STEP = 3
-local LEVEL_COLUMNS = { 4, 40, 112, 164, 214 }  -- x of level, time, kills, deaths, quests
 
 local tabs, panes = {}, {}
-local historyList, levelList, characterList
+local historyList, characterList
 local currentTime = math.huge   -- replay time History follows; math.huge at the end
 local currentIndex              -- index in historyList.data of the entry at currentTime
-local summaryValues = {}
-
-local SUMMARY = { "Level", "Time played", "Walked", "Flown", "Kills", "Quests", "Deaths", "Dungeons", "Zones visited",
-    "Professions", "Recipes", "Guild", "Players met", "Reputation", "Riding", "Rare mobs" }
-local PROFESSIONS_ROW = 10  -- hovering it lists each profession's skill
-local GUILD_ROW = 12        -- hovering it lists each guild and when
-local PEOPLE_ROW = 13       -- hovering it lists the players grouped with most
-local REPUTATION_ROW = 14   -- hovering it lists each faction's standing
-local RIDING_ROW = 15       -- hovering it lists riding learned and mounts
-local RARES_ROW = 16        -- hovering it lists the rares killed
-local PEOPLE_LISTED = 12
 
 local function ZoneName(mapID)
     local info = mapID and C_Map.GetMapInfo(mapID)
@@ -823,310 +809,6 @@ local function CreateHistoryFilters(pane)
     return FILTER_SIZE
 end
 
--- Stats --------------------------------------------------------------------------
-
-local function CreateLevelRow(parent)
-    local row = CreateFrame("Frame", nil, parent)
-    row.cells = {}
-    for i, x in ipairs(LEVEL_COLUMNS) do
-        local cell = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        cell:SetPoint("LEFT", x, 0)
-        row.cells[i] = cell
-    end
-    -- Hover shows the gear worn at that level.
-    row:EnableMouse(true)
-    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(1, 1, 1, 0.08)
-    row:SetScript("OnEnter", function(self)
-        ns.GearCard:Show(self.level, self)
-    end)
-    row:SetScript("OnLeave", function()
-        ns.GearCard:Hide()
-    end)
-    return row
-end
-
-local function UpdateLevelRow(row, item)
-    row.level = item.level
-    local cells = row.cells
-    cells[1]:SetText(item.level .. (item.partial and "*" or ""))
-    cells[1]:SetTextColor(ns.LevelColor(item.level))
-    cells[2]:SetText(FormatDuration(item.time))
-    cells[3]:SetText(not item.kills and "-" or ns.killsTracked and item.kills or "n/a")
-    cells[4]:SetText(item.deaths or "-")
-    cells[5]:SetText(item.quests or "-")
-end
-
--- One row per level with a snapshot. Each level's numbers are the change
--- between reaching it and reaching the next; the current level runs to now.
-local function BuildLevels()
-    local levels, totals = ns.view.levels, ns.view.totals
-    local keys = {}
-    for level in pairs(levels) do
-        keys[#keys + 1] = level
-    end
-    table.sort(keys)
-
-    local now = {
-        played = ns.view.played, kills = totals.kills, deaths = totals.deaths, quests = totals.quests,
-    }
-    local items = {}
-    for _, level in ipairs(keys) do
-        local s = levels[level]
-        local after = levels[level + 1] or (level == ns.Roster:ViewLevel() and now)
-        local item = { level = level, partial = s.partial }
-        if after then
-            item.time = s.played and after.played and after.played - s.played
-            item.kills = after.kills - s.kills
-            item.deaths = after.deaths - s.deaths
-            item.quests = after.quests - s.quests
-        end
-        items[#items + 1] = item
-    end
-    return items
-end
-
--- Professions sorted by name: { name, rank, max }.
-local function Professions()
-    local list = {}
-    for name, s in pairs(ns.view.skills or {}) do
-        list[#list + 1] = { name, s[1] or 0, s[2] or 0 }
-    end
-    table.sort(list, function(a, b) return a[1] < b[1] end)
-    return list
-end
-
-local function ProfessionsSummary()
-    local list = Professions()
-    if #list == 0 then return "-" end
-    local best = list[1]
-    for _, p in ipairs(list) do
-        if p[2] > best[2] then best = p end
-    end
-    return ("%d, best %s %d"):format(#list, best[1], best[2])
-end
-
--- Players met, and the one grouped with most.
-local function PeopleSummary()
-    local list = ns.Parties:People()
-    if #list == 0 then return "-" end
-    local p = list[1][2]
-    return ("%d, most with %s"):format(#list, p.name or "?")
-end
-
--- The best standing, and with whom.
-local function ReputationSummary()
-    local best = ns.Reputation:Standings()[1]
-    if not best then return "-" end
-    return ("%s with %s"):format(ns.Reputation:Label(best[2]), best[1])
-end
-
--- When riding was learned, and the new mounts since tracking began (the
--- collection may be the whole account's, so it is not counted).
-local function RidingSummary()
-    local learnedAt, known, events = ns.Mounts:Summary()
-    local count = 0
-    for _, e in ipairs(events) do
-        if e[2] == "mount" then count = count + 1 end
-    end
-    local riding = learnedAt and ("level " .. learnedAt) or known and "before tracking" or nil
-    if not riding then return count > 0 and ("%d mounts"):format(count) or "-" end
-    return ("%s, %d mount%s"):format(riding, count, count == 1 and "" or "s")
-end
-
-local function RefreshStats()
-    local char, t = ns.view, ns.view.totals
-    local zones = {}
-    local zoneCount = 0
-    for _, e in ipairs(char.events) do
-        if e[2] == "zone" and not zones[e[6]] then
-            zones[e[6]] = true
-            zoneCount = zoneCount + 1
-        end
-    end
-
-    local rareCount = #ns.Rares:List()
-    local values = {
-        ns.Roster:ViewLevel(),
-        FormatDuration(char.played),
-        Commas(t.distance) .. " yd",
-        Commas(t.flown) .. " yd",
-        ns.killsTracked and ("%s (%s xp)"):format(Commas(t.kills), Commas(t.killXP)) or "n/a",
-        ("%s (%s xp)"):format(Commas(t.quests), Commas(t.questXP)),
-        Commas(t.deaths),
-        Commas(t.instances),
-        zoneCount,
-        ProfessionsSummary(),
-        ("%d learned, %d known"):format(ns.Crafts:RecipeCounts()),
-        char.guild and ("<%s>"):format(char.guild[1]) or "-",
-        PeopleSummary(),
-        ReputationSummary(),
-        RidingSummary(),
-        rareCount > 0 and rareCount or "-",
-    }
-    for i, value in ipairs(values) do
-        summaryValues[i]:SetText(value)
-    end
-
-    levelList.data = BuildLevels()
-    levelList:Refresh()
-end
-
-local function CreateStatsPane(pane)
-    for i, label in ipairs(SUMMARY) do
-        local y = -(i - 1) * SUMMARY_ROW
-        local name = pane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        name:SetPoint("TOPLEFT", 4, y)
-        name:SetText(label)
-        local value = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        value:SetPoint("TOPRIGHT", -4, y)
-        summaryValues[i] = value
-    end
-
-    -- Hovering the professions row lists them all.
-    local hover = CreateFrame("Frame", nil, pane)
-    hover:SetPoint("TOPLEFT", 0, -(PROFESSIONS_ROW - 1) * SUMMARY_ROW + 2)
-    hover:SetPoint("RIGHT")
-    hover:SetHeight(SUMMARY_ROW)
-    hover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Professions")
-        local list = Professions()
-        for _, p in ipairs(list) do
-            GameTooltip:AddDoubleLine(p[1], ("%d / %d"):format(p[2], p[3]), 1, 1, 1, 1, 1, 1)
-        end
-        if #list == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    hover:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- And the guild row each guild, with when the character joined and left.
-    local guildHover = CreateFrame("Frame", nil, pane)
-    guildHover:SetPoint("TOPLEFT", 0, -(GUILD_ROW - 1) * SUMMARY_ROW + 2)
-    guildHover:SetPoint("RIGHT")
-    guildHover:SetHeight(SUMMARY_ROW)
-    guildHover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Guilds")
-        local list = ns.Guilds:History()
-        for _, g in ipairs(list) do
-            local from = g[4] and "before tracking" or date("%d %b %Y", g[2])
-            local to = g[3] and date("%d %b %Y", g[3]) or "now"
-            GameTooltip:AddDoubleLine("<" .. g[1] .. ">", ("%s - %s, %s"):format(from, to,
-                FormatDuration((g[3] or ns.Now()) - g[2])), 1, 1, 1, 1, 1, 1)
-        end
-        if #list == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    guildHover:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- And the players row the ones grouped with most.
-    local peopleHover = CreateFrame("Frame", nil, pane)
-    peopleHover:SetPoint("TOPLEFT", 0, -(PEOPLE_ROW - 1) * SUMMARY_ROW + 2)
-    peopleHover:SetPoint("RIGHT")
-    peopleHover:SetHeight(SUMMARY_ROW)
-    peopleHover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Grouped with most")
-        local list = ns.Parties:People()
-        for k = 1, math.min(#list, PEOPLE_LISTED) do
-            local p = list[k][2]
-            local r, g, b = ns.ClassColor(p.class)
-            GameTooltip:AddDoubleLine(p.name or "?", ("%d groups, %s"):format(ns.Tally.Total(p.groups),
-                FormatDuration(ns.Tally.Total(p.seconds))), r, g, b, 1, 1, 1)
-        end
-        if #list > PEOPLE_LISTED then
-            GameTooltip:AddLine(("and %d more"):format(#list - PEOPLE_LISTED), 0.7, 0.7, 0.7)
-        elseif #list == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    peopleHover:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- And the reputation row each faction, with when its standing was reached.
-    local repHover = CreateFrame("Frame", nil, pane)
-    repHover:SetPoint("TOPLEFT", 0, -(REPUTATION_ROW - 1) * SUMMARY_ROW + 2)
-    repHover:SetPoint("RIGHT")
-    repHover:SetHeight(SUMMARY_ROW)
-    repHover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Reputation")
-        local list = ns.Reputation:Standings()
-        for _, f in ipairs(list) do
-            local r, g, b = ns.Reputation:Color(f[2])
-            local label = ns.Reputation:Label(f[2])
-            GameTooltip:AddDoubleLine(f[1], f[3] and ("%s, %s"):format(label, date("%d %b %Y", f[3])) or label,
-                1, 1, 1, r, g, b)
-        end
-        if #list == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    repHover:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- And the riding row riding learned and the new mounts.
-    local rideHover = CreateFrame("Frame", nil, pane)
-    rideHover:SetPoint("TOPLEFT", 0, -(RIDING_ROW - 1) * SUMMARY_ROW + 2)
-    rideHover:SetPoint("RIGHT")
-    rideHover:SetHeight(SUMMARY_ROW)
-    rideHover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Riding and mounts")
-        local _, _, events = ns.Mounts:Summary()
-        for _, e in ipairs(events) do
-            GameTooltip:AddDoubleLine((ns.Mounts:Describe(e)), tostring(date("%d %b %Y", e[1])), 1, 1, 1, 1, 1, 1)
-        end
-        if #events == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    rideHover:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- And the rare mobs row each rare killed, with when and how often.
-    local rareHover = CreateFrame("Frame", nil, pane)
-    rareHover:SetPoint("TOPLEFT", 0, -(RARES_ROW - 1) * SUMMARY_ROW + 2)
-    rareHover:SetPoint("RIGHT")
-    rareHover:SetHeight(SUMMARY_ROW)
-    rareHover:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Rare mobs killed")
-        local list = ns.Rares:List()
-        for _, r in ipairs(list) do
-            local when = tostring(date("%d %b %Y", r[3]))
-            GameTooltip:AddDoubleLine(r[1], r[2] > 1 and ("%s, %d kills"):format(when, r[2]) or when,
-                1, 1, 1, 1, 1, 1)
-        end
-        if #list == 0 then
-            GameTooltip:AddLine("None yet", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    rareHover:SetScript("OnLeave", GameTooltip_Hide)
-
-    local headerY = -(#SUMMARY * SUMMARY_ROW + 12)
-    for i, label in ipairs({ "Level", "Time", "Kills", "Deaths", "Quests" }) do
-        local header = pane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        header:SetPoint("TOPLEFT", LEVEL_COLUMNS[i], headerY)
-        header:SetText(label)
-    end
-
-    local note = pane:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    note:SetPoint("BOTTOMLEFT", 4, 0)
-    note:SetText("* tracking started partway through the level")
-
-    levelList = CreateList(pane, LEVEL_ROW, CreateLevelRow, UpdateLevelRow)
-    levelList:SetPoint("TOPLEFT", 0, headerY - 16)
-    levelList:SetPoint("BOTTOMRIGHT", 0, 16)
-end
-
 -- Characters ---------------------------------------------------------------------
 
 local function CreateCharacterRow(parent)
@@ -1246,8 +928,9 @@ function Panel:Create(parent)
     divider:SetHeight(1)
     divider:SetColorTexture(1, 1, 1, 0.15)
 
-    local tabWidth = self.WIDTH / 3
-    for i, name in ipairs({ "History", "Stats", "Characters" }) do
+    local names = { "History", "Characters" }
+    local tabWidth = self.WIDTH / #names
+    for i, name in ipairs(names) do
         local tab = CreateFrame("Button", nil, frame)
         tab:SetSize(tabWidth, TAB_HEIGHT)
         tab:SetPoint("TOPLEFT", (i - 1) * tabWidth, 0)
@@ -1277,8 +960,7 @@ function Panel:Create(parent)
     historyList = CreateList(panes[1], HISTORY_ROW, CreateHistoryRow, UpdateHistoryRow)
     historyList:SetPoint("TOPLEFT", 0, -filterHeight - 4)
     historyList:SetPoint("BOTTOMRIGHT")
-    CreateStatsPane(panes[2])
-    characterList = CreateList(panes[3], CHARACTER_ROW, CreateCharacterRow, UpdateCharacterRow)
+    characterList = CreateList(panes[2], CHARACTER_ROW, CreateCharacterRow, UpdateCharacterRow)
     characterList:SetAllPoints()
 
     SelectTab(1)
@@ -1331,7 +1013,6 @@ function Panel:Refresh()
     historyItems = BuildHistory()
     FilterHistory()
     historyList:ScrollToTop()
-    RefreshStats()
     characterList.data = ns.Roster:Entries()
     characterList:Refresh()
 end
