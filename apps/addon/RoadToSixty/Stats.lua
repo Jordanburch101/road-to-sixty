@@ -23,7 +23,9 @@ local _, ns = ...
 --     flown, gold
 --     (change in gold held; nil before the first snapshot), levelFrom,
 --     levelTo (level at from and at to), zones = { { uiMapID, seconds
---     played }, ... } most first }.
+--     played, entry, levels }, ... } most first, entry the first "zone"
+--     event in the window for it (or the one before it): { t, c, x, y },
+--     levels the seconds played there at each level: level -> seconds }.
 --   Stats.LevelAt(index, t) -> level, fraction
 --     The level at t, and how far through it by time played (0 to 1).
 --   Stats.ZoneAt(index, t) -> uiMapID of the zone at t, or nil
@@ -48,6 +50,17 @@ local _, ns = ...
 --       favouriteDungeon { name, count, first, last }: the dungeon or raid
 --                     entered most, by name
 --       mostGathered  { item, count }: the resource gathered most (#78)
+--   Stats.Life(index, from, to) -> life
+--     The character at the window's end, and what changed inside it:
+--       professions   { { name, rank, max, gained }, ... } highest first:
+--                     from the level snapshots, "prof" and "skill" events
+--                     (#84) and the professions last seen at the end
+--       reputation    { { id, name, standing, reached }, ... } highest
+--                     first: the last "rep" change by then; a faction with
+--                     none yet stands one below its first change after (one
+--                     above for a drop), or as last seen; reached when a
+--                     change up came inside the window
+--       guild         the guild's name by then ("gj", "gl"), or nil
 --   Stats.Levels(journey, current, now) -> rows
 --     One row per level with a snapshot, its numbers the change from
 --     reaching it to reaching the next; the level now (current, with now's
@@ -158,6 +171,7 @@ local PVP = { pvp = true, arena = true }
 
 function Stats.Index(journey, now, money)
     local quests, deaths, runs, zones, gathers, places = {}, {}, {}, {}, {}, {}
+    local skills, reps, guilds = {}, {}, {}
     local first, last
     for _, e in ipairs(journey.events or {}) do
         local t, kind = e[1], e[2]
@@ -171,7 +185,18 @@ function Stats.Index(journey, now, money)
             runs[#runs + 1] = { t = t, [pvp and "battlegrounds" or "dungeons"] = 1, name = not pvp and e[7] or nil,
                 c = e[3], x = e[4], y = e[5] }
         elseif kind == "zone" then
-            zones[#zones + 1] = { t = t, id = e[6] }
+            zones[#zones + 1] = { t = t, id = e[6], c = e[3], x = e[4], y = e[5] }
+        elseif (kind == "prof" or kind == "skill") and e[6] then
+            local list = skills[e[6]] or {}
+            list[#list + 1] = { t = t, rank = e[7], max = kind == "prof" and e[8] or nil }
+            skills[e[6]] = list
+        elseif kind == "rep" and e[6] then
+            local list = reps[e[6]] or { name = e[8] }
+            list[#list + 1] = { t = t, standing = e[7], up = e[9] }
+            list.name = e[8] or list.name
+            reps[e[6]] = list
+        elseif kind == "gj" or kind == "gl" then
+            guilds[#guilds + 1] = { t = t, name = kind == "gj" and e[6] or nil }
         elseif kind == "gath" then
             gathers[#gathers + 1] = { t = t, item = e[7], c = e[3], x = e[4], y = e[5] }
         elseif kind == "lvl" and e[6] then
@@ -187,6 +212,11 @@ function Stats.Index(journey, now, money)
             local place = places[level]
             local c, x, y = place and place[3], place and place[4], place and place[5]
             levels[#levels + 1] = { t = s.t, level = level, c = c, x = x, y = y }
+            for name, rank in pairs(s.skills or {}) do
+                local list = skills[name] or {}
+                list[#list + 1] = { t = s.t, rank = rank[1], max = rank[2] }
+                skills[name] = list
+            end
             if s.money then gold[#gold + 1] = { t = s.t, money = s.money, level = level, c = c, x = x, y = y } end
         end
     end
@@ -195,9 +225,19 @@ function Stats.Index(journey, now, money)
     if money then gold[#gold + 1] = { t = now, money = money } end
     table.sort(zones, function(a, b) return a.t < b.t end)
     table.sort(gathers, function(a, b) return a.t < b.t end)
+    -- The professions last seen count at the journey's end.
+    for name, rank in pairs(journey.skills or {}) do
+        local list = skills[name] or {}
+        list[#list + 1] = { t = now, rank = rank[1], max = rank[2] }
+        skills[name] = list
+    end
+    for _, list in pairs(skills) do table.sort(list, function(a, b) return a.t < b.t end) end
+    for _, list in pairs(reps) do table.sort(list, function(a, b) return a.t < b.t end) end
+    table.sort(guilds, function(a, b) return a.t < b.t end)
 
     local index = {
         start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers,
+        skills = skills, reps = reps, repsNow = journey.reps or {}, guilds = guilds,
         sessions = ns.GearTimeline.Sessions(journey.events or {}, now),
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
         quests = Build({ "quests", "questXP", "questMoney" }, quests),
@@ -260,24 +300,46 @@ function Stats.LevelAt(index, t)
     return entry.level, math.max(0, math.min(1, fraction))
 end
 
--- Seconds played in each zone between from and to: each zone entry lasts
--- until the next.
+-- Calls add(level, seconds played) for each level's part of a to b, split
+-- at the level ups between them.
+local function ByLevel(index, a, b, add)
+    local levels = index.levels
+    local entry, i = At(levels, a)
+    local level = entry and entry.level or (levels[1] and levels[1].level)
+    if not level then return end
+    local t = a
+    i = i + 1
+    while levels[i] and levels[i].t < b do
+        add(level, Played(index, levels[i].t) - Played(index, t))
+        t, level = levels[i].t, levels[i].level
+        i = i + 1
+    end
+    add(level, Played(index, b) - Played(index, t))
+end
+
+-- Seconds played in each zone between from and to, and at each level
+-- there: each zone entry lasts until the next.
 local function Zones(index, from, to)
-    local seconds, list = {}, index.zones
+    local seconds, byLevel, list = {}, {}, index.zones
     local _, i = At(list, from)
     i = math.max(i, 1)
+    local entries = {}
     while list[i] and list[i].t <= to do
         local a = math.max(list[i].t, from)
         local b = math.min(list[i + 1] and list[i + 1].t or index.finish, to)
         if b > a then
             local id = list[i].id
             seconds[id] = (seconds[id] or 0) + Played(index, b) - Played(index, a)
+            entries[id] = entries[id] or list[i]
+            local levels = byLevel[id] or {}
+            byLevel[id] = levels
+            ByLevel(index, a, b, function(level, s) levels[level] = (levels[level] or 0) + s end)
         end
         i = i + 1
     end
     local out = {}
     for id, s in pairs(seconds) do
-        if s > 0 then out[#out + 1] = { id, s } end
+        if s > 0 then out[#out + 1] = { id, s, entries[id], byLevel[id] } end
     end
     table.sort(out, function(a, b) return a[2] > b[2] or (a[2] == b[2] and a[1] < b[1]) end)
     return out
@@ -463,6 +525,75 @@ function Stats.Records(index, from, to, rows, timeline)
     local gathered = Most(byItem)
     if gathered then out.mostGathered = Place({ item = gathered.item, count = gathered.count }, gathered.entry) end
     return out
+end
+
+-- Life ------------------------------------------------------------------------------
+
+-- The last entry of a time-ordered list at or before t, and its position.
+local function Last(list, t)
+    local found, at
+    for i, entry in ipairs(list) do
+        if entry.t > t then break end
+        found, at = entry, i
+    end
+    return found, at
+end
+
+-- A profession's rank and cap at t; points carry the cap they were given
+-- last, as "skill" events have none.
+local function SkillAt(list, t)
+    local rank, max
+    for _, p in ipairs(list) do
+        if p.t > t then break end
+        rank, max = p.rank or rank, p.max or max
+    end
+    return rank, max
+end
+
+local function StandingAt(index, id, list, t)
+    local last = Last(list, t)
+    if last then return last.standing end
+    local nextChange = list[1]
+    if nextChange then return nextChange.standing + (nextChange.up and -1 or 1) end
+    local now = index.repsNow[id]
+    return now and now[1]
+end
+
+function Stats.Life(index, from, to)
+    from, to = Bounds(index, from, to)
+    local life = { professions = {}, reputation = {} }
+    for name, list in pairs(index.skills) do
+        local rank, max = SkillAt(list, to)
+        if rank then
+            life.professions[#life.professions + 1] = { name = name, rank = rank, max = max,
+                gained = rank - (SkillAt(list, from) or 0) }
+        end
+    end
+    table.sort(life.professions, function(a, b) return a.rank > b.rank or (a.rank == b.rank and a.name < b.name) end)
+
+    local ids = {}
+    for id in pairs(index.reps) do ids[id] = true end
+    for id in pairs(index.repsNow) do ids[id] = true end
+    for id in pairs(ids) do
+        local list = index.reps[id] or {}
+        local standing = StandingAt(index, id, list, to)
+        if standing then
+            local reached
+            for _, change in ipairs(list) do
+                if change.t > from and change.t <= to and change.up then reached = change.t end
+            end
+            local now = index.repsNow[id]
+            life.reputation[#life.reputation + 1] = { id = id, name = list.name or (now and now[2]) or "?",
+                standing = standing, reached = reached }
+        end
+    end
+    table.sort(life.reputation, function(a, b)
+        return a.standing > b.standing or (a.standing == b.standing and a.name < b.name)
+    end)
+
+    local guild = Last(index.guilds, to)
+    life.guild = guild and guild.name
+    return life
 end
 
 -- Level rows ----------------------------------------------------------------------

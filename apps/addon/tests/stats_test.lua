@@ -176,6 +176,51 @@ check(rec.deadliest.deaths == 2 and rec.deathless.seconds == 1300 and rec.deathl
 check(rec.mostKilled.count == 2 and rec.favouriteDungeon.count == 1 and rec.longestWorn.seconds == 1800,
     "kills, runs and gear counted inside the window only")
 
+-- 8c. Life at the window's end.
+local lj = {
+    events = {
+        { 0, "on", 0, 0, 0, 10 },
+        { 0, "prof", 0, 0, 0, "Mining", 1, 75, true },
+        { 100, "skill", 0, 0, 0, "Mining", 2, 1 },
+        { 200, "rep", 0, 0, 0, 72, 6, "Stormwind", true },
+        { 300, "gj", 0, 0, 0, "The Raiders", "Member" },
+        { 400, "prof", 0, 0, 0, "Mining", 60, 150 },
+        { 450, "skill", 0, 0, 0, "Mining", 61, 60 },
+        { 500, "ride", 0, 0, 0, 33388 },
+        { 600, "mount", 0, 0, 0, 6 },
+        { 700, "rep", 0, 0, 0, 47, 5, "Ironforge", true },
+        { 800, "gl", 0, 0, 0, "The Raiders" },
+        { 900, "off", 0, 0, 0 },
+    },
+    levels = { [10] = { t = 0, skills = { Mining = { 1, 75 } } } },
+    skills = { Mining = { 61, 150 }, Cooking = { 30, 75 } },
+    reps = { [72] = { 6, "Stormwind" }, [47] = { 5, "Ironforge" }, [69] = { 4, "Darnassus" } },
+}
+local li = Stats.Index(lj, 900)
+local life = Stats.Life(li, nil, 350)
+local mining = life.professions[1]
+check(mining and mining.name == "Mining" and mining.rank == 2 and mining.max == 75 and mining.gained == 1,
+    "a profession's rank at the window's end, its cap carried from the prof before")
+check(#life.professions == 1, "a profession first seen at the end is not there before")
+check(life.reputation[1].name == "Stormwind" and life.reputation[1].standing == 6 and life.reputation[1].reached == 200,
+    "a standing reached inside the window")
+local ironforge, darnassus
+for _, f in ipairs(life.reputation) do
+    if f.name == "Ironforge" then ironforge = f elseif f.name == "Darnassus" then darnassus = f end
+end
+check(ironforge and ironforge.standing == 4 and not ironforge.reached, "before its first change, one below it")
+check(darnassus and darnassus.standing == 4, "a faction never changed stands as last seen")
+check(life.guild == "The Raiders", "in the guild by then")
+life = Stats.Life(li, 350, 900)
+check(life.professions[1].rank == 61 and life.professions[1].max == 150 and life.professions[1].gained == 59
+    and #life.professions == 2, "the professions last seen count at the end")
+check(life.guild == nil, "left the guild")
+
+-- 8d. Zones keep where they were first entered in the window.
+check(all.zones[1][3] and all.zones[1][3].t == 1500, "a zone's first entry")
+check(all.zones[1][4][10] == 600 and all.zones[1][4][11] == 900 and all.zones[2][4][10] == 500,
+    "a zone's time split at the level ups in it")
+
 -- 8b. Path steps out of time order (a clock put right) still count once each.
 local stepped = Stats.Index({ events = {}, segments = {
     { m = "w", c = 0, t = 100, x = 0, y = 0, d = "10,3,4" }, { m = "t", c = 0, t = 50, x = 0, y = 0, d = "10,6,8" },

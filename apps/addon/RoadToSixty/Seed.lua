@@ -1368,3 +1368,70 @@ ns.Command("seed", "replace this character's journey with fake test data", funct
         end
     end)
 end)
+
+-- /rts seedalt [count]: made-up characters in the roster (one, or up to
+-- four), each with only its level snapshots, so the Stats screen has
+-- someone to compare with (#83). /rts seedalt remove takes them all out
+-- again. No character's own journey changes.
+local SEED_ALTS = {
+    { "Seedalt", "MAGE", 41, 1 },
+    { "Seedbeta", "PRIEST", 24, 1.25 },
+    { "Seedgamma", "HUNTER", 52, 0.8 },
+    { "Seeddelta", "ROGUE", 60, 1 },
+}
+
+-- A made-up journey of level snapshots up to top, pace times a normal one's.
+-- Each level takes longer than the last, as a real journey's do, with three
+-- times as long logged out as played between them. Snapshots carry every
+-- running total a real one has (Journal.lua), as the side panel subtracts them.
+local function SeedAltJourney(top, pace, startT)
+    local levels, played, t = {}, 0, startT
+    local totals = { kills = 0, killXP = 0, questXP = 0, deaths = 0, quests = 0, instances = 0, distance = 0, flown = 0 }
+    for level = 1, top do
+        levels[level] = {
+            t = t, played = math.floor(played), money = level * level * 2000, kills = totals.kills,
+            killXP = totals.killXP, questXP = totals.questXP, deaths = totals.deaths, quests = totals.quests,
+            instances = totals.instances, distance = math.floor(totals.distance), flown = math.floor(totals.flown),
+        }
+        local seconds = (0.08 + 0.0016 * level * level) * 3600 * (0.8 + 0.4 * math.random()) * pace
+        local hours = seconds / 3600
+        local xp = (40 * level * level + 360 * level) * (level >= 30 and 1.3 or 1)
+        totals.kills = totals.kills + math.floor(hours * (40 - level * 0.25))
+        totals.killXP = totals.killXP + math.floor(xp * 0.4)
+        totals.questXP = totals.questXP + math.floor(xp * 0.6)
+        totals.quests = totals.quests + math.floor(hours * 3) + 1
+        totals.deaths = totals.deaths + (math.random() < 0.4 and 1 or 0)
+        totals.instances = totals.instances + (level % 7 == 0 and 1 or 0)
+        totals.distance = totals.distance + hours * 1500
+        totals.flown = totals.flown + (level >= 20 and hours * 600 or 0)
+        played, t = played + seconds, t + math.floor(seconds * 4)
+    end
+    totals.distance, totals.flown = math.floor(totals.distance), math.floor(totals.flown)
+    return {
+        seeded = true, levels = levels, events = {}, segments = {}, people = {}, recipes = {},
+        kills = { d = "", last = 0, names = {} }, played = math.floor(played), totals = totals,
+    }, t
+end
+
+ns.Command("seedalt", "add made-up characters to compare with on the Stats screen (developer)", function(arg)
+    ns.db.roster = ns.db.roster or {}
+    for _, alt in ipairs(SEED_ALTS) do ns.db.roster[alt[1] .. "-Seed"] = nil end
+    if arg == "remove" then
+        ns.Print("Removed the made-up characters.")
+    else
+        local count = math.max(1, math.min(#SEED_ALTS, tonumber(arg) or 1))
+        local names = {}
+        for k = 1, count do
+            local alt = SEED_ALTS[k]
+            local journey, seen = SeedAltJourney(alt[3], alt[4], ns.Now() - (40 + k * 5) * 86400)
+            ns.db.roster[alt[1] .. "-Seed"] = {
+                name = alt[1], realm = "Seed", class = alt[2], level = alt[3], seen = seen,
+                played = journey.played, journey = journey,
+            }
+            names[#names + 1] = ("%s (level %d)"):format(alt[1], alt[3])
+        end
+        ns.Print(("Added %s to compare with on the Stats screen. /rts seedalt remove takes them out.")
+            :format(table.concat(names, ", ")))
+    end
+    if ns.StatsScreen then ns.StatsScreen:Rebuild() end
+end)
