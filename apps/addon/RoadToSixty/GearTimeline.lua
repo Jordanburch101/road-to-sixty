@@ -216,6 +216,7 @@ local function Played(sessions, t)
     if s == lastSession then return s[3] + (s[2] - s[1]) + (t - s[2]) end
     return s[3] + s[2] - s[1]
 end
+GearTimeline.Played = Played    -- for Stats.lua
 
 -- The time at which played seconds were reached: Played run backwards. A
 -- moment between sessions is the end of the one before.

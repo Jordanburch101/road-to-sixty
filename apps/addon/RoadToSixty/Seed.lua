@@ -6,9 +6,12 @@ local _, ns = ...
 --   /rts seed confirm                  a realistic 1-30: the levelling route for
 --                                     the character's race, quest hubs, real
 --                                     dungeons at their level, a normal pace
---   /rts seed stress confirm [points]  a 1-60 through every zone at full size,
---                                     to stress test the map, memory use and
---                                     SavedVariables size
+--   /rts seed stress confirm [points] [weeks]
+--                                     a 1-60 through every zone at full size,
+--                                     then weeks at 60 (raids, 5-man runs,
+--                                     days in the endgame zones; 15 unless
+--                                     given), to stress test the map, memory
+--                                     use and SavedVariables size
 
 local DEFAULT_POINTS = 150000   -- rough estimate for a real 1-60
 local SESSION_POINTS = 3600     -- about 2.5 hours of moving per login
@@ -456,16 +459,18 @@ local function Wander(zone, count)
         local d = random(15, 20)
         Step(G.x + cos(heading) * d, G.y + sin(heading) * d, random(2, 3))
 
-        if random() < KILL_CHANCE then
+        -- At the cap nothing gives XP, so the message kills are counted from never comes.
+        if not G.atCap and random() < KILL_CHANCE then
             totals.kills = totals.kills + 1
             totals.killXP = totals.killXP + G.level * 10 + 40
             Kill(G.level * 10 + 40)
         end
         if random() < QUEST_CHANCE then
-            local xp = G.level * 60 + 100
+            -- At the cap a quest gives gold in place of its XP.
+            local xp = G.atCap and 0 or G.level * 60 + 100
             totals.quests = totals.quests + 1
             totals.questXP = totals.questXP + xp
-            Log("qd", G.quest, xp, G.level * 50, QuestName(G.quest))
+            Log("qd", G.quest, xp, G.atCap and random(8000, 20000) or G.level * 50, QuestName(G.quest))
             G.quest = G.quest + 1
             Log("qa", G.quest)
         end
@@ -477,7 +482,7 @@ local function Wander(zone, count)
         end
 
         G.sessionLeft = G.sessionLeft - 1
-        if G.sessionLeft <= 0 then
+        if G.sessionLeft <= 0 and not G.atCap then
             NextSession()
         end
     end
@@ -601,7 +606,7 @@ end
 -- enchants from level 40; pre-raid gear at 59; then weeks of raiding at 60.
 -- The level snapshots are rebuilt from it at the end (issue #64).
 
-local ENDGAME_WEEKS = 12
+local ENDGAME_WEEKS = 15
 -- Slots in the order they are planned, with the level each first gets an item.
 local PLAN_SLOTS = {
     { 16, 2 }, { 17, 3 }, { 5, 2 }, { 7, 2 }, { 8, 2 }, { 9, 3 }, { 10, 4 }, { 6, 4 }, { 15, 5 },
@@ -753,6 +758,12 @@ local function PlanGear(char, weeks)
                 local t = capAt + (week - 1) * 7 * 86400 + random(1, 5) * 86400 + 19 * 3600
                 added[#added + 1] = { t, "on", -1, 0, 0, 60 }
                 added[#added + 1] = { t + 600, "in", -1, 0, 0, raid[1], raid[2], "raid" }
+                local wipes = random(0, 3)
+                for wipe = 1, wipes do
+                    added[#added + 1] = { t + 600 + wipe * random(1800, 3000), "die", -1, 0, 0, raid[4][random(#raid[4])] }
+                end
+                if char.totals then char.totals.deaths = char.totals.deaths + wipes end
+                local items = {}
                 for drop = 1, random(0, 2) do
                     local planned = PLAN_SLOTS[random(#PLAN_SLOTS)]
                     local slot = planned[1]
@@ -767,9 +778,18 @@ local function PlanGear(char, weeks)
                         local source = { how = random() < 0.4 and "roll" or "drop", kind = "Creature", name = boss,
                             id = random(10000, 15000), instance = raid[1], t = at - 120, c = -1, x = 0, y = 0 }
                         Put(at, slot, entry, source, Enchant(slot, 0.5))
+                        -- The run's summary lists links, as History shows them.
+                        local link = GetItemInfo and select(2, GetItemInfo(entry[1]))
+                        items[#items + 1] = link or ("item:" .. entry[1])
                     end
                 end
+                local duration = 4 * 3600 - 900
+                added[#added + 1] = { t + 600 + duration, "out", -1, 0, 0, raid[1], {
+                    name = raid[2], type = "raid", duration = duration, kills = random(80, 160), xp = 0,
+                    deaths = wipes, money = random(20, 60) * 10000, levels = 0, items = items,
+                } }
                 added[#added + 1] = { t + 4 * 3600, "off", -1, 0, 0 }
+                if G then G.played = G.played + 4 * 3600 end
             end
         end
     end
@@ -825,17 +845,117 @@ local function PlanGear(char, weeks)
 end
 ns.SeedPlanGear = PlanGear     -- for tests/seed_test.lua
 
+-- Endgame (stress seed) ---------------------------------------------------------
+-- After reaching 60: two or three days a week in the endgame zones, each a
+-- morning's session so it never meets the evening raid nights PlanGear
+-- adds: wandering (quests for gold, deaths, loot, now and then a vein),
+-- a 5-man run now and then, and reputation with the endgame factions
+-- climbing over the weeks. No kills, as at the cap nothing gives XP.
+
+local ENDGAME_ZONES = { [1452] = true, [1423] = true, [1422] = true, [1428] = true, [1451] = true, [1448] = true }
+-- { instance ID, name, a boss }
+local ENDGAME_DUNGEONS = {
+    { 329, "Stratholme", "Baron Rivendare" }, { 289, "Scholomance", "Darkmaster Gandling" },
+    { 229, "Blackrock Spire", "General Drakkisath" }, { 230, "Blackrock Depths", "Emperor Dagran Thaurissan" },
+    { 429, "Dire Maul", "Immol'thar" },
+}
+-- { faction ID, name, { week reached, standing }, ... }
+local ENDGAME_REPS = {
+    { 529, "Argent Dawn", { 1, 6 }, { 5, 7 }, { 12, 8 } },
+    { 576, "Timbermaw Hold", { 2, 5 }, { 7, 6 } },
+    { 749, "Hydraxian Waterlords", { 3, 5 }, { 9, 6 } },
+}
+local THORIUM_ORE = 10620
+
+local function EndgameDungeon()
+    local d = ENDGAME_DUNGEONS[random(#ENDGAME_DUNGEONS)]
+    G.char.totals.instances = G.char.totals.instances + 1
+    Log("in", d[1], d[2], "party")
+    local duration, deaths, items = random(50, 110) * 60, random(0, 2), {}
+    for _ = 1, deaths do
+        G.t = G.t + floor(duration / (deaths + 2))
+        G.char.totals.deaths = G.char.totals.deaths + 1
+        Log("die", d[3])
+    end
+    for _ = 1, random(1, 2) do items[#items + 1] = DropLoot(d[1], 3) end
+    G.t = G.t + floor(duration / (deaths + 2))
+    G.played = G.played + duration
+    Log("out", d[1], {
+        name = d[2], type = "party", duration = duration, kills = random(60, 140), xp = 0, deaths = deaths,
+        money = random(2, 6) * 10000, levels = 0, items = items,
+    })
+    OpenSegment("w", "i")
+end
+
+local function SeedEndgame(route, weeks)
+    -- Reach the cap first, if the points fell short of it.
+    while G.level < 60 do
+        G.level = G.level + 1
+        Log("lvl", G.level)
+        GearUpTo(G.level)
+        LearnCrafts(G.level)
+        Snapshot(G.level)
+    end
+    G.atCap = true
+    local capAt = G.char.levels[60].t
+    local zones = {}
+    for _, zone in ipairs(route) do
+        if ENDGAME_ZONES[zone.id] then zones[#zones + 1] = zone end
+    end
+    if #zones == 0 then
+        for k = math.max(1, #route - 2), #route do zones[#zones + 1] = route[k] end
+    end
+    local reps = {}
+    for week = 1, weeks do
+        local days = { 0, 2, 4, 6 }
+        for _ = 1, random(1, 2) do table.remove(days, random(#days)) end
+        for k, day in ipairs(days) do
+            -- A morning's session: hours 3 to 6 after the time of day the cap was reached.
+            local start = capAt + (week - 1) * 7 * 86400 + day * 86400 + 3 * 3600 + random(0, 3600)
+            if start <= G.t or start > time() - 3600 then break end
+            Log("off")
+            G.t = start
+            Log("on", 60)
+            OpenSegment(G.cur and G.cur.mode or "w", "l")
+            if k == 1 then
+                for _, rep in ipairs(ENDGAME_REPS) do
+                    for step = 3, #rep do
+                        local reached = rep[step]
+                        if reached[1] == week then
+                            Log("rep", rep[1], reached[2], rep[2], true)
+                            reps[rep[1]] = { reached[2], rep[2] }
+                        end
+                    end
+                end
+            end
+            local zone = zones[random(#zones)]
+            TravelTo(zone, zone.x1 + random() * (zone.x2 - zone.x1), zone.y1 + random() * (zone.y2 - zone.y1))
+            Wander(zone, random(700, 1400))
+            if random() < 0.3 then
+                for _ = 1, random(2, 6) do
+                    G.t = G.t + random(60, 240)
+                    Log("gath", "m", THORIUM_ORE, 175404, THORIUM_ORE .. ":" .. random(1, 3))
+                end
+            end
+            if random() < 0.4 then EndgameDungeon() end
+        end
+    end
+    G.char.reps = reps
+end
+
 -- items: links by quality, { [2] = {...}, [3] = {...}, [4] = {...} }.
-local function SeedStress(total, items)
+-- weeks: how many weeks at 60 follow the levelling (ENDGAME_WEEKS if nil).
+local function SeedStress(total, items, weeks)
     local route = BuildRoute()
     if not route or #route == 0 then
         ns.Print("Could not find any zones to walk. Go outside on a main continent and try again.")
         return
     end
+    weeks = weeks or ENDGAME_WEEKS
     local started = debugprofilestop()
     local first = route[1]
     -- Far enough back that the weeks of raiding after 60 end before today.
-    Begin(first, first.cx, first.cy, 45 + ENDGAME_WEEKS * 7, items, { total = total })
+    Begin(first, first.cx, first.cy, 45 + weeks * 7, items, { total = total })
 
     local perZone = floor(total * 0.9 / #route)
     for i, zone in ipairs(route) do
@@ -845,7 +965,9 @@ local function SeedStress(total, items)
         Wander(zone, perZone)
         MaybeDungeon()
     end
-    Finish(60, started, "stress 1-60", function() PlanGear(G.char, ENDGAME_WEEKS) end)
+    SeedEndgame(route, weeks)
+    Finish(60, started, ("stress 1-60 and %d weeks at 60"):format(weeks),
+        function() PlanGear(G.char, weeks) end)
 end
 
 -- Realistic 1-30 ---------------------------------------------------------------
@@ -1350,21 +1472,88 @@ end
 
 ns.Command("seed", "replace this character's journey with fake test data", function(arg)
     local stress = arg:match("^stress%s+") ~= nil
-    local confirm, count = arg:gsub("^stress%s+", ""):match("^(%S*)%s*(%d*)$")
+    local confirm, count, weeks = arg:gsub("^stress%s+", ""):match("^(%S*)%s*(%d*)%s*(%d*)$")
     if confirm ~= "confirm" then
         ns.Print("This ERASES this character's journey and fills it with fake test data.")
         ns.Print("Type /rts seed confirm for a realistic 1-30 levelling journey.")
-        ns.Print(("Type /rts seed stress confirm [points] for a full-size 1-60 stress test. Default %d points."):format(
-            DEFAULT_POINTS))
+        ns.Print(("Type /rts seed stress confirm [points] [weeks] for a full-size 1-60 stress test and weeks at 60."
+            .. " Default %d points, %d weeks."):format(DEFAULT_POINTS, ENDGAME_WEEKS))
         return
     end
     ns.Print("Loading item data for fake loot...")
     LoadItems(function(items)
         ns.Print(("Items for loot: %d green, %d blue, %d epic."):format(#items[2], #items[3], #items[4]))
         if stress then
-            SeedStress(tonumber(count) or DEFAULT_POINTS, items)
+            SeedStress(tonumber(count) or DEFAULT_POINTS, items, tonumber(weeks))
         else
             SeedRealistic(items)
         end
     end)
+end)
+
+-- /rts seedalt [count]: made-up characters in the roster (one, or up to
+-- four), each with only its level snapshots, so the Stats screen has
+-- someone to compare with (#83). /rts seedalt remove takes them all out
+-- again. No character's own journey changes.
+local SEED_ALTS = {
+    { "Seedalt", "MAGE", 41, 1 },
+    { "Seedbeta", "PRIEST", 24, 1.25 },
+    { "Seedgamma", "HUNTER", 52, 0.8 },
+    { "Seeddelta", "ROGUE", 60, 1 },
+}
+
+-- A made-up journey of level snapshots up to top, pace times a normal one's.
+-- Each level takes longer than the last, as a real journey's do, with three
+-- times as long logged out as played between them. Snapshots carry every
+-- running total a real one has (Journal.lua), as the side panel subtracts them.
+local function SeedAltJourney(top, pace, startT)
+    local levels, played, t = {}, 0, startT
+    local totals = { kills = 0, killXP = 0, questXP = 0, deaths = 0, quests = 0, instances = 0, distance = 0, flown = 0 }
+    for level = 1, top do
+        levels[level] = {
+            t = t, played = math.floor(played), money = level * level * 2000, kills = totals.kills,
+            killXP = totals.killXP, questXP = totals.questXP, deaths = totals.deaths, quests = totals.quests,
+            instances = totals.instances, distance = math.floor(totals.distance), flown = math.floor(totals.flown),
+        }
+        local seconds = (0.08 + 0.0016 * level * level) * 3600 * (0.8 + 0.4 * math.random()) * pace
+        local hours = seconds / 3600
+        local xp = (40 * level * level + 360 * level) * (level >= 30 and 1.3 or 1)
+        totals.kills = totals.kills + math.floor(hours * (40 - level * 0.25))
+        totals.killXP = totals.killXP + math.floor(xp * 0.4)
+        totals.questXP = totals.questXP + math.floor(xp * 0.6)
+        totals.quests = totals.quests + math.floor(hours * 3) + 1
+        totals.deaths = totals.deaths + (math.random() < 0.4 and 1 or 0)
+        totals.instances = totals.instances + (level % 7 == 0 and 1 or 0)
+        totals.distance = totals.distance + hours * 1500
+        totals.flown = totals.flown + (level >= 20 and hours * 600 or 0)
+        played, t = played + seconds, t + math.floor(seconds * 4)
+    end
+    totals.distance, totals.flown = math.floor(totals.distance), math.floor(totals.flown)
+    return {
+        seeded = true, levels = levels, events = {}, segments = {}, people = {}, recipes = {},
+        kills = { d = "", last = 0, names = {} }, played = math.floor(played), totals = totals,
+    }, t
+end
+
+ns.Command("seedalt", "add made-up characters to compare with on the Stats screen (developer)", function(arg)
+    ns.db.roster = ns.db.roster or {}
+    for _, alt in ipairs(SEED_ALTS) do ns.db.roster[alt[1] .. "-Seed"] = nil end
+    if arg == "remove" then
+        ns.Print("Removed the made-up characters.")
+    else
+        local count = math.max(1, math.min(#SEED_ALTS, tonumber(arg) or 1))
+        local names = {}
+        for k = 1, count do
+            local alt = SEED_ALTS[k]
+            local journey, seen = SeedAltJourney(alt[3], alt[4], ns.Now() - (40 + k * 5) * 86400)
+            ns.db.roster[alt[1] .. "-Seed"] = {
+                name = alt[1], realm = "Seed", class = alt[2], level = alt[3], seen = seen,
+                played = journey.played, journey = journey,
+            }
+            names[#names + 1] = ("%s (level %d)"):format(alt[1], alt[3])
+        end
+        ns.Print(("Added %s to compare with on the Stats screen. /rts seedalt remove takes them out.")
+            :format(table.concat(names, ", ")))
+    end
+    if ns.StatsScreen then ns.StatsScreen:Rebuild() end
 end)

@@ -2162,7 +2162,7 @@ local function ApplyCursor()
     if ns.db.showGear then
         ns.GearCard:Follow(state.markerNow)
     end
-    ns.SafeShow(ns.GearScreen.Follow, ns.GearScreen, state.markerNow)
+    ns.Screens:Follow(state.markerNow)
 
     PlaceHead()
     if seq >= 1 and seq <= state.n then
@@ -2652,7 +2652,7 @@ local function CreateWindow()
     frame:SetScript("OnHide", function()
         -- Opening it again shows the same place at the same zoom, for the
         -- journey it was showing; only for this session, not saved.
-        state.lastView = { view = ns.view, range = ns.Range.key, ox = state.ox, oy = state.oy, zoom = state.zoom }
+        state.lastView = { view = ns.view, range = ns.Range:Key(), ox = state.ox, oy = state.oy, zoom = state.zoom }
         -- Opening the map again shows this character's journey.
         ns.Roster:SetView(nil)
         SetPlaying(false)
@@ -2894,8 +2894,33 @@ local function CreateWindow()
     infoText:SetPoint("LEFT", rangeButton, "RIGHT", 14, 0)
     infoText:SetJustifyH("LEFT")
 
-    local help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    help:SetText("Wheel: zoom   Drag: move   Right-click: zoom out")
+    -- The phase shown in every mode (Range.lua): the whole journey, levelling
+    -- or the endgame, from a menu like the date range's, or each click the
+    -- next one. Shown only for a journey that has reached the level cap.
+    local phaseButton = CreateButton(124, ns.Range:PhaseLabel(), function(self)
+        local function Choose(key)
+            ns.Range:SetPhase(key)
+            self:SetText(ns.Range:PhaseLabel())
+            Map:Open()
+        end
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(_, root)
+                for _, phase in ipairs(ns.Range.PHASES) do
+                    root:CreateRadio(phase[2], function() return ns.Range.phase == phase[1] end,
+                        function() Choose(phase[1]) end)
+                end
+            end)
+        else
+            local phases = ns.Range.PHASES
+            for k, phase in ipairs(phases) do
+                if phase[1] == ns.Range.phase then
+                    Choose(phases[k % #phases + 1][1])
+                    break
+                end
+            end
+        end
+    end)
+    frame.phaseButton = phaseButton
 
     local panel = ns.Panel:Create(frame)
     panel:SetPoint("TOPLEFT", canvas, "TOPRIGHT", PANEL_GAP, 0)
@@ -2903,11 +2928,11 @@ local function CreateWindow()
     -- of the window, and the gear screen (which covers both) has it too.
     panel:SetPoint("BOTTOMLEFT", canvas, "BOTTOMRIGHT", PANEL_GAP, 0)
     scrub:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", SCRUB.KNOB / 2, -SCRUB.TOP)
-    help:SetPoint("RIGHT", panel, "BOTTOMRIGHT", MAP_BORDER,
+    phaseButton:SetPoint("RIGHT", panel, "BOTTOMRIGHT", MAP_BORDER,
         -(SCRUB.TOP + SCRUB.ROW + SCRUB.BELOW + BUTTON_HEIGHT / 2))
     local panelEdges = Outline(panel, 10)
-    -- Map | Gear switch; the gear screen takes the map's and the panel's place (GearScreen.lua).
-    ns.GearScreen:Attach(frame, canvas, panel, panelEdges)
+    -- Map | Gear | Stats; the screens take the map's and the panel's place (Screens.lua).
+    ns.Screens:Attach(frame, canvas, panel, panelEdges)
 
     return worldLayer
 end
@@ -2937,12 +2962,19 @@ function Map:OpenNow()
     -- The journey shown and how far it has grown. If nothing was recorded
     -- since the last open, the points, markers and replay effects still
     -- hold, and only the pops' animations are cleared.
-    -- The date range (Range.lua): its bounds again from now, and a rebuild
-    -- whenever it changes.
+    -- The date range and phase (Range.lua): the phase needs when the journey
+    -- shown reached the level cap, the bounds again from now, and a rebuild
+    -- whenever they change.
+    local ok, cap = pcall(GetMaxPlayerLevel)
+    local capSnapshot = ns.view.levels and ns.view.levels[ok and type(cap) == "number" and cap >= 60 and cap or 60]
+    ns.Range:SetCap(capSnapshot and capSnapshot.t)
     ns.Range:Refresh()
+    frame.phaseButton:SetShown(ns.Range.capAt ~= nil)
+    frame.phaseButton:SetText(ns.Range:PhaseLabel())
     local view = ns.view
     -- The range's start moves only at midnight (Range.lua), so the cache holds through the day.
-    local journey = table.concat({ tostring(view), ns.Range.key, ns.Range.from or 0, #view.segments, ns.Recorder.stored,
+    local journey = table.concat({ tostring(view), ns.Range:Key(), ns.Range.from or 0, ns.Range.to or 0, #view.segments,
+        ns.Recorder.stored,
         #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0,
         ns.Gathering.changes }, ":")
     if journey == state.journey then
@@ -2960,7 +2992,7 @@ function Map:OpenNow()
         BuildPoints(paths)
         BuildMarkers()
         ns.GearCard:Rebuild()
-        ns.GearScreen:Rebuild()
+        ns.Screens:Rebuild()
         ns.QuestPop:Rebuild()
         ns.GuildPop:Rebuild()
         ns.LevelPop:Rebuild()
@@ -2985,7 +3017,7 @@ function Map:OpenNow()
     BuildOtherTracks()
     -- Where it was when closed, if it shows the same journey and range;
     -- else the whole path.
-    if last and last.view == ns.view and last.range == ns.Range.key then
+    if last and last.view == ns.view and last.range == ns.Range:Key() then
         SetZoomNow(math.max(state.minZoom, math.min(MAX_ZOOM, last.zoom)))
         state.ox, state.oy = last.ox, last.oy
         ClampView()

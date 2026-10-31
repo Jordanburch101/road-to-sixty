@@ -69,9 +69,7 @@ local DOLL_LEFT = { 1, 2, 3, 15, 5, 4, 19, 9 }
 local DOLL_RIGHT = { 10, 6, 7, 8, 11, 12, 13, 14 }
 local DOLL_BOTTOM = { 16, 17, 18 }
 
-local window, canvas, panel, panelEdges, view, viewEdges
-local modeTabs = {}
-local mode = "map"
+local window, canvas, panel, view, viewEdges
 ---@type table the built timeline (GearTimeline.Build); nil until first shown
 local timeline
 local dirty = true
@@ -241,25 +239,8 @@ local function BlendQuality(q)
     return r1 + (r2 - r1) * f, g1 + (g2 - g1) * f, b1 + (b2 - b1) * f
 end
 
--- A switch on the character sheet's title plaque; SetTabOn lights it.
-local function Tab(parent, text, width, onClick)
-    local tab = CreateFrame("Button", nil, parent)
-    tab:SetSize(width, 28)
-    tab.bg = tab:CreateTexture(nil, "BACKGROUND")
-    tab.bg:SetAllPoints()
-    tab.bg:SetAtlas("UI-Character-Info-Title")
-    tab.text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    tab.text:SetPoint("CENTER", 0, 1)
-    tab.text:SetText(text)
-    tab:SetScript("OnClick", onClick)
-    return tab
-end
-
-local function SetTabOn(tab, on)
-    tab.bg:SetDesaturated(not on)
-    tab.bg:SetAlpha(on and 1 or 0.7)
-    tab.text:SetFontObject(on and "GameFontHighlight" or "GameFontNormal")
-end
+-- Switches on the character sheet's title plaque, as the mode switch has (Screens.lua).
+local Tab, SetTabOn = ns.Screens.Tab, ns.Screens.SetTabOn
 
 -- The axis ---------------------------------------------------------------------------
 -- u is the axis unit: the level as a fraction up to the cap (GearTimeline.LevelAt),
@@ -282,6 +263,16 @@ local function SetExtent()
         axis.last = G.CAP + weeks * WEEK_WIDTH
     else
         axis.last = math.max(axis.first + 1, U(timeline.finish))
+    end
+    -- With a date range or a phase picked (Range.lua), zooming and dragging
+    -- stay inside it: the endgame starts at the cap, not at level 1. A range
+    -- holding none of the journey leaves the whole of it.
+    local range = ns.Range
+    if range and not range:IsAll() then
+        local first = U(math.max(range.from, timeline.start))
+        local last = math.min(axis.last, U(math.min(range.to, timeline.finish)))
+        if range.to >= timeline.finish then last = axis.last end
+        if last > first then axis.first, axis.last = math.max(axis.first, first), last end
     end
 end
 
@@ -410,10 +401,7 @@ end
 -- The paperdoll ----------------------------------------------------------------------
 
 local function NewItemButton(parent)
-    local ok, button = pcall(CreateFrame, "ItemButton", nil, parent)
-    if not ok then button = CreateFrame("Button", nil, parent, "ItemButtonTemplate") end
-    button:SetSize(SLOT, SLOT)
-    return button
+    return ns.Screens.ItemButton(parent, SLOT)
 end
 
 -- The sheet's enchant swirl, turning and breathing behind the slot, cut to
@@ -463,15 +451,8 @@ local function PlaceSlot(slot, x, y)
     button.back:SetPoint("CENTER", button)
 end
 
--- A panel in the map's frame style: the tooltip border on a dark ground.
-local function Pane(parent)
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    panel:SetBackdropColor(0, 0, 0, 0.6)
-    panel:SetBackdropBorderColor(0.6, 0.6, 0.6)
-    return panel
-end
+-- A panel in the map's frame style (Screens.lua).
+local Pane = ns.Screens.Pane
 
 local STAT_ROWS = { "Epic pieces", "Rare pieces", "Enchanted", "Pieces worn so far" }
 
@@ -931,24 +912,6 @@ function GearScreen:Redraw()
             SetWindow(axis.last - OPEN_SPAN, axis.last)
         end
     end
-    -- The part lit is the part the window is in: all of it, or across
-    -- both, lights the whole journey.
-    local part = "all"
-    local whole = axis.lo <= axis.first + 0.01 and axis.hi >= axis.last - 0.01
-    if not whole and timeline.capAt and axis.lo >= G.CAP - 0.01 then
-        part = "end"
-    elseif not whole and (not timeline.capAt or axis.hi <= G.CAP + 0.01) then
-        part = "lvl"
-    end
-    -- Endgame only for a character that has reached the cap.
-    local lastTab
-    for _, tab in ipairs(ui.phaseTabs) do
-        SetTabOn(tab, tab.phase == part)
-        tab:SetShown(tab.phase ~= "end" or timeline.capAt ~= nil)
-        if tab:IsShown() then lastTab = tab end
-    end
-    ui.help:ClearAllPoints()
-    ui.help:SetPoint("LEFT", lastTab, "RIGHT", 12, 0)
     for _, tab in ipairs(ui.swapTabs) do SetTabOn(tab, tab.every == every) end
 
     local laneH, barH = Layout()
@@ -1201,19 +1164,25 @@ function GearScreen:Redraw()
     ui.stripWindow:SetPoint("TOPLEFT", strip, "TOPLEFT", x1 - 4, 4)
     ui.stripWindow:SetPoint("BOTTOMRIGHT", strip, "BOTTOMLEFT", math.max(x2, x1 + 6) + 4, -4)
     ui.stripStart:SetText("Lv " .. math.floor(axis.first))
-    if timeline.capAt then
-        local cx = sw * (G.CAP - axis.first) / whole
+    -- The cap's mark only well inside the strip: with the endgame picked the
+    -- strip starts at the cap, and the mark would sit on the start's label.
+    local cx = timeline.capAt and sw * (G.CAP - axis.first) / whole
+    local capInside = cx and cx > 20 and cx < sw - 20
+    if capInside then
         ui.stripCap:ClearAllPoints()
         ui.stripCap:SetPoint("TOP", strip, "TOPLEFT", cx, 0)
         ui.stripCap:SetPoint("BOTTOM", strip, "BOTTOMLEFT", cx, 0)
         ui.stripCapLabel:ClearAllPoints()
         ui.stripCapLabel:SetPoint("TOP", strip, "BOTTOMLEFT", cx, -6)
+    end
+    -- Weeks at the end only past the cap; levelling picked ends at it.
+    if timeline.capAt and axis.last > G.CAP + 0.01 then
         ui.stripEnd:SetText(("Week %d"):format(math.floor((axis.last - G.CAP) / WEEK_WIDTH + 0.5)))
     else
-        ui.stripEnd:SetText("Lv " .. math.floor(axis.last))
+        ui.stripEnd:SetText("Lv " .. math.floor(axis.last + 0.5))
     end
-    ui.stripCap:SetShown(timeline.capAt ~= nil)
-    ui.stripCapLabel:SetShown(timeline.capAt ~= nil)
+    ui.stripCap:SetShown(capInside or false)
+    ui.stripCapLabel:SetShown(capInside or false)
     self:ShowMoment()
 end
 
@@ -1367,7 +1336,7 @@ function GearScreen:Follow(t)
         if timeline then last = math.min(last, U(math.min(ns.Range.to, timeline.finish))) end
     end
     pinT = t
-    if mode ~= "gear" or not (view and view:IsVisible()) or not timeline then return end
+    if not (view and view:IsVisible()) or not timeline then return end
     local u = U(math.min(t, timeline.finish))
     local span = axis.hi - axis.lo
     local reachesEnd = axis.hi >= last - 1e-6
@@ -1404,28 +1373,13 @@ local function CreateView()
 
     CreateDoll()
 
-    -- Header: where to look (whole, levelling, endgame), kept gear or every
-    -- swap, and how to move around.
-    ui.phaseTabs, ui.swapTabs = {}, {}
-    local presets = {
-        { "all", "Whole journey", 124, function() return axis.first, axis.last end },
-        { "lvl", "Levelling", 100, function() return axis.first, timeline.capAt and G.CAP or axis.last end },
-        { "end", "Endgame", 100, function() return timeline.capAt and G.CAP or axis.first, axis.last end },
-    }
-    local x = DOLL_W + 8
-    for _, p in ipairs(presets) do
-        local tab = Tab(view, p[2], p[3], function()
-            SetWindow(p[4]())
-            GearScreen:Redraw()
-        end)
-        tab.phase = p[1]
-        tab:SetPoint("TOPLEFT", x, -6)
-        x = x + p[3] + 4
-        ui.phaseTabs[#ui.phaseTabs + 1] = tab
-    end
-    -- After the last tab shown (Redraw places it: Endgame shows only at the cap).
+    -- Header: how to move around, after the mode switch, then kept gear or
+    -- every swap. Which part of the journey shows is the map window's phase
+    -- and date range (Range.lua), which the window opens on.
+    ui.swapTabs = {}
     ui.help = view:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.help:SetText("Wheel: zoom   Drag: move   Click: pin the moment")
+    ui.help:SetPoint("LEFT", view, "TOPLEFT", math.max(DOLL_W, ns.Screens:TabsRight()) + 12, -20)
     local right = -10
     for _, s in ipairs({ { true, "Every swap", 108 }, { false, "Kept gear", 100 } }) do
         local tab = Tab(view, s[2], s[3], function()
@@ -1602,27 +1556,6 @@ local function CreateView()
     end)
 end
 
--- Map | Gear, on the character sheet's title plaque, over the top left corner.
-local function CreateModeTabs()
-    for k, m in ipairs({ { "map", "Map" }, { "gear", "Gear" } }) do
-        local tab = Tab(window, m[2], 94, function() ns.SafeShow(GearScreen.SetMode, GearScreen, m[1]) end)
-        tab:SetFrameLevel(canvas:GetFrameLevel() + 100)
-        tab:SetPoint("TOPLEFT", canvas, "TOPLEFT", 6 + (k - 1) * 98, -6)
-        tab.mode = m[1]
-        modeTabs[k] = tab
-    end
-end
-
-local function UpdateModeTabs()
-    for _, tab in ipairs(modeTabs) do SetTabOn(tab, tab.mode == mode) end
-end
-
-function GearScreen:Attach(frame, mapCanvas, sidePanel, sidePanelEdges)
-    window, canvas, panel, panelEdges = frame, mapCanvas, sidePanel, sidePanelEdges
-    CreateModeTabs()
-    UpdateModeTabs()
-end
-
 -- The gear view has just come into sight (switched to, or the window opened
 -- on it), or the journey changed while it shows: the model, then a redraw.
 -- The model is dressed again a moment later, as one dressed before it or
@@ -1641,35 +1574,29 @@ function GearScreen:ShowGear()
     end)
 end
 
--- The map's canvas is hidden under the gear screen, so the game does not
--- draw its paths and markers there; the replay runs on the window.
-function GearScreen:SetMode(newMode)
-    mode = newMode
-    UpdateModeTabs()
-    if mode == "gear" then
-        if not view then CreateView() end
-        panel:Hide()
-        panelEdges:Hide()
-        canvas:Hide()
-        viewEdges:Show()
-        if view:IsShown() then self:ShowGear() else view:Show() end
-    else
-        canvas:Show()
-        panel:Show()
-        panelEdges:Show()
-        if view then
-            view:Hide()
-            viewEdges:Hide()
-            GameTooltip_Hide()
-        end
+-- Comes into sight in place of the map and the side panel (Screens.lua),
+-- built the first time.
+function GearScreen:Show(frames)
+    if not view then
+        window, canvas, panel = frames.window, frames.canvas, frames.panel
+        CreateView()
     end
+    viewEdges:Show()
+    if view:IsShown() then self:ShowGear() else view:Show() end
+end
+
+function GearScreen:Hide()
+    if not view then return end
+    view:Hide()
+    viewEdges:Hide()
+    GameTooltip_Hide()
 end
 
 -- The journey shown changed (Map:Open): build again now if the gear view
 -- is in sight, else when it next shows.
 function GearScreen:Rebuild()
     dirty = true
-    if mode == "gear" and view and view:IsVisible() then self:ShowGear() end
+    if view and view:IsVisible() then self:ShowGear() end
 end
 
 -- Items asked for arrive one by one; redraw once a burst of them is in.
@@ -1687,3 +1614,5 @@ QueueRedraw = function()
         ns.SafeShow(GearScreen.Redraw, GearScreen)
     end)
 end
+
+ns.Screens:Add("gear", "Gear", GearScreen)

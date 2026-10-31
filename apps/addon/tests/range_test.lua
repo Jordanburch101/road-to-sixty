@@ -105,6 +105,26 @@ Range:Set("yesterday", afternoon)
 check(Range.from == dayStart - DAY and Range.to == dayStart - 1, "yesterday is the whole day before")
 date = os.date
 
+-- Phases: levelling up to the cap, the endgame after it, and with a date range both.
+Range:SetCap(midnight - DAY)
+Range:SetPhase("end", clock)
+Range:Set("all", clock)
+check(not Range:IsAll() and Range.from == midnight - DAY and Range.to == math.huge, "the endgame runs from the cap")
+check(Range:Has(clock) and not Range:Has(midnight - DAY - 1), "the endgame holds only what came after the cap")
+Range:SetPhase("lvl", clock)
+check(Range.from == 0 and Range.to == midnight - DAY and Range:Has(0) and not Range:Has(clock), "levelling runs to the cap")
+local today = Range.Bounds("today", clock)
+Range:Set("today", clock)
+check(Range.from == today and Range.to == midnight - DAY and not Range:Has(clock), "levelling today, after the cap, holds nothing")
+Range:SetPhase("end", clock)
+check(Range.from == today and Range.to == clock, "the endgame today is today")
+check(Range:Key() == "today|end" and Range:PhaseLabel() == "Endgame", "the key and the label")
+Range:SetCap(nil)
+Range:Set("all", clock)
+check(Range:IsAll() and Range:Key() == "all|all" and Range:PhaseLabel() == "Whole journey",
+    "without the cap, every phase is the whole journey")
+Range:SetPhase("all", clock)
+
 if failures == 0 then
     print("Range tests passed.")
 else
