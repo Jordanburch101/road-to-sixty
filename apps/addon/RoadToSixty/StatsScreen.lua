@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 
 -- The Stats screen (issue #83): a mode of the journey map window, beside
 -- Map and Gear (Screens.lua), that puts the journey's numbers where the map
@@ -21,11 +21,14 @@ local _, ns = ...
 --   Records: ten bests and worsts inside the window (Stats.Records),
 --   each opening the map where it happened, the longest worn item the gear
 --   screen.
---   Compared with: time played to reach each level against the other
---   characters' (from the roster's copies, the four played last), each in
---   its class colour, with a table of them at the replay's level or the
---   one hovered. The chart runs a little past the shown character's level,
---   so a character far ahead does not squash its curve.
+--   Compared with: time played to reach each level against four other
+--   characters' (from the roster's copies: the ones ticked in the larger
+--   window, else the ones played last), each in its class colour, with a
+--   table of them at the replay's level or the one hovered. The chart runs
+--   a little past the shown character's level, so a character far ahead
+--   does not squash its curve. Its cog opens a larger window with every
+--   character, time played, kills, deaths, quests or gold held, and a tick
+--   for each to show in the pane (kept in RoadToSixtyDB.compare).
 --   Zones by time: time played in each zone inside the window, its bar in
 --   the level colours of the time spent there, each opening the map where
 --   it was first entered.
@@ -59,7 +62,7 @@ local view, viewEdges
 local ui = {}
 local index, rows, timeline, builtAt, builtFor
 local records, recordsKey, recordsAt, recordsPending
-local alts, compareHover    -- other characters to compare with, the level hovered
+local alts                  -- the other characters to compare with (Others)
 local dirty = true
 local followT = math.huge   -- the replay's moment
 local hoverLevel            -- the level under the cursor on the chart
@@ -684,35 +687,63 @@ end)
 -- Compared with ----------------------------------------------------------------------
 
 local ME_COLOR = { 1, 0.82, 0 }
-local MAX_ALTS = 4          -- other characters shown, the ones played last
+local PANE_ALTS = 4         -- other characters in the pane
+local WINDOW_ALTS = 14      -- other characters in the larger window
 local TABLE_ROW = 15
-local PAST_MINE = 5         -- levels the chart runs past the shown character's highest
+local PAST_MINE = 5         -- levels the pane's chart runs past the shown character's highest
 local SMOOTH = 4            -- pieces each level's stretch of a curve is drawn in
 
--- Time played on reaching each level: level -> seconds.
-local function Reached(journey)
+-- What the curves can show, from the running totals every level snapshot
+-- has: field, name, a value's words, the axis's, and which way is better
+-- ("lower", "higher", or nil for neither).
+local CURVES = {
+    { "played", "Time played", Duration, Duration, "lower" },
+    { "kills", "Kills", Commas, Short },
+    { "deaths", "Deaths", Commas, Short, "lower" },
+    { "quests", "Quests", Commas, Short },
+    { "money", "Gold held", Money, function(v) return Short(v / 10000) .. "g" end, "higher" },
+}
+
+-- A running total on reaching each level: level -> value.
+local function Reached(journey, field)
     local out = {}
     for level, snap in pairs(journey.levels or {}) do
-        if snap.played then out[level] = snap.played end
+        if type(snap[field]) == "number" then out[level] = snap[field] end
     end
     return out
 end
 
--- The other characters with at least two level ups to compare with, the
--- ones played last first (the roster's order).
-local function Alts()
+-- Every other character with at least two level ups, the ones played last
+-- first (the roster's order).
+local function Others()
     if alts then return alts end
     alts = {}
     local shown = ns.Roster:ViewEntry()
     for _, e in ipairs(ns.Roster:Entries()) do
-        if #alts >= MAX_ALTS then break end
         if e ~= shown and e.journey then
-            local reached, n = Reached(e.journey), 0
-            for _ in pairs(reached) do n = n + 1 end
-            if n >= 2 then alts[#alts + 1] = { entry = e, reached = reached, color = { ns.ClassColor(e.class) } } end
+            local n = 0
+            for _, snap in pairs(e.journey.levels or {}) do
+                if snap.played then n = n + 1 end
+            end
+            if n >= 2 then alts[#alts + 1] = { entry = e, color = { ns.ClassColor(e.class) } } end
         end
     end
     return alts
+end
+
+-- The ones the pane shows: those ticked in the larger window, else the ones played last.
+local function PaneAlts()
+    local all, list = Others(), {}
+    local picked = ns.db.compare
+    if picked and next(picked) then
+        for _, a in ipairs(all) do
+            if picked[a.entry.key] and #list < PANE_ALTS then list[#list + 1] = a end
+        end
+    end
+    if #list == 0 then
+        for k = 1, math.min(PANE_ALTS, #all) do list[k] = all[k] end
+    end
+    return list
 end
 
 local function Cap()
@@ -724,61 +755,9 @@ local function Hex(color)
     return ("|cff%02x%02x%02x"):format(color[1] * 255, color[2] * 255, color[3] * 255)
 end
 
-local function CreateCompare()
-    local box = Pane(view)
-    ui.compare = box
-    local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Compared with your characters")
-    local plot = CreateFrame("Frame", nil, box)
-    plot:SetPoint("TOPLEFT", 58, -40)
-    ui.cmpPlot = plot
-    ui.cmpLines, ui.cmpAxis, ui.cmpLevels, ui.cmpDots, ui.cmpRows = {}, {}, {}, {}, {}
-    for i = 1, 3 do
-        local line = plot:CreateTexture(nil, "BACKGROUND", nil, 1)
-        line:SetHeight(1)
-        line:SetColorTexture(1, 1, 1, i == 1 and 0.25 or 0.08)
-        local label = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        label:SetJustifyH("RIGHT")
-        ui.cmpAxis[i] = { line = line, label = label }
-    end
-    ui.cmpMark = plot:CreateTexture(nil, "OVERLAY")
-    ui.cmpMark:SetWidth(1)
-    ui.cmpMark:SetColorTexture(1, 1, 1, 0.35)
-    ui.cmpHead = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ui.cmpNote = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    -- Hovering the chart moves the line to the level under the cursor.
-    plot:SetScript("OnUpdate", function(self)
-        local level
-        if self:IsMouseOver() then
-            local x = GetCursorPosition() / self:GetEffectiveScale() - self:GetLeft()
-            local last = ui.cmpLast or Cap()
-            level = math.max(1, math.min(last, math.floor(x / self:GetWidth() * (last - 1) + 1.5)))
-        end
-        if level ~= compareHover then
-            compareHover = level
-            ns.SafeShow(StatsScreen.Redraw, StatsScreen)
-        end
-    end)
-end
-
--- Lines off the pixel grid, so a curve's short pieces join smoothly.
-local function CompareLine(k)
-    local line = ui.cmpLines[k]
-    if not line then
-        line = ui.cmpPlot:CreateLine(nil, "ARTWORK")
-        if line.SetSnapToPixelGrid then
-            line:SetSnapToPixelGrid(false)
-            line:SetTexelSnappingBias(0)
-        end
-        ui.cmpLines[k] = line
-    end
-    return line
-end
-
 -- A point SMOOTH pieces of the way between p1 and p2 on a Catmull-Rom curve
--- through p0 to p3, its height kept between p1's and p2's so time played
--- never seems to run backwards.
+-- through p0 to p3, its height kept between p1's and p2's so a running
+-- total never seems to run backwards.
 local function CurvePoint(p0, p1, p2, p3, t)
     local t2, t3 = t * t, t * t * t
     local function At(i)
@@ -787,6 +766,418 @@ local function CurvePoint(p0, p1, p2, p3, t)
     end
     local y = math.max(math.min(At(2), math.max(p1[2], p2[2])), math.min(p1[2], p2[2]))
     return At(1), y
+end
+
+-- A chart of curves over levels, for the pane and the larger window. Its
+-- frame is placed by the caller; hovering it sets chart.hover and calls
+-- onHover.
+local function NewChart(parent, onHover)
+    local chart = { lines = {}, axis = {}, ticks = {}, dots = {} }
+    local plot = CreateFrame("Frame", nil, parent)
+    chart.plot = plot
+    for i = 1, 3 do
+        local line = plot:CreateTexture(nil, "BACKGROUND", nil, 1)
+        line:SetHeight(1)
+        line:SetColorTexture(1, 1, 1, i == 1 and 0.25 or 0.08)
+        local label = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        label:SetJustifyH("RIGHT")
+        chart.axis[i] = { line = line, label = label }
+    end
+    chart.mark = plot:CreateTexture(nil, "OVERLAY")
+    chart.mark:SetWidth(1)
+    chart.mark:SetColorTexture(1, 1, 1, 0.35)
+    plot:SetScript("OnUpdate", function(self)
+        local level
+        if self:IsMouseOver() and chart.last then
+            local x = GetCursorPosition() / self:GetEffectiveScale() - self:GetLeft()
+            level = math.max(1, math.min(chart.last, math.floor(x / self:GetWidth() * (chart.last - 1) + 1.5)))
+        end
+        if level ~= chart.hover then
+            chart.hover = level
+            ns.SafeShow(onHover)
+        end
+    end)
+    return chart
+end
+
+-- Lines off the pixel grid, so a curve's short pieces join smoothly.
+local function ChartLine(chart, k)
+    local line = chart.lines[k]
+    if not line then
+        line = chart.plot:CreateLine(nil, "ARTWORK")
+        if line.SetSnapToPixelGrid then
+            line:SetSnapToPixelGrid(false)
+            line:SetTexelSnappingBias(0)
+        end
+        chart.lines[k] = line
+    end
+    return line
+end
+
+-- Draws series ({ reached, color, thick, mine }) from level 1 to last with
+-- the line at level. The curves are drawn again only when what they show
+-- changed (key): hovering and the replay move just the line and the dots.
+-- The others first, then a dark edge and the shown character's gold on
+-- top of it, each on its own draw level so the gold always lies over it.
+local function DrawCurves(chart, series, last, level, axisWords, key)
+    local plot = chart.plot
+    local w, h = plot:GetWidth(), plot:GetHeight()
+    chart.last = last
+    local top = 0
+    for _, one in ipairs(series) do
+        for l, value in pairs(one.reached) do
+            if l <= last then top = math.max(top, value) end
+        end
+    end
+    if axisWords == Duration then
+        local day = 86400
+        top = top > 2 * day and math.ceil(top / day) * day or math.max(3600, math.ceil(top / 3600) * 3600)
+    else
+        top = NiceMax(top)
+    end
+    local function X(l) return (l - 1) / (last - 1) * w end
+    local function Y(value) return value / top * h end
+    for i, a in ipairs(chart.axis) do
+        local value = top * (i - 1) / 2
+        a.line:ClearAllPoints()
+        a.line:SetPoint("BOTTOMLEFT", 0, Y(value))
+        a.line:SetPoint("BOTTOMRIGHT", 0, Y(value))
+        a.label:ClearAllPoints()
+        a.label:SetPoint("RIGHT", plot, "BOTTOMLEFT", -6, Y(value))
+        a.label:SetText(i == 1 and "0" or axisWords(value))
+    end
+    local ticks = { 1 }
+    for l = 10, last - 5, 10 do ticks[#ticks + 1] = l end
+    ticks[#ticks + 1] = last
+    for k, l in ipairs(ticks) do
+        local label = chart.ticks[k] or plot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        chart.ticks[k] = label
+        label:ClearAllPoints()
+        label:SetPoint("TOP", plot, "BOTTOMLEFT", X(l), -4)
+        label:SetText(tostring(l))
+        label:Show()
+    end
+    for k = #ticks + 1, #chart.ticks do chart.ticks[k]:Hide() end
+
+    key = ("%s|%d|%d|%d|%d"):format(key, last, top, math.floor(w), math.floor(h))
+    if key ~= chart.key then
+        chart.key = key
+        local n = 0
+        local function Draw(one, thick, r, g, b, a, layer)
+            local l = 1
+            while l < last do
+                if one.reached[l] and one.reached[l + 1] then
+                    local pts = {}
+                    while l <= last and one.reached[l] do
+                        pts[#pts + 1] = { X(l), Y(one.reached[l]) }
+                        l = l + 1
+                    end
+                    for i = 1, #pts - 1 do
+                        local p0, p1, p2, p3 = pts[math.max(1, i - 1)], pts[i], pts[i + 1], pts[math.min(#pts, i + 2)]
+                        local px, py = p1[1], p1[2]
+                        for piece = 1, SMOOTH do
+                            local x, y = CurvePoint(p0, p1, p2, p3, piece / SMOOTH)
+                            n = n + 1
+                            local line = ChartLine(chart, n)
+                            line:SetDrawLayer("ARTWORK", layer)
+                            line:SetThickness(thick)
+                            line:SetStartPoint("BOTTOMLEFT", plot, px, py)
+                            line:SetEndPoint("BOTTOMLEFT", plot, x, y)
+                            line:SetColorTexture(r, g, b, a)
+                            line:Show()
+                            px, py = x, y
+                        end
+                    end
+                else
+                    l = l + 1
+                end
+            end
+        end
+        for k = #series, 1, -1 do
+            local one = series[k]
+            if not one.mine then Draw(one, one.thick, one.color[1], one.color[2], one.color[3], 0.85, 1) end
+        end
+        for _, one in ipairs(series) do
+            if one.mine then
+                Draw(one, one.thick + 3, 0, 0, 0, 0.6, 2)
+                Draw(one, one.thick, one.color[1], one.color[2], one.color[3], 1, 3)
+            end
+        end
+        for k = n + 1, #chart.lines do chart.lines[k]:Hide() end
+    end
+
+    level = math.max(1, math.min(last, level or 1))
+    chart.mark:ClearAllPoints()
+    chart.mark:SetPoint("BOTTOMLEFT", X(level), 0)
+    chart.mark:SetHeight(h)
+    for k, one in ipairs(series) do
+        local dot = chart.dots[k] or plot:CreateTexture(nil, "OVERLAY", nil, 2)
+        chart.dots[k] = dot
+        local value = one.reached[level]
+        dot:SetShown(value ~= nil)
+        if value then
+            dot:SetSize(one.mine and 7 or 6, one.mine and 7 or 6)
+            dot:ClearAllPoints()
+            dot:SetPoint("CENTER", plot, "BOTTOMLEFT", X(level), Y(value))
+            dot:SetColorTexture(one.color[1], one.color[2], one.color[3])
+        end
+    end
+    for k = #series + 1, #chart.dots do chart.dots[k]:Hide() end
+    return level
+end
+
+-- The difference of another character's value from yours, coloured green
+-- when yours is the better one (for a curve with a better way).
+local function Difference(curve, theirs, yours)
+    local diff = theirs - yours
+    if math.abs(diff) < (curve[1] == "played" and 60 or 1) then return "|cff999999same|r" end
+    local better = curve[5]
+    local color = not better and "|cffcccccc" or ((better == "lower") == (diff > 0)) and "|cff40e060" or "|cffff7a5a"
+    return ("%s%s%s|r"):format(color, diff > 0 and "+" or "-", curve[3](math.abs(diff)))
+end
+
+-- The pane's series and the larger window's, for a curve: you first.
+local function Series(list, field, thick)
+    local series = { { reached = Reached(ns.view, field), color = ME_COLOR, name = "You", thick = 3, mine = true } }
+    for _, a in ipairs(list) do
+        series[#series + 1] = { reached = Reached(a.entry.journey, field), color = a.color, name = a.entry.name or "?",
+            thick = thick, entry = a.entry }
+    end
+    return series
+end
+
+-- The larger window ----------------------------------------------------------------
+
+local windowCurve = 1
+
+local function CreateWindow()
+    local win = CreateFrame("Frame", "RoadToSixtyCompareWindow", view, "BackdropTemplate")
+    ui.window = win
+    win:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14 })
+    win:SetBackdropBorderColor(0.7, 0.7, 0.7)
+    win:SetPoint("TOPLEFT", 40, -36)
+    win:SetPoint("BOTTOMRIGHT", -40, 36)
+    win:SetFrameLevel(view:GetFrameLevel() + 90)
+    win:EnableMouse(true)
+    win:Hide()
+    -- A solid ground, so nothing behind shows through: a plain dark colour,
+    -- which draws on every client, under the stone the game's own windows
+    -- have, tiled (an atlas could be missing and draw nothing).
+    local solid = win:CreateTexture(nil, "BACKGROUND", nil, -8)
+    solid:SetPoint("TOPLEFT", 4, -4)
+    solid:SetPoint("BOTTOMRIGHT", -4, 4)
+    solid:SetColorTexture(0.09, 0.085, 0.075, 1)
+    local stone = win:CreateTexture(nil, "BACKGROUND", nil, -7)
+    stone:SetAllPoints(solid)
+    stone:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+    stone:SetHorizTile(true)
+    stone:SetVertTile(true)
+    -- A shade over the screen behind while it is open; a click on it closes the window.
+    local shade = CreateFrame("Button", nil, view)
+    shade:SetAllPoints(view)
+    shade:SetFrameLevel(win:GetFrameLevel() - 2)
+    local dark = shade:CreateTexture(nil, "BACKGROUND")
+    dark:SetAllPoints()
+    dark:SetColorTexture(0, 0, 0, 0.65)
+    shade:SetScript("OnClick", function() win:Hide() end)
+    shade:Hide()
+    win:SetScript("OnHide", function() shade:Hide() end)
+    -- Not one of UISpecialFrames: Escape closes every one of those at once,
+    -- so it would close the map window too. Escape closes the map window,
+    -- and this one with it; its close button closes just this one.
+    local title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("Your characters")
+    local note = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    note:SetPoint("LEFT", title, "RIGHT", 12, -1)
+    note:SetText(("Tick up to %d to show in the Stats screen's comparison"):format(PANE_ALTS))
+    local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -4, -4)
+    ui.windowTabs = {}
+    for i, curve in ipairs(CURVES) do
+        local tab = ns.Screens.Tab(win, curve[2], 110, function()
+            windowCurve = i
+            ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+        end)
+        tab:SetPoint("TOPLEFT", 14 + (i - 1) * 114, -44)
+        ui.windowTabs[i] = tab
+    end
+    ui.windowChart = NewChart(win, function() StatsScreen:Redraw() end)
+    ui.windowChart.plot:SetPoint("TOPLEFT", 70, -96)
+    ui.windowHead = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ui.windowHeads = {}
+    for k, words in ipairs({ "Character", "Level", "Played", "", "Against you" }) do
+        local head = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        head:SetText(words)
+        ui.windowHeads[k] = head
+    end
+    ui.windowRows = {}
+    ui.windowMore = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    win:SetScript("OnShow", function()
+        shade:Show()
+        ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+    end)
+end
+
+local function WindowRow(k)
+    local row = ui.windowRows[k]
+    if row then return row end
+    local win = ui.window
+    row = { cells = {} }
+    row.check = CreateFrame("CheckButton", nil, win, "UICheckButtonTemplate")
+    row.check:SetSize(22, 22)
+    row.check:SetScript("OnClick", function(self)
+        local key = self.key
+        if not key then return end
+        ns.db.compare = ns.db.compare or {}
+        -- Only characters still in the roster count; a deleted one's tick is forgotten.
+        local count = 0
+        for _, a in ipairs(Others()) do
+            if ns.db.compare[a.entry.key] then count = count + 1 end
+        end
+        if self:GetChecked() and count >= PANE_ALTS then
+            self:SetChecked(false)
+            ns.Print(("The comparison shows up to %d characters; untick one first."):format(PANE_ALTS))
+            return
+        end
+        ns.db.compare[key] = self:GetChecked() or nil
+        ns.SafeShow(StatsScreen.Redraw, StatsScreen)
+    end)
+    row.swatch = win:CreateTexture(nil, "ARTWORK")
+    row.swatch:SetSize(8, 8)
+    for c = 1, 5 do
+        local cell = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cell:SetJustifyH(c == 1 and "LEFT" or "RIGHT")
+        cell:SetWordWrap(false)
+        row.cells[c] = cell
+    end
+    ui.windowRows[k] = row
+    return row
+end
+
+local function DrawWindow(w)
+    local win = ui.window
+    for i, tab in ipairs(ui.windowTabs) do ns.Screens.SetTabOn(tab, i == windowCurve) end
+    local curve = CURVES[windowCurve]
+    local width, height = win:GetWidth(), win:GetHeight()
+    local tableX = math.floor(width * 0.6)
+    ui.windowChart.plot:SetPoint("BOTTOMRIGHT", win, "BOTTOMLEFT", tableX - 30, 40)
+
+    local all = Others()
+    local list = {}
+    for k = 1, math.min(WINDOW_ALTS, #all) do list[k] = all[k] end
+    local series = Series(list, curve[1], 2)
+    local highest = 0
+    for _, one in ipairs(series) do
+        for l in pairs(one.reached) do highest = math.max(highest, l) end
+    end
+    local last = math.min(Cap(), math.max(10, highest))
+    local key = curve[1] .. "|" .. tostring(ns.view)
+    for _, a in ipairs(list) do key = key .. "|" .. tostring(a.entry) end
+    local level = DrawCurves(ui.windowChart, series, last, ui.windowChart.hover or w.levelTo, curve[4], key)
+
+    -- The table: every character, its level and time played, its value at
+    -- the level shown and against yours, and whether the pane shows it.
+    local cols = { tableX + 52, tableX + 210, tableX + 270, tableX + 360, width - 20 }
+    ui.windowHead:ClearAllPoints()
+    ui.windowHead:SetPoint("TOPLEFT", tableX, -96)
+    ui.windowHead:SetText(("At level %d: %s"):format(level, curve[2]:lower()))
+    for k, head in ipairs(ui.windowHeads) do
+        head:ClearAllPoints()
+        if k == 1 then
+            head:SetPoint("TOPLEFT", win, "TOPLEFT", cols[1], -120)
+        else
+            head:SetPoint("TOPRIGHT", win, "TOPLEFT", cols[k], -120)
+        end
+        head:SetText(k == 4 and curve[2] or head:GetText())
+    end
+    local picked = {}
+    for _, a in ipairs(PaneAlts()) do picked[a.entry] = true end
+    local yours = series[1].reached[level]
+    local rowH = 20
+    local fits = math.max(1, math.floor((height - 160) / rowH))
+    for k, one in ipairs(series) do
+        local row = WindowRow(k)
+        local shown = k <= fits
+        local y = -140 - (k - 1) * rowH
+        row.check:SetShown(shown and not one.mine)
+        row.check:ClearAllPoints()
+        row.check:SetPoint("LEFT", win, "TOPLEFT", tableX, y - 7)
+        row.check.key = one.entry and one.entry.key
+        row.check:SetChecked(one.entry and picked[one.entry] and ns.db.compare and ns.db.compare[one.entry.key] or false)
+        row.swatch:SetShown(shown)
+        row.swatch:ClearAllPoints()
+        row.swatch:SetPoint("LEFT", win, "TOPLEFT", tableX + 34, y - 7)
+        row.swatch:SetColorTexture(one.color[1], one.color[2], one.color[3])
+        local entry = one.entry
+        local value = one.reached[level]
+        local texts = {
+            Hex(one.color) .. (one.mine and "You" or one.name) .. "|r",
+            tostring(one.mine and ns.Roster:ViewLevel() or entry.level or "-"),
+            Duration(one.mine and (ns.view.played or 0) or (entry.played or entry.journey.played or 0)),
+            value and curve[3](value) or "|cff999999-|r",
+            (not one.mine and value and yours) and Difference(curve, value, yours)
+                or (not one.mine and not value and "|cff999999not there yet|r" or ""),
+        }
+        for c, cell in ipairs(row.cells) do
+            cell:SetShown(shown)
+            cell:ClearAllPoints()
+            if c == 1 then
+                cell:SetPoint("TOPLEFT", win, "TOPLEFT", cols[1], y)
+                cell:SetWidth(150)
+            else
+                cell:SetPoint("TOPRIGHT", win, "TOPLEFT", cols[c], y)
+            end
+            cell:SetText(texts[c])
+        end
+    end
+    for k = #series + 1, #ui.windowRows do
+        local row = ui.windowRows[k]
+        row.check:Hide()
+        row.swatch:Hide()
+        for _, cell in ipairs(row.cells) do cell:Hide() end
+    end
+    ui.windowMore:ClearAllPoints()
+    ui.windowMore:SetPoint("TOPLEFT", win, "TOPLEFT", tableX, -140 - math.min(#series, fits) * rowH - 4)
+    local hidden = #all - #list + math.max(0, #series - fits)
+    ui.windowMore:SetText(hidden > 0 and ("and %d more"):format(hidden) or "")
+end
+
+-- The pane ---------------------------------------------------------------------------
+
+local function CreateCompare()
+    local box = Pane(view)
+    ui.compare = box
+    local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetText("Compared with your characters")
+    -- The cog opens the larger window: a small red button like the map window's.
+    local cogButton = CreateFrame("Button", nil, box, "UIPanelButtonTemplate")
+    cogButton:SetSize(32, 22)
+    cogButton:SetPoint("TOPRIGHT", -8, -8)
+    local cog = cogButton:CreateTexture(nil, "ARTWORK")
+    cog:SetSize(17, 17)
+    cog:SetPoint("CENTER")
+    cog:SetTexture("Interface\\AddOns\\" .. addonName .. "\\cog")
+    cogButton:SetScript("OnMouseDown", function() cog:SetPoint("CENTER", 1, -1) end)
+    cogButton:SetScript("OnMouseUp", function() cog:SetPoint("CENTER") end)
+    cogButton:SetScript("OnClick", function()
+        if not ui.window then CreateWindow() end
+        ui.window:SetShown(not ui.window:IsShown())
+    end)
+    cogButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("All your characters")
+        GameTooltip:AddLine("Compare kills, deaths, quests and gold too, and pick who shows here", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    cogButton:SetScript("OnLeave", GameTooltip_Hide)
+    ui.paneChart = NewChart(box, function() StatsScreen:Redraw() end)
+    ui.paneChart.plot:SetPoint("TOPLEFT", 58, -40)
+    ui.cmpRows = {}
+    ui.cmpHead = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ui.cmpNote = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ui.cmpMore = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 end
 
 -- A row of the table under the chart: a swatch, the name, the time, the difference.
@@ -808,125 +1199,26 @@ local function TableRow(k)
     return row
 end
 
-local function DrawCompare(level)
-    local box, plot = ui.compare, ui.cmpPlot
-    local list = Alts()
-    local mine = Reached(ns.view)
+local function DrawCompare(w)
+    local box = ui.compare
+    local list = PaneAlts()
+    local series = Series(list, "played", 2)
+    local more = #Others() - #list
+    -- The table takes the bottom: a heading, a row for each character and,
+    -- when some are left out, a line saying how many.
+    local rowsH = 18 + #series * TABLE_ROW + (more > 0 and TABLE_ROW or 0)
+    ui.paneChart.plot:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -14, 26 + rowsH)
     -- The levels shown: 1 to a little past the shown character's highest.
     local highest = 0
-    for l in pairs(mine) do highest = math.max(highest, l) end
-    local cap = highest > 0 and math.min(Cap(), math.max(10, highest + PAST_MINE)) or Cap()
-    ui.cmpLast = cap
-    level = math.max(1, math.min(cap, level or 1))
-
-    -- The table takes the bottom: a heading and a row for you and each other character.
-    local rowsH = 18 + (1 + #list) * TABLE_ROW
-    plot:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -14, 26 + rowsH)
-    local w, h = plot:GetWidth(), plot:GetHeight()
-
-    local series = { { reached = mine, color = ME_COLOR, name = "You", thick = 3 } }
-    for _, a in ipairs(list) do
-        series[#series + 1] = { reached = a.reached, color = a.color, name = a.entry.name or "?", thick = 2 }
-    end
-    local top = 0
-    for _, one in ipairs(series) do
-        for l, played in pairs(one.reached) do
-            if l <= cap then top = math.max(top, played) end
-        end
-    end
-    local day = 86400
-    top = top > 2 * day and math.ceil(top / day) * day or math.max(3600, math.ceil(top / 3600) * 3600)
-    local function X(l) return (l - 1) / (cap - 1) * w end
-    local function Y(played) return played / top * h end
-    for i, a in ipairs(ui.cmpAxis) do
-        local value = top * (i - 1) / 2
-        a.line:ClearAllPoints()
-        a.line:SetPoint("BOTTOMLEFT", 0, Y(value))
-        a.line:SetPoint("BOTTOMRIGHT", 0, Y(value))
-        a.label:ClearAllPoints()
-        a.label:SetPoint("RIGHT", plot, "BOTTOMLEFT", -6, Y(value))
-        a.label:SetText(i == 1 and "0" or Duration(value))
-    end
-    local ticks = { 1 }
-    for l = 10, cap - 5, 10 do ticks[#ticks + 1] = l end
-    ticks[#ticks + 1] = cap
-    for k, l in ipairs(ticks) do
-        local label = ui.cmpLevels[k] or plot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        ui.cmpLevels[k] = label
-        label:ClearAllPoints()
-        label:SetPoint("TOP", plot, "BOTTOMLEFT", X(l), -4)
-        label:SetText(tostring(l))
-        label:Show()
-    end
-    for k = #ticks + 1, #ui.cmpLevels do ui.cmpLevels[k]:Hide() end
-
-    -- The curves, drawn again only when what they show changed: hovering and
-    -- the replay move just the line, the dots and the table. The others
-    -- first, then a dark edge and your gold on top of it, each on its own
-    -- draw level so the gold always lies over the edge.
-    local key = ("%s|%d|%d|%d|%d"):format(tostring(ns.view), cap, top, math.floor(w), math.floor(h))
+    for l in pairs(series[1].reached) do highest = math.max(highest, l) end
+    local last = highest > 0 and math.min(Cap(), math.max(10, highest + PAST_MINE)) or Cap()
+    local key = tostring(ns.view)
     for _, a in ipairs(list) do key = key .. "|" .. tostring(a.entry) end
-    if key ~= ui.cmpKey then
-        ui.cmpKey = key
-        local n = 0
-        local function Draw(one, thick, r, g, b, a, layer)
-            local l = 1
-            while l < cap do
-                if one.reached[l] and one.reached[l + 1] then
-                    local pts = {}
-                    while l <= cap and one.reached[l] do
-                        pts[#pts + 1] = { X(l), Y(one.reached[l]) }
-                        l = l + 1
-                    end
-                    for i = 1, #pts - 1 do
-                        local p0, p1, p2, p3 = pts[math.max(1, i - 1)], pts[i], pts[i + 1], pts[math.min(#pts, i + 2)]
-                        local px, py = p1[1], p1[2]
-                        for piece = 1, SMOOTH do
-                            local x, y = CurvePoint(p0, p1, p2, p3, piece / SMOOTH)
-                            n = n + 1
-                            local line = CompareLine(n)
-                            line:SetDrawLayer("ARTWORK", layer)
-                            line:SetThickness(thick)
-                            line:SetStartPoint("BOTTOMLEFT", plot, px, py)
-                            line:SetEndPoint("BOTTOMLEFT", plot, x, y)
-                            line:SetColorTexture(r, g, b, a)
-                            line:Show()
-                            px, py = x, y
-                        end
-                    end
-                else
-                    l = l + 1
-                end
-            end
-        end
-        for k = #series, 2, -1 do
-            local c = series[k].color
-            Draw(series[k], series[k].thick, c[1], c[2], c[3], 0.85, 1)
-        end
-        Draw(series[1], series[1].thick + 3, 0, 0, 0, 0.6, 2)
-        Draw(series[1], series[1].thick, ME_COLOR[1], ME_COLOR[2], ME_COLOR[3], 1, 3)
-        for k = n + 1, #ui.cmpLines do ui.cmpLines[k]:Hide() end
-    end
-
-    ui.cmpMark:ClearAllPoints()
-    ui.cmpMark:SetPoint("BOTTOMLEFT", X(level), 0)
-    ui.cmpMark:SetHeight(h)
-    for k, one in ipairs(series) do
-        local dot = ui.cmpDots[k] or plot:CreateTexture(nil, "OVERLAY", nil, 2)
-        ui.cmpDots[k] = dot
-        local played = one.reached[level]
-        dot:SetShown(played ~= nil)
-        if played then
-            dot:SetSize(k == 1 and 7 or 6, k == 1 and 7 or 6)
-            dot:ClearAllPoints()
-            dot:SetPoint("CENTER", plot, "BOTTOMLEFT", X(level), Y(played))
-            dot:SetColorTexture(one.color[1], one.color[2], one.color[3])
-        end
-    end
-    for k = #series + 1, #ui.cmpDots do ui.cmpDots[k]:Hide() end
+    local level = DrawCurves(ui.paneChart, series, last, ui.paneChart.hover or w.levelTo, Duration, key)
 
     -- The table: each character's time played to reach the level, and the
     -- others' against yours (green when you were faster).
+    local curve = CURVES[1]
     local tableTop = 14 + rowsH
     ui.cmpHead:ClearAllPoints()
     ui.cmpHead:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", 12, tableTop - 12)
@@ -934,7 +1226,7 @@ local function DrawCompare(level)
     ui.cmpNote:ClearAllPoints()
     ui.cmpNote:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -12, tableTop - 12)
     ui.cmpNote:SetText(#list == 0 and "no other character yet" or "time played to reach it")
-    local you = mine[level]
+    local yours = series[1].reached[level]
     local inner = box:GetWidth() - 24
     for k, one in ipairs(series) do
         local row = TableRow(k)
@@ -952,18 +1244,23 @@ local function DrawCompare(level)
         row.time:SetText(played and Duration(played) or "|cff999999-|r")
         row.diff:ClearAllPoints()
         row.diff:SetPoint("TOPRIGHT", box, "BOTTOMLEFT", 12 + inner, y)
-        if k == 1 or not played or not you then
-            row.diff:SetText(k ~= 1 and not played and "|cff999999not there yet|r" or "")
+        if one.mine then
+            row.diff:SetText("")
+        elseif not played or not yours then
+            row.diff:SetText(not played and "|cff999999not there yet|r" or "")
         else
-            local diff = played - you
-            row.diff:SetText(math.abs(diff) < 60 and "|cff999999same|r"
-                or ("%s%s%s|r"):format(diff > 0 and "|cff40e060+" or "|cffff7a5a-", "", Duration(math.abs(diff))))
+            row.diff:SetText(Difference(curve, played, yours))
         end
         for _, part in pairs(row) do part:Show() end
     end
     for k = #series + 1, #ui.cmpRows do
         for _, part in pairs(ui.cmpRows[k]) do part:Hide() end
     end
+    ui.cmpMore:ClearAllPoints()
+    ui.cmpMore:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 28, tableTop - 18 - #series * TABLE_ROW)
+    ui.cmpMore:SetText(more > 0 and ("and %d more, the cog shows them all"):format(more) or "")
+
+    if ui.window and ui.window:IsShown() then DrawWindow(w) end
 end
 
 -- Zones by time ----------------------------------------------------------------------
@@ -1230,7 +1527,7 @@ function StatsScreen:Redraw()
     DrawChart(w, shown)
     FillCard(RowOf(shown) or rows[#rows])
     FillRecords(w)
-    DrawCompare(compareHover or w.levelTo)
+    DrawCompare(w)
     FillZones(w)
     FillLife(w)
 end
