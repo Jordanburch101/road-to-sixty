@@ -35,6 +35,17 @@ local addonName, ns = ...
 --   Life (Stats.Life): professions, reputation and guild at the window's
 --   end, with what changed inside it when a date range is picked; the
 --   players grouped with most, kept for all time only.
+--
+-- With the endgame picked (the map window's phase, Range.lua) weeks since
+-- the level cap take the levels' place: the tiles count raids and
+-- dungeons and say how many a week (nothing gives XP at the cap, so there
+-- are no kills either), the chart has a bar per week and its card that
+-- week, and the records are the endgame's. With the whole journey, the
+-- chart's weeks at the cap follow level 59 in the cap's place (a line
+-- marks where they begin); with the levelling it stops at 59. The zones
+-- and life show the whole journey for the endgame too (in the date range,
+-- up to the replay's moment), and stop at the cap for the levelling; the
+-- comparison is time to each level in every phase.
 
 local StatsScreen = {}
 ns.StatsScreen = StatsScreen
@@ -65,7 +76,7 @@ local records, recordsKey, recordsAt, recordsPending
 local alts                  -- the other characters to compare with (Others)
 local dirty = true
 local followT = math.huge   -- the replay's moment
-local hoverLevel            -- the level under the cursor on the chart
+local hoverRow              -- the chart's bar under the cursor: a level's row or a week's
 local metric = 1
 
 local Commas = function(n) return ns.Commas(n) end
@@ -119,6 +130,68 @@ local function Window()
     local from, to = ns.Range.from, ns.Range.to
     if followT ~= math.huge then to = math.min(to or followT, followT) end
     return Stats.Window(Index(), from, to)
+end
+
+-- The endgame: the phase picked, for a journey that has reached the cap.
+local WEEK = 7 * 86400
+local function Endgame()
+    return ns.Range.capAt ~= nil and ns.Range:Key():sub(-4) == "|end"
+end
+
+-- The client's level cap, as the gear screen finds it.
+local function Cap()
+    local ok, cap = pcall(GetMaxPlayerLevel)
+    return ok and type(cap) == "number" and cap >= 60 and cap or 60
+end
+
+-- A row per week since the cap, as the level rows are per level: its
+-- numbers are the week's window. Built once for an index and cap.
+local weekRows, weekKey
+local function WeekRows()
+    local key = tostring(index) .. "|" .. tostring(ns.Range.capAt)
+    if key == weekKey then return weekRows end
+    weekKey, weekRows = key, {}
+    for _, week in ipairs(Stats.Weeks(index, ns.Range.capAt)) do
+        local w = Stats.Window(index, week.from, week.to)
+        weekRows[#weekRows + 1] = {
+            week = true, level = week.week, t = week.from, to = week.to, time = w.played, raids = w.raids,
+            dungeons = w.dungeons - w.raids, quests = w.quests, deaths = w.deaths, gold = w.gold,
+        }
+    end
+    return weekRows
+end
+
+-- The week since the cap that time t falls in, or nil.
+local function WeekAt(t)
+    for _, row in ipairs(WeekRows()) do
+        if t >= row.t and t <= row.to then return row.level end
+    end
+end
+
+-- The chart's bars, each with its place on the axis, and how many places
+-- the axis has. The endgame has its weeks alone and the levelling its
+-- levels below the cap; the whole journey has the levels, then the weeks
+-- at the cap in the cap's own place and after it.
+local function ChartRows()
+    local list = {}
+    if Endgame() then
+        for i, row in ipairs(WeekRows()) do list[i] = { row = row, slot = row.level } end
+        return list, math.max(12, #list)
+    end
+    local capAt, cap = ns.Range.capAt, Cap()
+    local levelling = capAt and ns.Range.phase == "lvl"
+    local weeks = capAt and not levelling and WeekRows() or {}
+    local cut = levelling or #weeks > 0
+    local slots = cap
+    for _, row in ipairs(rows or {}) do
+        if not (cut and row.level >= cap) then
+            list[#list + 1] = { row = row, slot = row.level }
+            slots = math.max(slots, row.level)
+        end
+    end
+    for _, row in ipairs(weeks) do list[#list + 1] = { row = row, slot = cap - 1 + row.level } end
+    if #weeks > 0 then slots = cap - 1 + #weeks end
+    return list, slots
 end
 
 -- Two shares side by side, in a thin bar with what each is above it.
@@ -186,7 +259,27 @@ local function SetTile(i, value, sub)
     ui.tiles[i].sub:SetText(sub or "")
 end
 
+local ENDGAME_TILES = { "Played", "Travelled", "Raids", "Dungeons", "Quests", "Deaths", "Gold" }
+
+-- The endgame's tiles: how many raids and dungeons, and each a week.
+local function FillEndgameTiles(w)
+    for i, label in ipairs(ENDGAME_TILES) do ui.tiles[i].label:SetText(label) end
+    local weeks = math.max(1, (w.to - w.from) / WEEK)
+    local function AWeek(n) return ("%.1f a week"):format(n / weeks) end
+    SetTile(1, Duration(w.played), Duration(w.played / weeks) .. " a week")
+    local travelled = w.walked + w.flown
+    SetTile(2, Commas(travelled) .. " yd", travelled > 0
+        and ("walked %d%%, flown %d%%"):format(Percent(w.walked, travelled), Percent(w.flown, travelled)) or nil)
+    SetTile(3, Commas(w.raids), AWeek(w.raids))
+    SetTile(4, Commas(w.dungeons - w.raids), AWeek(w.dungeons - w.raids))
+    SetTile(5, Commas(w.quests), w.questMoney > 0 and (Money(w.questMoney) .. " from them") or AWeek(w.quests))
+    SetTile(6, Commas(w.deaths), w.deaths > 0 and ("one per %s played"):format(Duration(w.played / w.deaths)) or "none")
+    SetTile(7, Money(w.gold), "change in gold held")
+end
+
 local function FillTiles(w)
+    if Endgame() then return FillEndgameTiles(w) end
+    for i, label in ipairs(TILES) do ui.tiles[i].label:SetText(label) end
     -- With all time, the game's own time played at that moment; the time
     -- recorded is less when tracking began partway through the journey.
     local total = ns.Range:IsAll() and ns.Journal:PlayedAt(w.to)
@@ -229,6 +322,14 @@ local METRICS = {
     { "Gold", function(r) return r.gold and math.max(0, r.gold) end, function(v) return Short(v / 10000) .. "g" end },
     { "XP / hour", XPPerHour, Short },
 }
+-- The endgame's, for the weeks since the cap.
+local WEEK_METRICS = {
+    { "Time", function(r) return r.time end, AxisTime },
+    { "Raids", function(r) return r.raids end, Commas },
+    { "Dungeons", function(r) return r.dungeons end, Commas },
+    { "Quests", function(r) return r.quests end, Commas },
+    { "Deaths", function(r) return r.deaths end, Commas },
+}
 
 -- A round number at or above v for the top of the axis: 1, 2, 2.5 or 5 times a power of ten.
 local function NiceMax(v)
@@ -267,14 +368,14 @@ local function Column(i)
     col.glow:SetAllPoints()
     col.glow:SetColorTexture(1, 1, 1, 0.06)
     col:SetScript("OnEnter", function(self)
-        hoverLevel = self.level
+        hoverRow = self.row
         ns.SafeShow(StatsScreen.Redraw, StatsScreen)
     end)
     col:SetScript("OnLeave", function()
-        hoverLevel = nil
+        hoverRow = nil
         ns.SafeShow(StatsScreen.Redraw, StatsScreen)
     end)
-    -- The replay moves to the level up, which moves the screen with it.
+    -- The replay moves to the level up or the week's start, which moves the screen with it.
     col:SetScript("OnClick", function(self)
         if self.t then ns.Map:JumpTo(self.t) end
     end)
@@ -290,10 +391,9 @@ local function CreateChart()
     ui.chart = chart
     local title = chart:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Each level")
+    ui.chartTitle = title
     ui.chartNote = chart:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.chartNote:SetPoint("LEFT", title, "RIGHT", 10, 0)
-    ui.chartNote:SetText("Hover a level to see it, click to replay from its level up")
     ui.metricTabs = {}
     local right = -8
     for i = #METRICS, 1, -1 do
@@ -320,15 +420,31 @@ local function CreateChart()
         label:SetJustifyH("RIGHT")
         ui.gridLabels[i] = label
     end
+    -- Where the levels end and the weeks at the cap begin.
+    ui.capLine = plot:CreateTexture(nil, "BACKGROUND", nil, 2)
+    ui.capLine:SetWidth(1)
+    ui.capLine:SetColorTexture(1, 0.82, 0, 0.35)
 end
 
-local function DrawChart(w, shown)
-    for i, tab in ipairs(ui.metricTabs) do ns.Screens.SetTabOn(tab, i == metric) end
-    local m = METRICS[metric]
+local function DrawChart(w, shown, list, slots)
+    local endgame = Endgame()
+    local metrics = endgame and WEEK_METRICS or METRICS
+    local cap = Cap()
+    local weeksAfter = not endgame and list[#list] and list[#list].row.week
+    ui.chartTitle:SetText(endgame and "Each week at the level cap"
+        or weeksAfter and "Each level, then each week at the cap" or "Each level")
+    ui.chartNote:SetText(endgame and "Hover a week to see it, click to replay from its start"
+        or weeksAfter and "Hover a bar to see it, click to replay from its start"
+        or "Hover a level to see it, click to replay from its level up")
+    for i, tab in ipairs(ui.metricTabs) do
+        ns.Screens.SetTabOn(tab, i == metric)
+        tab.text:SetText(metrics[i][1])
+    end
+    local m = metrics[metric]
     local plotW, plotH = ui.plot:GetWidth(), ui.plot:GetHeight()
-    local n = #rows
+    local n = #list
     local top = 0
-    for _, row in ipairs(rows) do top = math.max(top, m[2](row) or 0) end
+    for _, e in ipairs(list) do top = math.max(top, m[2](e.row) or 0) end
     top = NiceMax(top)
     for i = 0, 4 do
         local y = plotH * i / 4
@@ -339,35 +455,53 @@ local function DrawChart(w, shown)
         ui.gridLabels[i]:SetPoint("RIGHT", ui.plot, "BOTTOMLEFT", -6, y)
         ui.gridLabels[i]:SetText(i % 2 == 0 and m[3](top * i / 4) or "")
     end
-    -- The client's own cap, as the gear screen finds it; a journey past it widens the axis.
-    local ok, cap = pcall(GetMaxPlayerLevel)
-    cap = ok and type(cap) == "number" and cap >= 60 and cap or 60
-    for _, row in ipairs(rows) do cap = math.max(cap, row.level) end
-    local step = plotW / cap
+    -- Levels up to the client's own cap (a journey past it widens the axis),
+    -- weeks as many as there are; ChartRows places them.
+    local step = plotW / slots
     ui.axis = ui.axis or {}
-    local marks = { 1 }
-    for level = 10, cap, 10 do marks[#marks + 1] = level end
-    for k, level in ipairs(marks) do
+    local marks = {}
+    if endgame then
+        marks[1] = { 1, "Week 1" }
+        for week = 5, slots, 5 do marks[#marks + 1] = { week, "Week " .. week } end
+    else
+        marks[1] = { 1, "1" }
+        for level = 10, weeksAfter and cap - 1 or slots, 10 do marks[#marks + 1] = { level, tostring(level) } end
+        if weeksAfter then
+            marks[#marks + 1] = { cap, tostring(cap) }
+            for week = 5, slots - cap + 1, 5 do marks[#marks + 1] = { cap - 1 + week, "Week " .. week } end
+        end
+    end
+    for k, mark in ipairs(marks) do
         local label = ui.axis[k] or ui.plot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         ui.axis[k] = label
         label:ClearAllPoints()
-        label:SetPoint("TOP", ui.plot, "BOTTOMLEFT", (level - 0.5) * step, -4)
-        label:SetText(tostring(level))
+        label:SetPoint("TOP", ui.plot, "BOTTOMLEFT", (mark[1] - 0.5) * step, -4)
+        label:SetText(mark[2])
         label:Show()
     end
     for k = #marks + 1, #ui.axis do ui.axis[k]:Hide() end
-    for i, row in ipairs(rows) do
+    ui.capLine:ClearAllPoints()
+    ui.capLine:SetPoint("TOPLEFT", (cap - 1) * step - 1, 0)
+    ui.capLine:SetPoint("BOTTOMLEFT", (cap - 1) * step - 1, 0)
+    ui.capLine:SetShown(weeksAfter and true or false)
+    for i, e in ipairs(list) do
+        local row = e.row
         local col = Column(i)
-        col.level, col.t = row.level, row.t
+        col.row, col.t = row, row.t
         col:ClearAllPoints()
-        col:SetPoint("BOTTOMLEFT", (row.level - 1) * step, 0)
+        col:SetPoint("BOTTOMLEFT", (e.slot - 1) * step, 0)
         col:SetSize(step, plotH)
         local value = m[2](row) or 0
-        local r, g, b = ns.LevelColor(row.level)
+        local r, g, b = ns.LevelColor(row.week and 60 or row.level)
         col.bar:SetWidth(math.max(1, step - (step > 8 and 3 or 1)))
         col.bar:SetHeight(math.max(value > 0 and 1 or 0.01, plotH * value / top))
-        local inside = w.levelFrom and row.level >= w.levelFrom and row.level <= w.levelTo
-        local on = row.level == shown
+        local inside
+        if row.week then
+            inside = row.t <= w.to and row.to >= w.from
+        else
+            inside = w.levelFrom and row.level >= w.levelFrom and row.level <= w.levelTo
+        end
+        local on = row == shown
         if on or inside then
             col.bar:SetColorTexture(r, g, b, on and 1 or row.current and 0.5 or 0.8)
         else
@@ -377,13 +511,17 @@ local function DrawChart(w, shown)
         for _, edge in ipairs(col.edges) do edge:SetShown(on) end
         col.value:SetShown(on)
         col.value:SetText(metric == 1 and Duration(value) or m[3](value))
-        col.glow:SetShown(row.level == hoverLevel)
+        col.glow:SetShown(row == hoverRow)
         col:Show()
     end
     for i = n + 1, #ui.cols do ui.cols[i]:Hide() end
 end
 
 -- The level card -----------------------------------------------------------------------
+
+local function Day(t)
+    return (tostring(date("%d %b", t)):gsub("^0", ""))
+end
 
 -- The card's numbers are a window from the level up to the next one, or to
 -- the replay's moment when that comes first, so they agree with the tiles.
@@ -421,6 +559,8 @@ local function CreateCard()
         local value = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         value:SetPoint("TOPRIGHT", card, "TOPLEFT", x + colW, y)
         ui.cardFields[i] = value
+        ui.cardLabels = ui.cardLabels or {}
+        ui.cardLabels[i] = label
     end
     ui.xpSplit = CreateSplit(card)
     ui.xpSplit:SetPoint("TOPLEFT", 12, -124)
@@ -450,12 +590,47 @@ local function CreateCard()
     end)
 end
 
+-- A week's card: its numbers from its start to its end, or to the
+-- replay's moment when that comes first.
+local WEEK_FIELDS = {
+    { "Time", function(s) return Duration(s.played) end },
+    { "Raids", function(s) return Commas(s.raids) end },
+    { "Dungeons", function(s) return Commas(s.dungeons - s.raids) end },
+    { "Quests", function(s) return Commas(s.quests) end },
+    { "Deaths", function(s) return Commas(s.deaths) end },
+    { "Quest gold", function(s) return s.questMoney > 0 and Money(s.questMoney) or nil end },
+    { "Gold", function(s) return s.gold and Money(s.gold) or nil end },
+}
+
 local function ZoneName(uiMapID)
     local info = uiMapID and C_Map.GetMapInfo(uiMapID)
     return info and info.name or ""
 end
 
+local function FillWeekCard(row)
+    ui.cardRow = row
+    for _, part in ipairs({ ui.toGear, ui.toMap, ui.moveSplit }) do part:SetShown(row ~= nil) end
+    ui.xpSplit:Hide()
+    for i, f in ipairs(WEEK_FIELDS) do ui.cardLabels[i]:SetText(f[1]) end
+    if not row then
+        ui.cardTitle:SetText("No weeks yet")
+        ui.cardZone:SetText("")
+        for _, value in ipairs(ui.cardFields) do value:SetText("") end
+        return
+    end
+    ui.cardTitle:SetText(("Week %d"):format(row.level))
+    ui.cardTitle:SetTextColor(ns.LevelColor(60))
+    local span = Stats.Window(index, row.t, math.min(row.to, followT))
+    local note = followT < row.to and ", so far" or ""
+    ui.cardZone:SetText(("%s to %s%s"):format(Day(row.t), Day(math.min(row.to, index.finish)), note))
+    for i, f in ipairs(WEEK_FIELDS) do ui.cardFields[i]:SetText(f[2](span) or "-") end
+    SetSplit(ui.moveSplit, "Walked", span.walked, WALK_COLOR, "flown", span.flown, FLY_COLOR)
+    ui.toMap:SetEnabled(true)
+end
+
 local function FillCard(row)
+    if (row and row.week) or (not row and Endgame()) then return FillWeekCard(row) end
+    for i, f in ipairs(CARD_FIELDS) do ui.cardLabels[i]:SetText(f[1]) end
     ui.cardRow = row
     for _, part in ipairs({ ui.toGear, ui.toMap, ui.xpSplit, ui.moveSplit }) do part:SetShown(row ~= nil) end
     if not row then
@@ -481,10 +656,6 @@ local function FillCard(row)
 end
 
 -- Records ----------------------------------------------------------------------------
-
-local function Day(t)
-    return (tostring(date("%d %b", t)):gsub("^0", ""))
-end
 
 local SLOT_NAMES = {
     [1] = "Head", [2] = "Neck", [3] = "Shoulder", [5] = "Chest", [6] = "Waist", [7] = "Legs", [8] = "Feet", [9] = "Wrist",
@@ -561,6 +732,21 @@ local RECORDS = {
         end },
 }
 
+-- The endgame's own five records, before the five both have. Each can still
+-- change as the weeks go on: the first epic, say, is an event, not a record.
+local ENDGAME_RECORDS = {
+    { "busiestWeek", "Busiest week", "Interface\\Icons\\Spell_Nature_TimeStop",
+        function(r) return Duration(r.seconds), ("Week %d, from %s"):format(r.week, Day(r.from)) end },
+    { "mostRaidsWeek", "Most raids in a week", "Interface\\Icons\\INV_Misc_PocketWatch_01",
+        function(r) return Count(r.count, "raid", "raids"), ("Week %d, from %s"):format(r.week, Day(r.from)) end },
+    { "favouriteRaid", "Favourite raid", "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+        function(r) return r.name, ("%s, from %s"):format(Count(r.count, "run", "runs"), Day(r.first)) end },
+    { "favouriteDungeon", "Favourite dungeon", "Interface\\Icons\\INV_Misc_Key_03",
+        function(r) return r.name, ("%s, from %s"):format(Count(r.count, "run", "runs"), Day(r.first)) end },
+    { "deadliestRaid", "Deadliest raid", "Interface\\Icons\\Ability_Rogue_FeignDeath",
+        function(r) return Count(r.deaths, "death", "deaths"), ("%s, %s"):format(r.name or "a raid", Day(r.t)) end },
+}
+
 local ICON = 36
 
 local function OpenRecord(spec, r)
@@ -608,16 +794,16 @@ local function CreateRecords()
         row:SetScript("OnEnter", function(self)
             if not self.record then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(spec[2])
+            GameTooltip:AddLine(self.spec[2])
             GameTooltip:AddLine(self.value:GetText(), 1, 1, 1)
             GameTooltip:AddLine(self.sub:GetText(), 0.7, 0.7, 0.7)
-            GameTooltip:AddLine(spec.gear and "Click to see it on the gear screen" or "Click to see it on the map",
+            GameTooltip:AddLine(self.spec.gear and "Click to see it on the gear screen" or "Click to see it on the map",
                 1, 0.82, 0)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", GameTooltip_Hide)
         row:SetScript("OnClick", function(self)
-            if self.record then ns.SafeShow(OpenRecord, spec, self.record) end
+            if self.record then ns.SafeShow(OpenRecord, self.spec, self.record) end
         end)
         ui.recordRows[i] = row
     end
@@ -639,7 +825,7 @@ end
 -- Records for the window, worked out again at most every RECORDS_SECONDS;
 -- one put off is done once the replay has moved on.
 local function Records(w)
-    local key = w.from .. ":" .. w.to
+    local key = w.from .. ":" .. w.to .. ":" .. ns.Range:Key()
     if key == recordsKey then return records end
     if records and recordsAt and GetTime() - recordsAt < RECORDS_SECONDS then
         if not recordsPending then
@@ -651,16 +837,28 @@ local function Records(w)
         end
         return records
     end
-    records = Stats.Records(index, w.from, w.to, rows, timeline)
+    records = Stats.Records(index, w.from, w.to, rows, timeline, ns.Range.capAt)
     recordsKey, recordsAt = key, GetTime()
     return records
 end
 
 local function FillRecords(w)
     local found = Records(w)
-    for i, spec in ipairs(RECORDS) do
+    -- The endgame's five, then the five both have.
+    local list = RECORDS
+    if Endgame() then
+        list = {}
+        for _, spec in ipairs(ENDGAME_RECORDS) do list[#list + 1] = spec end
+        for _, key in ipairs({ "nemesis", "longestWorn", "richest", "deathless", "mostGathered" }) do
+            for _, spec in ipairs(RECORDS) do
+                if spec[1] == key then list[#list + 1] = spec end
+            end
+        end
+    end
+    for i, spec in ipairs(list) do
         local row, r = ui.recordRows[i], found[spec[1]]
-        row.record = r
+        row.record, row.spec = r, spec
+        row.label:SetText(spec[2])
         local value, sub, icon, quality
         if r then value, sub, icon, quality = spec[4](r) end
         row.value:SetText(value or "-")
@@ -744,11 +942,6 @@ local function PaneAlts()
         for k = 1, math.min(PANE_ALTS, #all) do list[k] = all[k] end
     end
     return list
-end
-
-local function Cap()
-    local ok, cap = pcall(GetMaxPlayerLevel)
-    return ok and type(cap) == "number" and cap >= 60 and cap or 60
 end
 
 local function Hex(color)
@@ -1448,9 +1641,10 @@ local function FillLife(w)
         end
     end
 
-    -- What changed inside the window says something only for a date range;
-    -- with all time it would repeat the rank.
-    local changes = not ns.Range:IsAll()
+    -- What changed inside the window says something only for a date range
+    -- picked: with all time it would repeat the rank, and the phase (the
+    -- endgame, say) leaves what the character has as it is.
+    local changes = ns.Range.key ~= "all"
     Add("PROFESSIONS", nil, nil, true)
     for _, p in ipairs(life.professions) do
         local gained = changes and p.gained > 0 and (" |cff40e060+%d|r"):format(p.gained) or ""
@@ -1527,13 +1721,34 @@ function StatsScreen:Redraw()
         label = ns.Range:PhaseLabel() .. ", " .. label:lower()
     end
     ui.range:SetText(("|cffffd100%s|r  %s"):format(label, covers))
-    local shown = hoverLevel or w.levelTo
-    DrawChart(w, shown)
-    FillCard(RowOf(shown) or rows[#rows])
+    -- The bar shown in the card: the one hovered, else the week or level
+    -- the window ends in (the levelling's stops below the cap).
+    local list, slots = ChartRows()
+    local capAt, shown = ns.Range.capAt, hoverRow
+    local last = list[#list] and list[#list].row
+    if not shown and last and last.week and w.to >= capAt then
+        local weeks = WeekRows()
+        shown = weeks[WeekAt(math.min(w.to, index.finish)) or #weeks]
+    end
+    if not shown and not Endgame() then
+        local level = w.levelTo
+        if level and capAt and ns.Range.phase == "lvl" then level = math.min(level, Cap() - 1) end
+        shown = RowOf(level) or rows[#rows]
+    end
+    DrawChart(w, shown, list, slots)
+    FillCard(shown)
     FillRecords(w)
+    -- The zones and life take the endgame as part of the whole journey:
+    -- the date range alone, up to the replay's moment, cut at the cap only
+    -- for the levelling. The comparison is the levels' in every phase.
     DrawCompare(w)
-    FillZones(w)
-    FillLife(w)
+    local from, to = ns.Range.Bounds(ns.Range.key, ns.Now())
+    if followT ~= math.huge then to = math.min(to or followT, followT) end
+    local capAt = ns.Range.capAt
+    if capAt and ns.Range.phase == "lvl" then to = math.min(to or capAt, capAt) end
+    local whole = Stats.Window(index, from, to)
+    FillZones(whole)
+    FillLife(whole)
 end
 
 local function CreateView(frames)

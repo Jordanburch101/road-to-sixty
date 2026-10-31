@@ -161,7 +161,7 @@ check(rec.mostKilled and rec.mostKilled.name == "Kobold" and rec.mostKilled.coun
     "most killed")
 check(rec.longestSession and rec.longestSession.seconds == 10000, "longest session")
 check(rec.longestWorn and rec.longestWorn.id == 100 and rec.longestWorn.seconds == 6000, "longest worn, shirts left out")
-check(rec.richest and rec.richest.level == 13 and rec.richest.money == 2000, "most gold held at a level up")
+check(rec.richest and rec.richest.level == 13 and rec.richest.money == 2500, "most gold held, the gold held now too")
 check(rec.deathless and rec.deathless.seconds == 5000 and rec.deathless.from == 5000 and rec.deathless.ongoing,
     "longest without dying, still going at the end")
 check(rec.favouriteDungeon and rec.favouriteDungeon.name == "Deadmines" and rec.favouriteDungeon.count == 2,
@@ -220,6 +220,45 @@ check(life.guild == nil, "left the guild")
 check(all.zones[1][3] and all.zones[1][3].t == 1500, "a zone's first entry")
 check(all.zones[1][4][10] == 600 and all.zones[1][4][11] == 900 and all.zones[2][4][10] == 500,
     "a zone's time split at the level ups in it")
+
+-- 8e. The endgame: raids apart from dungeons, gold at logins and logouts
+-- (#86), the first epic, and weeks since the cap.
+local WEEK = 7 * 86400
+local ej = {
+    events = {
+        { 0, "on", 0, 0, 0, 59, 1000 },
+        { 100, "lvl", 0, 5, 5, 60 },
+        { 200, "in", 0, 0, 0, 409, "Molten Core", "raid" },
+        { 300, "loot", 0, 7, 7, "|cffa335ee|Hitem:17076::::::::60:::::|h[Bonereaver's Edge]|h|r", 4 },
+        { 400, "in", 0, 0, 0, 329, "Stratholme", "party" },
+        { 500, "off", 0, 0, 0, 9000 },
+        { WEEK + 100, "on", 0, 0, 0, 60, 9000 },
+        { WEEK + 200, "in", 0, 0, 0, 409, "Molten Core", "raid" },
+        { WEEK + 300, "in", 0, 0, 0, 249, "Onyxia's Lair", "raid" },
+        { WEEK + 350, "out", 0, 9, 9, 249, { name = "Onyxia's Lair", type = "raid", deaths = 4, duration = 50 } },
+        { WEEK + 400, "in", 0, 0, 0, 329, "Stratholme", "party" },
+        { WEEK + 3000, "off", 0, 0, 0, 4000 },
+    },
+    levels = { [59] = { t = 0, money = 1000 }, [60] = { t = 100, money = 1500 } },
+}
+local ei = Stats.Index(ej, WEEK + 3000)
+local ew = Stats.Window(ei)
+check(ew.dungeons == 5 and ew.raids == 3, "raids are dungeons too, and counted apart")
+check(Stats.Window(ei, 0, 600).gold == 8000 and Stats.Window(ei, WEEK, WEEK + 3000).gold == -5000,
+    "gold over time from the logins and logouts")
+local weeks = Stats.Weeks(ei, 100)
+check(#weeks == 2 and weeks[1].from == 100 and weeks[2].from == 100 + WEEK and weeks[2].week == 2, "weeks since the cap")
+check(#Stats.Weeks(ei, nil) == 0, "no weeks without the cap")
+local er = Stats.Records(ei, nil, nil, Stats.Levels(ej, 60), nil, 100)
+check(er.favouriteRaid and er.favouriteRaid.name == "Molten Core" and er.favouriteRaid.count == 2, "favourite raid")
+check(er.favouriteDungeon and er.favouriteDungeon.name == "Stratholme" and er.favouriteDungeon.count == 2,
+    "favourite dungeon, raids left out")
+check(er.firstEpic and er.firstEpic.link:find("Bonereaver", 1, true) and er.firstEpic.x == 7, "first epic, where it dropped")
+check(er.busiestWeek and er.busiestWeek.week == 2 and er.mostRaidsWeek and er.mostRaidsWeek.week == 2
+    and er.mostRaidsWeek.count == 2, "the busiest week and the one with the most raids")
+check(er.richest and er.richest.money == 9000 and er.richest.level == 60, "most gold held, at a logout too")
+check(er.deadliestRaid and er.deadliestRaid.name == "Onyxia's Lair" and er.deadliestRaid.deaths == 4
+    and er.deadliestRaid.x == 9, "the deadliest raid, from its summary")
 
 -- 8b. Path steps out of time order (a clock put right) still count once each.
 local stepped = Stats.Index({ events = {}, segments = {

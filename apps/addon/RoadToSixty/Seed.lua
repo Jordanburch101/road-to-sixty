@@ -6,11 +6,12 @@ local _, ns = ...
 --   /rts seed confirm                  a realistic 1-30: the levelling route for
 --                                     the character's race, quest hubs, real
 --                                     dungeons at their level, a normal pace
---   /rts seed stress confirm [points]  a 1-60 through every zone at full size,
+--   /rts seed stress confirm [points] [weeks]
+--                                     a 1-60 through every zone at full size,
 --                                     then weeks at 60 (raids, 5-man runs,
---                                     days in the endgame zones), to stress
---                                     test the map, memory use and
---                                     SavedVariables size
+--                                     days in the endgame zones; 15 unless
+--                                     given), to stress test the map, memory
+--                                     use and SavedVariables size
 
 local DEFAULT_POINTS = 150000   -- rough estimate for a real 1-60
 local SESSION_POINTS = 3600     -- about 2.5 hours of moving per login
@@ -943,16 +944,18 @@ local function SeedEndgame(route, weeks)
 end
 
 -- items: links by quality, { [2] = {...}, [3] = {...}, [4] = {...} }.
-local function SeedStress(total, items)
+-- weeks: how many weeks at 60 follow the levelling (ENDGAME_WEEKS if nil).
+local function SeedStress(total, items, weeks)
     local route = BuildRoute()
     if not route or #route == 0 then
         ns.Print("Could not find any zones to walk. Go outside on a main continent and try again.")
         return
     end
+    weeks = weeks or ENDGAME_WEEKS
     local started = debugprofilestop()
     local first = route[1]
     -- Far enough back that the weeks of raiding after 60 end before today.
-    Begin(first, first.cx, first.cy, 45 + ENDGAME_WEEKS * 7, items, { total = total })
+    Begin(first, first.cx, first.cy, 45 + weeks * 7, items, { total = total })
 
     local perZone = floor(total * 0.9 / #route)
     for i, zone in ipairs(route) do
@@ -962,9 +965,9 @@ local function SeedStress(total, items)
         Wander(zone, perZone)
         MaybeDungeon()
     end
-    SeedEndgame(route, ENDGAME_WEEKS)
-    Finish(60, started, ("stress 1-60 and %d weeks at 60"):format(ENDGAME_WEEKS),
-        function() PlanGear(G.char, ENDGAME_WEEKS) end)
+    SeedEndgame(route, weeks)
+    Finish(60, started, ("stress 1-60 and %d weeks at 60"):format(weeks),
+        function() PlanGear(G.char, weeks) end)
 end
 
 -- Realistic 1-30 ---------------------------------------------------------------
@@ -1469,19 +1472,19 @@ end
 
 ns.Command("seed", "replace this character's journey with fake test data", function(arg)
     local stress = arg:match("^stress%s+") ~= nil
-    local confirm, count = arg:gsub("^stress%s+", ""):match("^(%S*)%s*(%d*)$")
+    local confirm, count, weeks = arg:gsub("^stress%s+", ""):match("^(%S*)%s*(%d*)%s*(%d*)$")
     if confirm ~= "confirm" then
         ns.Print("This ERASES this character's journey and fills it with fake test data.")
         ns.Print("Type /rts seed confirm for a realistic 1-30 levelling journey.")
-        ns.Print(("Type /rts seed stress confirm [points] for a full-size 1-60 stress test. Default %d points."):format(
-            DEFAULT_POINTS))
+        ns.Print(("Type /rts seed stress confirm [points] [weeks] for a full-size 1-60 stress test and weeks at 60."
+            .. " Default %d points, %d weeks."):format(DEFAULT_POINTS, ENDGAME_WEEKS))
         return
     end
     ns.Print("Loading item data for fake loot...")
     LoadItems(function(items)
         ns.Print(("Items for loot: %d green, %d blue, %d epic."):format(#items[2], #items[3], #items[4]))
         if stress then
-            SeedStress(tonumber(count) or DEFAULT_POINTS, items)
+            SeedStress(tonumber(count) or DEFAULT_POINTS, items, tonumber(weeks))
         else
             SeedRealistic(items)
         end

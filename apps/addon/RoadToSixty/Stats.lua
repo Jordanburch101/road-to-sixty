@@ -8,20 +8,21 @@ local _, ns = ...
 --     Running totals over the whole journey, built once and kept while the
 --     journey does not change (Stats.Changed says when it has): kills and
 --     their XP (packed kills), quests turned in with their XP and money
---     ("qd"), deaths ("die"), dungeon and raid runs ("in") and battlegrounds
---     and arenas apart from them, yards walked and flown (the path segments, counted
---     as the recorder counts them: flight paths are flown, the rest walked),
---     the play sessions ("on" and "off"), level ups (the level snapshots),
---     zones entered ("zone") and gold held (each snapshot's, then money, the
---     gold held now, when given). now is the journey's end: ns.Now() for the
+--     ("qd"), deaths ("die"), dungeon and raid runs ("in", raids counted
+--     apart too) and battlegrounds and arenas apart from them, yards walked
+--     and flown (the path segments, counted as the recorder counts them:
+--     flight paths are flown, the rest walked), the play sessions ("on" and
+--     "off"), level ups (the level snapshots), zones entered ("zone"), epics
+--     looted ("loot") and gold held (each snapshot's, each login's and
+--     logout's from #86, then money, the gold held now, when given). now is the journey's end: ns.Now() for the
 --     character playing, its last event for another's copy.
 --   Stats.Window(index, from, to) -> totals
 --     What happened from time from to time to (Unix seconds; nil for the
 --     journey's start and end), each a binary search, so the replay can ask
 --     every frame: { from, to, played (seconds logged in), kills, killXP,
---     quests, questXP, questMoney, deaths, dungeons, battlegrounds, walked,
---     flown, gold
---     (change in gold held; nil before the first snapshot), levelFrom,
+--     quests, questXP, questMoney, deaths, dungeons (raids among them),
+--     raids, battlegrounds, walked, flown, gold (change in gold held; nil
+--     before the first snapshot or login with it), levelFrom,
 --     levelTo (level at from and at to), zones = { { uiMapID, seconds
 --     played, entry, levels }, ... } most first, entry the first "zone"
 --     event in the window for it (or the one before it): { t, c, x, y },
@@ -29,7 +30,10 @@ local _, ns = ...
 --   Stats.LevelAt(index, t) -> level, fraction
 --     The level at t, and how far through it by time played (0 to 1).
 --   Stats.ZoneAt(index, t) -> uiMapID of the zone at t, or nil
---   Stats.Records(index, from, to, rows, timeline) -> records
+--   Stats.Weeks(index, capAt) -> { { week, from, to }, ... }
+--     The weeks from capAt (when the level cap was reached) to the journey's
+--     end, for the endgame: week 1 starts at capAt.
+--   Stats.Records(index, from, to, rows, timeline, capAt) -> records
 --     The bests and worsts inside the window, each nil when nothing in it
 --     makes one, and each with t (when) and, when known, c, x, y (where):
 --       slowest, bestRate   { level, seconds or perHour }: levels 10 and
@@ -47,8 +51,14 @@ local _, ns = ...
 --       richest       { level, money }: the most gold held at a level up
 --       deathless     { seconds, from, to, ongoing }: the most time played
 --                     between deaths (or the window's ends)
---       favouriteDungeon { name, count, first, last }: the dungeon or raid
---                     entered most, by name
+--       favouriteDungeon, favouriteRaid { name, count, first, last }: the
+--                     5-man dungeon and the raid entered most, by name
+--       firstEpic     { link }: the first epic looted
+--       deadliestRaid { name, deaths }: the raid run with the most deaths,
+--                     from its summary ("out"), placed where it was left
+--       busiestWeek, mostRaidsWeek  { week, seconds or count, from }: with
+--                     capAt, the week since it with the most time played, and
+--                     with the most raids
 --       mostGathered  { item, count }: the resource gathered most (#78)
 --   Stats.Life(index, from, to) -> life
 --     The character at the window's end, and what changed inside it:
@@ -168,9 +178,10 @@ local function Kills(kills)
 end
 
 local PVP = { pvp = true, arena = true }
+local WEEK = 7 * 86400
 
 function Stats.Index(journey, now, money)
-    local quests, deaths, runs, zones, gathers, places = {}, {}, {}, {}, {}, {}
+    local quests, deaths, runs, zones, gathers, places, purses, epics, raidsLeft = {}, {}, {}, {}, {}, {}, {}, {}, {}
     local skills, reps, guilds = {}, {}, {}
     local first, last
     for _, e in ipairs(journey.events or {}) do
@@ -182,8 +193,8 @@ function Stats.Index(journey, now, money)
             deaths[#deaths + 1] = { t = t, deaths = 1, killer = e[6], c = e[3], x = e[4], y = e[5] }
         elseif kind == "in" then
             local pvp = PVP[e[8]]
-            runs[#runs + 1] = { t = t, [pvp and "battlegrounds" or "dungeons"] = 1, name = not pvp and e[7] or nil,
-                c = e[3], x = e[4], y = e[5] }
+            runs[#runs + 1] = { t = t, [pvp and "battlegrounds" or "dungeons"] = 1, raids = e[8] == "raid" and 1 or nil,
+                name = not pvp and e[7] or nil, raid = e[8] == "raid", c = e[3], x = e[4], y = e[5] }
         elseif kind == "zone" then
             zones[#zones + 1] = { t = t, id = e[6], c = e[3], x = e[4], y = e[5] }
         elseif (kind == "prof" or kind == "skill") and e[6] then
@@ -201,7 +212,14 @@ function Stats.Index(journey, now, money)
             gathers[#gathers + 1] = { t = t, item = e[7], c = e[3], x = e[4], y = e[5] }
         elseif kind == "lvl" and e[6] then
             places[e[6]] = e
+        elseif kind == "out" and type(e[7]) == "table" and e[7].type == "raid" then
+            raidsLeft[#raidsLeft + 1] = { t = t, name = e[7].name, deaths = e[7].deaths or 0, c = e[3], x = e[4], y = e[5] }
+        elseif kind == "loot" and e[7] == 4 then
+            epics[#epics + 1] = { t = t, link = e[6], c = e[3], x = e[4], y = e[5] }
         end
+        -- The gold held at each login and logout (#86).
+        local purse = kind == "on" and e[7] or kind == "off" and e[6] or nil
+        if type(purse) == "number" then purses[#purses + 1] = { t = t, money = purse, c = e[3], x = e[4], y = e[5] } end
     end
     now = now or last or 0
 
@@ -221,7 +239,9 @@ function Stats.Index(journey, now, money)
         end
     end
     table.sort(levels, function(a, b) return a.t < b.t end)
+    for _, purse in ipairs(purses) do gold[#gold + 1] = purse end
     table.sort(gold, function(a, b) return a.t < b.t end)
+    table.sort(epics, function(a, b) return a.t < b.t end)
     if money then gold[#gold + 1] = { t = now, money = money } end
     table.sort(zones, function(a, b) return a.t < b.t end)
     table.sort(gathers, function(a, b) return a.t < b.t end)
@@ -236,13 +256,14 @@ function Stats.Index(journey, now, money)
     table.sort(guilds, function(a, b) return a.t < b.t end)
 
     local index = {
-        start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers,
+        start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers, epics = epics,
+        raidsLeft = raidsLeft,
         skills = skills, reps = reps, repsNow = journey.reps or {}, guilds = guilds,
         sessions = ns.GearTimeline.Sessions(journey.events or {}, now),
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
         quests = Build({ "quests", "questXP", "questMoney" }, quests),
         deaths = Build({ "deaths" }, deaths),
-        runs = Build({ "dungeons", "battlegrounds" }, runs),
+        runs = Build({ "dungeons", "raids", "battlegrounds" }, runs),
         path = Path(journey.segments),
     }
     local firsts = { levels[1] and levels[1].t or nil, index.kills.t[1], index.path.t[1] }
@@ -351,7 +372,7 @@ function Stats.Window(index, from, to)
     local w = { from = from, to = to }
     w.played = Played(index, to) - Played(index, from)
     for _, part in ipairs({ { index.kills, { "kills", "killXP" } }, { index.quests, { "quests", "questXP", "questMoney" } },
-        { index.deaths, { "deaths" } }, { index.runs, { "dungeons", "battlegrounds" } }, { index.path, { "walked", "flown" } } }) do
+        { index.deaths, { "deaths" } }, { index.runs, { "dungeons", "raids", "battlegrounds" } }, { index.path, { "walked", "flown" } } }) do
         for _, key in ipairs(part[2]) do
             w[key] = Between(part[1], key, from, to)
         end
@@ -430,7 +451,18 @@ local function Worn(index, timeline, from, to)
     return best
 end
 
-function Stats.Records(index, from, to, rows, timeline)
+function Stats.Weeks(index, capAt)
+    local weeks = {}
+    if not capAt then return weeks end
+    local week = 0
+    while capAt + week * WEEK <= index.finish do
+        weeks[#weeks + 1] = { week = week + 1, from = capAt + week * WEEK, to = capAt + (week + 1) * WEEK - 1 }
+        week = week + 1
+    end
+    return weeks
+end
+
+function Stats.Records(index, from, to, rows, timeline, capAt)
     from, to = Bounds(index, from, to)
     local out = {}
     LevelRecords(out, rows, from, to)
@@ -496,23 +528,54 @@ function Stats.Records(index, from, to, rows, timeline)
     out.longestWorn = Worn(index, timeline, from, to)
 
     for _, g in ipairs(index.gold) do
-        if g.level and g.t >= from and g.t <= to and (not out.richest or g.money > out.richest.money) then
-            out.richest = Place({ level = g.level, money = g.money }, g)
+        if g.t >= from and g.t <= to and (not out.richest or g.money > out.richest.money) then
+            out.richest = Place({ level = g.level or Stats.LevelAt(index, g.t), money = g.money }, g)
         end
     end
 
     a, b = Inside(index.runs, from, to)
-    local byDungeon = {}
+    local byDungeon, byRaid = {}, {}
     for i = a, b do
         local run = index.runs.entries[i]
         if run.name then
-            local d = byDungeon[run.name] or { name = run.name, count = 0, first = run.t, entry = run }
+            local tally = run.raid and byRaid or byDungeon
+            local d = tally[run.name] or { name = run.name, count = 0, first = run.t, entry = run }
             d.count, d.last = d.count + 1, run.t
-            byDungeon[run.name] = d
+            tally[run.name] = d
         end
     end
     local d = Most(byDungeon)
     if d then out.favouriteDungeon = Place({ name = d.name, count = d.count, first = d.first, last = d.last }, d.entry) end
+    d = Most(byRaid)
+    if d then out.favouriteRaid = Place({ name = d.name, count = d.count, first = d.first, last = d.last }, d.entry) end
+
+    for _, run in ipairs(index.raidsLeft) do
+        if run.t >= from and run.t <= to and run.deaths > 0
+            and (not out.deadliestRaid or run.deaths > out.deadliestRaid.deaths) then
+            out.deadliestRaid = Place({ name = run.name, deaths = run.deaths }, run)
+        end
+    end
+
+    for _, epic in ipairs(index.epics) do
+        if epic.t >= from and epic.t <= to then
+            out.firstEpic = Place({ link = epic.link }, epic)
+            break
+        end
+    end
+
+    -- At the cap, by week: the one played most, and the one with the most raids.
+    for _, week in ipairs(Stats.Weeks(index, capAt)) do
+        local wa, wb = math.max(week.from, from), math.min(week.to, to)
+        if wb >= wa then
+            local w = Stats.Window(index, wa, wb)
+            if w.played > 0 and (not out.busiestWeek or w.played > out.busiestWeek.seconds) then
+                out.busiestWeek = { week = week.week, seconds = w.played, from = week.from, t = wa }
+            end
+            if w.raids > 0 and (not out.mostRaidsWeek or w.raids > out.mostRaidsWeek.count) then
+                out.mostRaidsWeek = { week = week.week, count = w.raids, from = week.from, t = wa }
+            end
+        end
+    end
 
     local byItem = {}
     for _, g in ipairs(index.gathers) do

@@ -264,6 +264,16 @@ local function SetExtent()
     else
         axis.last = math.max(axis.first + 1, U(timeline.finish))
     end
+    -- With a date range or a phase picked (Range.lua), zooming and dragging
+    -- stay inside it: the endgame starts at the cap, not at level 1. A range
+    -- holding none of the journey leaves the whole of it.
+    local range = ns.Range
+    if range and not range:IsAll() then
+        local first = U(math.max(range.from, timeline.start))
+        local last = math.min(axis.last, U(math.min(range.to, timeline.finish)))
+        if range.to >= timeline.finish then last = axis.last end
+        if last > first then axis.first, axis.last = math.max(axis.first, first), last end
+    end
 end
 
 -- Shows lo to hi, kept inside the journey and no closer than MIN_SPAN.
@@ -1154,19 +1164,25 @@ function GearScreen:Redraw()
     ui.stripWindow:SetPoint("TOPLEFT", strip, "TOPLEFT", x1 - 4, 4)
     ui.stripWindow:SetPoint("BOTTOMRIGHT", strip, "BOTTOMLEFT", math.max(x2, x1 + 6) + 4, -4)
     ui.stripStart:SetText("Lv " .. math.floor(axis.first))
-    if timeline.capAt then
-        local cx = sw * (G.CAP - axis.first) / whole
+    -- The cap's mark only well inside the strip: with the endgame picked the
+    -- strip starts at the cap, and the mark would sit on the start's label.
+    local cx = timeline.capAt and sw * (G.CAP - axis.first) / whole
+    local capInside = cx and cx > 20 and cx < sw - 20
+    if capInside then
         ui.stripCap:ClearAllPoints()
         ui.stripCap:SetPoint("TOP", strip, "TOPLEFT", cx, 0)
         ui.stripCap:SetPoint("BOTTOM", strip, "BOTTOMLEFT", cx, 0)
         ui.stripCapLabel:ClearAllPoints()
         ui.stripCapLabel:SetPoint("TOP", strip, "BOTTOMLEFT", cx, -6)
+    end
+    -- Weeks at the end only past the cap; levelling picked ends at it.
+    if timeline.capAt and axis.last > G.CAP + 0.01 then
         ui.stripEnd:SetText(("Week %d"):format(math.floor((axis.last - G.CAP) / WEEK_WIDTH + 0.5)))
     else
-        ui.stripEnd:SetText("Lv " .. math.floor(axis.last))
+        ui.stripEnd:SetText("Lv " .. math.floor(axis.last + 0.5))
     end
-    ui.stripCap:SetShown(timeline.capAt ~= nil)
-    ui.stripCapLabel:SetShown(timeline.capAt ~= nil)
+    ui.stripCap:SetShown(capInside or false)
+    ui.stripCapLabel:SetShown(capInside or false)
     self:ShowMoment()
 end
 
