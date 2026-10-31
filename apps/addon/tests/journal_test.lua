@@ -114,6 +114,7 @@ Fire("PLAYER_ENTERING_WORLD")
 -- 1. Event shape: time, kind, position, then the kind's own fields from index 6.
 local on = ns.char.events[1]
 check(on[2] == "on" and on[6] == 5, "login logs an on event with the level at index 6")
+check(on[7] == 1234, "and the gold held (#86)")
 check(on[3] == 0 and on[4] == -8900 and on[5] == 500, "events carry the recorder's position")
 game.position = false
 Journal:Log("die")
@@ -153,7 +154,11 @@ check(ns.char.kills.d ~= "", "the ticker packs the buffer into the saved string"
 check(KillsText() == before, "kills read the same after packing: " .. KillsText())
 game.now = game.now + 5
 Fire("CHAT_MSG_COMBAT_XP_GAIN", "Grell dies, you gain 60 experience.")
+game.money = 5678
 Fire("PLAYER_LOGOUT")
+local off = ns.char.events[#ns.char.events]
+check(off[2] == "off" and off[6] == 5678, "logging out logs an off event with the gold held (#86)")
+game.money = 1234
 local kills = Journal:Kills()
 check(#kills == 4 and kills[4].t == 1000045 and kills[4].name == "Grell",
     "a kill after a pack is appended with the right time")

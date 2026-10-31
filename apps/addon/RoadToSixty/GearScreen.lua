@@ -681,6 +681,9 @@ local function NewBar()
     bar:SetScript("OnMouseDown", function(_, button) GearScreen:MouseDown(button) end)
     bar:SetScript("OnMouseUp", function(_, button) GearScreen:MouseUp(button) end)
     bar:SetScript("OnMouseWheel", function(_, delta) GearScreen:Zoom(delta) end)
+    -- Hidden until PlaceBar has drawn it, so a bar it could not finish never
+    -- shows without its span.
+    bar:Hide()
     return bar
 end
 
@@ -1215,7 +1218,7 @@ function GearScreen:ShowMoment()
     ui.stripPin:SetHeight(ui.stripInner:GetHeight() + 6)
     local t = hoverT or pinT
     for _, bar in ipairs(bars) do
-        if bar:IsShown() then
+        if bar:IsShown() and bar.span then
             local span = bar.span
             bar.outline:SetShown(span.t <= t and (t < span.endT or not span.next and not span.closed) and not span.brief)
         end
