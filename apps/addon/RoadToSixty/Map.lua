@@ -1972,8 +1972,9 @@ end
 -- Timeline -------------------------------------------------------------------------
 -- The replay bar under the map: the journey's level bands in their path
 -- colours, dim ahead of the replay position and bright behind it, with a
--- tick per level up and a label every 10 levels. scrub is the bar's frame;
--- scrub.track is the coloured strip.
+-- tick per level up and a label every 10 levels, then past the level cap a
+-- tick per week since it. scrub is the bar's frame; scrub.track is the
+-- coloured strip.
 
 local SCRUB = {
     TRACK = 10,                 -- strip height
@@ -1985,6 +1986,8 @@ local SCRUB = {
     OUTSET = 4,                 -- its frame reaches this far outside the strip
     BELOW = 6,                  -- space under the labels, which have some of their own
     LABEL_EVERY = 10,           -- levels
+    WEEK = 7 * 86400,           -- past the level cap, a tick per week since it (as the Stats screen counts them)
+    WEEK_LABEL_EVERY = 5,       -- weeks, once there are that many
 }
 -- From the map's bottom to the bar's top: the bar's frame sits PAD under the
 -- map's frame, and the knob pokes out above the strip.
@@ -2083,19 +2086,34 @@ local function BuildScrub()
     scrub.runs = runs
 
     local count = 0
+    local function AddTick(t, label, major)
+        count = count + 1
+        local tick = scrub.ticks[count] or NewScrubTick()
+        scrub.ticks[count] = tick
+        tick.seq = SeqAt(t)
+        tick.tex:SetHeight(major and SCRUB.TRACK + 6 or SCRUB.TRACK)
+        tick.tex:SetColorTexture(0, 0, 0, major and 0.9 or 0.45)
+        tick.tex:Show()
+        tick.label:SetText(label)
+        tick.label:SetShown(major)
+    end
     if state.n > 0 then
         for _, e in ipairs(ns.view.events) do
             if e[2] == "lvl" and ns.Range:Has(e[1]) then
-                count = count + 1
-                local tick = scrub.ticks[count] or NewScrubTick()
-                scrub.ticks[count] = tick
-                tick.seq = SeqAt(e[1])
-                local major = e[6] % SCRUB.LABEL_EVERY == 0
-                tick.tex:SetHeight(major and SCRUB.TRACK + 6 or SCRUB.TRACK)
-                tick.tex:SetColorTexture(0, 0, 0, major and 0.9 or 0.45)
-                tick.tex:Show()
-                tick.label:SetText(e[6])
-                tick.label:SetShown(major)
+                AddTick(e[1], e[6], e[6] % SCRUB.LABEL_EVERY == 0)
+            end
+        end
+        -- Past the cap, where no more level ups come: the start of each week
+        -- since it, the weeks starting the second after it as on the Stats
+        -- screen. Each is labelled while there are few, then every fifth.
+        local capAt, last = ns.Range.capAt, state.pt[state.n]
+        if capAt and last then
+            local weeks = math.floor((last - capAt - 1) / SCRUB.WEEK) + 1
+            for week = 2, weeks do
+                local t = capAt + 1 + (week - 1) * SCRUB.WEEK
+                if ns.Range:Has(t) then
+                    AddTick(t, "Week " .. week, weeks < SCRUB.WEEK_LABEL_EVERY or week % SCRUB.WEEK_LABEL_EVERY == 0)
+                end
             end
         end
     end
@@ -2125,7 +2143,13 @@ local function ShowScrubTooltip(seq)
         GameTooltip:AddLine("Start of journey")
     else
         local t = state.pt[seq]
-        GameTooltip:AddLine(("Level %d"):format(LevelAt(t)), ns.LevelColor(LevelAt(t)))
+        local capAt = ns.Range.capAt
+        if capAt and t > capAt then
+            GameTooltip:AddLine(("Level %d, week %d at the cap"):format(LevelAt(t), math.floor((t - capAt - 1) / SCRUB.WEEK) + 1),
+                ns.LevelColor(LevelAt(t)))
+        else
+            GameTooltip:AddLine(("Level %d"):format(LevelAt(t)), ns.LevelColor(LevelAt(t)))
+        end
         GameTooltip:AddLine(ZoneAt(t), 1, 1, 1)
         GameTooltip:AddLine(FormatTime(t), 0.7, 0.7, 0.7)
         local total, level = ns.Journal:PlayedAt(t)

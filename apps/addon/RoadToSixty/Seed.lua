@@ -632,7 +632,9 @@ local RAIDS = {
 }
 local RAID_ITEM_LEVEL = 66
 
-local function PlanGear(char, weeks)
+-- loaded: { [itemID] = true } for SeedGear.lua's items this client loaded
+-- (LoadItems), else any it says exist are used.
+local function PlanGear(char, weeks, loaded)
     local pool = ns.SeedGear
     if not pool then return end
     local levelT = {}
@@ -654,11 +656,23 @@ local function PlanGear(char, weeks)
     for slot, id in pairs(char.levels[1] and char.levels[1].gear or {}) do worn[slot] = { id = id, ilvl = 5 } end
     local taken = {}
 
+    -- SeedGear.lua comes from Forever's item table, whose new items other
+    -- clients (Era, Anniversary) never load: they would show as unknown.
+    local doesExist = C_Item and C_Item.DoesItemExistByID
+    local known = {}
+    local function Exists(id)
+        if loaded then return loaded[id] == true end
+        if not doesExist then return true end
+        if known[id] == nil then known[id] = doesExist(id) and true or false end
+        return known[id]
+    end
+
     -- A random item of quality q in list, needing a level from lo to hi, better than above.
     local function Pick(list, lo, hi, q, above, used, minLevel)
         local found = {}
         for _, e in ipairs(list) do
-            if e[2] >= lo and e[2] <= hi and e[3] == q and e[4] > above and e[4] >= (minLevel or 0) and not used[e[1]] then
+            if e[2] >= lo and e[2] <= hi and e[3] == q and e[4] > above and e[4] >= (minLevel or 0) and not used[e[1]]
+                and Exists(e[1]) then
                 found[#found + 1] = e
             end
         end
@@ -967,7 +981,7 @@ local function SeedStress(total, items, weeks)
     end
     SeedEndgame(route, weeks)
     Finish(60, started, ("stress 1-60 and %d weeks at 60"):format(weeks),
-        function() PlanGear(G.char, weeks) end)
+        function() PlanGear(G.char, weeks, items.gear) end)
 end
 
 -- Realistic 1-30 ---------------------------------------------------------------
@@ -1405,14 +1419,24 @@ end
 -- Asks the client for SEED_ITEMS and the dungeon loot, and calls done once
 -- all have loaded, or after ITEM_LOAD_SECONDS with whatever has. done gets
 -- SEED_ITEMS links by quality ({ [2] = {...}, [3] = ..., [4] = ... }) with
--- byId = { [itemID] = { link, quality } } for the dungeon loot.
-local function LoadItems(done)
+-- byId = { [itemID] = { link, quality } } for the dungeon loot. With
+-- withGear it asks for SeedGear.lua's items too, and done's table has
+-- gear = { [itemID] = true } for those that loaded: SeedGear.lua comes from
+-- Forever's item table, and other clients (Era, Anniversary) say Forever's
+-- new items exist but never load them, so they would show as unknown.
+local function LoadItems(done, withGear)
     ---@diagnostic disable-next-line: deprecated
     local getInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
     local exists = C_Item and C_Item.DoesItemExistByID
     -- Cached items can report loaded straight away, so finishing waits until
     -- every request is out.
     local waiting, finished, requesting = 0, false, true
+    local gear = {}
+    if withGear and ns.SeedGear then
+        for _, list in pairs(ns.SeedGear.slots) do
+            for _, e in ipairs(list) do gear[#gear + 1] = e[1] end
+        end
+    end
 
     local loot = {}
     for _, list in pairs(DUNGEONS) do
@@ -1424,6 +1448,9 @@ local function LoadItems(done)
     end
     local all = { unpack(SEED_ITEMS) }
     for _, id in ipairs(loot) do
+        all[#all + 1] = id
+    end
+    for _, id in ipairs(gear) do
         all[#all + 1] = id
     end
 
@@ -1443,19 +1470,29 @@ local function LoadItems(done)
                 byQuality.byId[id] = { link = link, quality = quality }
             end
         end
+        if #gear > 0 then
+            byQuality.gear = {}
+            for _, id in ipairs(gear) do
+                if getInfo(id) then byQuality.gear[id] = true end
+            end
+        end
         done(byQuality)
     end
 
     for _, id in ipairs(all) do
         if not exists or exists(id) then
             if Item and Item.CreateFromItemID then
-                waiting = waiting + 1
-                Item:CreateFromItemID(id):ContinueOnItemLoad(function()
-                    waiting = waiting - 1
-                    if waiting == 0 and not requesting then
-                        Finish()
-                    end
+                -- An item the client cannot make an Item of errors here
+                -- rather than never loading.
+                local ok = pcall(function()
+                    Item:CreateFromItemID(id):ContinueOnItemLoad(function()
+                        waiting = waiting - 1
+                        if waiting == 0 and not requesting then
+                            Finish()
+                        end
+                    end)
                 end)
+                if ok then waiting = waiting + 1 end
             else
                 getInfo(id)     -- starts loading it
             end
@@ -1465,7 +1502,9 @@ local function LoadItems(done)
     if Item and Item.CreateFromItemID and waiting == 0 then
         Finish()
     end
-    C_Timer.After(ITEM_LOAD_SECONDS, Finish)
+    -- Items that never load keep it waiting to the end, and the gear is a
+    -- thousand more.
+    C_Timer.After(#gear > 0 and ITEM_LOAD_SECONDS * 2 or ITEM_LOAD_SECONDS, Finish)
 end
 
 -- Command --------------------------------------------------------------------
@@ -1480,15 +1519,20 @@ ns.Command("seed", "replace this character's journey with fake test data", funct
             .. " Default %d points, %d weeks."):format(DEFAULT_POINTS, ENDGAME_WEEKS))
         return
     end
-    ns.Print("Loading item data for fake loot...")
+    ns.Print(stress and "Loading item data for fake loot and gear (up to 10 seconds)..." or "Loading item data for fake loot...")
     LoadItems(function(items)
         ns.Print(("Items for loot: %d green, %d blue, %d epic."):format(#items[2], #items[3], #items[4]))
+        if items.gear then
+            local n = 0
+            for _ in pairs(items.gear) do n = n + 1 end
+            ns.Print(("Gear this client has: %d items."):format(n))
+        end
         if stress then
             SeedStress(tonumber(count) or DEFAULT_POINTS, items, tonumber(weeks))
         else
             SeedRealistic(items)
         end
-    end)
+    end, stress)
 end)
 
 -- /rts seedalt [count]: made-up characters in the roster (one, or up to

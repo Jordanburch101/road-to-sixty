@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.18.0
+
+### New
+- The replay bar under the journey map marks each week after you reach
+  the level cap, with a label every fifth week, and hovering it there
+  says which week at the cap that moment was.
+
 ## 1.17.0
 
 ### New
