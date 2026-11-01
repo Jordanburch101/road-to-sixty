@@ -12,6 +12,9 @@ broken and now works. Leave out internal changes. Sections are
 - The replay bar under the journey map marks each week after you reach
   the level cap, with a label every fifth week, and hovering it there
   says which week at the cap that moment was.
+- Duels are now recorded: who you fought, whether you won, lost or one
+  of you fled, who challenged whom, and where. Duels to the death on
+  Hardcore realms are marked as such.
 
 ## 1.17.0
 

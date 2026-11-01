@@ -124,6 +124,9 @@ check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "skill points of two 
 m = Merge.Merge(Journey({ events = { { 151, "skill", 0, 0, 0, "Cooking", 80, 79 }, { 151, "skill", 0, 0, 0, "Mining", 120, 119 } } }),
     Journey({ events = { { 151, "skill", 0, 0, 0, "Mining", 120, 119 } } }))
 check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "skill points matched by name whichever comes first")
+m = Merge.Merge(Journey({ events = { { 153, "duel", 0, 0, 0, "Gorehowl", "lost" }, { 153, "duel", 0, 0, 0, "Thrall", "won" } } }),
+    Journey({ events = { { 153, "duel", 0, 0, 0, "Thrall", "won" } } }))
+check(#m.events == 2 and m.events[1][6] ~= m.events[2][6], "duels with two players in one second are matched by name")
 local bandage = "|cffffffff|Hitem:1251:0|h[Linen Bandage]|h|r"
 local bolt = "|cffffffff|Hitem:2996:0|h[Bolt of Linen Cloth]|h|r"
 m = Merge.Merge(Journey({ events = { { 152, "craft", 0, 0, 0, bolt, 1 }, { 152, "craft", 0, 0, 0, bandage, 2 } } }),

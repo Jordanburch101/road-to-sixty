@@ -35,6 +35,7 @@ for data, its exact format; read that before changing a module.
 | Gathering.lua | mining, herb and fishing gathers (`gath` events) and the nodes the map shows for them (#78) |
 | Battlegrounds.lua | a battleground's result, score, honor and reputation, kept on its run as `pvp` (#80) |
 | Deaths.lua | who killed the player, from the death recap, added to the `die` event (#81) |
+| Duels.lua | duels the player fights (`duel` events): the opponent, the result, who challenged, `/rts duelprobe` (#88) |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |

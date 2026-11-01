@@ -39,6 +39,7 @@ Rares.lua
 Gathering.lua
 Battlegrounds.lua
 Deaths.lua
+Duels.lua
 Groups.lua
 Enchants.lua
 Sources.lua
