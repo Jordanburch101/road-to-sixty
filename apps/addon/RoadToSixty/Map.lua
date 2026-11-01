@@ -2023,10 +2023,21 @@ local function LayoutScrub()
         piece.bright:SetPoint("LEFT", scrub.track, "LEFT", x1, 0)
         run.x1, run.x2 = x1, x2
     end
+    -- A label that would overlap the one before it is left out, the earlier
+    -- kept: weeks away from the game land on one point of the bar.
+    local right = -math.huge
     for k = 1, scrub.tickCount do
         local tick = ticks[k]
-        tick.tex:SetPoint("CENTER", scrub.track, "LEFT", math.floor(ScrubX(tick.seq)) + 0.5, 0)
+        local x = math.floor(ScrubX(tick.seq)) + 0.5
+        tick.tex:SetPoint("CENTER", scrub.track, "LEFT", x, 0)
         tick.label:SetPoint("TOP", tick.tex, "BOTTOM", 0, -1)
+        local shown = tick.major
+        if shown then
+            local half = tick.label:GetStringWidth() / 2
+            shown = x - half >= right + 4
+            if shown then right = x + half end
+        end
+        tick.label:SetShown(shown and true or false)
     end
 end
 
@@ -2104,7 +2115,7 @@ local function BuildScrub()
         tick.tex:SetColorTexture(0, 0, 0, major and 0.9 or 0.45)
         tick.tex:Show()
         tick.label:SetText(label)
-        tick.label:SetShown(major)
+        tick.major = major
     end
     if state.n > 0 then
         for _, e in ipairs(ns.view.events) do
@@ -2114,15 +2125,18 @@ local function BuildScrub()
         end
         -- Past the cap, where no more level ups come: the start of each week
         -- since it, the weeks starting the second after it as on the Stats
-        -- screen. Each is labelled while there are few, then every fifth.
+        -- screen. Each is labelled while the range holds few, then every
+        -- fifth; LayoutScrub drops labels that would overlap.
         local capAt, last = ns.Range.capAt, state.pt[state.n]
         if capAt and last then
-            local weeks = math.floor((last - capAt - 1) / SCRUB.WEEK) + 1
-            for week = 2, weeks do
+            local starts = {}
+            for week = 2, math.floor((last - capAt - 1) / SCRUB.WEEK) + 1 do
                 local t = capAt + 1 + (week - 1) * SCRUB.WEEK
-                if ns.Range:Has(t) then
-                    AddTick(t, "Week " .. week, weeks < SCRUB.WEEK_LABEL_EVERY or week % SCRUB.WEEK_LABEL_EVERY == 0)
-                end
+                if ns.Range:Has(t) then starts[#starts + 1] = { week, t } end
+            end
+            for _, start in ipairs(starts) do
+                local week = start[1]
+                AddTick(start[2], "Week " .. week, #starts < SCRUB.WEEK_LABEL_EVERY or week % SCRUB.WEEK_LABEL_EVERY == 0)
             end
         end
     end

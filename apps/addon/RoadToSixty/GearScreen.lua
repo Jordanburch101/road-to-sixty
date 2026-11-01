@@ -294,8 +294,9 @@ local function UAt(x)
 end
 
 local function When(t)
-    if timeline.capAt and t >= timeline.capAt then
-        return ("week %d at %d"):format(math.floor((t - timeline.capAt) / WEEK) + 1, G.CAP)
+    -- Weeks start the second after the cap, as on the Stats screen and the replay bar.
+    if timeline.capAt and t > timeline.capAt then
+        return ("week %d at %d"):format(math.floor((t - timeline.capAt - 1) / WEEK) + 1, G.CAP)
     end
     return ("level %d"):format(math.floor(G.LevelAt(timeline, t)))
 end

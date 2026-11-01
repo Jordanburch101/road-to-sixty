@@ -69,7 +69,7 @@ check(e and Duels:Title(e) == "Defeated Gorehowl in a duel", "its title: " .. to
 
 -- Challenging the target from its menu, and losing.
 units.target = { name = "Thrall", class = "SHAMAN", level = 30, race = "Orc" }
-hooked("target", true)
+hooked("target")
 units.target = nil      -- the target changed before the end: what the challenge read stays
 clock = clock + 90
 e = Say("Thrall has defeated Jethil in a duel")
@@ -103,6 +103,45 @@ check(e and Duels:Title(e) == "Lost a duel to the death to Anduin-Stormrage", "i
 units.target = nil
 e = Say("Jethil-Dreamscythe has defeated Gorehowl in a duel")
 check(e and e[7] == "won", "the player's name with its realm")
+
+-- A duel to the death the player sends: StartDuel(unit, true, true).
+units.target = { name = "Garrosh", class = "WARRIOR", level = 60 }
+hooked("target", true, true)
+clock = clock + 60
+e = Say("Jethil has defeated Garrosh in a duel")
+check(e and e[8] == "me" and e[13] == true, "a duel to the death sent")
+
+-- /duel with nothing targeted records nothing, so a challenge received
+-- just before still counts.
+units.target = nil
+handlers.DUEL_REQUESTED("Thrall")
+hooked(nil)
+hooked("")
+clock = clock + 30
+e = Say("Thrall has defeated Jethil in a duel")
+check(e and e[8] == "them", "/duel with no target leaves the challenge received")
+
+-- A challenge that fails (one waiting already) does not replace the one received.
+units.target = { name = "Thrall", class = "SHAMAN", level = 30 }
+handlers.DUEL_REQUESTED("Thrall")
+hooked("target")
+clock = clock + 30
+e = Say("Jethil has defeated Thrall in a duel")
+check(e and e[8] == "them" and e[9] == "SHAMAN", "a failed challenge sent keeps the one received")
+
+-- A realm with a space ("Area 52" from UnitName, "Area52" in the message),
+-- and a name typed in lower case after /duel.
+units.target = { name = "Rexxar", realm = "Area 52", class = "HUNTER", level = 40 }
+hooked("target")
+units.target = nil
+clock = clock + 60
+e = Say("Rexxar-Area52 has defeated Jethil in a duel")
+check(e and e[8] == "me" and e[9] == "HUNTER", "a realm written with and without its space")
+clock = clock + 120
+hooked("thrall")
+clock = clock + 60
+e = Say("Thrall has defeated Jethil in a duel")
+check(e and e[8] == "me", "a name typed in lower case after /duel")
 
 -- A challenge declined long ago is not this duel's.
 handlers.DUEL_REQUESTED("Gorehowl")

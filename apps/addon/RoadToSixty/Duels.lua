@@ -40,21 +40,37 @@ local function Plain(v)
 end
 
 -- A unit's name with its realm when it has one ("Name-Realm"), as the
--- system messages name players from other realms.
+-- system messages name players from other realms: without the realm's
+-- spaces ("Area52"), as they write it.
 local function FullName(unit)
     local name, realm = UnitName(unit)
     name, realm = Plain(name), Plain(realm)
     if type(name) ~= "string" or name == "" then return nil end
-    return (type(realm) == "string" and realm ~= "") and (name .. "-" .. realm) or name
+    return (type(realm) == "string" and realm ~= "") and (name .. "-" .. realm:gsub("%s", "")) or name
+end
+
+-- A name compared without case or spaces: a name typed after /duel may be
+-- lower case, and realms are written with and without their spaces.
+local function Key(name)
+    return (name:gsub("%s", ""):lower())
 end
 
 -- Whether two names are one player: the same, or one with this realm's name
 -- added (the client leaves the player's own realm off).
 local function Same(a, b)
-    if not a or not b then return false end
+    if type(a) ~= "string" or type(b) ~= "string" then return false end
+    a, b = Key(a), Key(b)
     if a == b then return true end
     local realm = GetNormalizedRealmName and GetNormalizedRealmName()
-    return realm ~= nil and (a .. "-" .. realm == b or b .. "-" .. realm == a)
+    if type(realm) ~= "string" then return false end
+    realm = Key(realm)
+    return a .. "-" .. realm == b or b .. "-" .. realm == a
+end
+
+-- Whether s is a unit token rather than a player's name.
+local function IsUnit(s)
+    return s == "player" or s == "pet" or s == "npc" or s:find("^target") or s:find("^focus") or s:find("^mouseover")
+        or s:find("^party%d") or s:find("^raid%d") or s:find("^arena%d") or s:find("^nameplate%d") or false
 end
 
 -- What can be read of a player unit: { class, level, race, guild }.
@@ -124,15 +140,22 @@ ns.On("CHAT_MSG_SYSTEM", function(msg)
 end)
 
 -- A challenge sent: by unit from the unit menu, by name or nothing (the
--- target) from /duel.
+-- target) from /duel. The hook runs even when the challenge fails (out of
+-- range, in combat, one already waiting), so a challenge received less
+-- than KEEP_RECEIVED seconds ago is kept, and a unit not there (/duel with
+-- nothing targeted) records nothing.
+local KEEP_RECEIVED = 60
 if hooksecurefunc and StartDuel then
     hooksecurefunc("StartDuel", function(who, _, toDeath)
         ns.SafeCall(function()
             local unit = (who == nil or who == "") and "target" or who
             if type(unit) ~= "string" then return end
-            local name, info = unit, nil
+            if pending and pending.by == "them" and GetTime() - pending.at < KEEP_RECEIVED then return end
+            local name, info
             if UnitExists(unit) then
                 name, info = FullName(unit), Describe(unit)
+            elseif not IsUnit(unit) then
+                name = unit     -- a name typed after /duel
             end
             if name then Challenge(name, "me", toDeath and true, info) end
         end)
