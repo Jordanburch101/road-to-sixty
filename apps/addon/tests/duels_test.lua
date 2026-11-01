@@ -26,6 +26,7 @@ ns.Journal = { Log = function(_, kind, ...)
     return e
 end }
 GetTime = function() return clock end
+date = os.date
 
 DUEL_WINNER_KNOCKOUT = "%1$s has defeated %2$s in a duel"
 DUEL_WINNER_RETREAT = "%2$s has fled from %1$s in a duel"
@@ -108,6 +109,47 @@ handlers.DUEL_REQUESTED("Gorehowl")
 clock = clock + 3600
 e = Say("Gorehowl has defeated Jethil in a duel")
 check(e and e[8] == nil, "a stale challenge is left out")
+
+-- History's and the map's line: the opponent as far as known, who challenged.
+ns.ClassName = function(class) return ({ WARRIOR = "Warrior", PRIEST = "Priest" })[class] or class end
+local _, detail, icon = Duels:Describe({ 0, "duel", 0, 0, 0, "Gorehowl", "won", "them", "WARRIOR", 24, "Orc", "Blood Moon" })
+check(detail == "Level 24 Orc Warrior <Blood Moon>, they challenged", "the detail: " .. tostring(detail))
+check(type(icon) == "string", "an icon")
+_, detail = Duels:Describe({ 0, "duel", 0, 0, 0, "Sylvanas", "lost", "me", nil, nil, "Scourge" })
+check(detail == "Undead, you challenged", "the race named as the game names it: " .. tostring(detail))
+_, detail = Duels:Describe({ 0, "duel", 0, 0, 0, "Tyrande", "lost", nil, nil, nil, "NightElf" })
+check(detail == "Night Elf", "two-word race: " .. tostring(detail))
+_, detail = Duels:Describe({ 0, "duel", 0, 0, 0, "Varian", "fled" })
+check(detail == "Duel", "nothing known: " .. tostring(detail))
+check(select(2, Duels:Color({ 0, "duel", 0, 0, 0, "A", "theyFled" })) > 0.9, "an opponent fleeing reads as a win")
+-- The player's record against one opponent, for the tooltip.
+local record = Duels.Record(ns.char.events, "Gorehowl")
+check(record.count == 3 and record.won == 2 and record.lost == 1, "the record against one player: "
+    .. record.count .. " duels, " .. record.won .. " won, " .. record.lost .. " lost")
+
+-- The tooltip: the result's colour, the opponent with their level, who
+-- challenged, the record, where and when.
+ns.ClassColor = function() return 1, 1, 1 end
+ns.view = ns.char
+CLASS_ICON_TCOORDS = { WARRIOR = { 0, 0.25, 0, 0.25 } }
+local shown = {}
+GameTooltip = {
+    SetOwner = function() shown = {} end, Show = function() end,
+    AddLine = function(_, text) shown[#shown + 1] = text end,
+    AddDoubleLine = function(_, left, right) shown[#shown + 1] = left .. " = " .. right end,
+}
+Duels:ShowTooltip({}, { 1793240000, "duel", 0, 0, 0, "Gorehowl", "lost", "them", "WARRIOR", 24, "Orc", nil, true },
+    "Elwynn Forest")
+local text = table.concat(shown, " | ")
+check(shown[1] == "Lost a duel to the death to Gorehowl" and shown[2]:find("Gorehowl = Level 24", 1, true)
+    and shown[2]:find("UI-Classes-Circles", 1, true) and shown[3] == "Orc Warrior"
+    and text:find("A duel to the death", 1, true) and text:find("Challenged by = Them", 1, true)
+    and text:find("Your duels with them = 2 won, 1 lost", 1, true) and text:find("Where = Elwynn Forest", 1, true)
+    and text:find("When = ", 1, true), "the tooltip: " .. text)
+Duels:ShowTooltip({}, { 1793240000, "duel", 0, 0, 0, "Tyrande", "fled" })
+text = table.concat(shown, " | ")
+check(not text:find("Challenged by", 1, true) and not text:find("Your duels", 1, true) and not text:find("Where", 1, true),
+    "a duel known by name only leaves out what is not known: " .. text)
 
 -- A seeded journey is left alone.
 ns.char.seeded = true

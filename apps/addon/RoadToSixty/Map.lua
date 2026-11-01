@@ -108,6 +108,7 @@ local MARKER_ZOOM = {
     reputation = 2.5,
     mount = 1,                  -- riding is a milestone, like a dungeon
     rare = 2.5,
+    duel = 2.5,
     group = 2.5,
     gather = 5,                 -- gathering nodes, Gathering.lua
 }
@@ -543,7 +544,7 @@ local function GetMarker(i)
         m.group = nil
         m.icon:Show()
     end
-    if m then m.rare, m.node = nil, nil end
+    if m then m.rare, m.node, m.duel = nil, nil, nil end
     if m and m.gather then
         m.gather:Hide()
         m.icon:Show()
@@ -580,6 +581,10 @@ local function GetMarker(i)
         if self.level and ns.GearCard:Show(self.level, self, self.title, self.detail) then return end
         if self.rare then
             ns.Rares:ShowCard(self, self.rare[1], self.rare[2])
+            return
+        end
+        if self.duel then
+            ns.Duels:ShowTooltip(self, self.duel[1], self.duel[2], "ANCHOR_RIGHT")
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -662,11 +667,11 @@ local function BuildMarkers()
                 m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), Where(inside, zone), FormatTime(visit.first))
             end
         elseif toContent and (kind == "prof" or kind == "rec" or kind == "gj" or kind == "gl" or kind == "gr"
-            or kind == "rep" or kind == "ride" or kind == "mount" or kind == "rare") then
+            or kind == "rep" or kind == "ride" or kind == "mount" or kind == "rare" or kind == "duel") then
             local guild = kind == "gj" or kind == "gl" or kind == "gr"
             local mount = kind == "ride" or kind == "mount"
             local source = guild and ns.Guilds or kind == "rep" and ns.Reputation or mount and ns.Mounts
-                or kind == "rare" and ns.Rares or ns.Crafts
+                or kind == "rare" and ns.Rares or kind == "duel" and ns.Duels or ns.Crafts
             local title, detail, icon, tabard = source:Describe(e)
             if title then
                 count = count + 1
@@ -685,11 +690,15 @@ local function BuildMarkers()
                 m.category = Style.CATEGORY[kind]
                 m.minZoom = guild and MARKER_ZOOM.guild or kind == "rep" and MARKER_ZOOM.reputation
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
+                    or kind == "duel" and MARKER_ZOOM.duel
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
+                -- Duels sit in the gathering nodes' item button frame.
+                if kind == "duel" then ns.Gathering:Frame(m, icon) end
                 -- Rares show a card with their portrait when hovered.
                 m.rare = kind == "rare" and { e, Where(inside, zone) } or nil
+                m.duel = kind == "duel" and { e, Where(inside, zone) } or nil
                 m.title = title
                 m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end

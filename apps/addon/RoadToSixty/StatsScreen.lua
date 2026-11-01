@@ -1671,6 +1671,22 @@ local function FillLife(w)
     end
     if #life.reputation == 0 then Add("|cff999999None yet|r") end
 
+    -- Duels only once there are some (#88): an opponent fleeing is a win,
+    -- the player fleeing a loss.
+    local duels = life.duels
+    if duels and duels.count > 0 then
+        Add("DUELS", nil, nil, true)
+        local fled = duels.fled + duels.theyFled
+        Add(("%d won, %d lost"):format(duels.won + duels.theyFled, duels.lost + duels.fled),
+            fled > 0 and ("|cff999999%d fled|r"):format(fled) or nil)
+        local rival = duels.rival
+        if rival and rival.count > 1 then
+            local r, g, b = ns.ClassColor(rival.class)
+            Add(("Most with |cff%02x%02x%02x%s|r"):format(r * 255, g * 255, b * 255, rival.name),
+                ("|cff999999%d duels|r"):format(rival.count))
+        end
+    end
+
     Add("GROUPED WITH MOST, ALL TIME", nil, nil, true)
     -- All time, so the replay never changes it: worked out with the index.
     people = people or ns.Parties:People()

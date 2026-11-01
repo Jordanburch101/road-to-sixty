@@ -101,6 +101,7 @@ local EVENT_ICONS = {
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
     ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
     gath = { file = "Interface\\Icons\\INV_Ore_Copper_01", size = 18 },    -- a node shows its resource's icon instead
+    duel = { file = "Interface\\Icons\\Ability_DualWield", size = 18 },
 }
 -- A kind with no icon of its own gets this, rather than an error that
 -- stops the whole side panel (as enchants did in 1.11.0).
@@ -158,6 +159,7 @@ local CATEGORY = {
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
     grp = "groups", rep = "reps", ride = "mounts", mount = "mounts", rare = "rares", ench = "enchants",
+    duel = "duels",
 }
 
 -- False if the player has turned this History filter category off.

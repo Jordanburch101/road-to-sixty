@@ -73,6 +73,28 @@ local SECTIONS = {
         { "file", "Interface\\Icons\\Ability_Warrior_BattleShout", crop = true, label = "battle shout" },
         { "file", "Interface\\Icons\\Achievement_Guild_DoctorIsIn", crop = true, label = "guild doctor" },
     } },
+    -- Duels in History and on the map (#88); now dual wield. Classic icons
+    -- first, then newer ones a client may lack (blank when missing).
+    { "Duel", {
+        { "file", "Interface\\Icons\\Ability_DualWield", crop = true, label = "dual wield (now)" },
+        { "file", "Interface\\Icons\\INV_Gauntlets_04", crop = true, label = "gauntlet" },
+        { "file", "Interface\\Icons\\INV_BannerPVP_01", crop = true, label = "banner A" },
+        { "file", "Interface\\Icons\\INV_BannerPVP_02", crop = true, label = "banner H" },
+        { "file", "Interface\\Icons\\Ability_Parry", crop = true, label = "parry" },
+        { "file", "Interface\\Icons\\Ability_Warrior_Disarm", crop = true, label = "disarm" },
+        { "file", "Interface\\Icons\\INV_Sword_27", crop = true, label = "sword" },
+        { "file", "Interface\\Icons\\INV_Jewelry_TrinketPVP_01", crop = true, label = "pvp trinket" },
+    } },
+    { "Duel 2", {
+        { "file", "Interface\\Icons\\Ability_BullRush", crop = true, label = "bull rush" },
+        { "file", "Interface\\Icons\\Ability_Warrior_Challange", crop = true, label = "challenge" },
+        { "file", "Interface\\Icons\\Ability_Warrior_PunishingBlow", crop = true, label = "punishing" },
+        { "file", "Interface\\Icons\\Achievement_Arena_2v2_1", crop = true, label = "arena 2v2" },
+        { "file", "Interface\\Icons\\Achievement_PVP_A_01", crop = true, label = "pvp rank" },
+        { "atlas", "pvptalents-warmode-swords", label = "warmode swords" },
+        { "atlas", "worldquest-icon-pvp-ffa", label = "wq pvp" },
+        { "atlas", "Warfront-NeutralHero", label = "hero" },
+    } },
 }
 
 -- Replay timeline candidates, four cells wide, each a still bar 60% played

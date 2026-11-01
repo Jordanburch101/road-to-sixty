@@ -13,7 +13,7 @@ local _, ns = ...
 --     and flown (the path segments, counted as the recorder counts them:
 --     flight paths are flown, the rest walked), the play sessions ("on" and
 --     "off"), level ups (the level snapshots), zones entered ("zone"), epics
---     looted ("loot") and gold held (each snapshot's, each login's and
+--     looted ("loot"), duels ("duel") and gold held (each snapshot's, each login's and
 --     logout's from #86, then money, the gold held now, when given). now is the journey's end: ns.Now() for the
 --     character playing, its last event for another's copy.
 --   Stats.Window(index, from, to) -> totals
@@ -71,6 +71,9 @@ local _, ns = ...
 --                     above for a drop), or as last seen; reached when a
 --                     change up came inside the window
 --       guild         the guild's name by then ("gj", "gl"), or nil
+--       duels         { count, won, lost, fled, theyFled, rival }: the duels
+--                     inside the window (#88), rival { name, class, count }
+--                     the player fought most there, nil without any
 --   Stats.Levels(journey, current, now) -> rows
 --     One row per level with a snapshot, its numbers the change from
 --     reaching it to reaching the next; the level now (current, with now's
@@ -182,7 +185,7 @@ local WEEK = 7 * 86400
 
 function Stats.Index(journey, now, money)
     local quests, deaths, runs, zones, gathers, places, purses, epics, raidsLeft = {}, {}, {}, {}, {}, {}, {}, {}, {}
-    local skills, reps, guilds = {}, {}, {}
+    local skills, reps, guilds, duels = {}, {}, {}, {}
     local first, last
     for _, e in ipairs(journey.events or {}) do
         local t, kind = e[1], e[2]
@@ -210,6 +213,8 @@ function Stats.Index(journey, now, money)
             guilds[#guilds + 1] = { t = t, name = kind == "gj" and e[6] or nil }
         elseif kind == "gath" then
             gathers[#gathers + 1] = { t = t, item = e[7], c = e[3], x = e[4], y = e[5] }
+        elseif kind == "duel" and e[6] then
+            duels[#duels + 1] = { t = t, name = e[6], result = e[7], class = e[9] }
         elseif kind == "lvl" and e[6] then
             places[e[6]] = e
         elseif kind == "out" and type(e[7]) == "table" and e[7].type == "raid" then
@@ -254,10 +259,11 @@ function Stats.Index(journey, now, money)
     for _, list in pairs(skills) do table.sort(list, function(a, b) return a.t < b.t end) end
     for _, list in pairs(reps) do table.sort(list, function(a, b) return a.t < b.t end) end
     table.sort(guilds, function(a, b) return a.t < b.t end)
+    table.sort(duels, function(a, b) return a.t < b.t end)
 
     local index = {
         start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers, epics = epics,
-        raidsLeft = raidsLeft,
+        raidsLeft = raidsLeft, duels = duels,
         skills = skills, reps = reps, repsNow = journey.reps or {}, guilds = guilds,
         sessions = ns.GearTimeline.Sessions(journey.events or {}, now),
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
@@ -663,6 +669,22 @@ function Stats.Life(index, from, to)
 
     local guild = Last(index.guilds, to)
     life.guild = guild and guild.name
+
+    -- The duels inside the window, and the player fought most there.
+    local duels = { won = 0, lost = 0, fled = 0, theyFled = 0, count = 0 }
+    local byName = {}
+    for _, d in ipairs(index.duels or {}) do
+        if d.t > to then break end
+        if d.t >= from then
+            duels.count = duels.count + 1
+            if duels[d.result] then duels[d.result] = duels[d.result] + 1 end
+            local rival = byName[d.name] or { name = d.name, count = 0, first = d.t }
+            rival.count, rival.class = rival.count + 1, d.class or rival.class
+            byName[d.name] = rival
+        end
+    end
+    duels.rival = Most(byName)
+    life.duels = duels
     return life
 end
 

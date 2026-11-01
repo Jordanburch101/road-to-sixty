@@ -194,6 +194,10 @@ local lj = {
         { 600, "mount", 0, 0, 0, 6 },
         { 700, "rep", 0, 0, 0, 47, 5, "Ironforge", true },
         { 800, "gl", 0, 0, 0, "The Raiders" },
+        { 810, "duel", 0, 0, 0, "Gorehowl", "won", "them", "WARRIOR", 24 },
+        { 820, "duel", 0, 0, 0, "Gorehowl", "lost", "me", "WARRIOR", 24 },
+        { 830, "duel", 0, 0, 0, "Thrall", "theyFled" },
+        { 840, "duel", 0, 0, 0, "Gorehowl", "fled" },
         { 900, "off", 0, 0, 0 },
     },
     levels = { [10] = { t = 0, skills = { Mining = { 1, 75 } } } },
@@ -219,6 +223,13 @@ life = Stats.Life(li, 350, 900)
 check(life.professions[1].rank == 61 and life.professions[1].max == 150 and life.professions[1].gained == 59
     and #life.professions == 2, "the professions last seen count at the end")
 check(life.guild == nil, "left the guild")
+local duels = life.duels
+check(duels.count == 4 and duels.won == 1 and duels.lost == 1 and duels.theyFled == 1 and duels.fled == 1,
+    "the duels inside the window, by result")
+check(duels.rival and duels.rival.name == "Gorehowl" and duels.rival.count == 3 and duels.rival.class == "WARRIOR",
+    "the player fought most")
+check(Stats.Life(li, 815, 835).duels.count == 2 and Stats.Life(li, nil, 350).duels.rival == nil,
+    "only the duels inside the window")
 
 -- 8d. Zones keep where they were first entered in the window.
 check(all.zones[1][3] and all.zones[1][3].t == 1500, "a zone's first entry")

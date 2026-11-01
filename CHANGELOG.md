@@ -14,7 +14,9 @@ broken and now works. Leave out internal changes. Sections are
   says which week at the cap that moment was.
 - Duels are now recorded: who you fought, whether you won, lost or one
   of you fled, who challenged whom, and where. Duels to the death on
-  Hardcore realms are marked as such.
+  Hardcore realms are marked as such. History lists them under a Duels
+  filter in Social, the map marks where each was fought, and the Stats
+  screen's Life pane counts your wins and losses and who you dueled most.
 
 ## 1.17.0
 

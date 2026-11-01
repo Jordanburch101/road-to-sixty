@@ -20,6 +20,10 @@ local _, ns = ...
 -- name; one sent has no event, so StartDuel (what the unit menu and /duel
 -- call; StartDuel(unit, true, true) for a duel to the death) is hooked.
 -- Era has the same strings and functions.
+--
+-- Duels:Describe(e), Duels:Color(e) and Duels:ShowTooltip(owner, e, where)
+-- are History's and the map's line and tooltip for one (Panel.lua,
+-- Map.lua); the Stats screen counts them (Stats.Life).
 
 local Duels = {}
 ns.Duels = Duels
@@ -145,6 +149,94 @@ function Duels:Title(e)
     if result == "fled" then return ("Fled %s with %s"):format(kind, name) end
     if result == "theyFled" then return ("%s fled %s"):format(name, kind) end
     return ("Duel with %s"):format(name)
+end
+
+local ICON = "Interface\\Icons\\Ability_DualWield"
+-- Race tokens shown as the game names them, where the token differs.
+local RACE_NAMES = { Scourge = "Undead" }
+
+-- The opponent as far as known: "Level 24 Orc Warrior <Blood Moon>", or "";
+-- without the level with noLevel.
+local function Opponent(e, noLevel)
+    local parts = {}
+    if e[10] and not noLevel then parts[#parts + 1] = "Level " .. e[10] end
+    if type(e[11]) == "string" then
+        parts[#parts + 1] = RACE_NAMES[e[11]] or (e[11]:gsub("(%l)(%u)", "%1 %2"))
+    end
+    if e[9] then parts[#parts + 1] = ns.ClassName(e[9]) end
+    local who = table.concat(parts, " ")
+    if type(e[12]) == "string" and e[12] ~= "" then who = (who ~= "" and who .. " " or "") .. "<" .. e[12] .. ">" end
+    return who
+end
+
+-- History's and the map's line for a duel: title, detail, icon. The
+-- detail is the opponent as far as known and who challenged.
+function Duels:Describe(e)
+    local who = Opponent(e)
+    local by = e[8] == "me" and "you challenged" or e[8] == "them" and "they challenged" or nil
+    local detail = who ~= "" and (by and (who .. ", " .. by) or who) or by or "Duel"
+    return self:Title(e), detail, ICON
+end
+
+-- The player's record against one opponent in a journey's events:
+-- { count, won, lost, fled, theyFled }.
+function Duels.Record(events, name)
+    local record = { count = 0, won = 0, lost = 0, fled = 0, theyFled = 0 }
+    for _, e in ipairs(events or {}) do
+        if e[2] == "duel" and e[6] == name then
+            record.count = record.count + 1
+            if record[e[7]] then record[e[7]] = record[e[7]] + 1 end
+        end
+    end
+    return record
+end
+
+-- The class's round icon, inline in text.
+local function ClassIcon(class)
+    local coords = class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
+    if not coords then return "" end
+    return ("|TInterface\\TargetingFrame\\UI-Classes-Circles:14:14:0:0:256:256:%d:%d:%d:%d|t "):format(
+        coords[1] * 256, coords[2] * 256, coords[3] * 256, coords[4] * 256)
+end
+
+local GREY = { 0.6, 0.6, 0.6 }
+
+-- The duel's tooltip (History's rows, the map's markers): the result in its
+-- colour; the opponent with their class icon and level, race, class and
+-- guild; a duel to the death; who challenged and the player's record
+-- against them in the journey shown; where and when.
+function Duels:ShowTooltip(owner, e, where, anchor)
+    GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+    GameTooltip:AddLine(self:Title(e), self:Color(e))
+    local r, g, b = ns.ClassColor(e[9])
+    GameTooltip:AddDoubleLine(ClassIcon(e[9]) .. tostring(e[6] or "?"), e[10] and ("Level %d"):format(e[10]) or " ",
+        r, g, b, 1, 1, 1)
+    local who = Opponent(e, true)
+    if who ~= "" then GameTooltip:AddLine(who, 0.85, 0.85, 0.85) end
+    if e[13] then GameTooltip:AddLine("A duel to the death", 1, 0.25, 0.25) end
+    GameTooltip:AddLine(" ")
+    if e[8] == "me" or e[8] == "them" then
+        GameTooltip:AddDoubleLine("Challenged by", e[8] == "me" and "You" or "Them", GREY[1], GREY[2], GREY[3], 1, 1, 1)
+    end
+    local record = Duels.Record(ns.view and ns.view.events, e[6])
+    if record.count > 1 then
+        local won, lost = record.won + record.theyFled, record.lost + record.fled
+        GameTooltip:AddDoubleLine("Your duels with them", ("%d won, %d lost"):format(won, lost),
+            GREY[1], GREY[2], GREY[3], 1, 1, 1)
+    end
+    if where and where ~= "" then
+        GameTooltip:AddDoubleLine("Where", where, GREY[1], GREY[2], GREY[3], 1, 1, 1)
+    end
+    GameTooltip:AddDoubleLine("When", tostring(date("%d %b %Y, %H:%M", e[1])), GREY[1], GREY[2], GREY[3], 1, 1, 1)
+    GameTooltip:Show()
+end
+
+-- The title's colour: green for a win, red for a loss, grey for fleeing.
+function Duels:Color(e)
+    local result = e[7]
+    if result == "won" or result == "theyFled" then return 0.45, 0.95, 0.45 end
+    if result == "lost" then return 1, 0.45, 0.4 end
+    return 0.75, 0.75, 0.75
 end
 
 --@debug@

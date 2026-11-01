@@ -213,6 +213,8 @@ local function CreateHistoryRow(parent)
             ns.Parties:ShowCard(self, item.group, "left")
         elseif item.rare then
             ns.Rares:ShowCard(self, item.rare, item.where, "left")
+        elseif item.duel then
+            ns.Duels:ShowTooltip(self, item.duel, item.where, "ANCHOR_LEFT")
         elseif item.run then
             ns.Parties:ShowRunCard(self, item.run, item.entered, "left")
         elseif item.lines then
@@ -274,6 +276,7 @@ local function UpdateHistoryRow(row, item)
     local header = item.header ~= nil
     if row.badge then row.badge:Hide() end
     if row.stack then row.stack:Hide() end
+    if row.framed then row.framed:Hide() end
     row.header:SetShown(header)
     row.rule:SetShown(header)
     row.highlight:SetShown(not header)
@@ -319,6 +322,21 @@ local function UpdateHistoryRow(row, item)
         row.stack:SetShown(members[1] ~= nil)
         row.icon:SetShown(members[1] == nil)
     end
+    -- Framed entries (duels) show their icon in the game's item button art,
+    -- as the character sheet's slots have it; the row keeps the mouse. Its
+    -- border art keeps its size whatever the button's, so the button keeps
+    -- the game's 37 and is scaled down to fit the row.
+    if item.framed then
+        if not row.framed then
+            row.framed = ns.Screens.ItemButton(row, 37)
+            row.framed:SetScale((HISTORY_ROW - 10) / 37)
+            row.framed:SetPoint("CENTER", row.icon)
+            row.framed:EnableMouse(false)
+        end
+        SetItemButtonTexture(row.framed, item.iconFile)
+        row.framed:Show()
+        row.icon:Hide()
+    end
     ns.SetQualityOverlay(row.quality, item.kind == "loot" and item.quality or nil)
     row.title:SetText(item.title)
     row.title:SetTextColor(unpack(item.color or TITLE_COLORS[item.kind] or { 1, 1, 1 }))
@@ -351,7 +369,9 @@ local HISTORY_FILTERS = {
         { "mining", "Mining" }, { "herbs", "Herbalism" }, { "fishing", "Fishing" },
         { "reps", "Reputation" }, { "mounts", "Riding and mounts" },
     } },
-    { "Social", { atlas = "socialqueuing-icon-group" }, { { "groups", "Groups" }, { "guilds", "Guild" } } },
+    { "Social", { atlas = "socialqueuing-icon-group" }, {
+        { "groups", "Groups" }, { "guilds", "Guild" }, { "duels", "Duels" },
+    } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
 -- size, whatever its size on the map, so the row looks even.
@@ -616,6 +636,11 @@ local function BuildHistory()
         elseif kind == "rare" then
             local title, detail = ns.Rares:Describe(e)
             Add({ kind = kind, title = title, rare = e, where = where }, t, c, x, y, detail .. " - " .. where)
+        elseif kind == "duel" then
+            -- In green for a win, red for a loss, as the result reads.
+            local title, detail, icon = ns.Duels:Describe(e)
+            Add({ kind = kind, title = title, iconFile = icon, framed = true, color = { ns.Duels:Color(e) },
+                duel = e, where = where }, t, c, x, y, detail .. " - " .. where)
         elseif kind == "gath" and ns.Range:Has(t) then
             -- (checked before Add does: describing asks for each item, and there can be thousands)
             local title, detail, icon, lines = ns.Gathering:Describe(e)
