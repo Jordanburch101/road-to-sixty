@@ -2,12 +2,14 @@
 
 WoW Forever addon: records a character's road from level 1 to 60 (path,
 events, gear, stats) and replays it on a zoomable world map, in the spirit of
-Zelda's Hero's Path. Forever launches 2026-11-04 (cap 60); until then it is in
-beta (client folder `_classic_beta_`, interface 16001). The recorder matters
-most: journey data lost at launch cannot be recreated.
+Zelda's Hero's Path. Forever launches 2026-11-04 (cap 60) in the client
+folder `_forever_`; the beta was `_classic_beta_` (both 1.60, interface
+16001). The toc also lists Classic Era (11509) and Anniversary (20506). The
+recorder matters most: journey data lost at launch cannot be recreated.
 
-Public repo (since 2026-10-15), all rights reserved (LICENSE), so never
-commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
+Public repo (since 2026-10-15) under MIT (LICENSE); outside contributions
+come as pull requests to `main` (CONTRIBUTING.md), which Jordan reviews and
+tests in game. Never commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 
 ## Layout
 
@@ -238,8 +240,8 @@ Verified in game; trust these over web guides, and re-check after patches.
   so only a screenshot proves a texture works. Addon TGA files load, even
   ones added while the game runs.
 - Zone map art has fog of war; full overlay data comes from wago.tools
-  (`https://wago.tools/db2/<Table>/csv?build=<build>`; Forever builds are
-  listed under `wow_classic_beta`). Raw files: `https://wago.tools/api/casc/<fileID>?version=<build>`.
+  (`https://wago.tools/db2/<Table>/csv?build=<build>`; beta builds were
+  listed under `wow_classic_beta`, check where launch builds land). Raw files: `https://wago.tools/api/casc/<fileID>?version=<build>`.
 - Zone highlight textures hold their shape in colour only, so they cannot be
   used as masks; ZoneMasks/ are alpha masks made from them. A texture can
   take several mask textures and they multiply. Cities have no highlight.

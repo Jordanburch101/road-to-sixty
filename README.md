@@ -46,8 +46,8 @@ backs your journeys up and merges them, so each PC shows the whole road:
 
 ## Licence
 
-All rights reserved. You may install and use Road to Sixty to play World of
-Warcraft; see [LICENSE](LICENSE). Road to Sixty is not affiliated with or
+MIT; see [LICENSE](LICENSE). Pull requests are welcome: see
+[CONTRIBUTING.md](CONTRIBUTING.md). Road to Sixty is not affiliated with or
 endorsed by Blizzard Entertainment.
 
 ---
@@ -88,7 +88,7 @@ cd apps/addon
 ```
 
 To try the source in game, link or copy `apps/addon/RoadToSixty/` into
-`World of Warcraft/_classic_beta_/Interface/AddOns/`. The source includes the
+`World of Warcraft/_forever_/Interface/AddOns/`. The source includes the
 developer tools (`/rts seed`, `/rts swatch`, `/rts icons`, `/rts probe`,
 `/rts terrain`, `/rts zoneprobe`, `/rts levelart`, `/rts tiles`, `/rts perf`). Release builds
 leave out anything between `#@debug@` / `#@end-debug@` in the toc and
