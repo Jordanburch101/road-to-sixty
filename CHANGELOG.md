@@ -23,7 +23,6 @@ broken and now works. Leave out internal changes. Sections are
   with its own switch in the options. Pin a note to a spot with /rts note.
 - An offline viewer in the addon's Viewer folder replays your saved
   journeys in a browser.
-- A new campfire icon for the minimap button and the AddOns list.
 
 ## 1.18.0
 

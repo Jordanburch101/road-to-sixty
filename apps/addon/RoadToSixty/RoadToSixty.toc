@@ -2,7 +2,7 @@
 ## Title: Road to Sixty
 ## Notes: Records your journey from 1 to 60 and replays it on the map
 ## Author: Jordan
-## IconTexture: Interface\AddOns\RoadToSixty\campfire
+## IconTexture: Interface\Icons\Ability_Hunter_Pathfinding
 ## AddonCompartmentFunc: RoadToSixty_OnAddonCompartmentClick
 ## Version: @project-version@
 ## SavedVariables: RoadToSixtyDB

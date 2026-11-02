@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 -- Minimap button: the addon icon on the minimap's edge in the usual round
 -- tracking border. Left-click opens the journey map, right-click the options;
@@ -9,7 +9,7 @@ local addonName, ns = ...
 local MinimapButton = {}
 ns.MinimapButton = MinimapButton
 
-local ICON = "Interface\\AddOns\\" .. addonName .. "\\campfire"
+local ICON = "Interface\\Icons\\Ability_Hunter_Pathfinding"
 local button
 
 local function OnClick(mouseButton)
@@ -59,11 +59,12 @@ local function Create()
     background:SetSize(20, 20)
     background:SetPoint("TOPLEFT", 7, -5)
 
-    -- The art is cut to a circle already, so the whole of it fits in the frame.
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(ICON)
-    icon:SetSize(20, 20)
-    icon:SetPoint("TOPLEFT", 6, -5)
+    icon:SetSize(18, 18)
+    icon:SetPoint("TOPLEFT", 7, -6)
+    -- Cut the icon's own square border so it sits inside the round frame.
+    icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
     button.icon = icon
 
     local border = button:CreateTexture(nil, "OVERLAY")
@@ -77,15 +78,15 @@ local function Create()
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", GameTooltip_Hide)
     -- Nudge the icon while pressed, like Blizzard's buttons.
-    button:SetScript("OnMouseDown", function() icon:SetPoint("TOPLEFT", 7, -6) end)
-    button:SetScript("OnMouseUp", function() icon:SetPoint("TOPLEFT", 6, -5) end)
+    button:SetScript("OnMouseDown", function() icon:SetPoint("TOPLEFT", 8, -7) end)
+    button:SetScript("OnMouseUp", function() icon:SetPoint("TOPLEFT", 7, -6) end)
     button:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", FollowCursor)
         GameTooltip_Hide()
     end)
     button:SetScript("OnDragStop", function(self)
         self:SetScript("OnUpdate", nil)
-        icon:SetPoint("TOPLEFT", 6, -5)
+        icon:SetPoint("TOPLEFT", 7, -6)
     end)
 
     Place()
