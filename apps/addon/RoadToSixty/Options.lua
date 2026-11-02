@@ -20,7 +20,8 @@ local function Track(key, label, tip)
         label = label,
         tip = tip,
         get = function() return not ns.db.tracking.off[key] end,
-        set = function(on) ns.db.tracking.off[key] = not on or nil end,
+        -- false, not nil: Core.lua's defaults would turn a nil back off at the next login.
+        set = function(on) ns.db.tracking.off[key] = not on end,
     }
 end
 

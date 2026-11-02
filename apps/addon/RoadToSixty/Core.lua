@@ -73,7 +73,11 @@ local defaults = {
     gearBars = "classic",   -- the gear screen's item bars: classic, glow, edges, both or comet (GearScreen.BAR_STYLES)
     friends = {},       -- friends and their synced journeys, see Friends.lua
     autoSync = 0,       -- minutes between automatic syncs with friends; 0 is off
-    tracking = { off = {}, maps = {}, chars = {} },     -- extra tracking, see Tracking.lua
+    tracking = {        -- extra tracking, see Tracking.lua; all of it off until turned on
+        off = { party = true, stats = true, sub = true, taxi = true, tal = true,
+            bind = true, rest = true, npc = true, trade = true, shot = true },
+        maps = {}, chars = {},
+    },
 }
 
 -- Layout of RoadToSixtyCharDB; bump it at every change to what is saved

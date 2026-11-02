@@ -5,7 +5,8 @@ local _, ns = ...
 -- sync. It lives in the account-wide file, under ns.db.tracking:
 --
 --   off    = { [what] = true } tracking turned off: an event kind below, or
---            party or stats (Options.lua)
+--            party or stats (Options.lua). All start off (Core.lua); a switch
+--            turned on is saved as false so the defaults don't refill it
 --   build  client build the maps were read from
 --   interface  the client's interface number, which tells the viewer which art
 --   maps   = { [uiMapID] = { name, parent, type, c, n1, w1, n2, w2 } }: every
@@ -15,8 +16,10 @@ local _, ns = ...
 --     name, realm, race, sex, class, faction,
 --     seen   = { [subzone] = true } places been, to mark first visits,
 --     stats  = "t,level,xp,xpMax,rested,money;..." one row a minute, on change,
+--              up to the first row at the level cap,
 --     people = { [GUID] = { name, class, d = "t,c,x,y,level;..." } } where
---              party members were, sampled outdoors,
+--              party members were, sampled outdoors below the level cap, at
+--              most TRACK_MAX_ROWS rows each,
 --     events = same shape as the journey's: { time, kind, c, x, y, ... }
 --   } }
 --
@@ -35,9 +38,12 @@ local _, ns = ...
 --   shot                           took a screenshot
 --   note  text                     /rts note
 --
--- Anything may come back secret or be missing on one client or another, so
--- every client read goes through Safe and Clean, and a read that fails just
--- records nothing.
+-- Reads that could come back secret or be missing on one client or another
+-- (places, positions, names, levels, XP and gold) go through Safe and Clean,
+-- and one that fails records nothing. The yes-or-no checks (grouped, in an
+-- instance, resting), the raid roster, the taxi map, the number of talent
+-- tabs and the character's own details at login are called directly: they
+-- are plain values in the open world.
 
 local Tracking = {}
 ns.Tracking = Tracking
@@ -45,8 +51,8 @@ ns.Tracking = Tracking
 local TRACK_INTERVAL = 15       -- seconds between samples of where the party is
 local TRACK_MOVED = 30          -- yards a member must move to be written again
 local TRACK_STILL = 300         -- seconds after which they are written anyway
+local TRACK_MAX_ROWS = 5000     -- rows kept per party member, about 175 KB
 local STATS_INTERVAL = 60       -- seconds between XP and gold samples
-local PACK_INTERVAL = 60        -- seconds between writes of the buffers into their strings
 local NPC_REPEAT = 300          -- seconds before the same NPC counts as a new visit
 local MAP_DELAY = 5             -- seconds after login before reading the maps
 local WORLD_MAP = 947
@@ -55,8 +61,10 @@ local COSMIC_MAP = 946
 local db, me
 local position = {}             -- last outdoor position: c, x, y
 local statsLast                 -- text of the last stats row, without its time
+local statsDone                 -- the row at the level cap is written
 local statsBuffer, trackBuffers = {}, {}
 local trackLast = {}            -- guid -> { c, x, y, t } last written
+local trackRows = {}            -- guid -> rows saved and buffered
 local npcLast = {}              -- name -> time last logged
 local lastSub
 
@@ -78,12 +86,19 @@ local function Round(v)
     return math.floor(v + 0.5)
 end
 
+local function AtCap()
+    local cap = Clean(Safe(GetMaxPlayerLevel))
+    return (Clean(Safe(UnitLevel, "player")) or 0) >= (type(cap) == "number" and cap >= 60 and cap or 60)
+end
+
 -- Where unit is: continentID, world x, world y, or nil when hidden.
 local function WorldOf(unit)
     local mapID = Clean(Safe(C_Map.GetBestMapForUnit, unit))
     if not mapID then return end
     local pos = Clean(Safe(C_Map.GetPlayerMapPosition, mapID, unit))
-    if not pos or (pos.x == 0 and pos.y == 0) then return end
+    if not pos then return end
+    local px, py = Clean(pos.x), Clean(pos.y)
+    if not px or not py or (px == 0 and py == 0) then return end
     local c, world = Safe(C_Map.GetWorldPosFromMapPos, mapID, pos)
     c, world = Clean(c), Clean(world)
     if not c or not world then return end
@@ -141,21 +156,24 @@ local function CheckSub()
     if place == lastSub then return end
     lastSub = place
     local key = zone .. "/" .. place
-    local first = not me.seen[key] or nil
-    me.seen[key] = true
-    Log("sub", zone, sub ~= "" and sub or nil, first)
+    if Log("sub", zone, sub ~= "" and sub or nil, not me.seen[key] or nil) then
+        me.seen[key] = true
+    end
 end
 
 -- XP and gold ----------------------------------------------------------------------
 
 local function SampleStats()
-    if db.off.stats then return end
-    local xp, xpMax, money = UnitXP("player") or 0, UnitXPMax("player") or 0, GetMoney() or 0
+    if db.off.stats or statsDone then return end
+    local xp, xpMax = Clean(Safe(UnitXP, "player")) or 0, Clean(Safe(UnitXPMax, "player")) or 0
+    local money = Clean(Safe(GetMoney)) or 0
     -- These all read 0 while logging out; a real row has at least an XP bar or gold.
     if xpMax == 0 and money == 0 then return end
-    local row = ("%d,%d,%d,%d,%d"):format(UnitLevel("player") or 0, xp, xpMax, GetXPExhaustion() or 0, money)
+    local row = ("%d,%d,%d,%d,%d"):format(Clean(Safe(UnitLevel, "player")) or 0, xp, xpMax,
+        Clean(Safe(GetXPExhaustion)) or 0, money)
     if row == statsLast then return end
     statsLast = row
+    statsDone = AtCap()
     statsBuffer[#statsBuffer + 1] = ns.Now() .. "," .. row .. ";"
 end
 
@@ -186,8 +204,8 @@ local function TrackedUnits()
 end
 
 local function TrackUnit(unit, t)
-    local guid = Clean(UnitGUID(unit))
-    local name = Clean(UnitName(unit))
+    local guid = Clean(Safe(UnitGUID, unit))
+    local name = Clean(Safe(UnitName, unit))
     if not guid or not name or name == UNKNOWNOBJECT or not UnitIsConnected(unit) then return end
     local c, x, y = WorldOf(unit)
     if not c then return end
@@ -202,20 +220,25 @@ local function TrackUnit(unit, t)
         p = { d = "" }
         me.people[guid] = p
     end
-    p.name, p.class = name, select(2, UnitClass(unit)) or p.class
+    trackRows[guid] = trackRows[guid] or select(2, p.d:gsub(";", ""))
+    if trackRows[guid] >= TRACK_MAX_ROWS then return end
+    trackRows[guid] = trackRows[guid] + 1
+    p.name, p.class = name, Clean((select(2, Safe(UnitClass, unit)))) or p.class
     local buffer = trackBuffers[guid] or {}
     trackBuffers[guid] = buffer
-    buffer[#buffer + 1] = ("%d,%d,%d,%d,%d;"):format(t, c, x, y, Clean(UnitLevel(unit)) or 0)
+    buffer[#buffer + 1] = ("%d,%d,%d,%d,%d;"):format(t, c, x, y, Clean(Safe(UnitLevel, unit)) or 0)
 end
 
 local function SampleParty()
-    if db.off.party or IsInInstance() or not IsInGroup() then return end
+    if db.off.party or IsInInstance() or not IsInGroup() or AtCap() then return end
     local t = ns.Now()
     for _, unit in ipairs(TrackedUnits()) do
         TrackUnit(unit, t)
     end
 end
 
+-- Only at logout and /rts export: saved data is written only then anyway, and
+-- each pass copies the whole string.
 local function Pack()
     if #statsBuffer > 0 then
         me.stats = me.stats .. table.concat(statsBuffer)
@@ -311,7 +334,6 @@ ns.On("PLAYER_LOGIN", function()
     end)
     Every(TRACK_INTERVAL, SampleParty)
     Every(STATS_INTERVAL, SampleStats)
-    Every(PACK_INTERVAL, Pack)
     if hooksecurefunc and TakeTaxiNode then
         hooksecurefunc("TakeTaxiNode", function(index) ns.SafeCall(NoteTaxi, index) end)
     end
