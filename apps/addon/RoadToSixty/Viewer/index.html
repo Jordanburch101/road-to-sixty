@@ -151,7 +151,7 @@ const COASTS={"forever":{"1":"//////////////////////////////////////////////////
 let LAND=LANDS.forever,COAST=COASTS.forever;
 // Where those masks sit: uiMapID and the map's world rectangle (north, west of
 // the top left, then of the bottom right). The addon's own reading of the
-// client replaces these numbers when a Chronicle file is loaded.
+// client replaces these numbers when a saved file with its maps is loaded.
 const COAST_MAP={0:[1415,11176.34,18171.97,-15973.34,-22569.21],1:[1414,12799.9,17066.6,-11733.3,-19733.21]};
 const TILE=533.33333;
 const CONT_NAMES={0:"Eastern Kingdoms",1:"Kalimdor",530:"Outland",2991:"Isles"};
@@ -1202,7 +1202,7 @@ function demoFiles(){
 $("demo").onclick=()=>{for(const [t,p] of demoFiles())ingestText(t,p);rebuild();$("status").textContent="Demo journey: made-up data";};
 
 resize();requestAnimationFrame(frame);
-window.Chronicle={S,V,parseSV,ingestText,rebuild,seekT,demoFiles,togglePlay};
+window.RoadToSixtyViewer={S,V,parseSV,ingestText,rebuild,seekT,demoFiles,togglePlay};
 const q=new URLSearchParams(location.search);
 if(q.has("demo")){$("demo").click();if(q.has("at"))seekT(S.tMin+(S.tMax-S.tMin)*+q.get("at"));}
 </script>
