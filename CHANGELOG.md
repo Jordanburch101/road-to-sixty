@@ -11,7 +11,9 @@ broken and now works. Leave out internal changes. Sections are
 ### New
 - Sync journeys with friends in game. Add each other in the journey map's
   new Friends tab, then choose Sync, or have it happen every 5, 15
-  or 30 minutes. Click a friend to replay their journey.
+  or 30 minutes. Click a friend to replay their journey. Your friends
+  list is shared by every character on your account, so a friend can
+  sync any of them, and they see your BattleTag.
 - Replay several characters at once, yours and your friends'. Tick them
   in the Characters tab, then choose Real Time, which plays by the real
   date and time, or Play Time, which starts everyone together and leaves
@@ -19,8 +21,8 @@ broken and now works. Leave out internal changes. Sections are
 - The Characters tab can show everyone, just your characters or one
   friend, and tags friends with their BattleTag.
 - More of your journey is recorded: where your party went, subzones and
-  first visits, XP and gold, flights, talents, town visits and more, each
-  with its own switch in the options. Pin a note to a spot with /rts note.
+  first visits, XP and gold, flights, talents, town visits and more. Each
+  has its own switch in the options, and all start off. Pin a note to a spot with /rts note.
 - An offline viewer in the addon's Viewer folder replays your saved
   journeys in a browser.
 

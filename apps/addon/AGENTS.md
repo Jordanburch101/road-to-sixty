@@ -64,5 +64,18 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   `SetItemButtonTexture` (and `SetItemButtonQuality` for items), never a
   bare texture or a border drawn from colour squares. Jordan's call on the
   Stats screen's records (#83).
+- Friends' journeys (Friends.lua) arrive by addon whisper from other
+  players, so treat them as untrusted. `Apply` checks the shape of every
+  field, nested ones too, before it keeps anything. A new journey field or
+  event field the panels read needs a check there, or one bad friend can
+  break the Characters list or the Stats screen. They live in the
+  account-wide `ns.db.friends`, never in the character file, so the sync
+  server and the app never see them.
+- `Roster:Entries` lists friends too (`e.friend`). Anything that saves
+  over, deletes or uploads an entry must skip them.
+- Tracking.lua's extra data sits in the account-wide `ns.db.tracking`,
+  off by default and outside the journey, so it needs no `DATA_VERSION` bump.
+  `Viewer/index.html` reads it and the journeys offline. It ships in the
+  release zip, and no check covers it.
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.
