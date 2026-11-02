@@ -14,6 +14,16 @@ local SECTION_GAP = 18   -- space above each section heading
 local ROW = 30           -- height of one checkbox row
 local BUTTON_WIDTH = 160
 
+-- An option that turns a kind of extra tracking on or off (Tracking.lua).
+local function Track(key, label, tip)
+    return {
+        label = label,
+        tip = tip,
+        get = function() return not ns.db.tracking.off[key] end,
+        set = function(on) ns.db.tracking.off[key] = not on or nil end,
+    }
+end
+
 local panel, category
 local body               -- what the panel scrolls; everything is built on it
 local checks = {}        -- checkbox -> its option
@@ -121,6 +131,34 @@ local SECTIONS = {
                 ns.GearScreen:Redraw()
             end,
         },
+    },
+    {
+        title = "Friends",
+        {
+            label = "Sync with online friends",
+            -- { minutes, name, tip }
+            choices = {
+                { 0, "Off", "Only sync when you choose Sync in the map's Synced friends tab." },
+                { 5, "Every 5 minutes", "Syncs with every friend who is online, while you play." },
+                { 15, "Every 15 minutes", "Syncs with every friend who is online, while you play." },
+                { 30, "Every 30 minutes", "Syncs with every friend who is online, while you play." },
+            },
+            get = function() return ns.Friends:AutoSync() end,
+            set = function(minutes) ns.Friends:SetAutoSync(minutes) end,
+        },
+    },
+    {
+        title = "Extra tracking",
+        Track("party", "Where party members were", "Their positions while you group outdoors, for the offline viewer."),
+        Track("stats", "XP and gold over time", "A sample each minute, when something has changed."),
+        Track("sub", "Subzones and first visits", "Each subzone you enter, marking the first time you see it."),
+        Track("taxi", "Flights", "Where each flight started and ended, and what it cost."),
+        Track("tal", "Talents", "Your talent points whenever they change."),
+        Track("bind", "Hearthstone", "Each new place your hearthstone is bound."),
+        Track("rest", "Rested areas", "When you enter and leave inns and cities."),
+        Track("npc", "Town visits", "Vendors, trainers, banks, auction houses and mailboxes you use."),
+        Track("trade", "Trades", "Who you opened a trade with."),
+        Track("shot", "Screenshots", "Where you took each screenshot."),
     },
 }
 

@@ -28,6 +28,20 @@ local MIN_PIXELS = 2            -- points closer than this on screen are merged
 local MAX_LINES = 3000          -- line budget per build; past it, points merge further
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
+-- Replaying together (see the Replay section), in one table as this file is
+-- near Lua's limit on locals. SPEEDS are real seconds a second, and GAP how
+-- long a stretch with nobody moving must be for the clock to skip it.
+local Together = {}
+Together.SPEEDS = {
+    { 120, "2m/s" }, { 300, "5m/s" }, { 600, "10m/s" }, { 1800, "30m/s" }, { 3600, "1h/s" },
+    { 7200, "2h/s" }, { 14400, "4h/s" }, { 28800, "8h/s" }, { 43200, "12h/s" }, { 86400, "1d/s" },
+}
+Together.GAP = 600
+-- The two clocks, in the order the button goes through them.
+Together.NEXT = { real = "game" }
+Together.LABELS = { real = "Real Time", game = "Play Time" }
+-- Saves up to 1.5.0 mark no logins: a break this long with no reason counts as one.
+Together.OFFLINE_GAP = 1800
 local MAX_ZOOM = 64
 local ZOOM_STEP = 1.4
 local ZOOM_SPEED = 12           -- higher settles the zoom animation faster
@@ -117,6 +131,7 @@ local MARKER_ZOOM = {
 local QUEST_VISIT = { yards = 30, seconds = 180 }
 
 local frame, canvas, content, overlay, scrub, playButton, speedButton, terrainButton, gearButton
+
 local continentLayer, terrainLayer, othersLayer, pathLayer
 local zoneView  -- zone art, see ZoneArt.lua
 local charMarkers, otherLines = {}, {}
@@ -165,6 +180,11 @@ local state = {
     cur = 0,            -- replay position as a fractional point index
     playing = false,
     speedIndex = 1,
+    -- togetherMode is nil, or real or game: replaying together by the time
+    -- each point was recorded, or by time played. clock is how far it has
+    -- reached, on that mode's clock, and clockTo where it ends; togetherSpeed
+    -- is an index in Together.SPEEDS.
+    togetherSpeed = 5,
 
     -- Timings in ms for /rts perf
     perf = { world = 0, decode = 0, setup = 0, build = 0, lod = 0, place = 0, terrain = 0, view = 0 },
@@ -175,6 +195,7 @@ local state = {
     ribbons = {},       -- ribbon effect lines to scroll, see BuildJumps
     ribbonClock = 0,    -- seconds the ribbon effects have flowed
     otherTracks = {},   -- tracks of other characters whose path is turned on
+    trackOf = {},       -- roster entry -> its track
     otherDrawn = {},    -- their built lines, like drawn, each with .track
     hover = nil,        -- line spec under the mouse, with a tooltip showing
     otherLineCount = 0, -- lines of other characters' paths in use
@@ -526,7 +547,7 @@ local function BuildPoints(paths)
     end
 
     state.n, state.px, state.py, state.pt, state.pm, state.pb, state.brk = n, px, py, pt, pm, pb, brk
-    state.pj, state.pd = pj, pd
+    state.pj, state.pd, state.pg = pj, pd, nil
     state.bounds = { x1, y1, x2, y2 }
     state.lods = {}
 end
@@ -1347,11 +1368,12 @@ end
 -- track they carry pm (mode per point) and pj (jump reason at a piece's
 -- first point), and colors holds a colour per mode and for jumps.
 local function BuildOtherTracks()
-    local tracks = {}
+    local tracks, trackOf = {}, {}
     local shown = ns.Roster:ViewEntry()
     for _, e in ipairs(ns.Roster:Entries()) do
         if ns.db.showPaths[e.key] and e ~= shown then
-            local px, py, pm, pj, brk, n = {}, {}, {}, {}, {}, 0
+            local px, py, pm, pj, brk, pt, n = {}, {}, {}, {}, {}, {}, 0
+            local timed = true      -- paths from before the journey copy have no times
             -- This character's own journey is live, its roster copy as of logout.
             local paths = ns.Roster:IsMe(e) and ns.Recorder:GetPaths() or ns.Roster:Paths(e)
             local previous
@@ -1363,6 +1385,8 @@ local function BuildOtherTracks()
                         n = n + 1
                         px[n], py[n] = toContent(path.x[i], path.y[i])
                         pm[n], brk[n] = path.m, i == 1 and not continues
+                        pt[n] = path.t[i]
+                        timed = timed and pt[n] ~= nil
                     end
                     pj[n - #path.x + 1] = ns.Recorder:JumpReason(previous, path)
                 end
@@ -1373,13 +1397,15 @@ local function BuildOtherTracks()
             for mode, a in pairs(OTHER.ALPHA) do
                 colors[mode] = { r, g, b, a }
             end
-            tracks[#tracks + 1] = {
+            local track = {
                 n = n, px = px, py = py, pm = pm, pj = pj, brk = brk, lods = {}, colors = colors,
-                entry = e,
+                entry = e, pt = timed and n > 0 and pt or nil, cur = n,
             }
+            tracks[#tracks + 1] = track
+            trackOf[e] = track
         end
     end
-    state.otherTracks = tracks
+    state.otherTracks, state.trackOf = tracks, trackOf
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
@@ -1433,6 +1459,9 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
     othersLayer:SetShown(count > 0)
     state.otherLineCount, state.otherZoom = count, z
     state.otherDrawn = otherDrawn
+    if state.clock then
+        Together.Apply()
+    end
 end
 
 local function BuildPath()
@@ -2421,6 +2450,124 @@ local function FollowHead()
     end
 end
 
+-- Replaying together: every path turned on plays at once on one clock. The
+-- journey shown follows it through state.cur; the others show their lines up
+-- to it, with their markers at where they were then. On the real clock each
+-- point is at the time it was recorded, so a character that logged off waits
+-- on the map until it logs in again. On the game clock each is at its time
+-- played, so every journey starts together and plays without its time away.
+
+-- Seconds played at each point of a track: time passes between points, but
+-- not across a login.
+function Together.PlayedTimes(track)
+    local pg, played = {}, 0
+    local pt, pj, brk = track.pt, track.pj, track.brk
+    for i = 1, track.n do
+        if i > 1 then
+            local gap = pt[i] - pt[i - 1]
+            if pj[i] == "l" or (brk[i] and not pj[i] and gap > Together.OFFLINE_GAP) then
+                gap = 0
+            end
+            played = played + gap
+        end
+        pg[i] = played
+    end
+    return pg
+end
+
+-- A track's point times on the clock in use. The journey shown is state.
+function Together.ClockTimes(track)
+    if state.togetherMode == "real" then return track.pt end
+    track.pg = track.pg or Together.PlayedTimes(track)
+    return track.pg
+end
+
+-- The first and last time of the journey shown and every timed track, or nil.
+function Together.Bounds()
+    local from, to
+    local function Include(track)
+        if track.n > 0 and track.pt then
+            local times = Together.ClockTimes(track)
+            local first, last = times[1], times[track.n]
+            from, to = math.min(from or first, first), math.max(to or last, last)
+        end
+    end
+    Include(state)
+    for _, track in ipairs(state.otherTracks) do
+        Include(track)
+    end
+    return from, to
+end
+
+-- The next time after t that anyone moved, or nil.
+function Together.NextMove(t)
+    local times = Together.ClockTimes(state)
+    local soonest = times[ns.LastIndex(times, t) + 1]
+    for _, track in ipairs(state.otherTracks) do
+        if track.pt then
+            times = Together.ClockTimes(track)
+            local moves = times[ns.LastIndex(times, t) + 1]
+            if moves and (not soonest or moves < soonest) then
+                soonest = moves
+            end
+        end
+    end
+    return soonest
+end
+
+-- Shows the other tracks up to the clock.
+function Together.Apply()
+    local t = state.clock
+    for _, track in ipairs(state.otherTracks) do
+        track.cur = track.pt and ns.LastIndex(Together.ClockTimes(track), t) or track.n
+    end
+    for i = 1, state.otherLineCount do
+        local spec = state.otherDrawn[i]
+        otherLines[i]:SetShown(spec[6] <= spec.track.cur)
+    end
+    for i = 1, state.charCount do
+        local m = charMarkers[i]
+        local track = state.trackOf[m.entry]
+        if track and track.pt then
+            m:SetShown(track.cur >= 1)
+            if track.cur >= 1 then
+                m.x, m.y = track.px[track.cur], track.py[track.cur]
+            end
+        end
+    end
+    PlaceCharacters()
+    infoText:SetText(state.togetherMode == "real" and FormatTime(t) or ns.FormatDuration(t) .. " played")
+end
+
+function Together.SetSpeedText()
+    speedButton:SetText(state.clock and Together.SPEEDS[state.togetherSpeed][2]
+        or SPEEDS[state.speedIndex] .. "x")
+end
+
+-- Leaves replaying together. The caller redraws the characters.
+function Together.End()
+    state.togetherMode, state.clock, state.clockTo = nil, nil, nil
+    Together.button:SetText("Solo")
+    Together.SetSpeedText()
+end
+
+function Together.Step(elapsed)
+    local clock = state.clock + elapsed * Together.SPEEDS[state.togetherSpeed][1]
+    local nextMove = Together.NextMove(state.clock)
+    if nextMove and nextMove - state.clock > Together.GAP then
+        clock = nextMove
+    end
+    if not nextMove or clock >= state.clockTo then
+        clock = state.clockTo
+        SetPlaying(false)
+    end
+    state.clock = clock
+    state.cur = ns.LastIndex(Together.ClockTimes(state), clock)
+    ApplyCursor()
+    Together.Apply()
+    FollowHead()
+end
+
 local function OnUpdate(_, elapsed)
     local moved = false
     -- Jump dots the zoom has shown or hidden fade over a quarter second.
@@ -2489,7 +2636,9 @@ local function OnUpdate(_, elapsed)
         UpdateHover()
     end
 
-    if state.playing then
+    if state.playing and state.clock then
+        Together.Step(elapsed)
+    elseif state.playing then
         local before = state.markerNow
         -- Along a jump, at its style's pace rather than a point at a time;
         -- a break without moving, or an instant jump, passes as any other point.
@@ -2661,6 +2810,10 @@ local function CreateScrub()
         if scrubbing and seq ~= math.floor(state.cur) then
             state.cur = seq
             ApplyCursor()
+            if state.clock then
+                state.clock = Together.ClockTimes(state)[seq] or state.clock
+                Together.Apply()
+            end
             -- Zoomed in, the map follows the arrow as the replay does.
             FollowHead()
         end
@@ -2867,6 +3020,14 @@ local function CreateWindow()
             SetPlaying(false)
             return
         end
+        if state.clock then
+            if state.clock >= state.clockTo then
+                state.clock = Together.Bounds()
+                state.cur = 0
+            end
+            SetPlaying(true)
+            return
+        end
         if state.cur >= state.n then
             state.cur = 0
             if state.zoom > state.minZoom and state.n > 0 then
@@ -2878,11 +3039,55 @@ local function CreateWindow()
     end)
     playButton:SetPoint("BOTTOMLEFT", FRAME.LEFT + FRAME.PAD, FRAME.BOTTOM + FRAME.PAD)
 
-    speedButton = CreateButton(44, "1x", function(self)
-        state.speedIndex = state.speedIndex % #SPEEDS + 1
-        self:SetText(SPEEDS[state.speedIndex] .. "x")
+    speedButton = CreateButton(54, "1x", function()
+        if state.clock then
+            state.togetherSpeed = state.togetherSpeed % #Together.SPEEDS + 1
+        else
+            state.speedIndex = state.speedIndex % #SPEEDS + 1
+        end
+        Together.SetSpeedText()
     end)
     speedButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
+
+    Together.button = CreateButton(120, "Solo", function(self)
+        local mode
+        if state.togetherMode then
+            mode = Together.NEXT[state.togetherMode]
+        else
+            mode = "real"
+        end
+        state.togetherMode = mode
+        local from, to
+        if mode then
+            from, to = Together.Bounds()
+        end
+        if not from then
+            Together.End()
+            SetPlaying(false)
+            state.cur = state.n
+            ApplyCursor()
+            Map:RefreshCharacters()
+            return
+        end
+        state.clock, state.clockTo = from, to
+        state.cur = 0
+        self:SetText(Together.LABELS[mode])
+        Together.SetSpeedText()
+        ApplyCursor()
+        Together.Apply()
+        SetPlaying(true)
+    end)
+    Together.button:SetParent(overlay)
+    Together.button:SetPoint("TOPRIGHT", -8, -8)
+    Together.button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Replay mode")
+        GameTooltip:AddLine("Solo: the normal replay of one journey. Click to play every ticked character at once.", 1, 1, 1, true)
+        GameTooltip:AddLine("Real Time: by the real time it happened, so a character that logged off waits on the map.", 1, 1, 1, true)
+        GameTooltip:AddLine("Play Time: by time played, as if everyone played nonstop from the same moment.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    Together.button:SetScript("OnLeave", GameTooltip_Hide)
 
     terrainButton = CreateButton(90, "", function()
         ns.db.terrain = not ns.db.terrain
@@ -3054,6 +3259,9 @@ function Map:OpenNow()
     drag = nil
     state.built = nil
     state.cur = state.n
+    if state.clock then
+        Together.End()
+    end
     -- Only an open from closed goes back to where it was; opening again on
     -- a new range (or journey) fits the path.
     local last = not frame:IsShown() and state.lastView or nil
@@ -3195,6 +3403,10 @@ function Map:JumpTo(t, continentID, x, y)
     end
     ApplyView()
     ApplyCursor()
+    if state.clock then
+        state.clock = Together.ClockTimes(state)[state.cur] or state.clock
+        Together.Apply()
+    end
     -- The replay stops at the last point before t; History should still mark
     -- the entry that was clicked, not the one before it.
     ns.Panel:SetTime(t)
@@ -3319,20 +3531,6 @@ ns.Command("map", "open the journey map", function()
     Map:Toggle()
 end)
 
---@debug@
-ns.Command("tiles", "toggle showing, in red, terrain tiles left out for lying in no zone", function()
-    ns.db.showSkipped = not ns.db.showSkipped
-    -- Drop all loaded tiles so the next view loads the new set.
-    for index in pairs(activeTiles) do
-        ReleaseTile(index)
-    end
-    state.terrainBuilt = nil
-    if frame and frame:IsShown() then
-        ApplyView()
-    end
-    ns.Print("Skipped terrain tiles " .. (ns.db.showSkipped and "shown in red." or "hidden."))
-end)
---@end-debug@
 
 ns.Command("motes", "toggle sparkles drifting along the journey map path", function()
     ns.db.motes = not ns.db.motes

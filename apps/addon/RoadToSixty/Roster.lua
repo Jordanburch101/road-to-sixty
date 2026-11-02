@@ -146,13 +146,21 @@ ns.On("PLAYER_LOGOUT", function()
     entry.seen = ns.Now()
 end)
 
--- Every character, this one first, then the most recently seen.
+-- Every character and synced friend, this one first, then the most recently seen.
 -- Each entry gets its key as entry.key.
 function Roster:Entries()
     local list, me = {}, self:Key()
-    for key, e in pairs(ns.db.roster or {}) do
+    local roster = ns.db.roster or {}
+    for key, e in pairs(roster) do
         e.key = key
         list[#list + 1] = e
+    end
+    -- Synced friends (Friends.lua) list like characters, but stay out of
+    -- the roster, which only holds this account's own.
+    for _, e in pairs(ns.db.friends or {}) do
+        if e.journey and e.key and not roster[e.key] then
+            list[#list + 1] = e
+        end
     end
     table.sort(list, function(a, b)
         if a.key == me or b.key == me then

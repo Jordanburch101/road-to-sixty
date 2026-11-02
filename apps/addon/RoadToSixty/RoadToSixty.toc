@@ -2,7 +2,7 @@
 ## Title: Road to Sixty
 ## Notes: Records your journey from 1 to 60 and replays it on the map
 ## Author: Jordan
-## IconTexture: Interface\Icons\Ability_Hunter_Pathfinding
+## IconTexture: Interface\AddOns\RoadToSixty\campfire
 ## AddonCompartmentFunc: RoadToSixty_OnAddonCompartmentClick
 ## Version: @project-version@
 ## SavedVariables: RoadToSixtyDB
@@ -45,6 +45,8 @@ Enchants.lua
 Sources.lua
 Parties.lua
 Roster.lua
+Friends.lua
+Tracking.lua
 Range.lua
 Health.lua
 Routes.lua
@@ -54,6 +56,7 @@ PathCurve.lua
 Style.lua
 Map.lua
 Panel.lua
+FriendsPanel.lua
 GearCard.lua
 Screens.lua
 GearTimeline.lua
