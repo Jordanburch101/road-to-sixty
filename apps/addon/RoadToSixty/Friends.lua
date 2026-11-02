@@ -155,7 +155,9 @@ local FIELDS = {
 }
 
 -- The types of each kind's own fields, from e[6] on (Journal.lua lists the
--- kinds). Fields past these, and every field of other kinds, are plain values.
+-- kinds). Fields past these, and every field of other kinds, may be anything:
+-- a new kind or field doesn't bump DATA_VERSION, so a friend on a newer
+-- version can send ones this code has never seen, and nothing here reads them.
 local EVENT_FIELDS = {
     on = "nn", off = "n", lvl = "n", die = "s", qa = "n", qd = "nnns", zone = "n",
     ["in"] = "nss", out = "nt", loot = "sn", eq = "nn..t", prof = "snn", skill = "snn",
@@ -195,7 +197,9 @@ local function ValidEvent(e)
     for key, v in pairs(e) do
         if not Whole(key) or key < 1 then return false end
         local letter = key > 5 and spec:sub(key - 5, key - 5) or ""
-        if not Fits(v, letter ~= "" and letter or nil) then return false end
+        if key <= 5 or letter ~= "" then
+            if not Fits(v, letter ~= "" and letter or nil) then return false end
+        end
     end
     local check = EVENT_TABLES[e[2]]
     return not check or check(e) and true or false

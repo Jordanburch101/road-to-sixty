@@ -187,12 +187,13 @@ end
 -- A later sync only costs what is new, and refreshes the latest events.
 local before = carried
 sent.segments[2].d = "1,2,3;4,5,6"
-sent.events[301] = { 1785999999, "level", 0, 1, 1 }
+-- A kind this version doesn't know, from a friend on a newer one, may hold a table.
+sent.events[301] = { 1785999999, "newkind", 0, 1, 1, { a = 1 } }
 sent.events[300][6] = "filled in later"
 F:Sync("Bromm")
 Run()
 check(carried - before < 40, "resent too much: " .. (carried - before))
-check(rec.journey.segments[2].d == "1,2,3;4,5,6" and #rec.journey.events == 301, "new data missing")
+check(rec.journey.segments[2].d == "1,2,3;4,5,6" and #rec.journey.events == 301, "new data missing: " .. status(rec))
 check(rec.journey.events[300][6] == "filled in later", "recent event not refreshed")
 
 -- A sync that stops carries on from where it got to.
