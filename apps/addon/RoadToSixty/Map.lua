@@ -3039,13 +3039,33 @@ local function CreateWindow()
     end)
     playButton:SetPoint("BOTTOMLEFT", FRAME.LEFT + FRAME.PAD, FRAME.BOTTOM + FRAME.PAD)
 
-    speedButton = CreateButton(54, "1x", function()
-        if state.clock then
-            state.togetherSpeed = state.togetherSpeed % #Together.SPEEDS + 1
-        else
-            state.speedIndex = state.speedIndex % #SPEEDS + 1
+    -- The replay speed: a menu like the date range's, as replaying together
+    -- has many speeds, or on a client without the menu, each click the next.
+    speedButton = CreateButton(54, "1x", function(self)
+        local together = state.clock ~= nil
+        local function Choose(k)
+            if together then state.togetherSpeed = k else state.speedIndex = k end
+            Together.SetSpeedText()
         end
-        Together.SetSpeedText()
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(_, root)
+                if together then
+                    for k, speed in ipairs(Together.SPEEDS) do
+                        root:CreateRadio(speed[2], function() return state.togetherSpeed == k end,
+                            function() Choose(k) end)
+                    end
+                else
+                    for k, speed in ipairs(SPEEDS) do
+                        root:CreateRadio(speed .. "x", function() return state.speedIndex == k end,
+                            function() Choose(k) end)
+                    end
+                end
+            end)
+        elseif together then
+            Choose(state.togetherSpeed % #Together.SPEEDS + 1)
+        else
+            Choose(state.speedIndex % #SPEEDS + 1)
+        end
     end)
     speedButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
 
