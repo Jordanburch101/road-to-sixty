@@ -5,15 +5,18 @@ local _, ns = ...
 --
 -- Adding someone is what shares with them: a journey is only sent to a player
 -- on the list, and only taken from one, so two players must add each other.
+-- The list is the account's, so every character on it shares with them.
 -- A sync is pulled: the side that wants a journey says what it has, and the
 -- other sends the next batch of its current character's journey. Each batch
 -- is kept as it arrives, so a sync that stops carries on from there, and
--- later syncs only cost what is new. Keys are lowercase names:
+-- later syncs only cost what is new. Keys are lowercase names (Key):
 --
 --   RoadToSixtyDB.friends[key] = {
 --     name, realm, class, level, zone, c, x, y, seen, played, synced (time),
 --     battleTag (theirs, for grouping their characters), guid,
 --     journey = in the form of RoadToSixtyCharDB,
+--     size = what the journey's path and events take (Apply), capped = true
+--     once that reached MAX_SIZE, metaSum (MetaSum),
 --     key = guid, friend = true,
 --   }
 --   RoadToSixtyDB.autoSync = minutes between automatic syncs; 0 is off
@@ -27,9 +30,11 @@ local _, ns = ...
 -- chat line when one is offline, which is hidden and taken as a no.
 --
 -- Messages, split by colons, are all whispers:
---   Q:id:version:segments:offset:events:journeyId   what the asker has
---   N:id:reason                                     not sent, and why
---   B:id:n:total:data                               part n of a batch
+--   Q:id:version:layout:segments:offset:events:sum:journeyId   what the asker
+--                                    has; layout is its character file's version,
+--                                    sum its MetaSum
+--   N:id:reason                      not sent, and why
+--   B:id:n:total:data                part n of a batch
 --
 -- Anything may arrive from anyone, and a batch comes from someone else's
 -- saved file, so it is parsed as plain data and checked before it is kept.
@@ -53,17 +58,148 @@ local HIDE_FOR = 2              -- seconds an offline line stays hidden, for eac
 local NO_ANSWER = 15            -- seconds to wait for a first answer
 local STALLED = 45              -- seconds without a message before a sync counts as stopped
 
--- Road to Sixty's fields besides the path and events, and what each must be.
-local FIELDS = {
-    levels = "table", kills = "table", recipes = "table", people = "table", totals = "table",
-    skills = "table", guild = "any", reps = "table", riding = "table", mounts = "table",
-    rares = "table", played = "number", version = "number",
-}
+-- The most of a friend's path and events kept, in characters as sent. It
+-- sits in the account file every character loads, and a level 60 journey is
+-- 2 to 3 MB. The other fields are replaced whole each time, so one batch
+-- bounds them.
+Friends.MAX_SIZE = 8 * 1024 * 1024
+
 local REASONS = {
     notfriend = "Waiting for them to add you.",
     busy = "They are busy sending. Try again in a moment.",
     nodata = "They have no journey to send.",
+    version = "They have another version of Road to Sixty. You both need the latest.",
 }
+local BUSY = "Another sync is running. Try again when it ends."
+local TOO_BIG = "Their journey is too big to keep any more of it."
+
+-- Shapes ----------------------------------------------------------------------------
+-- A friend's journey is read by the same code as the account's own, which
+-- trusts its shape, so everything a friend sends is checked against the
+-- shapes the addon saves. Letters name a value's type: n number, s string,
+-- b boolean, t table, c a tally (a number, or a table of numbers, see
+-- Tally.lua), . anything but a table. A missing value always fits.
+
+local TYPES = { n = "number", s = "string", b = "boolean", t = "table" }
+local Shaped
+
+local function Fits(v, letter)
+    if v == nil then return true end
+    if letter == "c" then return type(v) == "number" or Shaped(v, nil, "n") end
+    if not letter or letter == "." then return type(v) ~= "table" end
+    return type(v) == TYPES[letter]
+end
+
+-- Whether t is a table whose values fit spec[key], or default for keys spec doesn't name.
+function Shaped(t, spec, default)
+    if type(t) ~= "table" then return false end
+    for key, v in pairs(t) do
+        if not Fits(v, spec and spec[key] or default) then return false end
+    end
+    return true
+end
+
+-- Whether every value of t is a table that check passes.
+local function Rows(t, check)
+    if type(t) ~= "table" then return false end
+    for _, row in pairs(t) do
+        if type(row) ~= "table" or not check(row) then return false end
+    end
+    return true
+end
+
+local function Whole(v)
+    return type(v) == "number" and v == math.floor(v)
+end
+
+local function Plain(t) return Shaped(t) end
+local function Skill(s) return Shaped(s, { "n", "n", "n" }) end
+
+local PERSON = {
+    name = "s", race = "s", sex = "s", class = "s", level = "n", guild = "s", first = "n", last = "n",
+    c = "n", x = "n", y = "n",
+    groups = "c", seconds = "c", raids = "c", raidSeconds = "c", dungeons = "c", raidRuns = "c",
+}
+
+-- Road to Sixty's fields besides the path and events, and the check each must pass.
+local FIELDS = {
+    levels = function(v)
+        for level, snap in pairs(v) do
+            if not Whole(level) or not Shaped(snap, { gear = "t", links = "t", skills = "t" })
+                or snap.gear and not Shaped(snap.gear, nil, "n")
+                or snap.links and not Shaped(snap.links, nil, "s")
+                or snap.skills and not Rows(snap.skills, Skill) then
+                return false
+            end
+        end
+        return true
+    end,
+    kills = function(v)
+        return Shaped(v, { names = "t" }) and type(v.d) == "string" and type(v.last) == "number"
+            and Shaped(v.names, nil, "s")
+    end,
+    recipes = function(v) return Rows(v, Plain) end,
+    people = function(v) return Rows(v, function(p) return Shaped(p, PERSON) end) end,
+    totals = function(v) return Shaped(v, nil, "n") end,
+    skills = function(v) return Rows(v, Skill) end,
+    guild = function(v)
+        return v == false or Shaped(v, { "s", "s", "n", "t" }) and type(v[1]) == "string"
+            and (v[4] == nil or Shaped(v[4], nil, "c"))
+    end,
+    reps = function(v) return Rows(v, function(r) return Shaped(r, { "n", "s" }) end) end,
+    riding = function(v) return Rows(v, Plain) end,
+    mounts = function(v) return Rows(v, Plain) end,
+    rares = function(v) return Rows(v, function(r) return Shaped(r, { "c" }) end) end,
+    played = function(v) return type(v) == "number" end,
+    version = function(v) return type(v) == "number" end,
+}
+
+-- The types of each kind's own fields, from e[6] on (Journal.lua lists the
+-- kinds). Fields past these, and every field of other kinds, are plain values.
+local EVENT_FIELDS = {
+    on = "nn", off = "n", lvl = "n", die = "s", qa = "n", qd = "nnns", zone = "n",
+    ["in"] = "nss", out = "nt", loot = "sn", eq = "nn..t", prof = "snn", skill = "snn",
+    rec = "sns", craft = "sn", gj = "ssbt", gl = "ss", gr = "ssb", rep = "nns",
+    ride = "ns", mount = "ns", rare = "ss", duel = "ss", gath = "sn.s",
+    grp = "stbn", grpa = "t", grpx = "t",
+}
+local RUN = {
+    name = "s", duration = "n", kills = "n", xp = "n", deaths = "n", money = "n", levels = "n",
+    items = "t", party = "t", type = "s", pvp = "t",
+}
+-- What is inside the tables some kinds hold.
+local EVENT_TABLES = {
+    -- The panel hands the link to the tooltip, which errors on anything but a link.
+    loot = function(e) return e[6] == nil or e[6]:find("|Hitem:%d") or e[6]:find("^item:%d") end,
+    out = function(e)
+        local s = e[7]
+        if s == nil then return true end
+        if not Shaped(s, RUN) or not Shaped(s.items or {}, nil, "s") then return false end
+        for _, field in ipairs({ "duration", "kills", "xp", "deaths", "money", "levels" }) do
+            if s[field] == nil then return false end
+        end
+        return true
+    end,
+    eq = function(e) return e[10] == nil or Plain(e[10]) end,
+    gj = function(e) return e[9] == nil or Shaped(e[9], nil, "c") end,
+    grp = function(e) return e[7] == nil or Rows(e[7], Plain) end,
+    grpa = function(e) return e[6] == nil or Plain(e[6]) end,
+}
+
+local function ValidEvent(e)
+    if type(e) ~= "table" or type(e[1]) ~= "number" or type(e[2]) ~= "string" or type(e[3]) ~= "number"
+        or type(e[4]) ~= "number" or type(e[5]) ~= "number" then
+        return false
+    end
+    local spec = EVENT_FIELDS[e[2]] or ""
+    for key, v in pairs(e) do
+        if not Whole(key) or key < 1 then return false end
+        local letter = key > 5 and spec:sub(key - 5, key - 5) or ""
+        if not Fits(v, letter ~= "" and letter or nil) then return false end
+    end
+    local check = EVENT_TABLES[e[2]]
+    return not check or check(e) and true or false
+end
 
 local request                   -- the sync this client is asking for
 local outgoing                  -- the batch this client is sending
@@ -134,61 +270,112 @@ local function Serialize(v)
     return table.concat(out)
 end
 
--- The value in text, or nil unless it is well formed.
-local function Parse(text)
-    local stack, top, root, finished = {}, nil, nil, false
-    local pos, size = 1, #text
-    local function Place(value)
-        if not top then
-            root, finished = value, true
-        elseif top.key == nil then
-            if type(value) ~= "string" and type(value) ~= "number" then return false end
-            top.key = value
-        else
-            top.t[top.key], top.key = value, nil
-        end
-        return true
+local MOD = 2147483647
+
+local function Hash(text, h)
+    for i = 1, #text do h = (h * 31 + text:byte(i)) % MOD end
+    return h
+end
+
+-- A short sum of v that doesn't depend on the order pairs walks tables in,
+-- so two clients holding the same data agree on it.
+local function Sum(v, h)
+    if type(v) ~= "table" then return Hash(Serialize(v), h) end
+    local total = Hash("{", h)
+    for key, value in pairs(v) do
+        total = (total + Sum(value, Hash(Serialize(key), h))) % MOD
     end
+    return total
+end
+
+-- The sum of a journey's fields besides the path and events, which the
+-- asker sends so the sender can leave them out when they haven't changed.
+local function MetaSum(journey)
+    local meta = {}
+    for field in pairs(FIELDS) do meta[field] = journey[field] end
+    return Sum(meta, 0)
+end
+
+-- The value in text, or nil unless it is well formed.
+-- Keep this one loop with no inner function: LuaJIT, which runs the tests,
+-- miscompiled an earlier version whose inner function changed the loop's
+-- variables, refusing good batches or crashing at random.
+local function Parse(text)
+    local stack, depth, root = {}, 0, nil
+    local pos, size = 1, #text
     while pos <= size do
-        if finished then return nil end
+        if root ~= nil then return nil end
         local stop = text:find("~", pos, true)
         if not stop then return nil end
         local kind, body = text:sub(pos, pos), text:sub(pos + 1, stop - 1)
         pos = stop + 1
+        local value, open
         if kind == "}" then
+            local top = stack[depth]
             if not top or top.key ~= nil then return nil end
-            local closed = top.t
-            stack[#stack] = nil
-            top = stack[#stack]
-            if not Place(closed) then return nil end
+            stack[depth], depth = nil, depth - 1
+            value = top.t
+        elseif kind == "n" then
+            value = tonumber(body)
+            if not value then return nil end
+        elseif kind == "s" then
+            value = Unescape(body)
+        elseif kind == "t" then
+            value = true
+        elseif kind == "f" then
+            value = false
+        elseif kind == "{" then
+            if depth >= MAX_DEPTH or depth > 0 and stack[depth].key == nil then return nil end
+            depth = depth + 1
+            stack[depth] = { t = {} }
+            open = true
         else
-            local value
-            if kind == "n" then
-                value = tonumber(body)
-                if not value then return nil end
-            elseif kind == "s" then
-                value = Unescape(body)
-            elseif kind == "t" then
-                value = true
-            elseif kind == "f" then
-                value = false
-            elseif kind == "{" then
-                if #stack >= MAX_DEPTH or (top and top.key == nil) then return nil end
-                top = { t = {} }
-                stack[#stack + 1] = top
+            return nil
+        end
+        if not open then
+            local top = stack[depth]
+            if not top then
+                root = value
+            elseif top.key == nil then
+                if type(value) ~= "string" and type(value) ~= "number" then return nil end
+                top.key = value
             else
-                return nil
+                top.t[top.key], top.key = value, nil
             end
-            if kind ~= "{" and not Place(value) then return nil end
         end
     end
-    if finished then return root end
+    return root
 end
 
 -- Keeping a friend ------------------------------------------------------------------
 
+-- string.lower only knows A to Z, but a name typed "émile" must find the
+-- "Émile" the game reports, so accented Latin and Cyrillic capitals are
+-- lowered too (UTF-8: É is C3 89, é is C3 A9).
 local function Key(name)
-    return name:lower()
+    return (name:lower():gsub("\195([\128-\158])", function(c)
+        if c ~= "\151" then return "\195" .. string.char(c:byte() + 32) end
+    end):gsub("\208([\128-\175])", function(c)
+        local b = c:byte()
+        if b >= 144 and b < 160 then return "\208" .. string.char(b + 32) end
+        return "\209" .. string.char(b < 144 and b + 16 or b - 32)
+    end))
+end
+
+local function SquashRealm(realm)
+    return (realm:gsub("[%s%-]", ""):lower())
+end
+
+-- The friends key of a whisper's sender, nil when they are on another realm
+-- than the friend of that name. The sender comes as "Name-Realm", the realm
+-- without the spaces and hyphens GetRealmName has.
+local function SenderKey(sender)
+    local name, realm = sender:match("^([^-]+)%-?(.*)$")
+    if not name then return nil end
+    local key = Key(name)
+    local rec = ns.db.friends[key]
+    if rec and realm ~= "" and SquashRealm(realm) ~= SquashRealm(rec.realm or GetRealmName()) then return nil end
+    return key
 end
 
 -- Whether a friend's guid may be used: never one of this account's characters.
@@ -204,10 +391,6 @@ local function NewJourney()
     }
 end
 
-local function Whole(v)
-    return type(v) == "number" and v == math.floor(v)
-end
-
 local function ValidSegment(s)
     return Whole(s.i) and type(s.d) == "string" and s.d:find("^[-%d,;]*$") ~= nil
         and (s.o ~= nil and Whole(s.o) or (
@@ -215,56 +398,63 @@ local function ValidSegment(s)
             and Whole(s.x) and Whole(s.y) and (s.j == nil or type(s.j) == "string")))
 end
 
--- Puts a batch into the friend's journey. False if it does not fit.
+-- Puts a batch into the friend's journey. False if it does not fit, and then
+-- none of it is kept; false, "big" if it would take them over MAX_SIZE.
+-- rec.size is what their path and events take, in characters as sent.
 local function Apply(rec, b)
     if type(b) ~= "table" or type(b.g) ~= "string" or not b.g:find("^Player%-%d+%-%x+$")
         or type(b.j) ~= "string" or type(b.s) ~= "table" or not FreeSlot(b.g) then
         return false
     end
-    if b.r or rec.guid ~= b.g then
-        rec.journey = nil
-    end
-    local journey = rec.journey or NewJourney()
+    local fresh = b.r or rec.guid ~= b.g or not rec.journey
+    local journey = fresh and NewJourney() or rec.journey
     local segments, events = journey.segments, journey.events
+    local size = not fresh and rec.size or 0
 
+    local segs, count = {}, #segments
     for i = 1, #b.s do
         local s = b.s[i]
         if type(s) ~= "table" or not ValidSegment(s) then return false end
+        local prev, seg = segs[s.i] or segments[s.i], nil
         if s.o then
-            local seg = segments[s.i]
-            if not seg or #seg.d ~= s.o then return false end
+            if not prev or #prev.d ~= s.o then return false end
             -- A new table, as Road to Sixty decodes each once.
-            segments[s.i] = { m = seg.m, c = seg.c, j = seg.j, t = seg.t, x = seg.x, y = seg.y, d = seg.d .. s.d }
-        elseif s.i >= 1 and s.i <= #segments + 1 then
-            segments[s.i] = { m = s.m, c = s.c, j = s.j, t = s.t, x = s.x, y = s.y, d = s.d }
+            seg = { m = prev.m, c = prev.c, j = prev.j, t = prev.t, x = prev.x, y = prev.y, d = prev.d .. s.d }
+        elseif s.i >= 1 and s.i <= count + 1 then
+            seg = { m = s.m, c = s.c, j = s.j, t = s.t, x = s.x, y = s.y, d = s.d }
         else
             return false
         end
+        segs[s.i], count = seg, math.max(count, s.i)
+        size = size + #seg.d + 40 - (prev and #prev.d + 40 or 0)
     end
 
     if b.e then
         if type(b.e) ~= "table" or not Whole(b.ef) or b.ef < 1 or b.ef > #events + 1 then return false end
         for i = 1, #b.e do
-            local e = b.e[i]
-            if type(e) ~= "table" or type(e[1]) ~= "number" or type(e[2]) ~= "string" then return false end
-            events[b.ef + i - 1] = e
+            local e, prev = b.e[i], events[b.ef + i - 1]
+            if not ValidEvent(e) then return false end
+            size = size + #Serialize(e) - (prev and #Serialize(prev) or 0)
         end
     end
 
     if b.m ~= nil then
         if type(b.m) ~= "table" then return false end
-        for field, kind in pairs(FIELDS) do
+        for field, check in pairs(FIELDS) do
             local value = b.m[field]
-            if value ~= nil and (kind == "any" or type(value) == kind) then journey[field] = value end
-        end
-        local kills = journey.kills
-        if type(kills.d) ~= "string" or type(kills.last) ~= "number" or type(kills.names) ~= "table" then
-            journey.kills = NewJourney().kills
+            if value ~= nil and not check(value) then return false end
         end
     end
+    if size > Friends.MAX_SIZE then return false, "big" end
 
+    for i, seg in pairs(segs) do segments[i] = seg end
+    for i = 1, b.e and #b.e or 0 do events[b.ef + i - 1] = b.e[i] end
+    for field in pairs(b.m and FIELDS or {}) do
+        if b.m[field] ~= nil then journey[field] = b.m[field] end
+    end
     journey.journeyId = b.j
-    rec.journey, rec.guid = journey, b.g
+    rec.journey, rec.guid, rec.size = journey, b.g, size
+    if fresh or b.m then rec.metaSum = MetaSum(journey) end
     if type(b.class) == "string" and b.class:find("^%u+$") then rec.class, journey.class = b.class, b.class end
     if Whole(b.level) then rec.level = b.level end
     if Whole(b.zone) then rec.zone = b.zone end
@@ -284,11 +474,19 @@ end
 
 -- Asking ----------------------------------------------------------------------------
 
+-- Drops the sync being asked for, and with it the lines saying to wait for it.
+local function Stop()
+    request = nil
+    for key, text in pairs(status) do
+        if text == BUSY then status[key] = nil end
+    end
+end
+
 -- Ends a sync. An automatic one only reports what needs looking at, with
 -- keep: a friend being offline is not worth a line.
 local function Finish(key, text, keep)
     local auto = request and request.key == key and request.auto
-    if request and request.key == key then request = nil end
+    if request and request.key == key then Stop() end
     if auto and not keep then text = nil end
     status[key] = text
     Changed()
@@ -307,16 +505,23 @@ local function Watch(asked)
 end
 
 local function Ask(rec, key, bytes, auto)
+    if rec.capped then
+        Finish(key, TOO_BIG, true)
+        return
+    end
     serial = serial + 1
     local journey, id = rec.journey, ("%x"):format((ns.Now() * 16 + serial % 16) % 0xffffff)
+    -- A copy kept in another layout is asked for again whole, as for a new journey.
+    if journey and journey.version and journey.version ~= ns.char.version then journey = nil end
     local segments = journey and #journey.segments or 0
     local last = journey and journey.segments[segments]
     local asked = { id = id, key = key, parts = {}, got = 0, bytes = bytes or 0, heard = GetTime(),
         answered = bytes ~= nil, auto = auto }
     request = asked
     status[key] = "Asking..."
-    if not Send(("Q:%s:%d:%d:%d:%d:%s"):format(id, VERSION, segments, last and #last.d or 0,
-        journey and #journey.events or 0, Escape(journey and journey.journeyId or "")), rec.name) then
+    if not Send(("Q:%s:%d:%d:%d:%d:%d:%d:%s"):format(id, VERSION, ns.char.version or 0, segments, last and #last.d or 0,
+        journey and #journey.events or 0, journey and rec.metaSum or 0, Escape(journey and journey.journeyId or "")),
+        rec.name) then
         Finish(key, "Could not send. Are they online?")
         return
     end
@@ -351,8 +556,11 @@ local function OnPart(key, id, n, total, data)
 
     local rec = ns.db.friends[key]
     local batch = rec and Parse(table.concat(asked.parts, "", 1, total))
-    if not rec or not Apply(rec, batch) then
-        Finish(key, "Their data did not fit. Removing and adding them starts afresh.", true)
+    local fits, why = false, nil
+    if rec then fits, why = Apply(rec, batch) end
+    if not fits then
+        if rec then rec.capped = why == "big" or nil end
+        Finish(key, why == "big" and TOO_BIG or "Their data did not fit. Removing and adding them starts afresh.", true)
     elseif batch.done then
         rec.synced = ns.Now()
         Finish(key, nil)
@@ -379,7 +587,10 @@ local function SendNext()
             return
         end
     end
-    Later(1 / RATE, SendNext)
+    -- A send stopped and replaced by another leaves this timer behind.
+    Later(1 / RATE, function()
+        if outgoing == o then SendNext() end
+    end)
 end
 
 -- This character's next batch after what the asker has.
@@ -436,16 +647,23 @@ local function BuildBatch(have)
 
     local meta = {}
     for field in pairs(FIELDS) do meta[field] = char[field] end
-    batch.m, batch.done = meta, true
+    if reset or MetaSum(meta) ~= have.sum then batch.m = meta end
+    batch.done = true
     return batch
 end
 
-local function OnAsked(sender, short, id, rest)
-    local segments, offset, eventCount, journeyId = rest:match("^%d+:(%d+):(%d+):(%d+):(.*)$")
-    if not segments then return end
+local function OnAsked(sender, key, id, rest)
+    local version, layout, segments, offset, eventCount, sum, journeyId
+    version, rest = rest:match("^(%d+):(.*)$")
+    if version and tonumber(version) == VERSION then
+        layout, segments, offset, eventCount, sum, journeyId = rest:match("^(%d+):(%d+):(%d+):(%d+):(%d+):(.*)$")
+        if not layout then return end
+    end
     local refuse
-    if not ns.db.friends[Key(short)] then
+    if not ns.db.friends[key] then
         refuse = "notfriend"
+    elseif not layout or tonumber(layout) ~= ns.char.version then
+        refuse = "version"
     elseif outgoing then
         refuse = "busy"
     elseif not ns.PlayerGUID() then
@@ -456,7 +674,8 @@ local function OnAsked(sender, short, id, rest)
         return
     end
     local text = Serialize(BuildBatch({
-        s = tonumber(segments), o = tonumber(offset), e = tonumber(eventCount), id = Unescape(journeyId),
+        s = tonumber(segments), o = tonumber(offset), e = tonumber(eventCount), sum = tonumber(sum),
+        id = Unescape(journeyId),
     }))
     local parts = {}
     for at = 1, #text, PART do
@@ -473,17 +692,18 @@ end
 local function OnMessage(prefix, text, channel, sender)
     prefix, text, sender = Clean(prefix), Clean(text), Clean(sender)
     if prefix ~= PREFIX or channel ~= "WHISPER" or type(text) ~= "string" or type(sender) ~= "string" then return end
-    local short = Ambiguate and Ambiguate(sender, "none") or sender
+    local key = SenderKey(sender)
+    if not key then return end
     local kind, id, rest = text:match("^(%u):(%x+):(.*)$")
     if kind == "Q" then
-        OnAsked(sender, short, id, rest)
+        OnAsked(sender, key, id, rest)
     elseif kind == "N" then
-        if request and request.id == id and request.key == Key(short) then
+        if request and request.id == id and request.key == key then
             Finish(request.key, REASONS[rest] or "They could not send.")
         end
     elseif kind == "B" then
         local n, total, data = rest:match("^(%d+):(%d+):(.*)$")
-        if n then OnPart(Key(short), id, tonumber(n), tonumber(total), data) end
+        if n then OnPart(key, id, tonumber(n), tonumber(total), data) end
     end
 end
 
@@ -521,21 +741,22 @@ function Friends:Sync(name)
     if not rec then
         ns.Print("Add " .. name .. " first.")
     elseif request then
-        status[key] = "Another sync is running. Try again when it ends."
+        status[key] = BUSY
         Changed()
     else
         Ask(rec, key)
     end
 end
 
--- Adds a friend, sharing this character's journey with them, and asks for theirs.
+-- Adds a friend for every character on this account, so whichever is online
+-- shares its journey with them, and asks for theirs.
 function Friends:Add(name)
     name = strtrim(name or ""):gsub("%-.*$", "")
     if name == "" or not name:find("^[^%s%d%p]+$") and not name:find("[\128-\255]") then
         ns.Print("Type the exact character name of a friend.")
         return
     end
-    if name:lower() == UnitName("player"):lower() then
+    if Key(name) == Key(UnitName("player")) then
         ns.Print("That's you.")
         return
     end
@@ -543,7 +764,8 @@ function Friends:Add(name)
     local key = Key(name)
     if not ns.db.friends[key] then
         ns.db.friends[key] = { name = name, realm = GetRealmName() }
-        ns.Print(name .. " can now sync this character's journey, once they add you too.")
+        ns.Print(name .. " is now a friend of every character on this account. Once they add you too, "
+            .. "whichever of your characters is online shares its journey with them.")
     end
     Changed()
     self:Sync(name)
@@ -554,8 +776,8 @@ function Friends:Remove(name)
     local key = Key(name)
     local rec = ns.db.friends[key]
     if not rec then return end
-    if request and request.key == key then request = nil end
-    if outgoing and Key(Ambiguate and Ambiguate(outgoing.to, "none") or outgoing.to) == key then outgoing = nil end
+    if request and request.key == key then Stop() end
+    if outgoing and SenderKey(outgoing.to) == key then outgoing = nil end
     ns.db.friends[key], status[key] = nil, nil
     Changed()
     NextAuto()
@@ -627,7 +849,8 @@ local function HideOffline(_, _, message)
         return true
     end
     if rec and message == line:format(rec.name) then
-        Finish(request.key, nil)
+        -- A chat filter runs outside ns.On, so an error here would reach the chat frame.
+        ns.SafeCall(Finish, request.key, nil)
         return Hide()
     end
     if outgoing and message == line:format(outgoing.to) then

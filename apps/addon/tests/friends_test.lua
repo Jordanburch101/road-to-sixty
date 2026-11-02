@@ -42,24 +42,42 @@ local function Journey(points, events)
     for i = 1, events do
         list[i] = { 1785000000 + i, "quest", 0, i, -i, "Quest \"|cff00ff00é~%" .. i .. "|r\"", nil, true }
     end
+    -- Events in the shapes the addon saves, so the checks on what comes in can't refuse real ones.
+    if events >= 7 then
+        local t = 1785000000
+        list[2] = { t, "loot", 0, 1, 1, "|cff1eff00|Hitem:2:0|h[Sword]|h|r", 2 }
+        list[3] = { t, "out", 0, 1, 1, 33, { name = "Deadmines", duration = 600, kills = 40, xp = 9000, deaths = 1,
+            money = 500, levels = 1, items = { "|Hitem:5|h" }, party = { "Player-1-0001" }, type = "party" } }
+        list[4] = { t, "gj", 0, 1, 1, "Pals", "Member", true, { files = { 1, 2 }, emblem = 3, bg = { 1, 0, 0 } } }
+        list[5] = { t, "grp", 0, 1, 1, "party", { { "Player-1-0001", "Ann", "Human", "Female", "MAGE", 10 } }, true }
+        list[6] = { t, "eq", 0, 1, 1, 16, 2, "item:2", nil, { t, "drop", 0, 1, 1, 100, "Creature", "Defias" } }
+        list[7] = { t, "qd", 0, 1, 1, 100, 450, 75, "Red Linen" }
+    end
     return {
-        journeyId = "Player-1-FFFF:0", played = 777,
+        journeyId = "Player-1-FFFF:0", played = 777, version = 4,
         segments = {
             { m = "w", c = 0, t = 1785000000, x = 100, y = -50, d = table.concat(steps, ";") },
             { m = "t", c = 1, t = 1785009000, x = 5, y = 6, d = "", j = "b" },
         },
         events = list,
-        levels = { [2] = { t = 1785000100, gear = { 1, 2, 3 } } },
+        levels = { [2] = { t = 1785000100, played = 600, gear = { 1, 2, 3 }, links = { "item:1" },
+            skills = { Mining = { 1, 75 } }, partial = true } },
         kills = { d = "1,10,1;", last = 1785000000, names = { "Boar" } },
         recipes = { Cooking = { Stew = true } },
-        people = {},
+        people = { ["Player-1-0001"] = { name = "Ann", race = "Human", sex = "Female", class = "MAGE", level = 10,
+            guild = "Pals", first = 1785000000, last = 1785000500, c = 0, x = 1, y = 2, groups = { pc1 = 2 }, seconds = 30 } },
         totals = { kills = 1, killXP = 10, questXP = 0, deaths = 0, quests = events, instances = 0, distance = 9, flown = 0 },
         guild = false,
+        reps = { [72] = { 5, "Stormwind" } },
+        skills = { Mining = { 30, 75, 136248 } },
+        rares = { [61] = { { pc1 = 1 }, 1785000300, "Thuzadin", 61, "rare" } },
+        riding = { [33388] = { "Apprentice Riding", 1785000000, 40 } },
+        mounts = { [6] = { 1785000000, 0, 1, 2, 40 } },
     }
 end
 
 local function Client(name, other, guid, char)
-    local c = { handlers = {} }
+    local c = { handlers = {}, errors = {} }
     local env = setmetatable({}, { __index = _G })
     c.env = env
     env.strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -102,9 +120,12 @@ local function Client(name, other, guid, char)
         db = { friends = {}, autoSync = 0, showPaths = {}, roster = {
             [guid] = { name = name, realm = "Era", c = 0, x = 10, y = 20, zone = 1429 },
         } },
-        Print = function() end,
+        Print = function(text) c.printed = text end,
         Now = function() return 1785000000 + math.floor(clock) end,
-        SafeCall = function(fn, ...) return fn(...) end,
+        SafeCall = function(fn, ...)
+            local ok, err = pcall(fn, ...)
+            if not ok then c.errors[#c.errors + 1] = err end
+        end,
         PlayerGUID = function() return c.guid end,
         Command = function() end,
     }
@@ -145,6 +166,8 @@ check(got.segments[2].j == "b" and got.segments[2].d == "", "last segment wrong"
 check(#got.events == 300 and got.events[300][6] == sent.events[300][6], "events differ")
 check(got.events[1][8] == true and got.events[1][7] == nil, "a gap in an event was lost")
 check(got.levels[2].gear[3] == 3 and got.recipes.Cooking.Stew and got.guild == false, "fields differ")
+check(got.events[3][7].kills == 40 and got.events[6][10][2] == "drop" and got.reps[72][2] == "Stormwind"
+    and got.people["Player-1-0001"].groups.pc1 == 2 and got.rares[61][1].pc1 == 1, "real shapes refused or lost")
 check(rec.class == "PALADIN" and rec.level == 12 and rec.played == 777, "summary wrong")
 check(rec.c == 0 and rec.x == 10, "position wrong")
 check(rec.battleTag == "Bromm#1234", "BattleTag not synced")
@@ -270,10 +293,211 @@ z.offline = false
 b.onSend = nil
 check(sends == atStop, "kept sending to someone offline")
 
+b.ns.char = fresh
+F:Sync("Bromm")
+Run()
+check(rec.journey.journeyId == "Player-1-FFFF:9" and status(rec):find("^Last synced"), "resync failed: " .. status(rec))
+
+-- What a friend sends is checked whole before any of it is kept, nested
+-- fields too, and a batch that fails leaves the journey as it was.
+local function Ser(v)
+    local kind = type(v)
+    if kind == "number" then return "n" .. v .. "~" end
+    if kind == "boolean" then return v and "t~" or "f~" end
+    if kind == "string" then
+        return "s" .. v:gsub("[%%~|%c\128-\255]", function(ch) return ("%%%02X"):format(ch:byte()) end) .. "~"
+    end
+    local out = { "{~" }
+    for key, value in pairs(v) do out[#out + 1] = Ser(key) .. Ser(value) end
+    out[#out + 1] = "}~"
+    return table.concat(out)
+end
+local function Reply(batch, from)
+    b.mute = true
+    F:Sync("Bromm")
+    local text = Ser(batch)
+    local parts = {}
+    for at = 1, #text, 200 do parts[#parts + 1] = text:sub(at, at + 199) end
+    for n, part in ipairs(parts) do
+        z.fire("CHAT_MSG_ADDON", "RTSFriends", ("B:%s:%d:%d:%s"):format(b.lastAsked, n, #parts, part), "WHISPER",
+            from or "Bromm-Era")
+    end
+    local after = status(rec)
+    b.mute = false
+    Run()
+    return after
+end
+local stored, storedEvents = rec.journey, #rec.journey.events
+local firstPath = rec.journey.segments[1].d
+local nextEvent = storedEvents + 1
+for name, bad in pairs({
+    later_segment = { s = { { i = 1, o = #firstPath, d = "1,1,1;" }, { i = 99, m = "w", c = 0, t = 1, x = 1, y = 1, d = "" } } },
+    guild_true = { m = { guild = true } },
+    guild_number = { m = { guild = { 5 } } },
+    level_not_table = { m = { levels = { [2] = "x" } } },
+    level_key = { m = { levels = { x = {} } } },
+    kill_name = { m = { kills = { d = "", last = 0, names = { {} } } } },
+    person = { m = { people = { g = "x" } } },
+    person_tally = { m = { people = { g = { groups = { pc1 = "x" } } } } },
+    rep = { m = { reps = { [1] = { "a" } } } },
+    totals = { m = { totals = { kills = "many" } } },
+    played = { m = { played = "long" } },
+    loot_table = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, {} } } },
+    loot_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, "|Hjunk|h" } } },
+    place = { ef = nextEvent, e = { { 1, "lvl", "x", 1, 1, 2 } } },
+    run = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = "long" } } } },
+    named_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12, x = 1 } } },
+    table_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, { 12 } } } },
+    good_events_bad_meta = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12 } }, m = { guild = true } },
+}) do
+    bad.g, bad.j, bad.s = "Player-1-FFFF", "Player-1-FFFF:9", bad.s or {}
+    local after = Reply(bad)
+    check(after:find("did not fit"), name .. " taken: " .. after)
+    check(rec.journey == stored and #stored.events == storedEvents and stored.segments[1].d == firstPath
+        and stored.guild == false, name .. " changed the journey")
+end
+check(#z.errors == 0, "errors: " .. tostring(z.errors[1]))
+
+-- A friend can't grow the saved file without end: past the cap, the sync
+-- stops asking and says why.
+local asks = 0
+z.onSend = function(_, text) if text:sub(1, 1) == "Q" then asks = asks + 1 end end
+local cap = F.MAX_SIZE
+F.MAX_SIZE = 60000
+local huge = Journey(9000, 300)
+huge.journeyId = "Player-1-FFFF:11"
+b.ns.char = huge
+F:Sync("Bromm")
+Run()
+check(status(rec):find("too big"), "cap not reported: " .. status(rec))
+check(asks == 3 and rec.size <= 60000, "kept asking past the cap: " .. asks .. ", " .. tostring(rec.size))
+F.MAX_SIZE = cap
+asks = 0
+F:Sync("Bromm")
+Run()
+check(asks == 0 and status(rec):find("too big"), "asked again after the cap: " .. asks)
+rec.capped = nil
+z.onSend = nil
+b.ns.char = fresh
+F:Sync("Bromm")
+Run()
+check(rec.journey.journeyId == "Player-1-FFFF:9" and status(rec):find("^Last synced"), "no sync after the cap")
+
+-- Only a friend on this realm counts, asking or answering.
+check(Reply({ g = "Player-1-FFFF", j = "Player-1-FFFF:9", s = {} }, "Bromm-OtherRealm") == "Asking...",
+    "took a batch from another realm")
+local toOther = 0
+b.onSend = function(_, _, _, target) if target == "Zed-OtherRealm" then toOther = toOther + 1 end end
+b.fire("CHAT_MSG_ADDON", "RTSFriends", "Q:ab:1:4:0:0:0:0:", "WHISPER", "Zed-OtherRealm")
+b.onSend = nil
+Run()
+check(toOther == 0, "answered someone on another realm")
+
+-- Another version of the protocol or of the saved layout is refused with a reason.
+local replies = {}
+b.onSend = function(_, text) replies[#replies + 1] = text end
+b.fire("CHAT_MSG_ADDON", "RTSFriends", "Q:ab:9:4:0:0:0:0:", "WHISPER", "Zed-Era")
+b.onSend = nil
+Run()
+check(replies[1] == "N:ab:version", "another protocol version answered: " .. tostring(replies[1]))
+z.ns.char.version = 5
+F:Sync("Bromm")
+Run()
+z.ns.char.version = 4
+check(status(rec):find("version of Road to Sixty"), "another layout not refused: " .. status(rec))
+-- A copy kept in an older layout is fetched again whole.
+rec.journey.version = 3
+local old = rec.journey
+F:Sync("Bromm")
+Run()
+check(rec.journey ~= old and rec.journey.version == 4 and status(rec):find("^Last synced"),
+    "older copy not fetched again: " .. status(rec))
+
+-- A name typed in another case finds the friend, accented letters too, and
+-- adding says the list is shared by the whole account.
+local asked
+z.onSend = function(_, text, _, target)
+    if target == "émile" then asked = text:match("^Q:(%x+)") end
+end
+F:Add("émile")
+z.onSend = nil
+check((z.printed or ""):find("every character on this account"), "add message: " .. tostring(z.printed))
+check(asked, "no ask sent to émile")
+z.fire("CHAT_MSG_ADDON", "RTSFriends", "N:" .. (asked or "0") .. ":notfriend", "WHISPER", "Émile-Era")
+check(status(friends["émile"]) == "Waiting for them to add you.", "Émile not matched: " .. status(friends["émile"]))
+F:Remove("émile")
+Run()
+
+-- The busy line goes when the sync it waited on ends.
+friends.other = { name = "Other", realm = "Era" }
+b.mute = true
+F:Sync("Bromm")
+F:Sync("Other")
+check(status(friends.other):find("^Another sync"), "busy not shown: " .. status(friends.other))
+b.mute = false
+Run()
+check(status(friends.other) == "Not synced yet.", "busy line stayed: " .. status(friends.other))
+friends.other = nil
+
+-- An error in the tab while hiding the offline line is caught, and the line still hidden.
+friends.gone = { name = "Gone", realm = "Era" }
+local filterOk, filterHid
+z.onSend = function(_, _, _, target)
+    if target == "Gone" then
+        At(0.05, function()
+            F.OnChange = function() error("tab broke") end
+            filterOk, filterHid = pcall(z.filter, nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Gone"))
+            F.OnChange = nil
+        end)
+        return true
+    end
+end
+check(F:ParseAutoSync("5"), "autosync not set")
+At(330, function() F:ParseAutoSync("off") end)
+Run()
+z.onSend = nil
+friends.gone = nil
+check(filterOk and filterHid == true, "offline filter failed: " .. tostring(filterHid))
+check(#z.errors == 1 and tostring(z.errors[1]):find("tab broke"), "error not caught once: " .. #z.errors)
+z.errors = {}
+
+-- A stopped send and a new ask never run two send loops at once.
+b.ns.char = bigger
+local times, start = {}, clock
+b.onSend = function(_, text) if text:sub(1, 1) == "B" then times[#times + 1] = clock end end
+b.fire("CHAT_MSG_ADDON", "RTSFriends", "Q:aa:1:4:0:0:0:0:", "WHISPER", "Zed-Era")
+At(2, function()
+    check(b.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Zed-Era")) == true, "send line not hidden")
+    b.fire("CHAT_MSG_ADDON", "RTSFriends", "Q:bb:1:4:0:0:0:0:", "WHISPER", "Zed-Era")
+end)
+Run()
+b.onSend = nil
+local inWindow = 0
+for _, t in ipairs(times) do if t >= start + 5 and t < start + 15 then inWindow = inWindow + 1 end end
+check(inWindow <= 31, "two send loops: " .. inWindow .. " parts in 10 seconds")
+b.ns.char = fresh
+Run()
+
+-- The other fields are only sent again when they changed.
+local sentData
+b.onSend = function(_, text) if text:sub(1, 1) == "B" then sentData[#sentData + 1] = text:match("^B:%x+:%d+:%d+:(.*)$") end end
+sentData = {}
+F:Sync("Bromm")
+Run()
+check(status(rec):find("^Last synced") and not table.concat(sentData):find("sm~{~", 1, true), "unchanged fields sent again")
+fresh.reps[72] = { 6, "Stormwind" }
+sentData = {}
+F:Sync("Bromm")
+Run()
+b.onSend = nil
+check(table.concat(sentData):find("sm~{~", 1, true) and rec.journey.reps[72][1] == 6, "changed fields not sent")
+
 -- Removing a friend deletes their journey.
 F:Remove("Bromm")
 check(friends.bromm == nil, "remove left the friend")
 check(#z.ns.Roster:Entries() == 1, "remove left the friend listed")
+
+check(#z.errors == 0 and #b.errors == 0, "errors: " .. tostring(z.errors[1] or b.errors[1]))
 
 if failures > 0 then os.exit(1) end
 print("friends_test: all passed")

@@ -12,8 +12,8 @@ ns.FriendsPanel = FriendsPanel
 
 local ROW = 40
 local TOP = 62                  -- height of the add and auto-sync lines above the list
-local TIP = "Add a friend and have them add you. Your current character's journey is shared with friends you add, "
-    .. "with your BattleTag and who you grouped with."
+local TIP = "Add a friend and have them add you. Friends are shared by every character on this account: "
+    .. "whichever of your characters is online shares its journey with them, with your BattleTag and who you grouped with."
 
 local pane, list, empty, autoButton
 
