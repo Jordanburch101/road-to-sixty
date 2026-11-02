@@ -547,7 +547,7 @@ local function BuildPoints(paths)
     end
 
     state.n, state.px, state.py, state.pt, state.pm, state.pb, state.brk = n, px, py, pt, pm, pb, brk
-    state.pj, state.pd, state.pg = pj, pd, nil
+    state.pj, state.pd, state.pg, state.events = pj, pd, nil, ns.view.events
     state.bounds = { x1, y1, x2, y2 }
     state.lods = {}
 end
@@ -1375,7 +1375,8 @@ local function BuildOtherTracks()
             local px, py, pm, pj, brk, pt, n = {}, {}, {}, {}, {}, {}, 0
             local timed = true      -- paths from before the journey copy have no times
             -- This character's own journey is live, its roster copy as of logout.
-            local paths = ns.Roster:IsMe(e) and ns.Recorder:GetPaths() or ns.Roster:Paths(e)
+            local me = ns.Roster:IsMe(e)
+            local paths = ns.Range:TrimPaths(me and ns.Recorder:GetPaths() or ns.Roster:Paths(e))
             local previous
             for _, path in ipairs(paths) do
                 local toContent = state.toContent[path.c]
@@ -1399,7 +1400,8 @@ local function BuildOtherTracks()
             end
             local track = {
                 n = n, px = px, py = py, pm = pm, pj = pj, brk = brk, lods = {}, colors = colors,
-                entry = e, pt = timed and n > 0 and pt or nil, cur = n,
+                entry = e, pt = timed and n > 0 and pt or nil,
+                events = me and ns.char.events or e.journey and e.journey.events,
             }
             tracks[#tracks + 1] = track
             trackOf[e] = track
@@ -1460,7 +1462,7 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
     state.otherLineCount, state.otherZoom = count, z
     state.otherDrawn = otherDrawn
     if state.clock then
-        Together.Apply()
+        Together.Apply(true)
     end
 end
 
@@ -2458,17 +2460,28 @@ end
 -- played, so every journey starts together and plays without its time away.
 
 -- Seconds played at each point of a track: time passes between points, but
--- not across a login.
+-- not across a login. With its journey's events (track.events), a gap is
+-- time away when a session started in it: a logout in a dungeon or on a
+-- flight leaves no login tag on the path. Older saves without sessions go
+-- by the tags and long breaks.
 function Together.PlayedTimes(track)
-    local pg, played = {}, 0
+    local logins = {}
+    for _, e in ipairs(track.events or {}) do
+        if e[2] == "on" then logins[#logins + 1] = e[1] end
+    end
+    table.sort(logins)
+    local pg, played, k = {}, 0, 1
     local pt, pj, brk = track.pt, track.pj, track.brk
     for i = 1, track.n do
         if i > 1 then
-            local gap = pt[i] - pt[i - 1]
-            if pj[i] == "l" or (brk[i] and not pj[i] and gap > Together.OFFLINE_GAP) then
-                gap = 0
+            local gap, away = pt[i] - pt[i - 1], nil
+            if #logins > 0 then
+                while logins[k] and logins[k] <= pt[i - 1] do k = k + 1 end
+                away = logins[k] and logins[k] <= pt[i]
+            else
+                away = pj[i] == "l" or (brk[i] and not pj[i] and gap > Together.OFFLINE_GAP)
             end
-            played = played + gap
+            if not away then played = played + gap end
         end
         pg[i] = played
     end
@@ -2515,27 +2528,34 @@ function Together.NextMove(t)
     return soonest
 end
 
--- Shows the other tracks up to the clock.
-function Together.Apply()
+-- Shows the other tracks up to the clock. Only tracks that moved are
+-- touched, unless all is set because their lines were just rebuilt.
+function Together.Apply(all)
     local t = state.clock
     for _, track in ipairs(state.otherTracks) do
-        track.cur = track.pt and ns.LastIndex(Together.ClockTimes(track), t) or track.n
+        local cur = track.pt and ns.LastIndex(Together.ClockTimes(track), t) or track.n
+        track.moved = all or cur ~= track.cur
+        track.cur = cur
     end
     for i = 1, state.otherLineCount do
         local spec = state.otherDrawn[i]
-        otherLines[i]:SetShown(spec[6] <= spec.track.cur)
+        if spec.track.moved then
+            otherLines[i]:SetShown(spec[6] <= spec.track.cur)
+        end
     end
+    local placed = all
     for i = 1, state.charCount do
         local m = charMarkers[i]
         local track = state.trackOf[m.entry]
-        if track and track.pt then
+        if track and track.pt and track.moved then
             m:SetShown(track.cur >= 1)
             if track.cur >= 1 then
                 m.x, m.y = track.px[track.cur], track.py[track.cur]
             end
+            placed = true
         end
     end
-    PlaceCharacters()
+    if placed then PlaceCharacters() end
     infoText:SetText(state.togetherMode == "real" and FormatTime(t) or ns.FormatDuration(t) .. " played")
 end
 
@@ -2551,11 +2571,29 @@ function Together.End()
     Together.SetSpeedText()
 end
 
+-- Fits the clock to the tracks again after they change, keeping it inside
+-- them. With no times left in any, goes back to the solo replay at its end
+-- and returns false; the caller redraws the characters.
+function Together.Rebound()
+    local from, to = Together.Bounds()
+    if not from then
+        Together.End()
+        SetPlaying(false)
+        state.cur = state.n
+        ApplyCursor()
+        return false
+    end
+    state.clock, state.clockTo = math.min(math.max(state.clock, from), to), to
+    state.cur = ns.LastIndex(Together.ClockTimes(state), state.clock)
+    ApplyCursor()
+    return true
+end
+
 function Together.Step(elapsed)
     local clock = state.clock + elapsed * Together.SPEEDS[state.togetherSpeed][1]
     local nextMove = Together.NextMove(state.clock)
     if nextMove and nextMove - state.clock > Together.GAP then
-        clock = nextMove
+        clock = math.max(clock, nextMove)
     end
     if not nextMove or clock >= state.clockTo then
         clock = state.clockTo
@@ -3020,11 +3058,15 @@ local function CreateWindow()
             SetPlaying(false)
             return
         end
-        if state.clock then
-            if state.clock >= state.clockTo then
-                state.clock = Together.Bounds()
+        if state.clock and state.clock >= state.clockTo then
+            state.clock = -math.huge
+            if Together.Rebound() then
                 state.cur = 0
+            else
+                Map:RefreshCharacters()
             end
+        end
+        if state.clock then
             SetPlaying(true)
             return
         end
@@ -3395,6 +3437,9 @@ function Map:RefreshCharacters()
     if not (frame and frame:IsShown()) then return end
     BuildCharacters()
     BuildOtherTracks()
+    if state.clock then
+        Together.Rebound()
+    end
     -- Their lines are built with the path, so force a path build.
     state.built = nil
     ApplyView()
@@ -3551,6 +3596,20 @@ ns.Command("map", "open the journey map", function()
     Map:Toggle()
 end)
 
+--@debug@
+ns.Command("tiles", "toggle showing, in red, terrain tiles left out for lying in no zone", function()
+    ns.db.showSkipped = not ns.db.showSkipped
+    -- Drop all loaded tiles so the next view loads the new set.
+    for index in pairs(activeTiles) do
+        ReleaseTile(index)
+    end
+    state.terrainBuilt = nil
+    if frame and frame:IsShown() then
+        ApplyView()
+    end
+    ns.Print("Skipped terrain tiles " .. (ns.db.showSkipped and "shown in red." or "hidden."))
+end)
+--@end-debug@
 
 ns.Command("motes", "toggle sparkles drifting along the journey map path", function()
     ns.db.motes = not ns.db.motes

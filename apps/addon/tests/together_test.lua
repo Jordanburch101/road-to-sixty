@@ -45,7 +45,7 @@ end
 local function Stub()
     return {
         SetText = function(self, v) self.text = v end,
-        SetShown = function(self, v) self.shown = v end,
+        SetShown = function(self, v) self.shown, self.calls = v, (self.calls or 0) + 1 end,
     }
 end
 
@@ -88,6 +88,15 @@ s.clock = 120
 Together.Step(0.016)            -- the long stretch nobody moved in is skipped
 check(s.clock == 4000 and s.cur == 2, "gap not skipped: " .. s.clock)
 check(marker.x == 3 and T.otherLines[2].shown == true, "did not return")
+s.clock = 120
+Together.Step(7)                -- a step past the next move is not pulled back to it
+check(s.clock == 4320, "the clock went back to the next move: " .. s.clock)
+-- Lines and markers of tracks that have not moved are left alone.
+local calls = T.otherLines[1].calls + marker.calls
+Together.Apply()
+check(T.otherLines[1].calls + marker.calls == calls, "unmoved lines shown again")
+Together.Apply(true)
+check(T.otherLines[1].calls + marker.calls == calls + 2, "rebuilt lines not shown")
 
 -- Play time: logins cost nothing, and everyone starts at the same moment.
 s.togetherMode = "game"
@@ -107,6 +116,13 @@ check(marker.x == 3, "login gap not removed")
 s.clock = 15
 Together.Step(0.5)
 check(s.clock == 20 and s.playing == false and s.cur == 4, "end not reached")
+-- Ticking characters on or off fits the clock to the tracks left.
+s.clock = 99
+check(Together.Rebound() and s.clock == 20 and s.clockTo == 20 and s.cur == 4, "clock left outside the tracks")
+local n, tracks = s.n, s.otherTracks
+s.n, s.otherTracks = 0, {}
+check(Together.Rebound() == false and s.clock == nil and s.togetherMode == nil, "no times left but still together")
+s.n, s.otherTracks, s.togetherMode = n, tracks, "game"
 
 -- What counts as time away.
 local pg = Together.PlayedTimes({ n = 3, pt = { 0, 100, 5000 }, pj = { [3] = "h" }, brk = { true, false, true } })
@@ -115,6 +131,12 @@ pg = Together.PlayedTimes({ n = 3, pt = { 0, 100, 5000 }, pj = {}, brk = { true,
 check(pg[3] == 100, "an old save's long break is a logoff")
 pg = Together.PlayedTimes({ n = 3, pt = { 0, 100, 5000 }, pj = {}, brk = { true, false, false } })
 check(pg[3] == 5000, "standing still is still playing")
+-- With sessions saved, a login inside a gap is what makes it time away, tag or not.
+local events = { { 0, "on" }, { 150, "off" }, { 4900, "on" } }
+pg = Together.PlayedTimes({ n = 3, pt = { 0, 100, 5000 }, pj = { [3] = "i" }, brk = { true, false, true }, events = events })
+check(pg[3] == 100, "a logoff in a dungeon counted as played: " .. pg[3])
+pg = Together.PlayedTimes({ n = 3, pt = { 0, 100, 5000 }, pj = {}, brk = { true, false, true }, events = { events[1] } })
+check(pg[3] == 5000, "a long break with no login counted as away")
 
 Together.End()
 check(s.clock == nil and s.togetherMode == nil, "end left the clock")
