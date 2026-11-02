@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- Syncing journeys with friends in game, by addon whisper. FriendsPanel.lua
--- is the side panel's Synced friends tab.
+-- is the side panel's Friends tab.
 --
 -- Adding someone is what shares with them: a journey is only sent to a player
 -- on the list, and only taken from one, so two players must add each other.
@@ -47,6 +47,7 @@ local MAX_PARTS = 4500          -- the most a batch may be, about 25 minutes
 local MAX_DEPTH = 16
 local MAX_FAILS = 30            -- refused sends in a row before giving up
 local AUTO_MINUTES = { 0, 5, 15, 30 }   -- the choices for automatic syncing; 0 is off
+Friends.AUTO_MINUTES = AUTO_MINUTES
 local AUTO_GAP = 2              -- seconds between friends in an automatic sync
 local HIDE_FOR = 2              -- seconds an offline line stays hidden, for each chat window
 local NO_ANSWER = 15            -- seconds to wait for a first answer

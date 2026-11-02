@@ -138,7 +138,7 @@ local SECTIONS = {
             label = "Sync with online friends",
             -- { minutes, name, tip }
             choices = {
-                { 0, "Off", "Only sync when you choose Sync in the map's Synced friends tab." },
+                { 0, "Off", "Only sync when you choose Sync in the map's Friends tab." },
                 { 5, "Every 5 minutes", "Syncs with every friend who is online, while you play." },
                 { 15, "Every 15 minutes", "Syncs with every friend who is online, while you play." },
                 { 30, "Every 30 minutes", "Syncs with every friend who is online, while you play." },

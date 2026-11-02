@@ -4,7 +4,7 @@ local _, ns = ...
 -- travel, loot and dungeon runs, newest first, with a filter; clicking one
 -- jumps the map and replay to that moment. Characters lists the account's
 -- characters from the roster and any synced friends, with a filter by friend.
--- Synced friends is FriendsPanel.lua. The numbers are on the Stats screen
+-- Friends is FriendsPanel.lua. The numbers are on the Stats screen
 -- (StatsScreen.lua), a mode of the map window.
 
 local Panel = { WIDTH = 280 }
@@ -139,6 +139,7 @@ local function CreateList(parent, rowHeight, createRow, updateRow)
     end)
     return list
 end
+Panel.CreateList = CreateList     -- for the Friends tab (FriendsPanel.lua)
 
 -- History ------------------------------------------------------------------------
 
@@ -975,9 +976,22 @@ local function RefreshCharacterList()
     characterList:Refresh()
 end
 
--- Moves the filter on to the next group, or back for the right button.
-local function StepCharacterFilter(_, mouse)
+-- Who to list: a menu of the groups, friends after a divider, or on a client
+-- without the menu, each click the next group, or the last for the right button.
+local function ChooseCharacterFilter(self, mouse)
     local groups = Panel:CharacterGroups(ns.Roster:Entries())
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(self, function(_, root)
+            for i, group in ipairs(groups) do
+                if i == 3 then root:CreateDivider() end
+                root:CreateRadio(group.label, function() return characterFilter == group.key end, function()
+                    characterFilter = group.key
+                    RefreshCharacterList()
+                end)
+            end
+        end)
+        return
+    end
     for i, group in ipairs(groups) do
         if group.key == characterFilter then
             local step = mouse == "RightButton" and #groups - 1 or 1
@@ -1002,10 +1016,10 @@ local function CreateCharacterBar(parent)
     filterButton:SetPoint("TOPLEFT")
     filterButton:SetSize(150, 22)
     filterButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    filterButton:SetScript("OnClick", StepCharacterFilter)
+    filterButton:SetScript("OnClick", ChooseCharacterFilter)
     filterButton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Who to list: click for the next, right-click for the last")
+        GameTooltip:AddLine("Who to list: everyone, your characters, or one friend")
         GameTooltip:Show()
     end)
     filterButton:SetScript("OnLeave", GameTooltip_Hide)
@@ -1050,17 +1064,17 @@ function Panel:Create(parent)
     divider:SetHeight(1)
     divider:SetColorTexture(1, 1, 1, 0.15)
 
-    local names = { "History", "Characters", "Synced friends" }
-    local widths = { 70, 90, 120 }
-    local tabLeft = 0
+    -- Each tab is its label's width and a margin, and what is left of the
+    -- panel's width is shared evenly around them, so the gaps match.
+    local names = { "History", "Characters", "Friends" }
+    local labelsWidth = 0
     for i, name in ipairs(names) do
         local tab = CreateFrame("Button", nil, frame)
-        tab:SetSize(widths[i], TAB_HEIGHT)
-        tab:SetPoint("TOPLEFT", tabLeft, 0)
-        tabLeft = tabLeft + widths[i]
         tab.label = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         tab.label:SetPoint("CENTER", 0, 1)
         tab.label:SetText(name)
+        tab:SetSize(math.ceil(tab.label:GetStringWidth()) + 24, TAB_HEIGHT)
+        labelsWidth = labelsWidth + tab:GetWidth()
         tab.underline = tab:CreateTexture(nil, "OVERLAY")
         tab.underline:SetPoint("BOTTOMLEFT", 12, 0)
         tab.underline:SetPoint("BOTTOMRIGHT", -12, 0)
@@ -1078,6 +1092,12 @@ function Panel:Create(parent)
         pane:SetPoint("TOPLEFT", 6, -TAB_HEIGHT - 8)
         pane:SetPoint("BOTTOMRIGHT", -6, 6)
         panes[i] = pane
+    end
+    local gap = math.max(0, (Panel.WIDTH - labelsWidth) / #tabs)
+    local tabLeft = gap / 2
+    for _, tab in ipairs(tabs) do
+        tab:SetPoint("TOPLEFT", tabLeft, 0)
+        tabLeft = tabLeft + tab:GetWidth() + gap
     end
 
     local filterHeight = CreateHistoryFilters(panes[1])

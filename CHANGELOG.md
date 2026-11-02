@@ -10,7 +10,7 @@ broken and now works. Leave out internal changes. Sections are
 
 ### New
 - Sync journeys with friends in game. Add each other in the journey map's
-  new Synced friends tab, then choose Sync, or have it happen every 5, 15
+  new Friends tab, then choose Sync, or have it happen every 5, 15
   or 30 minutes. Click a friend to replay their journey.
 - Replay several characters at once, yours and your friends'. Tick them
   in the Characters tab, then choose Real Time, which plays by the real
