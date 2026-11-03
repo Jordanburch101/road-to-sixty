@@ -91,8 +91,11 @@ local HOVER_WIDTH = 5
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their path in class colour.
 local OTHER = {
-    MAX_LINES = 1500,       -- most lines per other character's path in range of the view
-    LINE_WIDTH = 1.5,
+    -- The same detail and width as the journey shown; class colours and
+    -- ALPHA tell them apart. ponytail: each ticked path can cost MAX_LINES
+    -- lines a zoom frame; lower this if several ticked paths stutter.
+    MAX_LINES = MAX_LINES,  -- most lines per other character's path in range of the view
+    LINE_WIDTH = LINE_WIDTH,
     -- Alpha by movement mode, and for jumps (arcs, or a plain line when the
     -- reason is unknown, as between walking and a flight).
     ALPHA = { w = 0.55, t = 0.3, g = 0.2, j = 0.3 },
@@ -1411,8 +1414,8 @@ local function BuildOtherTracks()
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
--- own path and the same way, but each within OTHER.MAX_LINES: every line
--- costs time on each zoom frame. Jumps with a known reason are arcs, made of
+-- own path and the same way, curves included, each within OTHER.MAX_LINES:
+-- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
 local function BuildOtherLines(x1, y1, x2, y2, z)
     local count, thickness = 0, OTHER.LINE_WIDTH / z
@@ -1438,7 +1441,8 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
             local lod, list = PickLod(track, x1, y1, x2, y2, z, OTHER.MAX_LINES)
-            for _, spec in ipairs(LinesIn(track, lod, list, x1, y1, x2, y2, true)) do
+            local specs = ns.CurveLines(LinesIn(track, lod, list, x1, y1, x2, y2, true), z, OTHER.MAX_LINES)
+            for _, spec in ipairs(specs) do
                 spec.track = track
                 if spec[5] == "j" and track.pj[spec[6]] then
                     local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
