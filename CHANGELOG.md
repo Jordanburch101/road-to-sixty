@@ -15,9 +15,11 @@ broken and now works. Leave out internal changes. Sections are
   list is shared by every character on your account, so a friend can
   sync any of them, and they see your BattleTag.
 - Replay several characters at once, yours and your friends'. Tick them
-  in the Characters tab, then choose Real Time, which plays by the real
-  date and time, or Play Time, which starts everyone together and leaves
-  out time logged off. Speeds run from 2 minutes to a day a second.
+  in the Characters tab, pick a mode from the menu at the top right of
+  the map, then press play. Real Time plays by the real date and time,
+  and Play Time starts everyone together and leaves out time logged off.
+  Speeds run from 2 minutes to a day a second, and ticked characters'
+  paths curve when zoomed in, like your own.
 - The Characters tab can show everyone, just your characters or one
   friend, and tags friends with their BattleTag.
 
