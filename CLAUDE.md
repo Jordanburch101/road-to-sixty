@@ -41,7 +41,6 @@ for data, its exact format; read that before changing a module.
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Friends.lua | syncing journeys with friends by addon whisper, and automatic sync; friends list through `Roster:Entries` but stay out of the roster; format in its header |
-| Tracking.lua | extra tracking, off by default (party positions, subzones, XP and gold and more), in `ns.db.tracking`; kinds in its header |
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |

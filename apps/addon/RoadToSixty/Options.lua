@@ -14,17 +14,6 @@ local SECTION_GAP = 18   -- space above each section heading
 local ROW = 30           -- height of one checkbox row
 local BUTTON_WIDTH = 160
 
--- An option that turns a kind of extra tracking on or off (Tracking.lua).
-local function Track(key, label, tip)
-    return {
-        label = label,
-        tip = tip,
-        get = function() return not ns.db.tracking.off[key] end,
-        -- false, not nil: Core.lua's defaults would turn a nil back off at the next login.
-        set = function(on) ns.db.tracking.off[key] = not on end,
-    }
-end
-
 local panel, category
 local body               -- what the panel scrolls; everything is built on it
 local checks = {}        -- checkbox -> its option
@@ -147,19 +136,6 @@ local SECTIONS = {
             get = function() return ns.Friends:AutoSync() end,
             set = function(minutes) ns.Friends:SetAutoSync(minutes) end,
         },
-    },
-    {
-        title = "Extra tracking",
-        Track("party", "Where party members were", "Their positions while you group outdoors."),
-        Track("stats", "XP and gold over time", "A sample each minute, when something has changed."),
-        Track("sub", "Subzones and first visits", "Each subzone you enter, marking the first time you see it."),
-        Track("taxi", "Flights", "Where each flight started and ended, and what it cost."),
-        Track("tal", "Talents", "Your talent points whenever they change."),
-        Track("bind", "Hearthstone", "Each new place your hearthstone is bound."),
-        Track("rest", "Rested areas", "When you enter and leave inns and cities."),
-        Track("npc", "Town visits", "Vendors, trainers, banks, auction houses and mailboxes you use."),
-        Track("trade", "Trades", "Who you opened a trade with."),
-        Track("shot", "Screenshots", "Where you took each screenshot."),
     },
 }
 

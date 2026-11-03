@@ -46,7 +46,6 @@ Sources.lua
 Parties.lua
 Roster.lua
 Friends.lua
-Tracking.lua
 Range.lua
 Health.lua
 Routes.lua

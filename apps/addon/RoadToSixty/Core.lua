@@ -13,8 +13,7 @@ local addonName, ns = ...
 -- level cap from the client (GetMaxPlayerLevel), so Wrath's 80 needs no change.
 --
 -- Saved variables. RoadToSixtyDB (ns.db) is account-wide: the settings in
--- defaults below (friends and tracking are documented in Friends.lua and
--- Tracking.lua), plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
+-- defaults below (friends are documented in Friends.lua), plus roster (Roster.lua) and pc, this PC's ID (ns.pc),
 -- which counts the merge can't rebuild are kept under (Tally.lua). The
 -- app's sync folder gives the ID; without the app the addon makes one.
 -- RoadToSixtyCharDB (ns.char) is one character's journey, with charDefaults
@@ -73,11 +72,6 @@ local defaults = {
     gearBars = "classic",   -- the gear screen's item bars: classic, glow, edges, both or comet (GearScreen.BAR_STYLES)
     friends = {},       -- friends and their synced journeys, see Friends.lua
     autoSync = 0,       -- minutes between automatic syncs with friends; 0 is off
-    tracking = {        -- extra tracking, see Tracking.lua; all of it off until turned on
-        off = { party = true, stats = true, sub = true, taxi = true, tal = true,
-            bind = true, rest = true, npc = true, trade = true, shot = true },
-        chars = {},
-    },
 }
 
 -- Layout of RoadToSixtyCharDB; bump it at every change to what is saved

@@ -20,9 +20,6 @@ broken and now works. Leave out internal changes. Sections are
   out time logged off. Speeds run from 2 minutes to a day a second.
 - The Characters tab can show everyone, just your characters or one
   friend, and tags friends with their BattleTag.
-- More of your journey is recorded: where your party went, subzones and
-  first visits, XP and gold, flights, talents, town visits and more. Each
-  has its own switch in the options, and all start off. Pin a note to a spot with /rts note.
 
 ## 1.18.0
 

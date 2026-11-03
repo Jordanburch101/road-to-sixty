@@ -73,7 +73,5 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   server and the app never see them.
 - `Roster:Entries` lists friends too (`e.friend`). Anything that saves
   over, deletes or uploads an entry must skip them.
-- Tracking.lua's extra data sits in the account-wide `ns.db.tracking`,
-  off by default and outside the journey, so it needs no `DATA_VERSION` bump.
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.
