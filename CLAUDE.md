@@ -40,11 +40,12 @@ for data, its exact format; read that before changing a module.
 | Duels.lua | duels the player fights (`duel` events): the opponent, the result, who challenged, `/rts duelprobe` (#88) |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
+| Friends.lua | syncing journeys with friends by addon whisper, and automatic sync; friends list through `Roster:Entries` but stay out of the roster; format in its header |
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
 | Style.lua | the journey's look: path colours, jump styles, event and class icons, History categories (`ns.Style`) |
-| Map.lua | journey map window, layers, replay, markers |
+| Map.lua | journey map window, layers, replay, markers; the `Together` table is replaying several journeys at once |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Gaps.lua | land and sea no zone map covers, painted as zone maps paint theirs (`Gaps/`, Era's set in `Gaps/Era/`, the Anniversary realms' in `Gaps/Anniversary/`), and the soft feather and rim masks (#73) |
 | Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |
@@ -55,7 +56,7 @@ for data, its exact format; read that before changing a module.
 | Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`) |
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
-| Panel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
+| Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |

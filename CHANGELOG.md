@@ -6,6 +6,21 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.19.0
+
+### New
+- Sync journeys with friends in game. Add each other in the journey map's
+  new Friends tab, then choose Sync, or have it happen every 5, 15
+  or 30 minutes. Click a friend to replay their journey. Your friends
+  list is shared by every character on your account, so a friend can
+  sync any of them, and they see your BattleTag.
+- Replay several characters at once, yours and your friends'. Tick them
+  in the Characters tab, then choose Real Time, which plays by the real
+  date and time, or Play Time, which starts everyone together and leaves
+  out time logged off. Speeds run from 2 minutes to a day a second.
+- The Characters tab can show everyone, just your characters or one
+  friend, and tags friends with their BattleTag.
+
 ## 1.18.0
 
 ### New

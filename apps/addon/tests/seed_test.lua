@@ -260,6 +260,32 @@ do
     print(("gear plan: %d epics, %d raid nights, %d enchants, %d quick swaps"):format(epics, raids, enchants, swaps))
 end
 
+-- Made-up friends: kept as Friends.lua keeps a synced journey, and this
+-- character's journey left as it was.
+do
+    local own, changed = ns.char, 0
+    local before = #own.events
+    ns.db = ns.db or {}
+    ns.db.friends = { bromm = { name = "Bromm", realm = "Era" } }
+    ns.Friends = { OnChange = function() changed = changed + 1 end }
+    GetRealmName = function() return "Era" end
+    commands.seedfriends("2")
+    local a, b = ns.db.friends.seedfriend, ns.db.friends.seedbuddy
+    check(ns.char == own and #own.events == before, "seedfriends leaves this character's journey alone")
+    check(ns.db.friends.bromm ~= nil and ns.db.friends.seedpal == nil, "seedfriends adds two, beside a real friend")
+    for _, rec in ipairs({ a, b }) do
+        local j = rec and rec.journey
+        check(j and #j.segments > 0 and #j.events > 0 and j.levels[30] ~= nil and j.kills.d ~= "",
+            "a made-up friend has a journey to 30")
+        check(rec and rec.friend and rec.key == rec.guid and rec.guid:find("^Player%-%d+%-%x+$") ~= nil
+            and rec.battleTag == "Seedtag#1111" and rec.c ~= nil, "a made-up friend is kept as a synced one")
+    end
+    check(a and b and a.journey.segments[1].t ~= b.journey.segments[1].t, "made-up friends start apart")
+    commands.seedfriends("remove")
+    check(ns.db.friends.seedfriend == nil and ns.db.friends.bromm ~= nil and changed == 2,
+        "seedfriends remove takes out only the made-up ones")
+end
+
 if failures == 0 then
     print("Seed tests passed.")
 else

@@ -45,6 +45,7 @@ Enchants.lua
 Sources.lua
 Parties.lua
 Roster.lua
+Friends.lua
 Range.lua
 Health.lua
 Routes.lua
@@ -54,6 +55,7 @@ PathCurve.lua
 Style.lua
 Map.lua
 Panel.lua
+FriendsPanel.lua
 GearCard.lua
 Screens.lua
 GearTimeline.lua

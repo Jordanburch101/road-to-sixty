@@ -540,11 +540,13 @@ end
 -- Run ------------------------------------------------------------------------
 
 -- Wipes the journey and starts generating at level 1 in zone at (x, y),
--- daysAgo days in the past. settings are extra generator fields.
-local function Begin(zone, x, y, daysAgo, items, settings)
-    ns.ResetCharacter()
+-- daysAgo days in the past. settings are extra generator fields. With char,
+-- a fresh journey table, it fills that instead and this character's is left
+-- alone (/rts seedfriends).
+local function Begin(zone, x, y, daysAgo, items, settings, char)
+    if not char then ns.ResetCharacter() end
     G = {
-        char = ns.char, points = 0, played = 0,
+        char = char or ns.char, points = 0, played = 0,
         level = 1, quest = 1, dungeon = 0,
         sessionLeft = SESSION_POINTS,
         c = zone.c, x = x, y = y,
@@ -583,11 +585,12 @@ local function Finish(maxLevel, started, label, extra)
     Log("off")
     if extra then extra() end
 
-    ns.char.kills.d = table.concat(G.killBuf)
-    ns.char.played = G.played
-    ns.char.seeded = true
-    local points = G.points
+    local char, points = G.char, G.points
+    char.kills.d = table.concat(G.killBuf)
+    char.played = G.played
+    char.seeded = true
     G = nil
+    if char ~= ns.char then return end
     -- The roster's coarse path was emptied by the reset; make it from the seed.
     ns.Roster:Rebuild()
 
@@ -1283,9 +1286,12 @@ local function RunDungeon(dungeon)
     end
 end
 
-local function SeedRealistic(items)
+-- friend, if given, is { char, race, faction, daysAgo }: the journey goes
+-- into char, a fresh table, for that race, instead of this character's.
+local function SeedRealistic(items, friend)
     local _, race = UnitRace("player")
     local faction = UnitFactionGroup("player")
+    if friend then race, faction = friend.race, friend.faction end
     local route = ROUTES[race] or (faction == "Horde" and ROUTES.Orc or ROUTES.Human)
 
     local zones = {}
@@ -1304,7 +1310,7 @@ local function SeedRealistic(items)
     local started = debugprofilestop()
     local ends = LevelEnds(REALISTIC_POINTS, REALISTIC_LEVEL)
     local town = { RandomSpot(zones[1]) }
-    Begin(zones[1], town[1], town[2], 21, items, {
+    Begin(zones[1], town[1], town[2], friend and friend.daysAgo or 21, items, {
         total = REALISTIC_POINTS,
         levelFor = function(points)
             for level = 1, REALISTIC_LEVEL - 1 do
@@ -1318,7 +1324,7 @@ local function SeedRealistic(items)
         epicShare = 0,
         gearList = REALISTIC_GEAR,
         itemsById = items.byId,
-    })
+    }, friend and friend.char)
 
     local dungeons, nextDungeon = DUNGEONS[faction] or DUNGEONS.Alliance, 1
     for i, zone in ipairs(zones) do
@@ -1600,4 +1606,72 @@ ns.Command("seedalt", "add made-up characters to compare with on the Stats scree
             :format(table.concat(names, ", ")))
     end
     if ns.StatsScreen then ns.StatsScreen:Rebuild() end
+end)
+
+-- /rts seedfriends [count]: made-up synced friends (one, or up to three),
+-- each with a realistic 1-30 of its own race's route, kept as Friends.lua
+-- keeps a synced journey, so the Characters tab, the Friends tab and
+-- replaying together have someone to show. They start a day apart, so they
+-- overlap in Real Time, and the first two share a BattleTag, as one
+-- player's two characters would. Syncing one asks a player who is not
+-- there. /rts seedfriends remove takes them all out again.
+local SEED_FRIENDS = {
+    Alliance = {
+        { "Seedfriend", "Human", "PALADIN", "Seedtag#1111" },
+        { "Seedbuddy", "Dwarf", "HUNTER", "Seedtag#1111" },
+        { "Seedpal", "NightElf", "DRUID", "Otherseed#2222" },
+    },
+    Horde = {
+        { "Seedfriend", "Orc", "WARRIOR", "Seedtag#1111" },
+        { "Seedbuddy", "Scourge", "MAGE", "Seedtag#1111" },
+        { "Seedpal", "Tauren", "SHAMAN", "Otherseed#2222" },
+    },
+}
+
+local function RemoveSeedFriends()
+    for key, rec in pairs(ns.db.friends) do
+        if rec.seeded then ns.db.friends[key] = nil end
+    end
+end
+
+ns.Command("seedfriends", "add made-up synced friends to replay with (developer)", function(arg)
+    if not ns.Friends then return end
+    RemoveSeedFriends()
+    if arg == "remove" then
+        ns.Print("Removed the made-up friends.")
+        if ns.Friends.OnChange then ns.Friends.OnChange() end
+        return
+    end
+    local faction = UnitFactionGroup("player") == "Horde" and "Horde" or "Alliance"
+    local list = SEED_FRIENDS[faction]
+    local count = math.max(1, math.min(#list, tonumber(arg) or #list))
+    ns.Print("Loading item data for fake loot...")
+    LoadItems(function(items)
+        local names = {}
+        for k = 1, count do
+            local name, race, class, tag = unpack(list[k])
+            local char = {
+                segments = {}, events = {}, levels = {},
+                totals = { kills = 0, killXP = 0, questXP = 0, deaths = 0, quests = 0, instances = 0, distance = 0, flown = 0 },
+            }
+            SeedRealistic(items, { char = char, race = race, faction = faction, daysAgo = 22 - k })
+            if not char.seeded then return end
+            local guid = ("Player-0-0000F0E%d"):format(k)
+            local last, zone = char.segments[#char.segments], nil
+            for _, e in ipairs(char.events) do
+                if e[2] == "zone" then zone = e[6] end
+            end
+            char.class, char.journeyId = class, guid .. ":" .. char.segments[1].t
+            ns.db.friends[name:lower()] = {
+                name = name, realm = GetRealmName(), class = class, level = REALISTIC_LEVEL, zone = zone,
+                c = last.c, x = last.x, y = last.y, seen = char.events[#char.events][1], played = char.played,
+                synced = ns.Now(), battleTag = tag, guid = guid, journey = char,
+                key = guid, friend = true, seeded = true,
+            }
+            names[#names + 1] = ("%s (%s)"):format(name, tag)
+        end
+        ns.Print(("Added %s as synced friends. /rts seedfriends remove takes them out.")
+            :format(table.concat(names, ", ")))
+        if ns.Friends.OnChange then ns.Friends.OnChange() end
+    end)
 end)

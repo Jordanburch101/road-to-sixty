@@ -3,7 +3,8 @@ local _, ns = ...
 -- Side panel of the journey map. History lists the journey's milestones,
 -- travel, loot and dungeon runs, newest first, with a filter; clicking one
 -- jumps the map and replay to that moment. Characters lists the account's
--- characters from the roster. The numbers are on the Stats screen
+-- characters from the roster and any synced friends, with a filter by friend.
+-- Friends is FriendsPanel.lua. The numbers are on the Stats screen
 -- (StatsScreen.lua), a mode of the map window.
 
 local Panel = { WIDTH = 280 }
@@ -16,10 +17,13 @@ local NEST_INDENT = 12      -- how far rows folded under a run move in when it i
 -- session only; each run starts folded (FilterHistory).
 local expanded = {}
 local CHARACTER_ROW = 34
+local CHARACTER_BAR = 26    -- the filter above the Characters list
 local SCROLL_STEP = 3
 
 local tabs, panes = {}, {}
 local historyList, characterList
+local characterFilter = "all"   -- a group's key, see Panel:CharacterGroups
+local filterButton
 local currentTime = math.huge   -- replay time History follows; math.huge at the end
 local currentIndex              -- index in historyList.data of the entry at currentTime
 
@@ -135,6 +139,7 @@ local function CreateList(parent, rowHeight, createRow, updateRow)
     end)
     return list
 end
+Panel.CreateList = CreateList     -- for the Friends tab (FriendsPanel.lua)
 
 -- History ------------------------------------------------------------------------
 
@@ -902,7 +907,8 @@ local function UpdateCharacterRow(row, e)
     ns.SetClassIcon(row.icon, e.class)
     local me = ns.Roster:IsMe(e)
     local r, g, b = ns.ClassColor(e.class)
-    row.title:SetText(("%s  |cffffffff%d|r"):format(e.name or "?", me and UnitLevel("player") or e.level or 0))
+    local tag = e.friend and ("  |cff82c5ff%s|r"):format(e.battleTag or "Synced friend") or ""
+    row.title:SetText(("%s  |cffffffff%d|r%s"):format(e.name or "?", me and UnitLevel("player") or e.level or 0, tag))
     row.title:SetTextColor(r, g, b)
 
     local parts = {}
@@ -924,6 +930,111 @@ local function UpdateCharacterRow(row, e)
     row.selected:SetShown(shown)
     row.pathToggle:SetShown(not shown)
     row.pathToggle:SetChecked(ns.db.showPaths[e.key] == true)
+end
+
+-- The filter's groups, in the order it goes through them: everyone, this
+-- account's characters, then each synced friend with all their characters,
+-- known by BattleTag, or by name until a sync brings one.
+function Panel:CharacterGroups(entries)
+    local groups, seen = { { key = "all", label = "Everyone" }, { key = "mine", label = "My characters" } }, {}
+    for _, e in ipairs(entries) do
+        if e.friend then
+            local key = e.battleTag or e.name or "?"
+            if not seen[key] then
+                seen[key] = true
+                groups[#groups + 1] = { key = key, label = key }
+            end
+        end
+    end
+    return groups
+end
+
+-- The entries in the group with this key.
+function Panel:FilterCharacters(entries, key)
+    if key == "all" then return entries end
+    local list = {}
+    for _, e in ipairs(entries) do
+        local friend = e.friend and (e.battleTag or e.name or "?")
+        if (key == "mine" and not friend) or friend == key then
+            list[#list + 1] = e
+        end
+    end
+    return list
+end
+
+local function RefreshCharacterList()
+    local entries = ns.Roster:Entries()
+    local groups, current = Panel:CharacterGroups(entries), nil
+    for _, group in ipairs(groups) do
+        if group.key == characterFilter then current = group end
+    end
+    if not current then
+        characterFilter, current = "all", groups[1]
+    end
+    filterButton:SetText(current.label)
+    characterList.data = Panel:FilterCharacters(entries, characterFilter)
+    characterList:Refresh()
+end
+
+-- Who to list: a menu of the groups, friends after a divider, or on a client
+-- without the menu, each click the next group, or the last for the right button.
+local function ChooseCharacterFilter(self, mouse)
+    local groups = Panel:CharacterGroups(ns.Roster:Entries())
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(self, function(_, root)
+            for i, group in ipairs(groups) do
+                if i == 3 then root:CreateDivider() end
+                root:CreateRadio(group.label, function() return characterFilter == group.key end, function()
+                    characterFilter = group.key
+                    RefreshCharacterList()
+                end)
+            end
+        end)
+        return
+    end
+    for i, group in ipairs(groups) do
+        if group.key == characterFilter then
+            local step = mouse == "RightButton" and #groups - 1 or 1
+            characterFilter = groups[(i - 1 + step) % #groups + 1].key
+            break
+        end
+    end
+    RefreshCharacterList()
+end
+
+-- Turns the path of every character listed on or off, for replaying together.
+local function SetListedPaths(on)
+    for _, e in ipairs(characterList.data) do
+        ns.db.showPaths[e.key] = on or nil
+    end
+    ns.Map:RefreshCharacters()
+    characterList:Refresh()
+end
+
+local function CreateCharacterBar(parent)
+    filterButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    filterButton:SetPoint("TOPLEFT")
+    filterButton:SetSize(150, 22)
+    filterButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    filterButton:SetScript("OnClick", ChooseCharacterFilter)
+    filterButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Who to list: everyone, your characters, or one friend")
+        GameTooltip:Show()
+    end)
+    filterButton:SetScript("OnLeave", GameTooltip_Hide)
+
+    local none = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    none:SetPoint("TOPRIGHT")
+    none:SetSize(50, 22)
+    none:SetText("None")
+    none:SetScript("OnClick", function() SetListedPaths(false) end)
+
+    local all = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    all:SetPoint("RIGHT", none, "LEFT", -2, 0)
+    all:SetSize(50, 22)
+    all:SetText("All")
+    all:SetScript("OnClick", function() SetListedPaths(true) end)
 end
 
 -- Panel --------------------------------------------------------------------------
@@ -953,15 +1064,17 @@ function Panel:Create(parent)
     divider:SetHeight(1)
     divider:SetColorTexture(1, 1, 1, 0.15)
 
-    local names = { "History", "Characters" }
-    local tabWidth = self.WIDTH / #names
+    -- Each tab is its label's width and a margin, and what is left of the
+    -- panel's width is shared evenly around them, so the gaps match.
+    local names = { "History", "Characters", "Friends" }
+    local labelsWidth = 0
     for i, name in ipairs(names) do
         local tab = CreateFrame("Button", nil, frame)
-        tab:SetSize(tabWidth, TAB_HEIGHT)
-        tab:SetPoint("TOPLEFT", (i - 1) * tabWidth, 0)
         tab.label = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         tab.label:SetPoint("CENTER", 0, 1)
         tab.label:SetText(name)
+        tab:SetSize(math.ceil(tab.label:GetStringWidth()) + 24, TAB_HEIGHT)
+        labelsWidth = labelsWidth + tab:GetWidth()
         tab.underline = tab:CreateTexture(nil, "OVERLAY")
         tab.underline:SetPoint("BOTTOMLEFT", 12, 0)
         tab.underline:SetPoint("BOTTOMRIGHT", -12, 0)
@@ -980,13 +1093,22 @@ function Panel:Create(parent)
         pane:SetPoint("BOTTOMRIGHT", -6, 6)
         panes[i] = pane
     end
+    local gap = math.max(0, (Panel.WIDTH - labelsWidth) / #tabs)
+    local tabLeft = gap / 2
+    for _, tab in ipairs(tabs) do
+        tab:SetPoint("TOPLEFT", tabLeft, 0)
+        tabLeft = tabLeft + tab:GetWidth() + gap
+    end
 
     local filterHeight = CreateHistoryFilters(panes[1])
     historyList = CreateList(panes[1], HISTORY_ROW, CreateHistoryRow, UpdateHistoryRow)
     historyList:SetPoint("TOPLEFT", 0, -filterHeight - 4)
     historyList:SetPoint("BOTTOMRIGHT")
     characterList = CreateList(panes[2], CHARACTER_ROW, CreateCharacterRow, UpdateCharacterRow)
-    characterList:SetAllPoints()
+    CreateCharacterBar(panes[2])
+    characterList:SetPoint("TOPLEFT", 0, -CHARACTER_BAR)
+    characterList:SetPoint("BOTTOMRIGHT")
+    ns.FriendsPanel:Create(panes[3])
 
     SelectTab(1)
     return frame
@@ -1038,6 +1160,11 @@ function Panel:Refresh()
     historyItems = BuildHistory()
     FilterHistory()
     historyList:ScrollToTop()
-    characterList.data = ns.Roster:Entries()
-    characterList:Refresh()
+    RefreshCharacterList()
+    ns.FriendsPanel:Refresh()
+end
+
+-- Redraws the Characters list after the friends or their paths change.
+function Panel:RefreshCharacters()
+    if characterList then RefreshCharacterList() end
 end
