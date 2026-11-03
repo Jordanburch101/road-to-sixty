@@ -28,7 +28,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
   const linked = status.linkedTo !== null;
   return (
     <main className="flex h-full flex-col">
-      <header className="relative overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
+      <header className="relative shrink-0 overflow-hidden border-b border-line-soft px-6 pb-5 pt-6">
         <div className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,transparent_30%,#000_75%)]">
           <Fog width={400} height={180} step={14} roads={[SETUP_ROAD]} marks={SETUP_MARKS} />
         </div>
@@ -37,7 +37,7 @@ export function FirstRun({ status, onDone }: { status: Status; onDone: () => voi
         <p className="relative mt-1 text-sm text-muted">Three steps, once. After that it runs by itself.</p>
       </header>
 
-      <ol className="flex flex-1 flex-col gap-[18px] px-6 py-5">
+      <ol className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 py-5">
         <Step n={1} done={ready} current={found && !ready} title={!found ? "WoW not found" : !ready ? "Install the addon" : installed ? "Addon installed" : "WoW found"}>
           {folders.map((f) => (
             <div key={f.path} className="flex min-w-0 flex-col gap-0.5 rounded-[10px] border border-line bg-panel px-3 py-2.5">
