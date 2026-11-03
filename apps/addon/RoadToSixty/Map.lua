@@ -3115,13 +3115,11 @@ local function CreateWindow()
     end)
     speedButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
 
-    Together.button = CreateButton(120, "Solo", function(self)
-        local mode
-        if state.togetherMode then
-            mode = Together.NEXT[state.togetherMode]
-        else
-            mode = "real"
-        end
+    -- Picking a mode sets the replay to its start, paused; play starts it.
+    -- mode is real, game, or nil for Solo.
+    local function ChooseMode(mode)
+        if mode == state.togetherMode then return end
+        SetPlaying(false)
         state.togetherMode = mode
         local from, to
         if mode then
@@ -3129,7 +3127,6 @@ local function CreateWindow()
         end
         if not from then
             Together.End()
-            SetPlaying(false)
             state.cur = state.n
             ApplyCursor()
             Map:RefreshCharacters()
@@ -3137,18 +3134,32 @@ local function CreateWindow()
         end
         state.clock, state.clockTo = from, to
         state.cur = 0
-        self:SetText(Together.LABELS[mode])
+        Together.button:SetText(Together.LABELS[mode])
         Together.SetSpeedText()
         ApplyCursor()
         Together.Apply()
-        SetPlaying(true)
+    end
+    Together.button = CreateButton(120, "Solo", function(self)
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(_, root)
+                for _, mode in ipairs({ false, "real", "game" }) do
+                    root:CreateRadio(mode and Together.LABELS[mode] or "Solo",
+                        function() return state.togetherMode == (mode or nil) end,
+                        function() ChooseMode(mode or nil) end)
+                end
+            end)
+        elseif state.togetherMode then
+            ChooseMode(Together.NEXT[state.togetherMode])
+        else
+            ChooseMode("real")
+        end
     end)
     Together.button:SetParent(overlay)
     Together.button:SetPoint("TOPRIGHT", -8, -8)
     Together.button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Replay mode")
-        GameTooltip:AddLine("Solo: the normal replay of one journey. Click to play every ticked character at once.", 1, 1, 1, true)
+        GameTooltip:AddLine("Solo: the normal replay of one journey. The other two play every ticked character at once.", 1, 1, 1, true)
         GameTooltip:AddLine("Real Time: by the real time it happened, so a character that logged off waits on the map.", 1, 1, 1, true)
         GameTooltip:AddLine("Play Time: by time played, as if everyone played nonstop from the same moment.", 1, 1, 1, true)
         GameTooltip:Show()
