@@ -16,7 +16,8 @@ button, blue only for status, fog of war background).
   travelling along each road. Plain functions, tested in `dots.test.ts`.
   Each lit dot also knows its road; `Timing` gives a road its own turn in
   the loop, and `Fog`'s `colours` its own colour (the website's "one road"
-  band).
+  band). `onGrid` moves a marker to the nearest grid dot, so `Fog`'s
+  `marks` can be any point on a road and still sit on a dot.
 - `src/Fog.tsx` draws that grid in React (`animate` makes it move; the app's
   first run leaves it still). The faint dots are one repeating SVG pattern,
   not a circle each, and the loop length sits on the svg as `--rts-fog-s`,

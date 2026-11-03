@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fogAnimation, fogDelay, fogDots } from "./dots";
+import { fogAnimation, fogDelay, fogDots, onGrid } from "./dots";
 
 const xy = (dots: number[][]) => dots.map(([x, y]) => [x, y]);
 
@@ -10,6 +10,14 @@ test("dots on the road are lit, near it half lit, the rest fogged", () => {
   expect(xy(edge)).toContainEqual([70, 90]);
   expect(fog).toContainEqual([70, 150]);
   expect(lit.length + edge.length + fog.length).toBe(100);
+});
+
+test("a marker moves to the nearest grid dot", () => {
+  const { fog } = fogDots(200, 200, 20, []);
+  for (const p of [[40, 118], [33, 7], [0, 0], [199, 199]] as [number, number][]) {
+    expect(fog).toContainEqual(onGrid(p, 20));
+  }
+  expect(onGrid([240, 118], 14)).toEqual([245, 119]);
 });
 
 test("with no roads everything is fogged", () => {

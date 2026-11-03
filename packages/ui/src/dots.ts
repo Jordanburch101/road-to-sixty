@@ -45,6 +45,12 @@ export function fogDots(width: number, height: number, step: number, roads: Poin
   return { lit, edge, fog };
 }
 
+// The grid dot nearest p, so a marker sits on a dot rather than between them.
+export function onGrid([x, y]: Point, step: number): Point {
+  const snap = (v: number) => (Math.round((v - step / 2) / step) + 0.5) * step;
+  return [snap(x), snap(y)];
+}
+
 // The CSS for lit and half-lit dots with the class rts-fog-road. Every dot
 // runs the same loop; fogDelay starts each one partway in. A parent's
 // --rts-fog-s overrides the length, so fogs with different loops can share

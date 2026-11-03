@@ -1,5 +1,5 @@
 import { type CSSProperties, useMemo } from "react";
-import { fogAnimation, fogDelay, fogDots, type Point, type Timing } from "./dots";
+import { fogAnimation, fogDelay, fogDots, onGrid, type Point, type Timing } from "./dots";
 
 // Draws the fog grid at a fixed size; the parent clips and fades it.
 // animate is the loop's length in seconds; without it the fog is still.
@@ -55,7 +55,7 @@ export function Fog({
           />
         );
       })}
-      {marks.map(([x, y]) => (
+      {marks.map((mark) => onGrid(mark, step)).map(([x, y]) => (
         <g key={`m${x},${y}`}>
           <circle cx={x} cy={y} r={8} fill="none" className="stroke-accent" strokeOpacity={0.35} />
           <circle cx={x} cy={y} r={3} className="fill-accent" />
