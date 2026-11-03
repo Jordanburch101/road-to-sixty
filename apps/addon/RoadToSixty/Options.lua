@@ -150,7 +150,7 @@ local SECTIONS = {
     },
     {
         title = "Extra tracking",
-        Track("party", "Where party members were", "Their positions while you group outdoors, for the offline viewer."),
+        Track("party", "Where party members were", "Their positions while you group outdoors."),
         Track("stats", "XP and gold over time", "A sample each minute, when something has changed."),
         Track("sub", "Subzones and first visits", "Each subzone you enter, marking the first time you see it."),
         Track("taxi", "Flights", "Where each flight started and ended, and what it cost."),

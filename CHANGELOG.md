@@ -23,8 +23,6 @@ broken and now works. Leave out internal changes. Sections are
 - More of your journey is recorded: where your party went, subzones and
   first visits, XP and gold, flights, talents, town visits and more. Each
   has its own switch in the options, and all start off. Pin a note to a spot with /rts note.
-- An offline viewer in the addon's Viewer folder replays your saved
-  journeys in a browser.
 
 ## 1.18.0
 

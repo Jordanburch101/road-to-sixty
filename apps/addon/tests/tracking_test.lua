@@ -14,7 +14,7 @@ end
 local handlers, commands, printed = {}, {}, {}
 local clock = 1785000000
 local ns = {
-    db = { tracking = { off = {}, maps = {}, chars = {} } },
+    db = { tracking = { off = {}, chars = {} } },
     Now = function() return clock end,
     Print = function(text) printed[#printed + 1] = text end,
     SafeCall = function(fn, ...) return fn(...) end,
@@ -69,8 +69,6 @@ C_Map = {
     GetBestMapForUnit = function() return 1429 end,
     GetPlayerMapPosition = function() return { x = .5, y = .5 } end,
     GetWorldPosFromMapPos = function() return 0, { x = -9000.4, y = 100.6 } end,
-    GetMapInfo = function(id) return { name = "Map" .. id, parentMapID = 947, mapType = 3 } end,
-    GetMapChildrenInfo = function() return { { mapID = 1429 } } end,
 }
 
 assert(loadfile("RoadToSixty/Tracking.lua"))("RoadToSixty", ns)
@@ -87,10 +85,9 @@ local function count(kind)
 end
 
 check(me and me.name == "Zed" and me.class == "MAGE" and me.faction == "Alliance", "character not saved")
-check(count("env") == 1 and db.interface == 11509, "session not logged")
+check(count("env") == 1 and me.events[1][7] == 11509, "session not logged")
 check(me.events[2][2] == "sub" and me.events[2][7] == "Goldshire" and me.events[2][8] == true, "first visit not marked")
 check(me.events[1][4] == -9000 and me.events[1][5] == 101, "position not rounded to yards")
-check(db.maps[1429] and db.maps[1429][1] == "Map1429" and db.build == "70003", "maps not read")
 check(me.talents == "Arcane 0" and count("tal") == 0, "the first talents read is a baseline")
 check(count("bind") == 1, "hearthstone not logged")
 

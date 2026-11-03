@@ -1,17 +1,11 @@
 local _, ns = ...
 
--- Extra journey tracking, for Viewer/index.html: what the map has no use for
--- yet, kept apart from the journey so it cannot touch the recorder or the
+-- Extra journey tracking: what the map has no use for yet, kept apart from the journey so it cannot touch the recorder or the
 -- sync. It lives in the account-wide file, under ns.db.tracking:
 --
 --   off    = { [what] = true } tracking turned off: an event kind below, or
 --            party or stats (Options.lua). All start off (Core.lua); a switch
 --            turned on is saved as false so the defaults don't refill it
---   build  client build the maps were read from
---   interface  the client's interface number, which tells the viewer which art
---   maps   = { [uiMapID] = { name, parent, type, c, n1, w1, n2, w2 } }: every
---            map's world rectangle in yards, top left and bottom right (north,
---            west); c and on are nil for maps with no world position
 --   chars  = { [GUID] = {
 --     name, realm, race, sex, class, faction,
 --     seen   = { [subzone] = true } places been, to mark first visits,
@@ -54,9 +48,7 @@ local TRACK_STILL = 300         -- seconds after which they are written anyway
 local TRACK_MAX_ROWS = 5000     -- rows kept per party member, about 175 KB
 local STATS_INTERVAL = 60       -- seconds between XP and gold samples
 local NPC_REPEAT = 300          -- seconds before the same NPC counts as a new visit
-local MAP_DELAY = 5             -- seconds after login before reading the maps
-local WORLD_MAP = 947
-local COSMIC_MAP = 946
+local LOGIN_DELAY = 5           -- seconds after login before reading talents and the hearthstone
 
 local db, me
 local position = {}             -- last outdoor position: c, x, y
@@ -114,37 +106,6 @@ local function Log(kind, ...)
     local e = { ns.Now(), kind, position.c or -1, position.x or 0, position.y or 0, ... }
     table.insert(me.events, e)
     return e
-end
-
--- Maps --------------------------------------------------------------------------
-
--- The world rectangle of a map: continent, then north and west of its top
--- left and bottom right corners.
-local function MapRect(mapID)
-    local c, a = Safe(C_Map.GetWorldPosFromMapPos, mapID, CreateVector2D(0, 0))
-    local _, b = Safe(C_Map.GetWorldPosFromMapPos, mapID, CreateVector2D(1, 1))
-    c, a, b = Clean(c), Clean(a), Clean(b)
-    if c and a and b then return c, Round(a.x), Round(a.y), Round(b.x), Round(b.y) end
-end
-
-local function AddMap(mapID)
-    local info = Clean(Safe(C_Map.GetMapInfo, mapID))
-    if not info or not info.name then return end
-    db.maps[mapID] = { info.name, info.parentMapID, info.mapType, MapRect(mapID) }
-end
-
--- Reads every map once for each client build: the viewer has no game data,
--- so this is how it knows the names and where the zones are.
-local function ReadMaps()
-    local build = select(2, GetBuildInfo())
-    if db.build == build and next(db.maps) then return end
-    db.build = build
-    for _, root in ipairs({ COSMIC_MAP, WORLD_MAP }) do
-        AddMap(root)
-        for _, info in ipairs(Safe(C_Map.GetMapChildrenInfo, root, nil, true) or {}) do
-            AddMap(info.mapID)
-        end
-    end
 end
 
 -- Subzones ------------------------------------------------------------------------
@@ -237,7 +198,7 @@ local function SampleParty()
     end
 end
 
--- Only at logout and /rts export: saved data is written only then anyway, and
+-- Only at logout: saved data is written only then anyway, and
 -- each pass copies the whole string.
 local function Pack()
     if #statsBuffer > 0 then
@@ -323,12 +284,10 @@ ns.On("PLAYER_LOGIN", function()
     me.sex = UnitSex("player")
 
     local _, build, _, interface = GetBuildInfo()
-    db.interface = interface
     Log("env", build, interface)
     CheckSub()
     SampleStats()
-    C_Timer.After(MAP_DELAY, function()
-        ns.SafeCall(ReadMaps)
+    C_Timer.After(LOGIN_DELAY, function()
         ns.SafeCall(CheckTalents, true)
         ns.SafeCall(CheckBind)
     end)
@@ -382,9 +341,4 @@ ns.Command("note", "pin a note to this spot on the map: /rts note <text>", funct
     end
     Log("note", text)
     ns.Print("Noted here: " .. text)
-end)
-
-ns.Command("export", "how to open your journey in the offline viewer", function()
-    if me then Pack() end
-    ns.Print("The game writes saved data at logout or /reload. Then open Viewer/index.html in this addon's folder, in Chrome or Edge, and drag in your WTF folder.")
 end)

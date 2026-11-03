@@ -76,7 +76,7 @@ local defaults = {
     tracking = {        -- extra tracking, see Tracking.lua; all of it off until turned on
         off = { party = true, stats = true, sub = true, taxi = true, tal = true,
             bind = true, rest = true, npc = true, trade = true, shot = true },
-        maps = {}, chars = {},
+        chars = {},
     },
 }
 
