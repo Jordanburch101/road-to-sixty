@@ -463,9 +463,14 @@ end
 RULES.rares = function(x, y) return MergeMap(x, y, MergeRare) end
 
 -- Whether events hold one of kind at time t.
-local function Logged(events, kind, t)
+-- Whether events hold the end of the run that began at t. A run's "out" is
+-- logged only when it ends, so any "out" from t on is its end: at the time
+-- it was left in this copy, or later, when the other copy went back in and
+-- left again.
+local function RunEnded(events, t)
+    if type(t) ~= "number" then return false end
     for _, e in ipairs(events or {}) do
-        if e[1] == t and e[2] == kind then return true end
+        if e[2] == "out" and type(e[1]) == "number" and e[1] >= t then return true end
     end
     return false
 end
@@ -502,7 +507,7 @@ function Merge.Merge(a, b)
     for _, k in ipairs({ "run", "group" }) do
         if out[k] == nil then out[k] = a[k] or b[k] end
     end
-    if out.run and out.run.left and Logged(out.events, "out", out.run.left.t) then out.run = nil end
+    if out.run and RunEnded(out.events, out.run.t) then out.run = nil end
     if out.group and GroupEnded(out.events, out.group.t) then out.group = nil end
     out.version, out.rosterBuilt = Merge.VERSION, nil
     Recount(out, a, b)
