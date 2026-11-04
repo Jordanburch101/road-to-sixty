@@ -154,7 +154,10 @@ mod tests {
 
     #[test]
     fn delete_everything_opens_the_servers_delete_page() {
-        assert_eq!(delete_page("https://api.roadtosixty.online"), "https://api.roadtosixty.online/delete");
+        assert_eq!(
+            delete_page("https://api.roadtosixty.online"),
+            "https://api.roadtosixty.online/delete"
+        );
         assert_eq!(delete_page("http://localhost:3000/"), "http://localhost:3000/delete");
     }
 
