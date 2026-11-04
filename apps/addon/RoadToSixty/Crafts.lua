@@ -34,7 +34,10 @@ local _, ns = ...
 -- recipe's profession; window scans never log events.
 --
 -- Professions known when tracking began are logged once as baseline, so an
--- old character does not show them as learned today.
+-- old character does not show them as learned today. ns.char.profSlots is
+-- true once every GetProfessions slot has been read (1.19.1 on): before,
+-- the slots after the first one not learned were missed, so professions
+-- seen first in that read are baseline too.
 --
 -- Forever uses the modern APIs (GetProfessions, C_TradeSkillUI); the classic
 -- skill and trade skill functions do not exist there. Classic Era (#72)
@@ -93,14 +96,20 @@ end
 function Crafts:ReadSkills()
     if GetNumSkillLines and GetSkillLineInfo then return ReadSkillLines() end
     if not (GetProfessions and GetProfessionInfo) then return end
+    -- The slots come by place (prof1, prof2, first aid, fishing, cooking),
+    -- nil for one not learned, so the list has holes ipairs would stop at.
     local skills = {}
-    for _, index in ipairs({ GetProfessions() }) do
-        local ok, name, icon, rank, max = pcall(GetProfessionInfo, index)
-        if ok and name then
-            skills[name] = { rank, max, icon }
+    local slots = { GetProfessions() }
+    for i = 1, select("#", GetProfessions()) do
+        local index = slots[i]
+        if index then
+            local ok, name, icon, rank, max = pcall(GetProfessionInfo, index)
+            if ok and name then
+                skills[name] = { rank, max, icon }
+            end
         end
     end
-    return skills
+    return skills, true
 end
 
 -- Compares the professions with the last ones seen and logs what is new: a
@@ -109,7 +118,7 @@ end
 function Crafts:CheckSkills(atLogin)
     -- A seeded test journey has made-up professions; the real ones would not fit it.
     if ns.char.seeded then return end
-    local skills = self:ReadSkills()
+    local skills, slotted = self:ReadSkills()
     if not skills then return end
     local known = ns.char.skills
     local baseline = known == nil
@@ -117,11 +126,16 @@ function Crafts:CheckSkills(atLogin)
     -- professions not shown yet; taken as the baseline, each would then be
     -- logged as learned today.
     if baseline and next(skills) == nil and not self.settled then return end
+    -- Before 1.19.1 the GetProfessions slots after the first one not learned
+    -- were never read, so a profession seen for the first time in a
+    -- character's first full read may be one known all along. That read is
+    -- the check 5 seconds after login, as professions can be missing before.
+    local hidden = slotted and not baseline and not ns.char.profSlots
     known = known or {}
     for name, s in pairs(skills) do
         local old = known[name]
         if not old then
-            Log("prof", name, s[1], s[2], baseline or nil)
+            Log("prof", name, s[1], s[2], (baseline or hidden) or nil)
         else
             if (s[2] or 0) > (old[2] or 0) then
                 Log("prof", name, s[1], s[2])
@@ -139,6 +153,7 @@ function Crafts:CheckSkills(atLogin)
         end
     end
     ns.char.skills = known
+    if slotted and self.settled then ns.char.profSlots = true end
 end
 
 -- True when the open profession window shows someone else's profession (a

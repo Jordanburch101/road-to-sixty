@@ -210,6 +210,40 @@ check(#ns.char.events == before + 4, "the same item made long after is a new cra
 Fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:2589::::::::20:::::|h[Linen Cloth]|h|r.")
 check(#ns.char.events == before + 4, "loot is not a craft")
 
+-- Forever: no skill lines, and GetProfessions gives its five slots by place
+-- (prof1, prof2, first aid, fishing, cooking), nil for one not learned.
+GetNumSkillLines, GetSkillLineInfo = nil, nil   ---@diagnostic disable-line: assign-type-mismatch
+local slots = { 1, nil, nil, 4, 5 }
+local PROFESSIONS = { [1] = { "Mining", 136248, 20, 75 }, [4] = { "Fishing", 136245, 1, 75 }, [5] = { "Cooking", 133971, 15, 75 } }
+GetProfessions = function() return slots[1], slots[2], slots[3], slots[4], slots[5] end
+GetProfessionInfo = function(index)
+    local p = PROFESSIONS[index]
+    return p[1], p[2], p[3], p[4]
+end
+local read = Crafts:ReadSkills()
+check(read.Mining and read.Fishing and read.Cooking, "every slot after one not learned is read")
+slots = { nil, nil, nil, nil, 5 }
+read = Crafts:ReadSkills()
+check(read.Cooking and next(read, next(read)) == nil, "Cooking alone is read")
+
+-- A character from before the fix knew only Mining; Fishing and Cooking
+-- show now, may have been known all along, and are logged as baseline.
+slots = { 1, nil, nil, 4, 5 }
+ns.char.events, ns.char.skills, ns.char.profSlots = {}, { Mining = { 20, 75 } }, nil
+Crafts:CheckSkills(true)
+local profs = {}
+for _, e in ipairs(ns.char.events) do
+    if e[2] == "prof" then profs[e[6]] = e end
+end
+check(profs.Fishing and profs.Fishing[9] == true and profs.Cooking and profs.Cooking[9] == true,
+    "professions the old read missed are logged as baseline")
+check(ns.char.profSlots == true, "the full read is remembered")
+PROFESSIONS[3] = { "First Aid", 135966, 1, 75 }
+slots = { 1, nil, 3, 4, 5 }
+Crafts:CheckSkills()
+local aid = ns.char.events[#ns.char.events]
+check(aid[2] == "prof" and aid[6] == "First Aid" and aid[9] == nil, "a profession learned after that is learned")
+
 if failures > 0 then
     print(failures .. " failure(s)")
     os.exit(1)
