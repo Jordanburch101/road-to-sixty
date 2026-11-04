@@ -23,6 +23,9 @@ pub const WHILE_PLAYING: Duration = Duration::from_secs(15 * 60);
 pub const CHECK_EVERY: Duration = Duration::from_secs(5 * 60);
 /// After a failed pass (offline, server down), wait this long to try again.
 pub const RETRY: Duration = Duration::from_secs(60);
+/// After the server was too busy to take a file (429), send it again after
+/// this long: its limits count per hour and per day, so a minute is too soon.
+pub const BUSY_RETRY: Duration = Duration::from_secs(15 * 60);
 /// How often to look for a game starting.
 pub const LOOK_FOR_GAME: Duration = Duration::from_secs(5);
 
@@ -278,6 +281,11 @@ pub fn run(
                     // after a minute instead of waiting for the next change.
                     for path in &r.unread {
                         schedule.changed(path.clone(), now + RETRY - SETTLE);
+                    }
+                    // Not taken, so still waiting: without this it would wait
+                    // for its next change, which may be days away.
+                    for path in &r.busy {
+                        schedule.changed(path.clone(), now + BUSY_RETRY - SETTLE);
                     }
                     last_pass = Some(now);
                 }

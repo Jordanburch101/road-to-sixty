@@ -435,8 +435,8 @@ local function DollSlot(parent, slot)
     button:SetFrameLevel(parent:GetFrameLevel() + 3)
     button.back = back
     button.rim = EnchantRim(parent, button)
-    local ok, _, empty = pcall(GetInventorySlotInfo, SLOT_KEYS[slot])
-    button.empty = ok and empty or nil
+    local _, empty = ns.InventorySlotInfo(SLOT_KEYS[slot])
+    button.empty = empty
     button:SetScript("OnEnter", function(self)
         if self.span then ShowTip(self, self.span) end
     end)

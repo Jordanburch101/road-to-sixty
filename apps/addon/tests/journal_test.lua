@@ -270,10 +270,39 @@ check(EqCount() == eqLogged, "an empty gear last seen logs nothing at login")
 -- A login whose snapshot already has gear keeps it; one with nothing on
 -- stops reading after a while and stays empty.
 readable = false
+ns.char.gear = {}
 Fire("PLAYER_LOGIN")
 for _ = 1, 100 do RunTimers() end   -- also runs the other modules' login timers
 check(ns.char.levels[7].gear[1] == 102, "a snapshot that has gear is left alone")
 check(next(ns.char.gear) == nil and #timers == 0, "a character wearing nothing stops being read and stays empty")
+
+-- A slow login: the gear last seen had items, but every read finds nothing.
+-- The reads did not work, so the gear last seen is kept, and the items
+-- turning up later are no change.
+ns.char.gear = { [1] = 102, [5] = 200 }
+eqLogged = EqCount()
+Fire("PLAYER_LOGIN")
+for _ = 1, 100 do RunTimers() end
+check(#timers == 0 and ns.char.gear[1] == 102 and ns.char.gear[5] == 200,
+    "reads that never work keep the gear last seen")
+readable, wearing = true, { [1] = 102, [5] = 200 }
+Fire("PLAYER_EQUIPMENT_CHANGED", 1)
+Fire("PLAYER_EQUIPMENT_CHANGED", 5)
+check(EqCount() == eqLogged, "the kept gear turning up after the reads logs nothing")
+readable = false
+
+-- Forever has the global GetInventorySlotInfo only behind a setting, so the
+-- C_PaperDollInfo one is used where it exists.
+local globalSlotInfo = GetInventorySlotInfo
+GetInventorySlotInfo = nil   ---@diagnostic disable-line: assign-type-mismatch
+C_PaperDollInfo = { GetInventorySlotInfo = function(name) return SLOT_IDS[name], "empty-" .. name end }
+check(ns.InventorySlotInfo("ChestSlot") == 5 and select(2, ns.InventorySlotInfo("ChestSlot")) == "empty-ChestSlot",
+    "slot info comes from C_PaperDollInfo without the global")
+check(ns.InventorySlotInfo("TabardSlot") == nil, "a slot the client lacks is nil")
+readable = true
+check(ns.CaptureGear()[5] == 200, "the gear is read through C_PaperDollInfo")
+readable = false
+C_PaperDollInfo, GetInventorySlotInfo = nil, globalSlotInfo
 
 -- Gear loading a few items at a time: a slot the reads find empty is
 -- unknown, never logged as taken off, and kept as it was.

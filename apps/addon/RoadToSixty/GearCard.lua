@@ -35,8 +35,7 @@ local VISIBLE = {
 -- Slot name -> inventory slot ID and empty slot texture, or nil if this client
 -- has no such slot.
 local function SlotInfo(name)
-    local ok, id, texture = pcall(GetInventorySlotInfo, name)
-    if ok and id then return id, texture end
+    return ns.InventorySlotInfo(name)
 end
 
 local function ItemIcon(itemID)

@@ -524,6 +524,21 @@ do
     check(done.run == nil, "a run whose out event is in the merged events is not brought back")
     check(done.group == nil, "a group whose grpx event is in the merged events is not brought back")
     check(Same(done, Merge.Merge(ended, a)), "dropping an ended run works either way round")
+
+    -- Saved while out of the dungeon, then back in, finished and left: the
+    -- run's out event is later than the left time this copy kept.
+    local later = Journey({ events = { On(800), { 1500, "out", 0, 0, 0, 36, { duration = 600 } }, On(2000) } })
+    local finished = Merge.Merge(a, later)
+    check(finished.run == nil, "a run that ended after going back in is not brought back")
+    check(Same(finished, Merge.Merge(later, a)), "either way round")
+
+    -- Saved inside the dungeon (no left time), ended later on.
+    local inside = Journey({ events = { On(800) },
+        run = { t = 900, name = "Deadmines", type = "party", pc = "pcA" } })
+    check(Merge.Merge(inside, later).run == nil, "a run saved inside and ended later is not brought back")
+    -- An out from before the run is another run's.
+    local before = Journey({ events = { { 850, "out", 0, 0, 0, 36, { duration = 50 } }, On(2000) } })
+    check(Merge.Merge(inside, before).run ~= nil, "an out from before the run leaves it open")
 end
 
 -- The journey stamp (Core.lua): two different journeys never merge, and a
