@@ -14,6 +14,11 @@ broken and now works. Leave out internal changes. Sections are
   match ends, so a battleground left before the end has no score.
 - Poisons, oils and sharpening stones are never recorded as enchants on
   Forever.
+- Delete everything in the app now asks you to confirm in your browser,
+  signed in with Battle.net, so a PC linked by someone else can't delete
+  your account. This needs app 0.1.13.
+- Linking a PC that is refused (20 PCs already, or 10 linked today) no
+  longer uses up the code: once you unlink a PC, the same code works.
 
 ## 1.19.2
 
