@@ -1,4 +1,4 @@
-<p align="center"><img src="branding/readme-banner.jpg" alt="Road to Sixty: track your level 1 to 60 journey. A painted map with a road from level 1 to 60, beside the journey's history and stats"></p>
+<p align="center"><img src="branding/curseforge-header-classes.gif" alt="Road to Sixty: every class, every road, from level 1 to 60. Roads in the class colours light up through a dotted fog of war"></p>
 
 <p align="center">
   <a href="https://www.curseforge.com/wow/addons/road-to-sixty">Get the addon</a> ·
