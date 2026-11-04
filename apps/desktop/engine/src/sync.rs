@@ -33,6 +33,8 @@ pub struct Report {
     pub games: Vec<GameFolder>,
     /// Saved files that couldn't be read, to try again later.
     pub unread: Vec<PathBuf>,
+    /// Saved files the server was too busy to take (429), to send later.
+    pub busy: Vec<PathBuf>,
 }
 
 /// Something the player should know: `who` names the character (empty when
@@ -289,7 +291,7 @@ pub fn pass(
                 Ok(Sent::Unchanged | Sent::Refused) => {}
                 Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
                 // Not sent, so it goes up on a later pass; the rest carry on.
-                Err(ApiError::Busy) => {}
+                Err(ApiError::Busy) => report.busy.push(file.path.clone()),
                 Err(e) => report.problems.push(Problem::general(e.to_string())),
             }
         }
@@ -500,6 +502,7 @@ mod tests {
         assert!(report.uploaded.is_empty());
         assert!(state.uploaded.is_empty(), "the file goes up on a later pass");
         assert!(state.refused.is_empty(), "busy isn't a refusal");
+        assert_eq!(report.busy.len(), 1, "the file the server didn't take is listed, to send again");
         assert!(busy.seen.lock().unwrap().iter().any(|s| s.url.starts_with("/v1/check")));
     }
 
