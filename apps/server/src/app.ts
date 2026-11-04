@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { account } from "./account";
 import { auth } from "./auth";
+import { remove } from "./delete";
 import { link } from "./link";
 import { sync } from "./sync";
 
@@ -26,7 +27,20 @@ async function tooBig(request: Request): Promise<boolean> {
   }
 }
 
+// Elysia's own refusals, which say only what was wrong with the request.
+const OWN = new Set(["VALIDATION", "PARSE", "NOT_FOUND", "INVALID_COOKIE_SIGNATURE", "INVALID_FILE_TYPE"]);
+
 export const app = new Elysia()
+  // A fault answers without its message, which for a failed query holds
+  // drizzle's "Failed query:" text with the SQL and its values. Anything
+  // but Elysia's own codes counts: Elysia takes an error's own .code (a
+  // database or storage error's, say) as its code, and would send its message.
+  .onError({ as: "global" }, ({ code, error, request, set }) => {
+    if (typeof code === "number" || OWN.has(String(code))) return;
+    console.error(`${request.method} ${new URL(request.url).pathname}:`, error);
+    set.status = 500;
+    return { error: "something went wrong on the server" };
+  })
   .onRequest(async ({ request, set }) => {
     if (new URL(request.url).pathname === "/v1/upload") return;
     if (await tooBig(request)) {
@@ -38,5 +52,6 @@ export const app = new Elysia()
   // Better Auth reads the request itself, so Elysia must leave the body alone.
   .all("/api/auth/*", ({ request }) => auth.handler(request), { parse: "none" })
   .use(link)
+  .use(remove)
   .use(sync)
   .use(account);

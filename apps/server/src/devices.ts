@@ -7,10 +7,15 @@ export type Device = typeof devices.$inferSelect;
 const hash = (token: string) => new Bun.CryptoHasher("sha256").update(token).digest("hex");
 
 // A new linked PC with a random token, which is handed to the app once and
-// stored only as its hash.
-export async function newDevice(userId: string, name: string, platform?: string): Promise<{ device: Device; token: string }> {
+// stored only as its hash. tx is the transaction to make it in, if any.
+export async function newDevice(
+  userId: string,
+  name: string,
+  platform?: string,
+  tx: Pick<typeof db, "insert"> = db,
+): Promise<{ device: Device; token: string }> {
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
-  const [device] = await db
+  const [device] = await tx
     .insert(devices)
     .values({ id: crypto.randomUUID(), userId, name, platform: platform ?? null, tokenHash: hash(token) })
     .returning();

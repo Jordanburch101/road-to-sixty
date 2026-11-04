@@ -1,12 +1,14 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { config } from "./config";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
 import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
+import { rowId } from "./ids";
 import { get, remove, removeAll } from "./storage";
 import { currentIds } from "./sync";
 import { zip } from "./zip";
@@ -19,11 +21,12 @@ export type Character = typeof characters.$inferSelect;
 
 // The character with this id, if it belongs to the PC's player.
 export async function own(device: Device, id: string): Promise<Character | null> {
-  if (!/^\d+$/.test(id)) return null;
+  const n = rowId(id);
+  if (n === null) return null;
   const [c] = await db
     .select()
     .from(characters)
-    .where(and(eq(characters.id, Number(id)), eq(characters.userId, device.userId)));
+    .where(and(eq(characters.id, n), eq(characters.userId, device.userId)));
   return c ?? null;
 }
 
@@ -61,8 +64,11 @@ const info = (d: typeof devices.$inferSelect): DeviceInfo => ({
   lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
 });
 
-// Characters as folder names: no slashes or characters Windows refuses.
-const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
+// Characters as folder names: no slashes or characters Windows refuses, and
+// no leading dots, so a realm named ".." can't put a file outside the
+// folder the zip unpacks into.
+export const safe = (s: string) =>
+  s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/^\.+/, (dots) => "_".repeat(dots.length)) || "_";
 
 const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
@@ -141,9 +147,9 @@ export const account = pcRoutes()
       return { error: "too many restores; try again later" };
     }
     const c = await own(device!, params.id);
-    const id = Number((body as { version?: unknown } | null)?.version);
+    const id = rowId((body as { version?: unknown } | null)?.version);
     const [source] =
-      c && Number.isSafeInteger(id)
+      c && id !== null
         ? await db
             .select()
             .from(versions)
@@ -173,6 +179,10 @@ export const account = pcRoutes()
       // finishing in between must either see all of it or none.
       const version = await db
         .transaction(async (tx) => {
+          // The character first, as removing it and delete everything lock it
+          // first too: taken in another order, a restore and a delete running
+          // together could each wait on the other.
+          await tx.select({ id: characters.id }).from(characters).where(eq(characters.id, c.id)).for("no key update");
           // The clean-up marks a version pruned before deleting its file, and
           // waits on this lock: so either it sees the restore's new row, which
           // shares the source's file, and keeps the file, or the source is
@@ -250,6 +260,8 @@ export const account = pcRoutes()
       return { error: "Remove this character's earlier journeys first" };
     }
     const files = await db.transaction(async (tx) => {
+      // The character first, in the same order as a restore (see there).
+      await tx.select({ id: characters.id }).from(characters).where(eq(characters.id, c.id)).for("update");
       // Locked, so the worker's claim skips them; a job it already took
       // shows as running, and its commit would meet a deleted row.
       const held = await tx.select({ state: jobs.state }).from(jobs).where(eq(jobs.characterId, c.id)).for("update");
@@ -357,32 +369,48 @@ export const account = pcRoutes()
     return { ok: true };
   })
 
-  // Spec, "Deleting an account". The other PCs are unlinked first so nothing
-  // new arrives; the one asking stays linked until the end, so if anything
-  // fails part way the player can try again from it. Files go before rows,
-  // and once more after, for a merge or upload that stored one meanwhile.
-  .delete("/account", async ({ device }) => {
-    const userId = device!.userId;
-    await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(devices.userId, userId), ne(devices.id, device!.id), isNull(devices.revokedAt)));
-    const theirs = db.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId));
-    await db.delete(jobs).where(inArray(jobs.characterId, theirs));
-    await removeAll(userId);
-    await db.transaction(async (tx) => {
-      // Again: an upload that got past the token check may have queued one.
-      await tx.delete(jobs).where(inArray(jobs.characterId, theirs));
-      const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
-      await tx.delete(versionParents).where(inArray(versionParents.versionId, theirVersions));
-      await tx.delete(versions).where(inArray(versions.characterId, theirs));
-      await tx.delete(characters).where(eq(characters.userId, userId));
-      await tx.delete(devices).where(eq(devices.userId, userId));
-      // Sessions, Battle.net accounts and device codes go with the user.
-      await tx.delete(user).where(eq(user.id, userId));
-    });
-    // ponytail: an upload still reading its body can store a file after this
-    // one; a sweep for files with no rows if that ever turns up.
-    await removeAll(userId);
-    return { ok: true };
+  // Deleting everything takes a fresh Battle.net sign-in on the delete page
+  // (src/delete.ts): a PC token alone may have come from a code the player
+  // was tricked into approving (#99). An app from before says this.
+  .delete("/account", ({ set }) => {
+    set.status = 403;
+    return { error: `Delete everything now asks you to sign in with Battle.net: update the app, or open ${DELETE_PAGE}` };
   });
+
+// The page the app opens for Delete everything.
+export const DELETE_PAGE = `${new URL(config.auth.url).origin}/delete`;
+
+// Spec, "Deleting an account". Every PC is unlinked first so nothing new
+// arrives; the player's sign-in on the delete page stays until the end, so
+// if anything fails part way they can try again from there. Files go before
+// rows, and once more after, for a merge or upload that stored one meanwhile.
+export async function deleteEverything(userId: string) {
+  await db
+    .update(devices)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+  const theirs = db.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId));
+  await db.delete(jobs).where(inArray(jobs.characterId, theirs));
+  await removeAll(userId);
+  await db.transaction(async (tx) => {
+    // Locked first, so an upload or merge adding a character, version or
+    // job for this player now waits for the delete and then fails on the
+    // rows it is gone from (its file goes with the last removeAll). Without
+    // it, a row added between two of the deletes below makes the next fail
+    // on its foreign key, leaving rows whose files are gone.
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+    await tx.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId)).for("update");
+    // Again: an upload that got past the token check may have queued one.
+    await tx.delete(jobs).where(inArray(jobs.characterId, theirs));
+    const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
+    await tx.delete(versionParents).where(inArray(versionParents.versionId, theirVersions));
+    await tx.delete(versions).where(inArray(versions.characterId, theirs));
+    await tx.delete(characters).where(eq(characters.userId, userId));
+    await tx.delete(devices).where(eq(devices.userId, userId));
+    // Sessions, Battle.net accounts and device codes go with the user.
+    await tx.delete(user).where(eq(user.id, userId));
+  });
+  // ponytail: an upload still reading its body can store a file after this
+  // one; a sweep for files with no rows if that ever turns up.
+  await removeAll(userId);
+}

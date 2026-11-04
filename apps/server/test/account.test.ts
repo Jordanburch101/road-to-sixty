@@ -4,10 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq, inArray, ne } from "drizzle-orm";
+import { deleteEverything, safe } from "../src/account";
+import { app } from "../src/app";
 import { config } from "../src/config";
 import { db } from "../src/db";
+import { newDevice as linkDevice } from "../src/devices";
 import * as lua from "../src/lua";
-import { characters, devices, jobs, user, versions } from "../src/schema";
+import { characters, devices, jobs, session as sessionTable, user, versions } from "../src/schema";
+import { signIn } from "./battlenet";
 import * as storage from "../src/storage";
 import { exportSlot, exports, restoreSlot, restores } from "../src/limits";
 import { CHAR, call, check, journey, newDevice, reset, savedFile, session, sessions, upload, workAll } from "./helpers";
@@ -104,6 +108,26 @@ test("a restore can't pick the current version, or another player's", async () =
   expect((await restore(desk.token, c.id, 999999)).status).toBe(404);
 });
 
+test("a restore of a version id that isn't a whole number a bigint holds is not found", async () => {
+  const { desk, c } = await twoVersions();
+  for (const version of ["1.5", "1e400", "99999999999999999999", '"abc"', "null", "-1"]) {
+    const r = await call(desk.token, `/v1/characters/${c.id}/restore`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: `{"version":${version}}`,
+    });
+    expect(r.status).toBe(404);
+  }
+});
+
+test("export names keep every file inside its folder", () => {
+  expect(safe("..")).toBe("__");
+  expect(safe(".hidden")).toBe("_hidden");
+  expect(safe("a/../b")).toBe("a_.._b");
+  expect(safe("")).toBe("_");
+  expect(safe("Azjol-Nérub")).toBe("Azjol-Nérub");
+});
+
 test("an upload waiting when a restore is picked keeps its new play, but not what the restore took out", async () => {
   const { desk, c, older } = await twoVersions();
   await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000), ...session(9000)] })));
@@ -191,7 +215,7 @@ test("delete everything removes the player's rows, files and PCs, even with a me
   await upload(other.token, savedFile(journey({ events: session(1000) })));
   await workAll();
   await upload(desk.token, savedFile(journey({ events: session(5000) }))); // still queued
-  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+  await deleteEverything("user-1");
 
   expect((await call(desk.token, "/v1/check")).status).toBe(401);
   expect(await db.select().from(user).where(eq(user.id, "user-1"))).toEqual([]);
@@ -207,7 +231,7 @@ test("delete everything removes the player's rows, files and PCs, even with a me
 
 const s3Files = async (prefix: string) => (await new Bun.S3Client(config.s3).list({ prefix })).contents ?? [];
 
-test("if delete everything fails part way, the PC that asked can try again", async () => {
+test("if delete everything fails part way, every PC has stopped and trying again finishes it", async () => {
   const desk = await newDevice("user-1", "Desk");
   const laptop = await newDevice("user-1", "Laptop");
   await upload(desk.token, savedFile(journey({ events: session(1000) })));
@@ -215,12 +239,61 @@ test("if delete everything fails part way, the PC that asked can try again", asy
   spyOn(storage, "removeAll").mockImplementationOnce(async () => {
     throw new Error("the bucket is down");
   });
-  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(500);
-  expect((await call(laptop.token, "/v1/check")).status).toBe(401); // nothing new arrives meanwhile
-  expect((await call(desk.token, "/v1/check")).status).toBe(200);
-  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+  await expect(deleteEverything("user-1")).rejects.toThrow("the bucket is down");
+  // Nothing new arrives meanwhile; the player still has their account to try again with.
+  for (const pc of [desk, laptop]) expect((await call(pc.token, "/v1/check")).status).toBe(401);
+  expect((await db.select().from(user).where(eq(user.id, "user-1"))).length).toBe(1);
+  await deleteEverything("user-1");
   expect(await db.select().from(user).where(eq(user.id, "user-1"))).toEqual([]);
   expect(await s3Files("user-1/")).toEqual([]);
+});
+
+// The delete page's request, as the browser sends it from the page.
+const deletePage = (headers: Record<string, string>) =>
+  app.handle(new Request("http://localhost:3000/delete", { method: "POST", headers: { origin: "http://localhost:3000", ...headers } }));
+
+test("delete everything takes a Battle.net sign-in made in the last 10 minutes, on the delete page", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  const desk = await linkDevice(player!.id, "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  expect((await deletePage({})).status).toBe(401);
+  expect((await deletePage({ cookie, origin: "https://elsewhere.example" })).status).toBe(403);
+  await db.update(sessionTable).set({ createdAt: new Date(Date.now() - 11 * 60 * 1000) });
+  expect((await deletePage({ cookie })).status).toBe(401);
+  expect((await db.select().from(characters)).length).toBe(1);
+  const again = await signIn();
+  expect((await deletePage({ cookie: again })).status).toBe(200);
+  expect(await db.select().from(user)).toEqual([]);
+  expect(await db.select().from(characters)).toEqual([]);
+  expect((await call(desk.token, "/v1/check")).status).toBe(401);
+  expect(await s3Files(`${player!.id}/`)).toEqual([]);
+});
+
+test("a PC token can't delete everything, nor can a link code's sign-in", async () => {
+  const desk = await newDevice("user-1", "Desk");
+  const refused = await call(desk.token, "/v1/account", { method: "DELETE" });
+  expect(refused.status).toBe(403);
+  expect(((await refused.json()) as { error: string }).error).toContain("http://localhost:3000/delete");
+  expect((await db.select().from(user).where(eq(user.id, "user-1"))).length).toBe(1);
+  // A device sign-in is a session made just now; whoever holds a phished
+  // code holds its token, which must not count on the delete page.
+  await signIn();
+  const [player] = await db.select().from(user).where(ne(user.id, "user-1"));
+  const [made] = await db.select().from(sessionTable).where(eq(sessionTable.userId, player!.id));
+  expect((await deletePage({ authorization: `Bearer ${made!.token}` })).status).toBe(401);
+  expect((await db.select().from(user)).length).toBe(2);
+});
+
+test("the delete page and its script are served, and never inside another site", async () => {
+  const page = await app.handle(new Request("http://localhost:3000/delete"));
+  expect(page.headers.get("content-type")).toContain("text/html");
+  expect(page.headers.get("x-frame-options")).toBe("DENY");
+  expect(await page.text()).toContain("Delete everything");
+  const script = await app.handle(new Request("http://localhost:3000/delete.js"));
+  expect(script.headers.get("content-type")).toContain("javascript");
+  expect(await script.text()).toContain("sign-in/social");
 });
 
 test("an upload that lands while the files are being deleted doesn't stop the delete", async () => {
@@ -238,7 +311,7 @@ test("an upload that lands while the files are being deleted doesn't stop the de
     await db.insert(jobs).values({ characterId: c!.id, versionId: v!.id });
     return real(userId);
   });
-  expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+  await deleteEverything("user-1");
   expect(await db.select().from(characters).where(eq(characters.userId, "user-1"))).toEqual([]);
   expect(await db.select().from(jobs)).toEqual([]);
 });
@@ -252,7 +325,7 @@ test("a merge that finishes after the account is gone leaves no file behind", as
   spyOn(lua, "runMerge").mockImplementationOnce(async (...args) => {
     const result = await real(...args);
     // The player deletes everything while this merge is still running.
-    expect((await call(desk.token, "/v1/account", { method: "DELETE" })).status).toBe(200);
+    await deleteEverything("user-1");
     return result;
   });
   await workAll();

@@ -10,6 +10,7 @@ use rts_sync::state::TokenFile;
 use serde_json::{Value, json};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 pub struct Account {
     server: String,
@@ -119,13 +120,22 @@ pub async fn export_data(app: AppHandle, account: State<'_, Account>) -> Result<
     .map_err(|e| e.to_string())?
 }
 
-/// Deletes the account on the server, then unlinks here: the server keeps
-/// the asking PC linked until the very end, so a failure can be retried.
+/// Opens the server's delete page in the browser. Deleting everything takes
+/// a fresh Battle.net sign-in there, never this PC's token alone, as the
+/// token may come from a link code the player was tricked into approving
+/// (#99). Once it is done the server refuses this PC's token, and the app
+/// shows it unlinked.
 #[tauri::command]
-pub async fn delete_account(app: AppHandle, account: State<'_, Account>) -> Result<(), String> {
-    account.call("DELETE", "/v1/account".into(), None).await?;
-    crate::commands::with_runner(app, |r| r.unlink());
+pub fn delete_account(app: AppHandle) -> Result<(), String> {
+    let url = delete_page(crate::SERVER);
+    if !(cfg!(target_os = "linux") && crate::appimage::open_outside(&url)) {
+        app.opener().open_url(&url, None::<&str>).map_err(|e| e.to_string())?;
+    }
     Ok(())
+}
+
+fn delete_page(server: &str) -> String {
+    format!("{}/delete", server.trim_end_matches('/'))
 }
 
 #[cfg(test)]
@@ -140,6 +150,15 @@ mod tests {
         );
         assert_eq!(words(ApiError::Status(413, "too big".into())), "the server answered 413: too big");
         assert_eq!(words(ApiError::Unauthorized), "this PC isn't linked");
+    }
+
+    #[test]
+    fn delete_everything_opens_the_servers_delete_page() {
+        assert_eq!(
+            delete_page("https://api.roadtosixty.online"),
+            "https://api.roadtosixty.online/delete"
+        );
+        assert_eq!(delete_page("http://localhost:3000/"), "http://localhost:3000/delete");
     }
 
     #[test]

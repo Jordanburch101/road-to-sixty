@@ -26,6 +26,11 @@ export class Window {
     return true;
   }
 
+  // Whether take would say yes now, without counting anything.
+  allows(key: string, weight = 1): boolean {
+    return this.recent(key).reduce((sum, [, w]) => sum + w, 0) + weight <= this.max;
+  }
+
   // Whole seconds until the oldest counted hit leaves the window.
   retryAfter(key: string): number {
     const oldest = this.recent(key)[0]?.[0];
@@ -79,6 +84,11 @@ export const exports = new Window(5, 3600);
 // Restores run the merge program inline, so at most 10 per account an hour.
 export const restores = new Window(10, 3600);
 
+// Requests with a PC token that isn't known, per address (the visitor's, as
+// sign-in finds it, proxies.ts): nothing else limits them. An app whose PC
+// was unlinked stops after its first. Known PCs are never refused by it.
+export const badTokens = new Window(60, 60);
+
 // How many of a costly thing may run at once across the server. Taken
 // without waiting: a caller that finds none free is told to try again.
 export class Slot {
@@ -103,7 +113,7 @@ export const restoreSlot = new Slot(1);
 export const exportSlot = new Slot(1);
 
 export function clearLimits() {
-  for (const w of [uploads, requests, accountUploads, accountDaily, accountRequests, links, accountBytes, signUps, exports, restores, restoreSlot, exportSlot]) {
+  for (const w of [uploads, requests, accountUploads, accountDaily, accountRequests, links, accountBytes, signUps, exports, restores, badTokens, restoreSlot, exportSlot]) {
     w.clear();
   }
 }

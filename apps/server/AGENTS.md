@@ -14,7 +14,9 @@ push to `main` that touches it. The design is
 - `src/sync.ts` is the API the desktop app calls with its PC token:
   upload, check, download. `src/account.ts` is the account API the app's
   window calls (characters, history, restore, remove one character, PCs,
-  export, delete everything). Both start from `src/pc.ts`, the PC token check.
+  export). Both start from `src/pc.ts`, the PC token check. Delete
+  everything is the delete page's (`src/delete.ts`), behind a fresh
+  Battle.net sign-in.
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
 - `src/link.ts`, `src/link.html` and `src/link-page.ts` link a PC: the
@@ -80,9 +82,17 @@ bun run dev               # port 3000, with .env copied from .env.example
   minutes, 500 and 200 MB a day, 2,000 requests an hour, 10 links a day, 5
   exports and 10 restores an hour; 200 new players an hour; one export and
   one restore at a time; per address (Better Auth's rules in
-  `src/auth.ts`), 10 link codes and 20 code lookups a minute. All answer
+  `src/auth.ts`), 10 link codes and 20 code lookups, approvals and denials
+  a minute (its rules match whole paths, so each path is listed), and 60
+  requests with an unknown PC token a minute (`badTokens`, by the address
+  `getIP` finds; none when it finds none). All answer
   429. The lookup rule replaces the device plugin's own 5 per half hour,
-  too few for one household linking two PCs; keep it. 20 linked PCs per
+  too few for one household linking two PCs; keep it. `/v1/link` checks
+  the day's links and the 20 PCs first, then with the player's row locked
+  counts the PCs again, uses up the sign-in and counts the link, undoing
+  it all on a refusal: a refusal always leaves the code working. Unknown
+  PC tokens are refused per address only; a known PC from the same
+  address always gets through. 20 linked PCs per
   account (409), 100 characters (422, plain text the app shows on the
   row), 8 MB uploads and 16 KB for any other body (413), 64-character
   names (400). The counts are in memory, so a restart forgets them.
@@ -109,5 +119,22 @@ bun run dev               # port 3000, with .env copied from .env.example
   first, an earlier one would become current again); its files go only
   when no other version of the account shares them. The app's "Remove all
   beta characters" removes oldest first, so it never meets that 409.
+- Delete everything (`deleteEverything`) runs only from the delete page
+  (`src/delete.ts`, `delete.html`, `delete-page.ts`): `POST /delete` from
+  this server's origin with a Battle.net sign-in cookie made in the last 10
+  minutes. Only the cookie counts, never a bearer token, since a link
+  code's device sign-in is a fresh session whoever phished it holds.
+  `DELETE /v1/account` with a PC token answers 403 (#99).
+- Delete everything locks the player's row and characters before its
+  deletes, so an upload or merge landing meanwhile waits and then fails,
+  instead of failing the delete half way. Removing a character and a
+  restore lock the character row first too: one order, so they never
+  deadlock.
+- Ids from a request go through `rowId` (`src/ids.ts`) before a query:
+  anything else is not found. A fault answers 500 with a plain message
+  (`onError` in `src/app.ts`), never drizzle's, which holds the SQL.
+- The merge's level, time played and last played go into integer and date
+  columns through `column` and `lastPlayed` (`src/worker.ts`): a value no
+  column holds is kept as null, or the job would fail on every try.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.

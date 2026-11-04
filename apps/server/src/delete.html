@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Delete everything · Road to Sixty</title>
+<link rel="icon" href="/link/compass.png" />
+<!-- The link page's look (#39). -->
+<style>
+  @font-face { font-family: Geist; src: url(/link/geist.woff2) format("woff2"); font-weight: 100 900; }
+  :root { --ground: #07060a; --panel: #0c0b10; --line: #1f1d26; --outline: #3a3746; --text: #ece9f2; --muted: #9a95a8; --faint: #6f6a7d; --cream: #f7f4ee; --ink: #17141d; --danger: #ff6b6b; }
+  body { margin: 0; min-height: 100vh; background: var(--ground); color: var(--text); font: 14px/1.5 Geist, system-ui, sans-serif; }
+  main { max-width: 400px; margin: 0 auto; padding: 96px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
+  p { margin: 0; }
+  /* The script shows and hides parts; this beats the display rules below. */
+  [hidden] { display: none !important; }
+  .muted { color: var(--muted); }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  label { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); }
+  input { margin-top: 3px; accent-color: var(--danger); }
+  button { height: 42px; border-radius: 10px; border: 0; background: var(--cream); color: var(--ink); font: 500 14px Geist, system-ui, sans-serif; cursor: pointer; }
+  #delete { background: var(--danger); color: var(--ink); }
+  #result:empty { display: none; }
+</style>
+<main>
+  <img src="/link/compass.png" alt="" width="48" height="48" style="border-radius: 10px" />
+  <div>
+    <h1>Delete everything</h1>
+    <p id="who" class="muted"></p>
+  </div>
+  <button id="sign-in" hidden>Sign in with Battle.net</button>
+  <form id="form" class="card" hidden>
+    <p>This removes your account and every journey from the Road to Sixty server, and every PC stops syncing. It can't be undone. Journeys on your PCs stay.</p>
+    <label><input id="sure" type="checkbox" required /> I understand, delete everything</label>
+    <button id="delete">Delete everything</button>
+  </form>
+  <p id="result"></p>
+</main>
+<script type="module" src="/delete.js"></script>
+</html>
