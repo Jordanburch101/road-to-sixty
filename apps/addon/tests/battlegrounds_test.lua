@@ -120,6 +120,62 @@ ns.char.run = { type = "pvp", t = 4000, left = { t = 4100 } }
 Fire("CHAT_MSG_COMBAT_HONOR_GAIN", "You have been awarded 126 honor points.")
 check(ns.char.run.pvp == nil, "a battleground left gets nothing more")
 
+-- Forever: only C_PvP's board (GetBattlefieldScore, GetBattlefieldWinner and
+-- the column calls are deprecated fallbacks, off by default), its numbers
+-- secret until the match is over.
+GetBattlefieldScore, GetBattlefieldWinner, GetBattlefieldInstanceRunTime = nil, nil, nil ---@diagnostic disable-line: assign-type-mismatch
+GetNumBattlefieldStats, GetBattlefieldStatInfo, GetBattlefieldStatData = nil, nil, nil ---@diagnostic disable-line: assign-type-mismatch
+local SECRET = setmetatable({}, { __tostring = function() return "secret" end })
+issecretvalue = function(v) return v == SECRET end
+local complete, matchWinner, duration = false, 255, 0
+local function Value(v) return complete and v or SECRET end
+UnitGUID = function() return "Player-1-00000001" end
+local function Info(i)
+    local me = i == 21
+    return {
+        name = me and "Judgejbrown" or ("Player" .. i), guid = me and "Player-1-00000001" or ("Player-1-" .. i),
+        faction = i <= 40 and 1 or 0, classToken = "PALADIN",
+        killingBlows = Value(me and 3 or 1), honorableKills = Value(me and 12 or 2), deaths = Value(me and 2 or 3),
+        honorGained = Value(me and 250 or 100), damageDone = Value(me and 4000 or 10), healingDone = Value(me and 900 or 10),
+        stats = me and {
+            { pvpStatID = 2, pvpStatValue = Value(1), orderIndex = 2, name = "Flags Returned" },
+            { pvpStatID = 1, pvpStatValue = Value(2), orderIndex = 1, name = "Flags Captured" },
+        } or {},
+    }
+end
+GetNumBattlefieldScores = function() return 80 end
+C_PvP = {
+    GetScoreInfo = function(i) return Info(i) end,
+    GetScoreInfoByPlayerGuid = function(guid) return guid == "Player-1-00000001" and Info(21) or nil end,
+    IsMatchComplete = function() return complete end,
+    GetActiveMatchWinner = function() return matchWinner end,
+    GetActiveMatchDuration = function() return duration end,
+}
+ns.char.run = { type = "pvp", t = 5000 }
+Fire("UPDATE_BATTLEFIELD_SCORE")
+pvp = ns.char.run.pvp
+check(pvp and pvp.won == nil and pvp.kb == nil and pvp.deaths == nil and pvp.stats == nil,
+    "Forever during the match: secret numbers are not read")
+check(pvp and pvp.teams[1] == 40 and pvp.teams[2] == 40, "Forever: the sides are counted during the match")
+complete, matchWinner, duration = true, 1, 845
+Fire("PVP_MATCH_COMPLETE", 1, 845)
+check(pvp.won == true and pvp.kb == 3 and pvp.hk == 12 and pvp.deaths == 2 and pvp.scoreHonor == 250
+    and pvp.damage == 4000 and pvp.healing == 900, "Forever after the match: the result and the player's score")
+check(pvp.length == 845, "Forever: the match length: " .. tostring(pvp.length))
+check(pvp.stats and #pvp.stats == 2 and pvp.stats[1][1] == "Flags Captured" and pvp.stats[1][2] == 2
+    and pvp.stats[2][1] == "Flags Returned", "Forever: the map's columns in the board's order")
+complete = false
+Fire("UPDATE_BATTLEFIELD_SCORE")
+check(pvp.kb == 3 and pvp.stats and #pvp.stats == 2 and pvp.length == 845, "numbers gone secret again keep the last read")
+ns.char.run = { type = "pvp", t = 6000 }
+complete, matchWinner = true, 0
+Fire("UPDATE_BATTLEFIELD_STATUS", 2)
+check(ns.char.run.pvp.won == false, "Forever: Horde won, lost")
+ns.char.run = { type = "pvp", t = 7000 }
+matchWinner = 255
+Fire("UPDATE_BATTLEFIELD_STATUS", 2)
+check(ns.char.run.pvp.won == nil and ns.char.run.pvp.kb == 3, "Forever: a draw has no result, the score is still read")
+
 if failures > 0 then
     print(failures .. " battleground test(s) failed.")
     os.exit(1)

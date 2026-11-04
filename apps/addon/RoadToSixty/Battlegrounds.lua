@@ -12,9 +12,13 @@ local _, ns = ...
 -- scoreHonor, damage and healing the player's row on the score board;
 -- stats the map's own columns (towers, flags, ...) by the names the board
 -- gives them; teams how many were on each side. These are read on each
--- score update until leaving, during the match too (so leaving early keeps
--- them): the map's columns are gone a few seconds after the end, so they
--- are kept as last seen. honor is every honor point awarded inside, from
+-- score update until leaving, and each keeps the last value read: the
+-- map's columns are gone a few seconds after the end. Era and Anniversary
+-- give them during the match too, so leaving early keeps them; Forever
+-- keeps the numbers secret until the match is over (C_PvP's board is
+-- read first, the classic GetBattlefieldScore when it has no row for the
+-- player), so a match left early there has no score. honor is every
+-- honor point awarded inside, from
 -- chat (the board's leaves out the bonus honor: 420 of 840 in a probed
 -- Alterac Valley), chatKills the honorable kills chat named, and rep the
 -- reputation gained inside, by faction name. Any of them is nil when the
@@ -75,74 +79,170 @@ local function Current()
     return run.pvp
 end
 
--- The player's row on the score board, { index, values }, and how many
--- are on each side, { horde, alliance }.
-local function MyRow()
+-- Whether a name on the board is the player's (a name from another realm
+-- has it after a dash).
+local function IsMe(name, me)
+    return type(name) == "string" and not Secret(name) and type(me) == "string"
+        and (name == me or name:sub(1, #me + 1) == me .. "-")
+end
+
+-- Both ways of reading the board below give the player's score as
+--   { faction, kb, hk, deaths, honor, damage, healing, stats }
+-- (any of them nil when the client did not give it, or gave it secret),
+-- and how many are on each side, { horde, alliance }.
+
+-- The modern board, C_PvP.GetScoreInfo: the only one on Forever, whose
+-- GetBattlefieldScore is a fallback behind the loadDeprecationFallbacks
+-- setting. Its numbers are secret while the match goes on (the name,
+-- faction and the map columns' names are not), so they are read once
+-- the match is over. The map's columns come in each score's stats, in
+-- the board's order.
+local function ModernScore()
+    local pvpApi = C_PvP
+    if not (pvpApi and type(pvpApi.GetScoreInfo) == "function") then return end
+    local me, teams, mine = UnitName("player"), { 0, 0 }, nil
+    for i = 1, Number(Read(_G["GetNumBattlefieldScores"])) or 0 do
+        local info = Read(pvpApi.GetScoreInfo, i)
+        if type(info) == "table" then
+            local faction = Number(info.faction)
+            if faction == 0 or faction == 1 then teams[faction + 1] = teams[faction + 1] + 1 end
+            if not mine and IsMe(info.name, me) then mine = info end
+        end
+    end
+    local guid = UnitGUID and UnitGUID("player")
+    if guid and not Secret(guid) then
+        local info = Read(pvpApi.GetScoreInfoByPlayerGuid, guid)
+        if type(info) == "table" then mine = info end
+    end
+    if not mine then return nil, teams end
+    local stats
+    if type(mine.stats) == "table" then
+        local rows = {}
+        for _, stat in ipairs(mine.stats) do
+            local value = type(stat) == "table" and Number(stat.pvpStatValue)
+            if not value then
+                rows = nil      -- secret: the last columns seen are kept
+                break
+            end
+            if type(stat.name) == "string" and not Secret(stat.name) then
+                rows[#rows + 1] = { stat.name, value, Number(stat.orderIndex) or #rows }
+            end
+        end
+        if rows and #rows > 0 then
+            table.sort(rows, function(a, b) return a[3] < b[3] end)
+            for _, row in ipairs(rows) do row[3] = nil end
+            stats = rows
+        end
+    end
+    return {
+        faction = Number(mine.faction) or Number(Read(_G["GetBattlefieldArenaFaction"])),
+        kb = Number(mine.killingBlows), hk = Number(mine.honorableKills), deaths = Number(mine.deaths),
+        honor = Number(mine.honorGained), damage = Number(mine.damageDone), healing = Number(mine.healingDone),
+        stats = stats,
+    }, teams
+end
+
+-- The classic board, GetBattlefieldScore, as Era and Anniversary have it.
+local function ClassicScore()
     local count = Number(Read(_G["GetNumBattlefieldScores"]))
     local getScore = _G["GetBattlefieldScore"]
     if not count or type(getScore) ~= "function" then return end
-    local me, teams, mine = UnitName("player"), { 0, 0 }, nil
+    local me, teams, index, row = UnitName("player"), { 0, 0 }, nil, nil
     for i = 1, count do
-        local row = { pcall(getScore, i) }
-        if row[1] then
-            local name, faction = row[2], row[7]
+        local values = { pcall(getScore, i) }
+        if values[1] then
+            local faction = Number(values[7])
             if faction == 0 or faction == 1 then teams[faction + 1] = teams[faction + 1] + 1 end
-            -- (a name from another realm has it after a dash)
-            if type(name) == "string" and not Secret(name) and (name == me or name:sub(1, #me + 1) == me .. "-") then
-                mine = { i, row }
-            end
+            if IsMe(values[2], me) then index, row = i, values end
         end
     end
-    return mine, teams
-end
-
--- Reads the player's row on the score board, which the client keeps up
--- during the match too (so leaving early keeps it), and the result once
--- the match has a winner.
-local askedAtEnd       -- the run whose final board was asked for, once
-
-function Battlegrounds:ReadScore()
-    local pvp = Current()
-    if not pvp then return end
-    local winner = Number(Read(_G["GetBattlefieldWinner"]))
-    -- The board as it ended, asked for once: asking again on each update
-    -- would never stop if the player's row were not found.
-    if winner and askedAtEnd ~= ns.char.run and RequestBattlefieldScoreData then
-        askedAtEnd = ns.char.run
-        pcall(RequestBattlefieldScoreData)
-    end
-    local mine, teams = MyRow()
-    if not mine then return end
-    local i, row = mine[1], mine[2]
+    if not row then return nil, teams end
     -- row[1] is pcall's; the client's values start at row[2] with the name:
     -- name, killing blows, honorable kills, deaths, honor, faction, then on
     -- Era and Anniversary rank, race, class, class token, damage, healing.
     -- Damage and healing are found after the class token, in case a client
     -- leaves the rank out.
-    local faction = Number(row[7])
-    if faction and winner then pvp.won = faction == winner end
-    pvp.kb, pvp.hk, pvp.deaths, pvp.scoreHonor = Number(row[3]), Number(row[4]), Number(row[5]), Number(row[6])
+    local score = {
+        faction = Number(row[7]), kb = Number(row[3]), hk = Number(row[4]), deaths = Number(row[5]),
+        honor = Number(row[6]),
+    }
     local _, classToken = UnitClass("player")
     for k = 8, #row do
         if row[k] == classToken then
-            pvp.damage, pvp.healing = Number(row[k + 1]), Number(row[k + 2])
+            score.damage, score.healing = Number(row[k + 1]), Number(row[k + 2])
             break
         end
     end
-    pvp.teams = teams
-    local ms = Number(Read(_G["GetBattlefieldInstanceRunTime"]))
-    if ms and ms > 0 then pvp.length = math.floor(ms / 1000) end
     local columns = Number(Read(_G["GetNumBattlefieldStats"])) or 0
     if columns > 0 then
         local stats = {}
         for s = 1, columns do
             local name = Read(_G["GetBattlefieldStatInfo"], s)
             if type(name) == "string" then
-                stats[#stats + 1] = { name, Number(Read(_G["GetBattlefieldStatData"], i, s)) or 0 }
+                stats[#stats + 1] = { name, Number(Read(_G["GetBattlefieldStatData"], index, s)) or 0 }
             end
         end
-        pvp.stats = stats
+        score.stats = stats
     end
+    return score, teams
+end
+
+-- The winning side (0 Horde, 1 Alliance) once the match is over, else nil
+-- (a draw too). C_PvP's first, the only one on Forever.
+local function Winner()
+    local pvpApi = C_PvP
+    if pvpApi and Read(pvpApi.IsMatchComplete) == true then
+        local winner = Number(Read(pvpApi.GetActiveMatchWinner))
+        if winner == 0 or winner == 1 then return winner end
+    end
+    return Number(Read(_G["GetBattlefieldWinner"]))
+end
+
+-- The match's seconds so far, or nil.
+local function Length()
+    local seconds = Number(Read(C_PvP and C_PvP.GetActiveMatchDuration))
+    if seconds and seconds > 0 then return math.floor(seconds) end
+    local ms = Number(Read(_G["GetBattlefieldInstanceRunTime"]))
+    if ms and ms > 0 then return math.floor(ms / 1000) end
+end
+
+-- Reads the player's row on the score board and the result once the match
+-- has a winner. A number the client does not give now (secret during the
+-- match on Forever) keeps the one last read.
+local askedAtEnd       -- the run whose final board was asked for, once
+
+function Battlegrounds:ReadScore()
+    local pvp = Current()
+    if not pvp then return end
+    local winner = Winner()
+    -- The board as it ended, asked for once: asking again on each update
+    -- would never stop if the player's row were not found.
+    if winner and askedAtEnd ~= ns.char.run and RequestBattlefieldScoreData then
+        askedAtEnd = ns.char.run
+        pcall(RequestBattlefieldScoreData)
+    end
+    local score, teams = ModernScore()
+    if not score then
+        local classic, classicTeams = ClassicScore()
+        if classic then score, teams = classic, classicTeams end
+    end
+    if not score then return end
+    if score.faction and winner then pvp.won = score.faction == winner end
+    pvp.kb, pvp.hk = score.kb or pvp.kb, score.hk or pvp.hk
+    pvp.deaths, pvp.scoreHonor = score.deaths or pvp.deaths, score.honor or pvp.scoreHonor
+    pvp.damage, pvp.healing = score.damage or pvp.damage, score.healing or pvp.healing
+    pvp.teams = teams
+    pvp.length = Length() or pvp.length
+    pvp.stats = score.stats or pvp.stats
+end
+
+-- Forever's end of a match: its winner and length, then the final board.
+function Battlegrounds:Complete(_, duration)
+    local pvp = Current()
+    if not pvp then return end
+    local seconds = Number(duration)
+    if seconds and seconds > 0 then pvp.length = math.floor(seconds) end
+    self:ReadScore()
 end
 
 -- "You have been awarded 126 honor points.", or an honorable kill's honor
@@ -266,5 +366,6 @@ ns.On("PLAYER_ENTERING_WORLD", Watch)
 
 ns.On("UPDATE_BATTLEFIELD_STATUS", function() Battlegrounds:ReadScore() end)
 ns.On("UPDATE_BATTLEFIELD_SCORE", function() Battlegrounds:ReadScore() end)
+ns.On("PVP_MATCH_COMPLETE", function(winner, duration) Battlegrounds:Complete(winner, duration) end)
 ns.On("CHAT_MSG_COMBAT_HONOR_GAIN", function(msg) Battlegrounds:Honor(msg) end)
 ns.On("CHAT_MSG_COMBAT_FACTION_CHANGE", function(msg) Battlegrounds:Reputation(msg) end)

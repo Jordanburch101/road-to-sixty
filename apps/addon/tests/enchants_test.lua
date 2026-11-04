@@ -179,6 +179,25 @@ Settle()
 e = logged[5]
 check(e and e[2] == 3365 and e[6] == nil, "the trade names only the item that was in its enchant slot")
 
+-- 10. Forever: no GetWeaponEnchantInfo without the deprecated fallbacks, so
+-- a poison is known as temporary from C_PaperDollInfo.
+GetWeaponEnchantInfo = nil ---@diagnostic disable-line: assign-type-mismatch
+local temp = {}
+C_PaperDollInfo = { GetTemporaryEnchantmentInfo = function(slot) return temp[slot] end }
+local count = #logged
+game.equipped[17] = Link(2092, nil, 11)
+Fire("UNIT_INVENTORY_CHANGED", "player")
+Settle()
+temp[17] = { enchantID = 3000, remainingTimeMs = 1800000, chargesRemaining = 60, hasExpirationTime = true }
+game.equipped[17] = Link(2092, 3000, 11)
+Fire("UNIT_INVENTORY_CHANGED", "player")
+Settle()
+temp[17] = nil
+game.equipped[17] = Link(2092, nil, 11)
+Fire("UNIT_INVENTORY_CHANGED", "player")
+Settle()
+check(#logged == count, "a poison put on and running out logs nothing on Forever, got " .. (#logged - count))
+
 if failures == 0 then
     print("Enchants tests passed.")
 else

@@ -22,7 +22,7 @@ local _, ns = ...
 --
 -- Temporary enchants (oils, stones, poisons) are not progress. Whether they
 -- show in the link on Forever is not yet known, so a change to or from an
--- enchant GetWeaponEnchantInfo reports as temporary is left out, and so is
+-- enchant the client reports as temporary is left out, and so is
 -- an enchant going away, which a permanent one never does on its own.
 --
 -- Not yet checked on Forever: which events fire when an enchant lands, the
@@ -101,8 +101,24 @@ function Enchants.Diff(before, after, temp)
     return changes
 end
 
--- Notes the enchant IDs GetWeaponEnchantInfo reports as temporary now.
+-- The weapon slots a temporary enchant can be on: main hand, off hand, ranged.
+local WEAPON_SLOTS = { 16, 17, 18 }
+
+-- Notes the enchant IDs the client reports as temporary now. Forever has
+-- GetWeaponEnchantInfo only as a fallback behind the loadDeprecationFallbacks
+-- setting, so the modern C_PaperDollInfo one is asked too; either one
+-- naming an enchant is enough.
 local function NoteTemporary()
+    local modern = C_PaperDollInfo and C_PaperDollInfo.GetTemporaryEnchantmentInfo
+    if modern then
+        for _, slot in ipairs(WEAPON_SLOTS) do
+            local ok, info = pcall(modern, slot)
+            local id = ok and type(info) == "table" and info.enchantID
+            if type(id) == "number" and not (issecretvalue and issecretvalue(id)) and id > 0 then
+                tempEnchants[id] = true
+            end
+        end
+    end
     if not GetWeaponEnchantInfo then return end
     local info = { GetWeaponEnchantInfo() }
     for _, i in ipairs({ 4, 8, 12 }) do
