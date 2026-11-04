@@ -13,13 +13,18 @@ const PAGE = Bun.file(`${import.meta.dir}/link.html`);
 const COMPASS = Bun.resolveSync("@road-to-sixty/ui/compass.png", import.meta.dir);
 const GEIST = Bun.resolveSync("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2", dirname(COMPASS));
 
-// The page's script, built for the browser the first time it is asked for.
-let script: Promise<string> | undefined;
-function pageScript(): Promise<string> {
-  script ??= Bun.build({ entrypoints: [`${import.meta.dir}/link-page.ts`], target: "browser", minify: true }).then((r) => {
-    if (!r.success) throw new AggregateError(r.logs, "the link page's script didn't build");
-    return r.outputs[0]!.text();
-  });
+// A page's script (src/<page>-page.ts), built for the browser the first time
+// it is asked for.
+const scripts = new Map<string, Promise<string>>();
+export function pageScript(page: "link" | "delete"): Promise<string> {
+  let script = scripts.get(page);
+  if (!script) {
+    script = Bun.build({ entrypoints: [`${import.meta.dir}/${page}-page.ts`], target: "browser", minify: true }).then((r) => {
+      if (!r.success) throw new AggregateError(r.logs, `the ${page} page's script didn't build`);
+      return r.outputs[0]!.text();
+    });
+    scripts.set(page, script);
+  }
   return script;
 }
 
@@ -41,7 +46,7 @@ export const link = new Elysia()
         },
       }),
   )
-  .get("/link.js", async () => new Response(await pageScript(), { headers: { "content-type": "text/javascript; charset=utf-8" } }))
+  .get("/link.js", async () => new Response(await pageScript("link"), { headers: { "content-type": "text/javascript; charset=utf-8" } }))
   .get("/link/compass.png", () => new Response(Bun.file(COMPASS), { headers: { "content-type": "image/png" } }))
   .get("/link/geist.woff2", () => new Response(Bun.file(GEIST), { headers: { "content-type": "font/woff2" } }))
   .post("/v1/link", async ({ headers, query, set }): Promise<LinkResponse | { error: string } | Response> => {

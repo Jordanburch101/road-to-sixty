@@ -1,6 +1,7 @@
 import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@road-to-sixty/api";
-import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { config } from "./config";
 import { db } from "./db";
 import { type Device, pcName } from "./devices";
 import { runWindows } from "./lua";
@@ -368,39 +369,48 @@ export const account = pcRoutes()
     return { ok: true };
   })
 
-  // Spec, "Deleting an account". The other PCs are unlinked first so nothing
-  // new arrives; the one asking stays linked until the end, so if anything
-  // fails part way the player can try again from it. Files go before rows,
-  // and once more after, for a merge or upload that stored one meanwhile.
-  .delete("/account", async ({ device }) => {
-    const userId = device!.userId;
-    await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(devices.userId, userId), ne(devices.id, device!.id), isNull(devices.revokedAt)));
-    const theirs = db.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId));
-    await db.delete(jobs).where(inArray(jobs.characterId, theirs));
-    await removeAll(userId);
-    await db.transaction(async (tx) => {
-      // Locked first, so an upload or merge adding a character, version or
-      // job for this player now waits for the delete and then fails on the
-      // rows it is gone from (its file goes with the last removeAll). Without
-      // it, a row added between two of the deletes below makes the next fail
-      // on its foreign key, leaving rows whose files are gone.
-      await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
-      await tx.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId)).for("update");
-      // Again: an upload that got past the token check may have queued one.
-      await tx.delete(jobs).where(inArray(jobs.characterId, theirs));
-      const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
-      await tx.delete(versionParents).where(inArray(versionParents.versionId, theirVersions));
-      await tx.delete(versions).where(inArray(versions.characterId, theirs));
-      await tx.delete(characters).where(eq(characters.userId, userId));
-      await tx.delete(devices).where(eq(devices.userId, userId));
-      // Sessions, Battle.net accounts and device codes go with the user.
-      await tx.delete(user).where(eq(user.id, userId));
-    });
-    // ponytail: an upload still reading its body can store a file after this
-    // one; a sweep for files with no rows if that ever turns up.
-    await removeAll(userId);
-    return { ok: true };
+  // Deleting everything takes a fresh Battle.net sign-in on the delete page
+  // (src/delete.ts): a PC token alone may have come from a code the player
+  // was tricked into approving (#99). An app from before says this.
+  .delete("/account", ({ set }) => {
+    set.status = 403;
+    return { error: `Delete everything now asks you to sign in with Battle.net: update the app, or open ${DELETE_PAGE}` };
   });
+
+// The page the app opens for Delete everything.
+export const DELETE_PAGE = `${new URL(config.auth.url).origin}/delete`;
+
+// Spec, "Deleting an account". Every PC is unlinked first so nothing new
+// arrives; the player's sign-in on the delete page stays until the end, so
+// if anything fails part way they can try again from there. Files go before
+// rows, and once more after, for a merge or upload that stored one meanwhile.
+export async function deleteEverything(userId: string) {
+  await db
+    .update(devices)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+  const theirs = db.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId));
+  await db.delete(jobs).where(inArray(jobs.characterId, theirs));
+  await removeAll(userId);
+  await db.transaction(async (tx) => {
+    // Locked first, so an upload or merge adding a character, version or
+    // job for this player now waits for the delete and then fails on the
+    // rows it is gone from (its file goes with the last removeAll). Without
+    // it, a row added between two of the deletes below makes the next fail
+    // on its foreign key, leaving rows whose files are gone.
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+    await tx.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId)).for("update");
+    // Again: an upload that got past the token check may have queued one.
+    await tx.delete(jobs).where(inArray(jobs.characterId, theirs));
+    const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
+    await tx.delete(versionParents).where(inArray(versionParents.versionId, theirVersions));
+    await tx.delete(versions).where(inArray(versions.characterId, theirs));
+    await tx.delete(characters).where(eq(characters.userId, userId));
+    await tx.delete(devices).where(eq(devices.userId, userId));
+    // Sessions, Battle.net accounts and device codes go with the user.
+    await tx.delete(user).where(eq(user.id, userId));
+  });
+  // ponytail: an upload still reading its body can store a file after this
+  // one; a sweep for files with no rows if that ever turns up.
+  await removeAll(userId);
+}

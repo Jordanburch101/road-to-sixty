@@ -1,1 +1,1 @@
-{ "extends": "../../tsconfig.base.json", "include": ["src", "test", "scripts", "drizzle.config.ts"], "exclude": ["src/link-page.ts"] }
+{ "extends": "../../tsconfig.base.json", "include": ["src", "test", "scripts", "drizzle.config.ts"], "exclude": ["src/link-page.ts", "src/delete-page.ts"] }

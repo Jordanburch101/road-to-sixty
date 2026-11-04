@@ -173,7 +173,7 @@ Every route uses the PC token, and a player only ever sees their own characters 
 - `PATCH /v1/devices/:id` with `{ name }`: renames a PC. Names are one line of at most 40 characters.
 - `DELETE /v1/devices/:id`: unlinks a PC. Its token stops working at once; its journeys stay on it and on the server.
 - `GET /v1/export`: a zip of each character's current journey as the game would save it.
-- `DELETE /v1/account`: delete everything (see Deleting an account).
+- `DELETE /v1/account`: refused (403) since #99, saying to use the delete page (see Deleting an account).
 
 ### Merge jobs
 
@@ -238,7 +238,7 @@ The journeys bucket is off our server, so a dead disk loses no journeys. Postgre
 
 ### Deleting an account
 
-Delete removes the user's rows and their whole prefix in the journeys bucket. Postgres backups age out within 30 days, and the privacy policy says so.
+Delete everything takes a Battle.net sign-in made in the last 10 minutes, never a PC token alone (#99): a token can come from a link code the player was tricked into approving. The app's Delete everything opens `/delete` in the browser; the player signs in with Battle.net there and confirms, and the page posts to `POST /delete`, which reads only the browser's signed cookie (a link code's device sign-in is a fresh session too, so a bearer token doesn't count) and checks the request came from the page. Delete removes the user's rows and their whole prefix in the journeys bucket. Postgres backups age out within 30 days, and the privacy policy says so.
 
 ### Privacy
 

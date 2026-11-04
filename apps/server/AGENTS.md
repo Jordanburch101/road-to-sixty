@@ -14,7 +14,9 @@ push to `main` that touches it. The design is
 - `src/sync.ts` is the API the desktop app calls with its PC token:
   upload, check, download. `src/account.ts` is the account API the app's
   window calls (characters, history, restore, remove one character, PCs,
-  export, delete everything). Both start from `src/pc.ts`, the PC token check.
+  export). Both start from `src/pc.ts`, the PC token check. Delete
+  everything is the delete page's (`src/delete.ts`), behind a fresh
+  Battle.net sign-in.
 - `src/auth.ts` is Better Auth with Battle.net (the account ID is kept only
   as a keyed hash); `src/auth-schema.ts` holds its tables.
 - `src/link.ts`, `src/link.html` and `src/link-page.ts` link a PC: the
@@ -117,6 +119,12 @@ bun run dev               # port 3000, with .env copied from .env.example
   first, an earlier one would become current again); its files go only
   when no other version of the account shares them. The app's "Remove all
   beta characters" removes oldest first, so it never meets that 409.
+- Delete everything (`deleteEverything`) runs only from the delete page
+  (`src/delete.ts`, `delete.html`, `delete-page.ts`): `POST /delete` from
+  this server's origin with a Battle.net sign-in cookie made in the last 10
+  minutes. Only the cookie counts, never a bearer token, since a link
+  code's device sign-in is a fresh session whoever phished it holds.
+  `DELETE /v1/account` with a PC token answers 403 (#99).
 - Delete everything locks the player's row and characters before its
   deletes, so an upload or merge landing meanwhile waits and then fails,
   instead of failing the delete half way. Removing a character and a

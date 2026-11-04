@@ -18,6 +18,8 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
   const [atLogin, setAtLogin] = useState(false);
   const [checked, setChecked] = useState<string | null | undefined>(undefined);
   const [saved, setSaved] = useState(false);
+  // The delete page was opened in the browser (#99).
+  const [deleting, setDeleting] = useState(false);
   const now = new Date();
   useEffect(() => void startsAtLogin().then(setAtLogin, () => {}), []);
 
@@ -239,17 +241,25 @@ export function Account({ status, onTab }: { status: Status; onTab: (t: Tab) => 
             <Row line>
               {asking === "delete" ? (
                 <Ask
-                  question="Delete your account and every journey on the server? This can't be undone. Journeys on your PCs stay, and every PC stops syncing."
-                  yes="Delete everything"
+                  question="Delete your account and every journey on the server? You confirm in your browser, signed in with Battle.net. This can't be undone. Journeys on your PCs stay, and every PC stops syncing."
+                  yes="Continue in browser"
                   danger
-                  onYes={act("data", deleteAccount)}
+                  onYes={act("data", async () => {
+                    await deleteAccount();
+                    setAsking(null);
+                    setDeleting(true);
+                  })}
                   onNo={() => setAsking(null)}
                 />
               ) : (
                 <>
                   <div className="flex flex-1 flex-col gap-1">
                     <span className="text-sm font-medium">Delete everything</span>
-                    <span className="text-xs leading-[1.45] text-muted">Removes your account and every journey from the server. Journeys on your PCs stay.</span>
+                    <span className="text-xs leading-[1.45] text-muted">
+                      {deleting
+                        ? "Finish in your browser. Once it's deleted, this PC stops syncing and shows as unlinked within a few minutes."
+                        : "Removes your account and every journey from the server. Journeys on your PCs stay."}
+                    </span>
                   </div>
                   <Button className={`${small} border-danger-line! text-danger!`} onClick={() => setAsking("delete")}>
                     Delete
