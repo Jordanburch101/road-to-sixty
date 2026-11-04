@@ -35,7 +35,7 @@ local _, ns = ...
 --
 -- Professions known when tracking began are logged once as baseline, so an
 -- old character does not show them as learned today. ns.char.profSlots is
--- true once every GetProfessions slot has been read (1.19.1 on): before,
+-- true once every GetProfessions slot has been read (1.19.2 on): before,
 -- the slots after the first one not learned were missed, so professions
 -- seen first in that read are baseline too.
 --
@@ -126,7 +126,7 @@ function Crafts:CheckSkills(atLogin)
     -- professions not shown yet; taken as the baseline, each would then be
     -- logged as learned today.
     if baseline and next(skills) == nil and not self.settled then return end
-    -- Before 1.19.1 the GetProfessions slots after the first one not learned
+    -- Before 1.19.2 the GetProfessions slots after the first one not learned
     -- were never read, so a profession seen for the first time in a
     -- character's first full read may be one known all along. That read is
     -- the check 5 seconds after login, as professions can be missing before.
