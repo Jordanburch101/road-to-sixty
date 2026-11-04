@@ -74,14 +74,25 @@ ns.GEAR_SLOTS = {
     "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
 }
 
+-- A slot name's inventory slot ID and empty slot texture, or nil if this
+-- client has no such slot. Forever has the global GetInventorySlotInfo only
+-- as a fallback behind the loadDeprecationFallbacks setting, so the modern
+-- C_PaperDollInfo one goes first (the classic clients have only the global).
+function ns.InventorySlotInfo(name)
+    local api = C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo or GetInventorySlotInfo
+    if not api then return end
+    local ok, id, texture = pcall(api, name)
+    if ok and id then return id, texture end
+end
+
 -- What the player is wearing: inventory slot ID -> item ID, and slot ID ->
 -- item string. Slots this client does not have are skipped.
 function ns.CaptureGear()
     local gear, links = {}, {}
     for _, name in ipairs(ns.GEAR_SLOTS) do
-        local ok, slot = pcall(GetInventorySlotInfo, name)
-        local itemID = ok and slot and GetInventoryItemID("player", slot)
-        if itemID then
+        local slot = ns.InventorySlotInfo(name)
+        local itemID = slot and GetInventoryItemID("player", slot)
+        if slot and itemID then
             gear[slot] = itemID
             links[slot] = ns.ItemString(GetInventoryItemLink("player", slot))
         end
@@ -104,7 +115,8 @@ end
 -- read there comes back empty (issue #63). So the login gear is read again
 -- every GEAR_RETRY seconds until items show, then fills in the snapshot
 -- taken at login and ns.char.gear. A character that really wears nothing
--- stays empty once GEAR_TRIES reads have found nothing.
+-- stays empty once GEAR_TRIES reads have found nothing; one whose gear last
+-- seen had items keeps that gear, as the reads may only have been too early.
 --
 -- Gear that differs from the gear last seen was changed while the addon was
 -- not running (turned off, or played on a PC without it), and is logged as
@@ -140,6 +152,10 @@ local function ReadLoginGear(level, tries, lastCount)
     -- Gear worn all along is no new arrival for Sources.lua either.
     if ns.Sources then ns.Sources:Rebase() end
     local before = ns.char.gear
+    -- Every read found nothing, but the gear last seen had items: the reads
+    -- did not work (a slow login), so the gear last seen stays as it was.
+    -- Taken as worn nothing, each item turning up later would log as put on.
+    if count == 0 and type(before) == "table" and next(before) then return end
     if type(before) == "table" and next(gear) then
         for slot = 1, 19 do
             local was = before[slot]
