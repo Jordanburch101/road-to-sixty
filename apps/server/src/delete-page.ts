@@ -2,6 +2,8 @@
 // with the browser's types by tsconfig.page.json. Deleting needs a
 // Battle.net sign-in made in the last few minutes (delete.ts), so an older
 // one is asked to sign in again; the server checks it either way.
+export {}; // a module, for the top-level await below
+
 const $ = (id: string) => document.getElementById(id)!;
 // A minute short of the server's 10, so a sign-in about to run out is renewed first.
 const FRESH_MS = 9 * 60 * 1000;
