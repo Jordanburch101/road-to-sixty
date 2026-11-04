@@ -6,6 +6,22 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.19.1
+
+### Fixed
+- Cooking, Fishing and First Aid are recorded on Forever. Before, a
+  character without both main professions (or without First Aid) had its
+  later professions and their skill points left out. Ones already known
+  show as known from the start of the journey.
+- Gear is read with the game's current functions on Forever, so it is
+  still recorded if the game's fallback for older addons is turned off.
+- A slow login no longer forgets the gear you wear, which made every item
+  look newly put on once it loaded.
+- No errors or missed records from system messages inside dungeons, raids
+  and battlegrounds on Forever, where the game hides them from addons.
+- A dungeon left, then finished later, no longer comes back after a sync
+  as a second run, counted twice.
+
 ## 1.19.0
 
 ### New
