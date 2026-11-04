@@ -24,15 +24,16 @@ test("a PC needs a token that is known and not revoked", async () => {
   expect((await call(token, "/v1/check")).status).toBe(401);
 });
 
-test("an address sending 60 unknown tokens a minute waits, and its next isn't looked up", async () => {
+test("an address sending 60 unknown tokens a minute waits; a known PC from it still gets through", async () => {
   const from = (address: string) => ({ headers: { "x-forwarded-for": address } });
   for (let i = 0; i < 60; i++) expect((await call("nope", "/v1/check", from("198.51.100.7"))).status).toBe(401);
   const refused = await call("nope", "/v1/check", from("198.51.100.7"));
   expect(refused.status).toBe(429);
   expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
   expect((await call("nope", "/v1/check", from("198.51.100.8"))).status).toBe(401);
-  // A known PC is never counted.
+  // Another player behind the same shared address isn't held up, and isn't counted.
   const { token } = await newDevice("user-1", "Desk");
+  expect((await call(token, "/v1/check", from("198.51.100.7"))).status).toBe(200);
   for (let i = 0; i < 70; i++) expect((await call(token, "/v1/check", from("198.51.100.9"))).status).toBe(200);
 });
 
@@ -50,12 +51,23 @@ test("ids that aren't whole numbers a bigint holds are not found, never a server
 
 test("a fault answers 500 without its message, which for a query holds the SQL", async () => {
   const { token } = await newDevice("user-1", "Desk");
-  spyOn(db, "select").mockImplementationOnce(() => {
-    throw new Error('Failed query: select "secret" from "devices"');
-  });
-  const r = await call(token, "/v1/characters");
-  expect(r.status).toBe(500);
-  expect(await r.text()).not.toContain("Failed query");
+  await call(token, "/v1/check"); // the PC's visit is noted now, so the next request reads only
+  const real = db.select.bind(db);
+  let calls = 0;
+  // The token check reads first; the characters list's own query fails,
+  // once with drizzle's message and once with an error carrying a code of
+  // its own, as database and storage errors do.
+  spyOn(db, "select").mockImplementation(((...args: Parameters<typeof db.select>) => {
+    calls++;
+    if (calls === 2) throw new Error('Failed query: select "secret" from "devices"');
+    if (calls === 4) throw Object.assign(new Error("connection to 10.0.0.5:5432 refused"), { code: "ECONNREFUSED" });
+    return real(...args);
+  }) as typeof db.select);
+  for (const hidden of ["Failed query", "10.0.0.5"]) {
+    const r = await call(token, "/v1/characters");
+    expect(r.status).toBe(500);
+    expect(await r.text()).not.toContain(hidden);
+  }
 });
 
 test("a merge giving a level or time played no column holds keeps the journey, without them", async () => {

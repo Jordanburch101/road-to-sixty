@@ -322,7 +322,9 @@ for _, bad in ipairs({ { totals = 5 }, { kills = "x" }, { levels = 1 }, { events
     { people = { ["Player-1-0000000A"] = { groups = { [true] = 1 } } } },
     { people = { ["Player-1-0000000A"] = { seconds = { pcz = "long" } } } },
     { people = { ["Player-1-0000000A"] = { raids = "x" } } },
-    { rares = 3 }, { rares = { k = 1 } }, { rares = { k = { { pcz = {} } } } } }) do
+    { rares = 3 }, { rares = { k = 1 } }, { rares = { k = { { pcz = {} } } } }, { rares = { k = { { pcz = 1 }, "x" } } },
+    { people = { ["Player-1-0000000A"] = { first = "x" } } }, { people = { ["Player-1-0000000A"] = { last = {} } } },
+    { levels = { [3] = 5 } }, { levels = { [3] = { t = "x" } } }, { segments = { 5 } } }) do
     local damaged = Journey()
     for k, v in pairs(bad) do damaged[k] = v end
     none, reason = Merge.Prepare(damaged, "pcz")

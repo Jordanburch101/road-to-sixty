@@ -85,8 +85,8 @@ export const exports = new Window(5, 3600);
 export const restores = new Window(10, 3600);
 
 // Requests with a PC token that isn't known, per address (the visitor's, as
-// sign-in finds it, proxies.ts): each is a database lookup, and nothing
-// else limits them. An app whose PC was unlinked stops after its first.
+// sign-in finds it, proxies.ts): nothing else limits them. An app whose PC
+// was unlinked stops after its first. Known PCs are never refused by it.
 export const badTokens = new Window(60, 60);
 
 // How many of a costly thing may run at once across the server. Taken

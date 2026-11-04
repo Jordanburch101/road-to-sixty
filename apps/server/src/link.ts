@@ -1,5 +1,5 @@
 import type { LinkResponse } from "@road-to-sixty/api";
-import { and, count, eq, isNull } from "drizzle-orm";
+import { TransactionRollbackError, and, count, eq, isNull } from "drizzle-orm";
 import { dirname } from "node:path";
 import { Elysia } from "elysia";
 import { auth } from "./auth";
@@ -68,27 +68,34 @@ export const link = new Elysia()
         .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
       return row!.n;
     };
-    // Refusals come before the sign-in is used up, so the player can link
-    // again with the same code once they unlink a PC.
+    // Every refusal comes before the sign-in is used up, so the player can
+    // link again with the same code once they unlink a PC.
     if (!links.allows(userId)) return tooMany();
     if ((await linked()) >= MAX_PCS) return full();
-    // The sign-in is used up next, so asking several times at once with one
-    // token links one PC.
-    const used = await db.delete(session).where(eq(session.id, signedIn.session.id)).returning({ id: session.id });
-    if (used.length === 0) {
+    const name = pcName(query.name) ?? "PC";
+    const platform = query.platform?.slice(0, 20);
+    // With the player locked, so two sign-ins linking at once can't both
+    // take the last place: counted again, then the sign-in used up (so
+    // asking several times at once with one token links one PC), then the
+    // day's links counted, which undoes it all if there is no room.
+    const made = await db
+      .transaction(async (tx) => {
+        await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+        if ((await linked(tx)) >= MAX_PCS) return "full" as const;
+        const used = await tx.delete(session).where(eq(session.id, signedIn.session.id)).returning({ id: session.id });
+        if (used.length === 0) return "used" as const;
+        if (!links.take(userId)) tx.rollback();
+        return newDevice(userId, name, platform, tx);
+      })
+      .catch((e) => {
+        if (e instanceof TransactionRollbackError) return "too many" as const;
+        throw e;
+      });
+    if (made === "too many") return tooMany();
+    if (made === "full") return full();
+    if (made === "used") {
       set.status = 401;
       return { error: "sign in on the link page first" };
     }
-    if (!links.take(userId)) return tooMany();
-    const name = pcName(query.name) ?? "PC";
-    const platform = query.platform?.slice(0, 20);
-    // Counted again with the player locked, so two sign-ins linking at once
-    // can't both take the last place.
-    const made = await db.transaction(async (tx) => {
-      await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
-      if ((await linked(tx)) >= MAX_PCS) return null;
-      return newDevice(userId, name, platform, tx);
-    });
-    if (!made) return full();
     return { token: made.token, pc: made.device.id, battletag: signedIn.user.name };
   });

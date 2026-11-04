@@ -178,6 +178,10 @@ export const account = pcRoutes()
       // finishing in between must either see all of it or none.
       const version = await db
         .transaction(async (tx) => {
+          // The character first, as removing it and delete everything lock it
+          // first too: taken in another order, a restore and a delete running
+          // together could each wait on the other.
+          await tx.select({ id: characters.id }).from(characters).where(eq(characters.id, c.id)).for("no key update");
           // The clean-up marks a version pruned before deleting its file, and
           // waits on this lock: so either it sees the restore's new row, which
           // shares the source's file, and keeps the file, or the source is
@@ -255,6 +259,8 @@ export const account = pcRoutes()
       return { error: "Remove this character's earlier journeys first" };
     }
     const files = await db.transaction(async (tx) => {
+      // The character first, in the same order as a restore (see there).
+      await tx.select({ id: characters.id }).from(characters).where(eq(characters.id, c.id)).for("update");
       // Locked, so the worker's claim skips them; a job it already took
       // shows as running, and its commit would meet a deleted row.
       const held = await tx.select({ state: jobs.state }).from(jobs).where(eq(jobs.characterId, c.id)).for("update");

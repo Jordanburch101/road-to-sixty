@@ -26,11 +26,16 @@ async function tooBig(request: Request): Promise<boolean> {
   }
 }
 
+// Elysia's own refusals, which say only what was wrong with the request.
+const OWN = new Set(["VALIDATION", "PARSE", "NOT_FOUND", "INVALID_COOKIE_SIGNATURE", "INVALID_FILE_TYPE"]);
+
 export const app = new Elysia()
   // A fault answers without its message, which for a failed query holds
-  // drizzle's "Failed query:" text with the SQL and its values.
+  // drizzle's "Failed query:" text with the SQL and its values. Anything
+  // but Elysia's own codes counts: Elysia takes an error's own .code (a
+  // database or storage error's, say) as its code, and would send its message.
   .onError({ as: "global" }, ({ code, error, request, set }) => {
-    if (code !== "UNKNOWN" && code !== "INTERNAL_SERVER_ERROR") return;
+    if (typeof code === "number" || OWN.has(String(code))) return;
     console.error(`${request.method} ${new URL(request.url).pathname}:`, error);
     set.status = 500;
     return { error: "something went wrong on the server" };

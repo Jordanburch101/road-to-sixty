@@ -83,12 +83,14 @@ bun run dev               # port 3000, with .env copied from .env.example
   `src/auth.ts`), 10 link codes and 20 code lookups, approvals and denials
   a minute (its rules match whole paths, so each path is listed), and 60
   requests with an unknown PC token a minute (`badTokens`, by the address
-  `getIP` finds; past it the token isn't even looked up). All answer
+  `getIP` finds; none when it finds none). All answer
   429. The lookup rule replaces the device plugin's own 5 per half hour,
   too few for one household linking two PCs; keep it. `/v1/link` checks
-  the day's links and the 20 PCs before it uses up the sign-in, so a
-  refusal leaves the code working, and counts the PCs again with the
-  player's row locked. 20 linked PCs per
+  the day's links and the 20 PCs first, then with the player's row locked
+  counts the PCs again, uses up the sign-in and counts the link, undoing
+  it all on a refusal: a refusal always leaves the code working. Unknown
+  PC tokens are refused per address only; a known PC from the same
+  address always gets through. 20 linked PCs per
   account (409), 100 characters (422, plain text the app shows on the
   row), 8 MB uploads and 16 KB for any other body (413), 64-character
   names (400). The counts are in memory, so a restart forgets them.
@@ -117,7 +119,9 @@ bun run dev               # port 3000, with .env copied from .env.example
   beta characters" removes oldest first, so it never meets that 409.
 - Delete everything locks the player's row and characters before its
   deletes, so an upload or merge landing meanwhile waits and then fails,
-  instead of failing the delete half way.
+  instead of failing the delete half way. Removing a character and a
+  restore lock the character row first too: one order, so they never
+  deadlock.
 - Ids from a request go through `rowId` (`src/ids.ts`) before a query:
   anything else is not found. A fault answers 500 with a plain message
   (`onError` in `src/app.ts`), never drizzle's, which holds the SQL.
