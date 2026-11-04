@@ -27,6 +27,14 @@ async function tooBig(request: Request): Promise<boolean> {
 }
 
 export const app = new Elysia()
+  // A fault answers without its message, which for a failed query holds
+  // drizzle's "Failed query:" text with the SQL and its values.
+  .onError({ as: "global" }, ({ code, error, request, set }) => {
+    if (code !== "UNKNOWN" && code !== "INTERNAL_SERVER_ERROR") return;
+    console.error(`${request.method} ${new URL(request.url).pathname}:`, error);
+    set.status = 500;
+    return { error: "something went wrong on the server" };
+  })
   .onRequest(async ({ request, set }) => {
     if (new URL(request.url).pathname === "/v1/upload") return;
     if (await tooBig(request)) {

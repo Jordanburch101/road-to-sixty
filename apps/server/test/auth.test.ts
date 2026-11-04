@@ -155,6 +155,49 @@ test("an account can link 20 PCs; the 21st is refused until one is unlinked", as
   expect((await linkOnce(cookie)).status).toBe(200);
 });
 
+test("a link refused for too many PCs keeps its sign-in, so the same code links once one is unlinked", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  for (let i = 0; i < 20; i++) await newDevice(player!.id, `PC ${i}`);
+  const code = (await (await deviceCode()).json()) as { device_code: string; user_code: string };
+  await approve(code.user_code, cookie);
+  const tokenRequest = { grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: code.device_code, client_id: APP_CLIENT_ID };
+  const { access_token } = (await (await post("/api/auth/device/token", tokenRequest)).json()) as { access_token: string };
+  const link = () => app.handle(new Request("http://localhost:3000/v1/link?name=Desk", { method: "POST", headers: { authorization: `Bearer ${access_token}` } }));
+  expect((await link()).status).toBe(409);
+  for (let i = 0; i < links.max; i++) links.take(player!.id);
+  const [one] = await db.select().from(devices);
+  await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.id, one!.id));
+  expect((await link()).status).toBe(429);
+  links.clear();
+  expect((await link()).status).toBe(200);
+});
+
+test("two sign-ins linking at once can't both take the last of the 20 places", async () => {
+  const cookie = await signIn();
+  const [player] = await db.select().from(user);
+  for (let i = 0; i < 19; i++) await newDevice(player!.id, `PC ${i}`);
+  const answers = await Promise.all([linkOnce(cookie), linkOnce(cookie)]);
+  expect(answers.map((r) => r.status).sort()).toEqual([200, 409]);
+  expect((await db.select().from(devices)).length).toBe(20);
+});
+
+test("approving or denying a code has the code lookup's limit", async () => {
+  const cookie = await signIn();
+  const context = await auth.$context;
+  context.rateLimit.enabled = true; // Better Auth counts only in production
+  try {
+    for (const path of ["/api/auth/device/approve", "/api/auth/device/deny"]) {
+      const answers = [];
+      for (let i = 0; i < 21; i++) answers.push((await post(path, { userCode: "WRONG123" }, { cookie })).status);
+      expect(answers.slice(0, 20)).not.toContain(429);
+      expect(answers[20]).toBe(429);
+    }
+  } finally {
+    context.rateLimit.enabled = false;
+  }
+});
+
 test("one sign-in links one PC, even when the app asks several times at once", async () => {
   const cookie = await signIn();
   const code = (await (await deviceCode()).json()) as { device_code: string; user_code: string };

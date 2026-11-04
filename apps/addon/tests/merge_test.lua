@@ -316,7 +316,13 @@ check(none == nil and tostring(reason):find("newer"), "a newer layout is refused
 check(Merge.Prepare(Journey(), "pcz").version == 4, "layout 4 is left as it is")
 check(Merge.Prepare(Journey({ version = 3 }), "pcz").version == 4, "layout 3 comes up to 4 as it is: it has no stamp yet")
 for _, bad in ipairs({ { totals = 5 }, { kills = "x" }, { levels = 1 }, { events = { 1 } }, { events = { { "t", "on" } } },
-    { totals = { kills = "many" } }, { kills = { d = 5 } } }) do
+    { totals = { kills = "many" } }, { kills = { d = 5 } },
+    -- Tallies the merge reads would make it fail, so they are refused too.
+    { people = { ["Player-1-0000000A"] = 5 } }, { people = { [true] = {} } },
+    { people = { ["Player-1-0000000A"] = { groups = { [true] = 1 } } } },
+    { people = { ["Player-1-0000000A"] = { seconds = { pcz = "long" } } } },
+    { people = { ["Player-1-0000000A"] = { raids = "x" } } },
+    { rares = 3 }, { rares = { k = 1 } }, { rares = { k = { { pcz = {} } } } } }) do
     local damaged = Journey()
     for k, v in pairs(bad) do damaged[k] = v end
     none, reason = Merge.Prepare(damaged, "pcz")

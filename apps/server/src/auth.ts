@@ -34,6 +34,10 @@ export const auth = betterAuth({
       // household linking two PCs runs through. A code is 8 characters and
       // lives 30 minutes, so 20 a minute still makes guessing one hopeless.
       "/device": { window: 60, max: 20 },
+      // Rules match whole paths, so approving and denying (which take a
+      // code too) would otherwise get the default 100 every 10 seconds.
+      "/device/approve": { window: 60, max: 20 },
+      "/device/deny": { window: 60, max: 20 },
     },
   },
   advanced: {

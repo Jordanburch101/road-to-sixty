@@ -660,11 +660,31 @@ end
 -- The parts the addon adds to or indexes. A journey with one of the wrong
 -- shape would stop the recording once the addon took it in, and the server
 -- would hand it to every PC.
-local TABLES = { "segments", "events", "levels", "kills", "recipes", "people", "totals" }
+local TABLES = { "segments", "events", "levels", "kills", "recipes", "people", "rares", "totals" }
+
+-- A tally (Tally.lua) whose parts aren't counts under PC IDs, or a layout 2
+-- count that isn't a number. Merging one would fail on it every time.
+local function BadTally(t)
+    if t == nil or type(t) == "number" then return false end
+    if type(t) ~= "table" then return true end
+    for pc, n in pairs(t) do
+        if type(pc) ~= "string" or type(n) ~= "number" then return true end
+    end
+    return false
+end
 
 local function Misshapen(j)
     for _, k in ipairs(TABLES) do
         if j[k] ~= nil and type(j[k]) ~= "table" then return k .. " isn't a table" end
+    end
+    for guid, p in pairs(j.people or {}) do
+        if type(guid) ~= "string" or type(p) ~= "table" then return "a person isn't kept under a GUID" end
+        for _, f in ipairs(ns.Tally.PEOPLE) do
+            if BadTally(p[f]) then return "a person's " .. f .. " isn't a tally" end
+        end
+    end
+    for _, r in pairs(j.rares or {}) do
+        if type(r) ~= "table" or BadTally(r[1]) then return "a rare's kills aren't a tally" end
     end
     for _, e in ipairs(j.events or {}) do
         if type(e) ~= "table" or type(e[1]) ~= "number" then return "an event has no time" end

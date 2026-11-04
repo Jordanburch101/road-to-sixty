@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq, inArray, ne } from "drizzle-orm";
+import { safe } from "../src/account";
 import { config } from "../src/config";
 import { db } from "../src/db";
 import * as lua from "../src/lua";
@@ -102,6 +103,26 @@ test("a restore can't pick the current version, or another player's", async () =
   const other = await newDevice("user-2", "Elsewhere");
   expect((await restore(other.token, c.id, older.id)).status).toBe(404);
   expect((await restore(desk.token, c.id, 999999)).status).toBe(404);
+});
+
+test("a restore of a version id that isn't a whole number a bigint holds is not found", async () => {
+  const { desk, c } = await twoVersions();
+  for (const version of ["1.5", "1e400", "99999999999999999999", '"abc"', "null", "-1"]) {
+    const r = await call(desk.token, `/v1/characters/${c.id}/restore`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: `{"version":${version}}`,
+    });
+    expect(r.status).toBe(404);
+  }
+});
+
+test("export names keep every file inside its folder", () => {
+  expect(safe("..")).toBe("__");
+  expect(safe(".hidden")).toBe("_hidden");
+  expect(safe("a/../b")).toBe("a_.._b");
+  expect(safe("")).toBe("_");
+  expect(safe("Azjol-Nérub")).toBe("Azjol-Nérub");
 });
 
 test("an upload waiting when a restore is picked keeps its new play, but not what the restore took out", async () => {

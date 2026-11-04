@@ -25,6 +25,16 @@ test("each PC has its own count, and a refused try isn't counted", () => {
   expect(w.take("a")).toBe(true);
 });
 
+test("allows says what take would, without counting", () => {
+  const w = new Window(2, 60);
+  expect(w.allows("pc")).toBe(true);
+  expect(w.allows("pc")).toBe(true);
+  w.take("pc");
+  w.take("pc");
+  expect(w.allows("pc")).toBe(false);
+  expect(w.allows("other")).toBe(true);
+});
+
 test("a key whose window has emptied is dropped", () => {
   let now = 0;
   const w = new Window(1, 60, () => now);

@@ -1,6 +1,7 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
 import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "./db";
+import { rowId } from "./ids";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
 import { accountBytes, accountDaily, accountUploads, uploads } from "./limits";
@@ -130,7 +131,7 @@ export const sync = pcRoutes()
         ? await db
             .select({ id: versions.id })
             .from(versions)
-            .where(and(eq(versions.characterId, character.id), eq(versions.id, Number(received) || 0)))
+            .where(and(eq(versions.characterId, character.id), eq(versions.id, rowId(received) ?? 0)))
         : [];
       await put(userId, fp, packed);
       const id = await db.transaction(async (tx) => {
@@ -269,11 +270,15 @@ export const sync = pcRoutes()
 
   // One merged or restored version, as stored: zstd-compressed Parse.Write text.
   .get("/versions/:id", async ({ device, params, set }) => {
-    const [row] = await db
-      .select({ v: versions, userId: characters.userId })
-      .from(versions)
-      .innerJoin(characters, eq(characters.id, versions.characterId))
-      .where(and(eq(versions.id, Number(params.id)), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt)));
+    const id = rowId(params.id);
+    const [row] =
+      id === null
+        ? []
+        : await db
+            .select({ v: versions, userId: characters.userId })
+            .from(versions)
+            .innerJoin(characters, eq(characters.id, versions.characterId))
+            .where(and(eq(versions.id, id), inArray(versions.kind, ["merged", "restore"]), isNull(versions.prunedAt)));
     if (!row || row.userId !== device!.userId) {
       set.status = 404;
       return { error: "no such version" };

@@ -21,6 +21,16 @@ export const SERVER_FAILED = "the server couldn't merge it";
 
 type Character = typeof characters.$inferSelect;
 
+// What fits the integer columns the merge's numbers go into, or null. A
+// crafted upload can merge to a level or time played no column holds, and
+// writing it would fail every try; the journey itself is still kept.
+const INT_MAX = 2 ** 31 - 1;
+export const column = (n: number | null): number | null =>
+  n === null || !Number.isFinite(n) || n < 0 || n > INT_MAX ? null : Math.round(n);
+// The same for the last time played, in Unix seconds: a date Postgres holds.
+const lastPlayed = (t: number | null): Date | null =>
+  t === null || !Number.isFinite(t) || t < 0 || t > 253402300799 ? null : new Date(t * 1000);
+
 // The row of this name for this journey, made if there is none. Two
 // uploads may race to make it, hence the insert that does nothing on a
 // clash and the read after.
@@ -163,7 +173,7 @@ async function runJob(job: Job) {
           fingerprint: fp,
           rawSize: result.journey.length,
           dataVersion: result.layout,
-          level: result.level,
+          level: column(result.level),
           status: "accepted",
         })
         .returning({ id: versions.id });
@@ -176,11 +186,11 @@ async function runJob(job: Job) {
           headVersionId: merged!.id,
           // A journey from before stamps takes its first stamped upload's.
           ...(character.journey === null && upload.journey ? { journey: upload.journey } : {}),
-          level: result.level,
+          level: column(result.level),
           // A file from before the addon recorded the class doesn't forget it.
           ...(result.class ? { class: result.class } : {}),
-          played: result.played === null ? null : Math.round(result.played),
-          lastPlayedAt: result.lastSeen === null ? null : new Date(result.lastSeen * 1000),
+          played: column(result.played),
+          lastPlayedAt: lastPlayed(result.lastSeen),
           updatedAt: new Date(),
         })
         // Unless the head moved meanwhile (a restore, or a second worker during

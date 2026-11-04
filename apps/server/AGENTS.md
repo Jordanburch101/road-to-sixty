@@ -80,9 +80,15 @@ bun run dev               # port 3000, with .env copied from .env.example
   minutes, 500 and 200 MB a day, 2,000 requests an hour, 10 links a day, 5
   exports and 10 restores an hour; 200 new players an hour; one export and
   one restore at a time; per address (Better Auth's rules in
-  `src/auth.ts`), 10 link codes and 20 code lookups a minute. All answer
+  `src/auth.ts`), 10 link codes and 20 code lookups, approvals and denials
+  a minute (its rules match whole paths, so each path is listed), and 60
+  requests with an unknown PC token a minute (`badTokens`, by the address
+  `getIP` finds; past it the token isn't even looked up). All answer
   429. The lookup rule replaces the device plugin's own 5 per half hour,
-  too few for one household linking two PCs; keep it. 20 linked PCs per
+  too few for one household linking two PCs; keep it. `/v1/link` checks
+  the day's links and the 20 PCs before it uses up the sign-in, so a
+  refusal leaves the code working, and counts the PCs again with the
+  player's row locked. 20 linked PCs per
   account (409), 100 characters (422, plain text the app shows on the
   row), 8 MB uploads and 16 KB for any other body (413), 64-character
   names (400). The counts are in memory, so a restart forgets them.
@@ -109,5 +115,14 @@ bun run dev               # port 3000, with .env copied from .env.example
   first, an earlier one would become current again); its files go only
   when no other version of the account shares them. The app's "Remove all
   beta characters" removes oldest first, so it never meets that 409.
+- Delete everything locks the player's row and characters before its
+  deletes, so an upload or merge landing meanwhile waits and then fails,
+  instead of failing the delete half way.
+- Ids from a request go through `rowId` (`src/ids.ts`) before a query:
+  anything else is not found. A fault answers 500 with a plain message
+  (`onError` in `src/app.ts`), never drizzle's, which holds the SQL.
+- The merge's level, time played and last played go into integer and date
+  columns through `column` and `lastPlayed` (`src/worker.ts`): a value no
+  column holds is kept as null, or the job would fail on every try.
 - Secrets live in Dokploy and in `.env`, which git ignores. Never put one in
   code, a test or an issue.

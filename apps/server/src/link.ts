@@ -6,7 +6,7 @@ import { auth } from "./auth";
 import { db } from "./db";
 import { newDevice, pcName } from "./devices";
 import { links } from "./limits";
-import { devices, session } from "./schema";
+import { devices, session, user } from "./schema";
 
 const MAX_PCS = 20;
 const PAGE = Bun.file(`${import.meta.dir}/link.html`);
@@ -49,26 +49,46 @@ export const link = new Elysia()
     const signedIn = headers.authorization
       ? await auth.api.getSession({ headers: new Headers({ authorization: headers.authorization }) })
       : null;
-    // The sign-in is used up first, so asking several times at once with
-    // one token links one PC.
-    const used = signedIn ? await db.delete(session).where(eq(session.id, signedIn.session.id)).returning({ id: session.id }) : [];
-    if (!signedIn || used.length === 0) {
+    if (!signedIn) {
       set.status = 401;
       return { error: "sign in on the link page first" };
     }
-    if (!links.take(signedIn.user.id)) {
+    const userId = signedIn.user.id;
+    const tooMany = () => {
       set.status = 429;
-      set.headers["retry-after"] = String(links.retryAfter(signedIn.user.id));
+      set.headers["retry-after"] = String(links.retryAfter(userId));
       return { error: "too many PCs linked today; try again tomorrow" };
-    }
-    const [linked] = await db
-      .select({ n: count() })
-      .from(devices)
-      .where(and(eq(devices.userId, signedIn.user.id), isNull(devices.revokedAt)));
+    };
     // Plain text: the app shows the body as why linking didn't finish.
-    if (linked!.n >= MAX_PCS) return new Response(`This account already has ${MAX_PCS} PCs linked. Unlink one in the app first.`, { status: 409 });
+    const full = () => new Response(`This account already has ${MAX_PCS} PCs linked. Unlink one in the app first.`, { status: 409 });
+    const linked = async (tx: Pick<typeof db, "select"> = db) => {
+      const [row] = await tx
+        .select({ n: count() })
+        .from(devices)
+        .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+      return row!.n;
+    };
+    // Refusals come before the sign-in is used up, so the player can link
+    // again with the same code once they unlink a PC.
+    if (!links.allows(userId)) return tooMany();
+    if ((await linked()) >= MAX_PCS) return full();
+    // The sign-in is used up next, so asking several times at once with one
+    // token links one PC.
+    const used = await db.delete(session).where(eq(session.id, signedIn.session.id)).returning({ id: session.id });
+    if (used.length === 0) {
+      set.status = 401;
+      return { error: "sign in on the link page first" };
+    }
+    if (!links.take(userId)) return tooMany();
     const name = pcName(query.name) ?? "PC";
     const platform = query.platform?.slice(0, 20);
-    const { device, token } = await newDevice(signedIn.user.id, name, platform);
-    return { token, pc: device.id, battletag: signedIn.user.name };
+    // Counted again with the player locked, so two sign-ins linking at once
+    // can't both take the last place.
+    const made = await db.transaction(async (tx) => {
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+      if ((await linked(tx)) >= MAX_PCS) return null;
+      return newDevice(userId, name, platform, tx);
+    });
+    if (!made) return full();
+    return { token: made.token, pc: made.device.id, battletag: signedIn.user.name };
   });

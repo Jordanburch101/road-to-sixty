@@ -7,6 +7,7 @@ import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
+import { rowId } from "./ids";
 import { get, remove, removeAll } from "./storage";
 import { currentIds } from "./sync";
 import { zip } from "./zip";
@@ -19,11 +20,12 @@ export type Character = typeof characters.$inferSelect;
 
 // The character with this id, if it belongs to the PC's player.
 export async function own(device: Device, id: string): Promise<Character | null> {
-  if (!/^\d+$/.test(id)) return null;
+  const n = rowId(id);
+  if (n === null) return null;
   const [c] = await db
     .select()
     .from(characters)
-    .where(and(eq(characters.id, Number(id)), eq(characters.userId, device.userId)));
+    .where(and(eq(characters.id, n), eq(characters.userId, device.userId)));
   return c ?? null;
 }
 
@@ -61,8 +63,11 @@ const info = (d: typeof devices.$inferSelect): DeviceInfo => ({
   lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
 });
 
-// Characters as folder names: no slashes or characters Windows refuses.
-const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
+// Characters as folder names: no slashes or characters Windows refuses, and
+// no leading dots, so a realm named ".." can't put a file outside the
+// folder the zip unpacks into.
+export const safe = (s: string) =>
+  s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/^\.+/, (dots) => "_".repeat(dots.length)) || "_";
 
 const mine = (device: Device, id: string) => and(eq(devices.id, id), eq(devices.userId, device.userId), isNull(devices.revokedAt));
 
@@ -141,9 +146,9 @@ export const account = pcRoutes()
       return { error: "too many restores; try again later" };
     }
     const c = await own(device!, params.id);
-    const id = Number((body as { version?: unknown } | null)?.version);
+    const id = rowId((body as { version?: unknown } | null)?.version);
     const [source] =
-      c && Number.isSafeInteger(id)
+      c && id !== null
         ? await db
             .select()
             .from(versions)
@@ -371,6 +376,13 @@ export const account = pcRoutes()
     await db.delete(jobs).where(inArray(jobs.characterId, theirs));
     await removeAll(userId);
     await db.transaction(async (tx) => {
+      // Locked first, so an upload or merge adding a character, version or
+      // job for this player now waits for the delete and then fails on the
+      // rows it is gone from (its file goes with the last removeAll). Without
+      // it, a row added between two of the deletes below makes the next fail
+      // on its foreign key, leaving rows whose files are gone.
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+      await tx.select({ id: characters.id }).from(characters).where(eq(characters.userId, userId)).for("update");
       // Again: an upload that got past the token check may have queued one.
       await tx.delete(jobs).where(inArray(jobs.characterId, theirs));
       const theirVersions = tx.select({ id: versions.id }).from(versions).where(inArray(versions.characterId, theirs));
