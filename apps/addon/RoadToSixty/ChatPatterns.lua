@@ -45,12 +45,17 @@ function ns.ChatMatcher(format, whole)
     parts[#parts + 1] = (format:sub(at):gsub(MAGIC, "%%%1"))
     local pattern = "^" .. table.concat(parts) .. (whole and "$" or "")
 
+    -- Forever makes system, skill and trade skill messages secret in
+    -- dungeons, raids and battlegrounds, and a secret cannot be matched or
+    -- tested. Such a message matches nothing.
     if #order == 0 then
         return function(msg)
+            if type(msg) ~= "string" or (issecretvalue and issecretvalue(msg)) then return nil end
             if msg:match(pattern) then return true end
         end
     end
     return function(msg)
+        if type(msg) ~= "string" or (issecretvalue and issecretvalue(msg)) then return nil end
         local captures = { msg:match(pattern) }
         if captures[1] == nil then return nil end
         local args = {}

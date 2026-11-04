@@ -74,6 +74,17 @@ check(kicked("You have been kicked out of the guild. Again.") == nil, "no argume
 -- A missing global string never matches.
 check(ns.ChatMatcher(nil)("anything") == nil, "missing format")
 
+-- Forever's chat lockdown makes system messages secret in instances: they
+-- match nothing and never error, with arguments or without.
+issecretvalue = function(v) return v == "You have been kicked out of the guild." end
+check(kicked("You have been kicked out of the guild.") == nil, "a secret message matches nothing")
+local learned = ns.ChatMatcher("You have learned a new spell: %s.")
+issecretvalue = function(v) return v == "You have learned a new spell: Fireball." end
+check(learned("You have learned a new spell: Fireball.") == nil, "a secret message gives no captures")
+check(learned("You have learned a new spell: Frostbolt.") == "Frostbolt", "other messages still match")
+check(learned(nil) == nil and kicked(42) == nil, "no message, or not text, matches nothing")
+issecretvalue = nil   ---@diagnostic disable-line: assign-type-mismatch
+
 if failures > 0 then
     print(failures .. " chat pattern check(s) failed.")
     os.exit(1)
