@@ -31,7 +31,10 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   does and, for saved data, its exact format.
 - `Packed.lua`, `Tidy.lua`, `Parse.lua`, `Tally.lua` and `Merge.lua` make no
   game calls: the sync server runs them under plain Lua 5.1.
-  `tests/pure_test.lua` fails if one does.
+  `tests/pure_test.lua` fails if one does. The server goes live with them
+  when they merge to `main` (Dokploy deploys it from there), long before
+  players update the addon, so a change to them must still merge journeys
+  from the released addon.
 - `Merge.Windows` and `Merge.Strip` serve restores on the sync server: the
   sessions a restore took out, and taking them out of an upload made before
   the restore reached its PC. `tests/restore_test.lua` covers them.
