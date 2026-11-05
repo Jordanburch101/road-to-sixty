@@ -53,9 +53,19 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
         let text = String::from_utf8_lossy(run);
         let drive = text
             .char_indices()
-            .find(|&(i, c)| c.is_ascii_alphabetic() && (text[i + 1..].starts_with(":/") || text[i + 1..].starts_with(":\\")))
+            .find(|&(i, c)| {
+                let rest = &text[i + 1..];
+                // `s://` is the end of `https://`, not a drive.
+                c.is_ascii_alphabetic() && ((rest.starts_with(":/") && !rest.starts_with("://")) || rest.starts_with(":\\"))
+            })
             .map(|(i, _)| i);
         let Some(start) = drive.or_else(|| text.find('/')) else { continue };
+        // No install path starts with two slashes, but a web address's text
+        // does (https://...), and on Windows `//host/...` is a network share
+        // that checking for a folder would go out and ask (#102).
+        if drive.is_none() && text[start..].starts_with("//") {
+            continue;
+        }
         let path = PathBuf::from(text[start..].trim_end_matches('\u{FFFD}'));
         if !found.contains(&path) {
             found.push(path);
@@ -310,6 +320,8 @@ mod tests {
             b"\x0a\x03wow\x12\x1f/Applications/World of Warcraft\x1a\x02en\x12J/Users/x/Games/World of Warcraft Classic Stuff Here\x00"
                 .to_vec();
         bytes.extend(b"\x00\x01C:/Program Files (x86)/World of Warcraft\x00");
+        // A web address is no install, and not a network share either (#102).
+        bytes.extend(b"\x00\x1fhttps://us.patch.battle.net:1119/wow_classic\x00");
         let found = installs_in_product_db(&bytes);
         assert_eq!(
             found,
