@@ -161,6 +161,7 @@ local function Record(info, name, how)
     end
     Log("rare", name, info.class, info.level, info.npc, how)
     rares[key] = { { [ns.pc] = 1 }, ns.Now(), name, info.npc, info.class }
+    return ns.char.events[#ns.char.events], key
 end
 
 -- Inside an instance (no GUID), a rare corpse clicked has no name; if the
@@ -206,10 +207,37 @@ local function Fresh()
     return pending and engaged and GetTime() - pending[2] <= KILL_SECONDS
 end
 
-local function Confirm()
-    local name, info = pending[1], engaged
+-- Inside an instance, the kill just confirmed from a message that came
+-- before its target went: { e = its event, key, at = the message's GetTime(),
+-- gone = when the target went }. An add dying to area damage just before the
+-- rare gives a message too, and the rare's own can come a moment after its
+-- target went (#100); see Killed.
+local confirmed
+
+local function Confirm(gone)
+    local name, info, at = pending[1], engaged, pending[2]
     pending, engaged = nil, nil
-    Record(info, name, "x")
+    local e, key = Record(info, name, "x")
+    gone = gone or GetTime()
+    confirmed = not info.guid and e and at <= gone and { e = e, key = key, at = at, gone = gone } or nil
+end
+
+-- The kill confirmed was this other name's: the message before was an add's.
+local function Rename(c, name)
+    local rares, events = ns.char.rares, ns.char.events
+    local entry = rares and rares[c.key]
+    if not entry then return end
+    if rares[name] then
+        -- A rare killed before: counted there, and this first kill was none.
+        rares[c.key] = nil
+        ns.Tally.Add(rares[name], 1, ns.pc, 1)
+        for i = #events, 1, -1 do
+            if events[i] == c.e then table.remove(events, i) break end
+        end
+        return
+    end
+    rares[c.key], rares[name] = nil, entry
+    entry[3], c.e[6] = name, name
 end
 
 -- A new target: the engaged rare gone just after its kill message was its
@@ -275,10 +303,22 @@ function Rares:Killed(name)
             return
         end
     end
+    -- A kill confirmed from a message before its target went, when this
+    -- message comes nearer the moment it went: this one was the rare's, and
+    -- that an add's.
+    if confirmed and not engaged then
+        local c, since = confirmed, GetTime() - confirmed.gone
+        confirmed = nil
+        if since <= KILL_SECONDS and since < c.gone - c.at then
+            Rename(c, name)
+            return
+        end
+    end
     -- The engaged rare's target went just before its message.
     if not engaged and lost and GetTime() - lost[2] <= KILL_SECONDS then
+        local gone = lost[2]
         engaged, pending, lost = lost[1], { name, GetTime() }, nil
-        Confirm()
+        Confirm(gone)
         return
     end
     if engaged then

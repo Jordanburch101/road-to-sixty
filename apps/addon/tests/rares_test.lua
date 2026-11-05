@@ -234,6 +234,39 @@ Target("Seeded Rare", "rare", 10, Guid(9, "H9"))
 KillTarget("Seeded Rare")
 check(Count() == 9, "seeded journey not recorded")
 
+-- Inside an instance again, recording.
+inside, ns.char.seeded = true, nil
+-- An add dies to area damage, the rare's target goes, then the rare's own
+-- message (#100): the rare is named from its own message, once.
+local base = Count()
+now = now + 20 * 60
+Target(nil, "rareelite", 31, nil)
+Rares:Killed("Razorfen Spearhide")
+now = now + 0.5
+units.target = nil
+Fire("PLAYER_TARGET_CHANGED")
+now = now + 0.1
+Rares:Killed("Charlga Razorflank")
+check(Count() == base + 1 and Last()[6] == "Charlga Razorflank" and ns.char.rares["Charlga Razorflank"]
+    and ns.char.rares["Razorfen Spearhide"] == nil, "an add's message just before the rare went is not its name")
+-- The rare's own message as its target went, then an add half a second on: kept.
+now = now + 20 * 60
+Target(nil, "rare", 29, nil)
+KillTarget("Roogug")
+now = now + 0.5
+Rares:Killed("Razorfen Geomancer")
+check(Count() == base + 2 and Last()[6] == "Roogug" and ns.char.rares.Roogug, "an add after the rare went changes nothing")
+-- The same with a rare killed before: counted there, not logged again.
+now = now + 20 * 60
+Target(nil, "rare", 29, nil)
+Rares:Killed("Razorfen Spearhide")
+now = now + 0.5
+units.target = nil
+Fire("PLAYER_TARGET_CHANGED")
+now = now + 0.1
+Rares:Killed("Roogug")
+check(Count() == base + 2 and ns.char.rares["Razorfen Spearhide"] == nil and ns.Tally.Total(ns.char.rares.Roogug[1]) == 2,
+    "a rare killed before is counted under its own name")
 if failures > 0 then
     print(("rares_test: %d failure(s)"):format(failures))
     os.exit(1)
