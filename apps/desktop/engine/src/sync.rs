@@ -177,10 +177,15 @@ pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Optio
 
 /// Asks for every character's newest version and writes it into the sync
 /// folder of each game folder here. Journeys are kept in `cache` by version,
-/// so each is downloaded once.
+/// so each is downloaded once. A journey that is broken is a problem and the
+/// others are still delivered. One the server couldn't give just now (busy,
+/// or an error page during a deploy) leaves its game's sync folder as it
+/// was, with that character's last version, for the next pass: written
+/// without it, the character was gone from the folder until then (#102).
 pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, report: &mut Report) -> Result<(), ApiError> {
     let check = client.check()?;
     let mut by_game: BTreeMap<&str, Vec<Delivery>> = BTreeMap::new();
+    let mut later: BTreeSet<&str> = BTreeSet::new();
     let mut kept = BTreeSet::new();
     for entry in &check.characters {
         report.characters.push(key(&entry.name, &entry.realm));
@@ -209,10 +214,19 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
                 });
             }
             Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
+            Err(ApiError::Busy) => {
+                later.insert(&entry.game);
+            }
+            Err(ApiError::Status(code, _)) if code != 0 && code != 200 => {
+                later.insert(&entry.game);
+            }
             Err(e) => report.problems.push(Problem { who, why: e.to_string() }),
         }
     }
     for game in games {
+        if later.contains(game.name.as_str()) {
+            continue;
+        }
         let mut deliveries = by_game.get(game.name.as_str()).cloned().unwrap_or_default();
         deliveries.sort_by(|a, b| a.key.cmp(&b.key));
         match inbox::write(&game.path, pc, &deliveries) {
@@ -223,8 +237,9 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
                 .push(Problem::general(format!("Couldn't write the sync folder in {}: {e}", game.name))),
         }
     }
+    // Old versions stay while a sync folder was left as it was this pass.
     for old in fs::read_dir(cache).into_iter().flatten().flatten().map(|e| e.path()) {
-        if !kept.contains(&old) {
+        if later.is_empty() && !kept.contains(&old) {
             let _ = fs::remove_file(old);
         }
     }
@@ -751,6 +766,48 @@ mod tests {
         assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
         let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
         assert!(data.contains("Ann-Test Realm") && !data.contains("Bob-Test Realm"), "{data}");
+    }
+
+    #[test]
+    fn a_journey_the_server_cant_give_just_now_leaves_the_sync_folder_as_it_was() {
+        let (dir, game) = game();
+        let cache = dir.path().join("journeys");
+        let first = server(&[("Ann", 9, "{[\"ann\"]=1,}"), ("Bob", 10, "{[\"bob\"]=1,}")], None);
+        deliver_once(&first, std::slice::from_ref(&game), &cache);
+        // Both have new versions; Bob's answers 404, as a proxy mid-deploy.
+        let down = fake::serve(|_, url| {
+            if url == "/v1/check" {
+                let list = [("Ann", 11, "{[\"ann\"]=2,}"), ("Bob", 12, "{[\"bob\"]=2,}")]
+                    .iter()
+                    .map(|(name, v, text)| {
+                        format!(
+                            r#"{{"game":"_classic_beta_","realm":"Test Realm","name":"{name}","version":{v},"fingerprint":"{}","replace":false,"updateAddon":false}}"#,
+                            fingerprint(text.as_bytes())
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                return (200, format!(r#"{{"characters":[{list}]}}"#).into_bytes());
+            }
+            match url {
+                "/v1/versions/11" => (200, zstd::encode_all(&b"{[\"ann\"]=2,}"[..], 3).unwrap()),
+                "/v1/versions/12" => (404, b"no such version".to_vec()),
+                _ => (429, b"slow down".to_vec()),
+            }
+        });
+        let report = deliver_once(&down, std::slice::from_ref(&game), &cache);
+        assert!(report.problems.is_empty(), "{:?}", report.problems);
+        let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
+        assert!(
+            data.contains("version = 9,") && data.contains("version = 10,"),
+            "left as it was: {data}"
+        );
+        assert!(cache.join("9.lua").is_file() && cache.join("10.lua").is_file(), "old versions kept");
+        // The next pass that works brings both.
+        let both = server(&[("Ann", 11, "{[\"ann\"]=2,}"), ("Bob", 12, "{[\"bob\"]=2,}")], None);
+        deliver_once(&both, std::slice::from_ref(&game), &cache);
+        let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
+        assert!(data.contains("version = 11,") && data.contains("version = 12,"), "{data}");
     }
 
     #[test]
