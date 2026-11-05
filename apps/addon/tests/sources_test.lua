@@ -147,12 +147,23 @@ hooks.BuyMerchantItem(3, 1)
 Arrive(Link(2488))
 note = Got(2488)
 check(note and note.how == "vendor" and note.id == 152 and note.name == "Brother Danil", "a purchase names the vendor")
--- Dragged from the merchant into the bags instead (#100).
+-- Dragged from the merchant into the bags instead (#100), held a while first.
+local cursor
+GetCursorInfo = function() return cursor end
 game.merchant[4] = Link(2489)
+cursor = "merchant"
 hooks.PickupMerchantItem(4)
+cursor = nil
+now = now + 30
 Arrive(Link(2489))
 note = Got(2489)
 check(note and note.how == "vendor" and note.id == 152, "a purchase dragged to the bags names the vendor")
+-- Selling by dropping a bag item on a merchant slot calls it too, and buys nothing.
+game.merchant[5] = Link(2490)
+hooks.PickupMerchantItem(5)
+Fire("CHAT_MSG_LOOT", "You receive loot: " .. Link(2490) .. ".")
+Arrive(Link(2490))
+check(Got(2490) and Got(2490).how ~= "vendor", "a sale onto a merchant slot is no purchase")
 
 -- 5. Traded: the other player, with the realm when it differs.
 units.NPC = { "Tradefriend", "Player-1-0000000B", "Otherrealm" }

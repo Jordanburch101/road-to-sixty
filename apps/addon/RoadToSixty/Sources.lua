@@ -291,18 +291,30 @@ ns.On("CHAT_MSG_LOOT", function(msg)
     end
 end)
 
--- Bought with a click (BuyMerchantItem) or dragged from the merchant to
--- the bags (PickupMerchantItem, #100): the purchase happens as it is put
--- down, a moment later, inside the signal's window.
-for _, buy in ipairs({ "BuyMerchantItem", "PickupMerchantItem" }) do
-    if _G[buy] then
-        hooksecurefunc(buy, function(index)
-            ns.SafeCall(function()
-                local id = FromGUID(UnitGUID("npc"))
-                Signal(GetMerchantItemLink(index), "vendor", { id = id, name = Plain(UnitName("npc")) })
-            end)
+local function Bought(index, untilTime)
+    local id = FromGUID(UnitGUID("npc"))
+    Signal(GetMerchantItemLink(index), "vendor", { id = id, name = Plain(UnitName("npc")) }, untilTime)
+end
+
+if BuyMerchantItem then
+    hooksecurefunc("BuyMerchantItem", function(index)
+        ns.SafeCall(Bought, index)
+    end)
+end
+
+-- Dragged from the merchant to the bags (#100): PickupMerchantItem puts it
+-- on the cursor, and it is bought as it is put down, which may be a while.
+-- The same call sells an item dropped on a merchant slot, which leaves the
+-- cursor empty, so only a merchant item on the cursor afterwards counts.
+local DRAG_WINDOW = 60
+if PickupMerchantItem then
+    hooksecurefunc("PickupMerchantItem", function(index)
+        ns.SafeCall(function()
+            if GetCursorInfo and GetCursorInfo() == "merchant" then
+                Bought(index, GetTime() + DRAG_WINDOW)
+            end
         end)
-    end
+    end)
 end
 
 -- Trades: what the other player puts in, while the window is open.
