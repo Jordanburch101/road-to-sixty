@@ -52,9 +52,49 @@ impl Starts {
 /// in the command line, so it is matched by its folder names instead.
 pub fn game_running(game: &Path, programs: &[PathBuf]) -> bool {
     let names = folder_names(game);
+    let folders = game_paths(game);
     programs
         .iter()
-        .any(|p| p.starts_with(game) || (cfg!(target_os = "linux") && wine_runs(&names, p)))
+        .any(|p| folders.iter().any(|g| inside(p, g)) || (cfg!(target_os = "linux") && wine_runs(&names, p)))
+}
+
+/// The game folder as found and, on Windows, its real path too: an install
+/// reached through a junction or a `subst` drive runs from its real path
+/// (#102). Not elsewhere, where `find_installs` already gives real paths.
+fn game_paths(game: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![game.to_path_buf()];
+    if cfg!(windows)
+        && let Ok(real) = std::fs::canonicalize(game)
+    {
+        // canonicalize starts the path with `\\?\`, which a program's path never has.
+        let text = real.to_string_lossy().into_owned();
+        let real = match text.strip_prefix(r"\\?\") {
+            Some(rest) if !rest.starts_with(r"UNC\") => PathBuf::from(rest),
+            _ => real,
+        };
+        if !paths.contains(&real) {
+            paths.push(real);
+        }
+    }
+    paths
+}
+
+/// Whether `program` is inside `folder`. On Windows letter case doesn't
+/// matter and either slash separates: Battle.net's list may spell the
+/// install differently from the running program's path (#102).
+fn inside(program: &Path, folder: &Path) -> bool {
+    if cfg!(windows) {
+        inside_any_case(&program.to_string_lossy(), &folder.to_string_lossy())
+    } else {
+        program.starts_with(folder)
+    }
+}
+
+/// `inside` for Windows paths, as text, so it can be tested anywhere.
+fn inside_any_case(program: &str, folder: &str) -> bool {
+    let parts = |p: &str| -> Vec<String> { p.split(['/', '\\']).filter(|c| !c.is_empty()).map(str::to_lowercase).collect() };
+    let (program, folder) = (parts(program), parts(folder));
+    !folder.is_empty() && program.len() > folder.len() && program[..folder.len()] == folder[..]
 }
 
 /// The last two folder names, in lower case, such as `_classic_beta_` and
@@ -123,17 +163,52 @@ impl Schedule {
             .collect()
     }
 
-    /// Whether any file has waited out its settle time, so it's worth
-    /// looking for the game before deciding (that looks at every program).
-    pub fn settled(&self, now: Instant) -> bool {
-        self.changed.values().any(|at| now.duration_since(*at) >= SETTLE)
-    }
-
     pub fn sent(&mut self, paths: &[PathBuf], now: Instant) {
         for path in paths {
             self.changed.remove(path);
             self.sent.insert(path.clone(), now);
         }
+    }
+}
+
+/// When the loop looks again: for game folders and changed files every
+/// `CHECK_EVERY` (or at once when the watcher lost track), and at the running
+/// programs every `LOOK_FOR_GAME`. Each keeps its own clock. Tied to the last
+/// good pass, as they were, a PC offline for five minutes looked at every
+/// folder, file and program once a second, draining a laptop's or a Steam
+/// Deck's battery (#102).
+#[derive(Debug)]
+pub struct Pace {
+    scanned: Instant,
+    looked: Option<Instant>,
+}
+
+impl Pace {
+    /// Starting at `start`, when the folders were just looked at.
+    pub fn new(start: Instant) -> Self {
+        Pace {
+            scanned: start,
+            looked: None,
+        }
+    }
+
+    /// Whether to look for game folders and changed files now; true also
+    /// notes that it has.
+    pub fn scan(&mut self, now: Instant, lost: bool) -> bool {
+        let due = lost || now.duration_since(self.scanned) >= CHECK_EVERY;
+        if due {
+            self.scanned = now;
+        }
+        due
+    }
+
+    /// Whether to look at the running programs now; true also notes that it has.
+    pub fn look(&mut self, now: Instant) -> bool {
+        let due = self.looked.is_none_or(|t| now.duration_since(t) >= LOOK_FOR_GAME);
+        if due {
+            self.looked = Some(now);
+        }
+        due
     }
 }
 
@@ -228,11 +303,14 @@ pub fn run(
     let mut last_pass: Option<Instant> = None;
     let mut wait_until = start;
     let mut starts = Starts::default();
-    let mut looked: Option<Instant> = None;
+    let mut pace = Pace::new(start);
+    // The game folders running at the last look, which a file settling
+    // between two looks is judged by: at most LOOK_FOR_GAME old.
+    let mut running: BTreeSet<PathBuf> = BTreeSet::new();
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         let check_due = last_pass.is_none_or(|t| now.duration_since(t) >= CHECK_EVERY);
-        if lost.swap(false, Ordering::Relaxed) || (check_due && last_pass.is_some()) {
+        if pace.scan(now, lost.swap(false, Ordering::Relaxed)) {
             let found = find();
             let found_wtfs = sync::watched(&found);
             if found != games || found_wtfs != wtfs {
@@ -250,22 +328,17 @@ pub fn run(
         for path in rx.try_iter() {
             schedule.changed(path, now);
         }
-        let look = schedule.settled(now) || looked.is_none_or(|t| now.duration_since(t) >= LOOK_FOR_GAME);
-        let programs = if look {
-            looked = Some(now);
-            running_programs(&mut system)
-        } else {
-            Vec::new()
-        };
-        let started = look
-            && starts.saw(
-                games
-                    .iter()
-                    .filter(|g| game_running(&g.path, &programs))
-                    .map(|g| g.path.clone())
-                    .collect(),
-            );
-        let playing = |file: &Path| games.iter().any(|g| file.starts_with(&g.path) && game_running(&g.path, &programs));
+        let mut started = false;
+        if pace.look(now) {
+            let programs = running_programs(&mut system);
+            running = games
+                .iter()
+                .filter(|g| game_running(&g.path, &programs))
+                .map(|g| g.path.clone())
+                .collect();
+            started = starts.saw(running.clone());
+        }
+        let playing = |file: &Path| running.iter().any(|g| file.starts_with(g));
         let due = schedule.due(now, playing);
         if now >= wait_until && (!due.is_empty() || check_due || started) {
             busy.store(true, Ordering::SeqCst);
@@ -335,12 +408,27 @@ mod tests {
     }
 
     #[test]
-    fn only_a_settled_file_is_worth_looking_for_the_game() {
-        let (t0, mut s) = (Instant::now(), Schedule::default());
-        assert!(!s.settled(t0));
-        s.changed(PathBuf::from("a"), t0);
-        assert!(!s.settled(at(t0, 5)));
-        assert!(s.settled(at(t0, 10)));
+    fn folders_are_looked_at_every_five_minutes_whatever_the_passes_do() {
+        // Offline, no pass succeeds: still once every five minutes, not every second (#102).
+        let t0 = Instant::now();
+        let mut pace = Pace::new(t0);
+        assert!(!pace.scan(at(t0, 1), false));
+        assert!(!pace.scan(at(t0, 299), false));
+        assert!(pace.scan(at(t0, 300), false));
+        assert!(!pace.scan(at(t0, 301), false), "not again the next second");
+        assert!(!pace.scan(at(t0, 599), false));
+        assert!(pace.scan(at(t0, 600), false));
+        assert!(pace.scan(at(t0, 601), true), "at once when the watcher lost track");
+        assert!(!pace.scan(at(t0, 602), false));
+    }
+
+    #[test]
+    fn programs_are_looked_at_every_five_seconds_however_long_a_file_waits() {
+        let t0 = Instant::now();
+        let mut pace = Pace::new(t0);
+        assert!(pace.look(t0), "at the start");
+        let looks = (1..=60).filter(|s| pace.look(at(t0, *s))).count();
+        assert_eq!(looks, 12, "a minute of seconds looks 12 times, not 60");
     }
 
     #[test]
@@ -354,6 +442,43 @@ mod tests {
             game,
             &[PathBuf::from("/Applications/World of Warcraft/_retail_/Wow.app/Contents/MacOS/Wow")]
         ));
+    }
+
+    #[test]
+    fn on_windows_a_program_is_in_the_game_whatever_the_case_or_slashes() {
+        let game = r"c:/program files (x86)/World of Warcraft/_forever_";
+        assert!(inside_any_case(
+            r"C:\Program Files (x86)\World of Warcraft\_forever_\WowClassic.exe",
+            game
+        ));
+        assert!(!inside_any_case(
+            r"C:\Program Files (x86)\World of Warcraft\_forever_beta_\WowClassic.exe",
+            game
+        ));
+        assert!(
+            !inside_any_case(r"C:\Program Files (x86)\World of Warcraft\_forever_", game),
+            "the folder itself is no program"
+        );
+        assert!(!inside_any_case(r"D:\World of Warcraft\_forever_\WowClassic.exe", game));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_a_game_reached_through_a_junction_runs_from_its_real_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let games = dir.path().join("Games");
+        std::fs::create_dir_all(games.join("_forever_")).unwrap();
+        let link = dir.path().join("Link");
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&games)
+            .output()
+            .unwrap();
+        assert!(made.status.success(), "{made:?}");
+        let program = std::fs::canonicalize(games.join("_forever_")).unwrap().join("WowClassic.exe");
+        let program = PathBuf::from(program.to_string_lossy().trim_start_matches(r"\\?\"));
+        assert!(game_running(&link.join("_forever_"), &[program]));
     }
 
     #[test]
