@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.19.5
+
+### Fixed
+- A short hearthstone, such as one inside Northshire, now shows on the map
+  as a hearthstone. Before, a trip of under 300 yards with no loading
+  screen was drawn as a walk.
+
 ## 1.19.4
 
 ### Fixed

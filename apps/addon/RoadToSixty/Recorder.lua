@@ -47,6 +47,13 @@ local TELEPORT_SPELLS = {   -- mage city teleports
     [32271] = true, [32272] = true, [33690] = true, [35715] = true,
 }
 local PENDING_SECONDS = 60  -- a cast or login explains a jump within this long
+-- Just after a hearthstone or teleport cast, a smaller jump between two
+-- samples is that teleport. A hearth from Northshire's vineyards to the
+-- abbey moved 295 yards with no loading screen, under TELEPORT_DIST, and was
+-- saved as a walk (Jordan, 2026-11-05). Nothing else moves this far in a
+-- quarter second; a charge is about 25 yards.
+local CAST_JUMP_DIST = 40
+local CAST_JUMP_SECONDS = 10
 -- Yards from where the player went into an instance that they can come out
 -- of its door. Further, they were sent out (left the group, say), and the
 -- jump is a teleport.
@@ -251,7 +258,11 @@ local function Sample()
     local t, mode = ns.Now(), Recorder:Mode()
     local previousMode, previousC = lastMode, lastC
     lastMode, lastC = mode, c
-    local jumped = prev and (prev.c ~= c or Dist(prev.x, prev.y, x, y) > TELEPORT_DIST)
+    local limit = TELEPORT_DIST
+    if (pending == "h" or pending == "p") and GetTime() - pendingAt < CAST_JUMP_SECONDS then
+        limit = CAST_JUMP_DIST
+    end
+    local jumped = prev and (prev.c ~= c or Dist(prev.x, prev.y, x, y) > limit)
     prev = prev or {}
     prev.c, prev.x, prev.y = c, x, y
 
