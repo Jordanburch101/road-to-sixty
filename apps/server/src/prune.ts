@@ -92,20 +92,25 @@ async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[
     const kept = new Set(rows.filter((r) => !r.chosen).map((r) => r.fingerprint));
     for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
   } else {
-    // Under the account's file lock (lockFiles), so no merge or upload can
-    // store a file of the same content as one going here until the delete
-    // is done, and then it stores it again (#112).
+    // Marked, and committed, before anything is deleted: a restore locks its
+    // source and checks it isn't pruned, so it either finishes first (and
+    // its new row, sharing the file, is counted as kept below) or is
+    // refused; and nothing reads a file of a version shown as not pruned.
     await db.transaction(async (tx) => {
       await lockFiles(tx, userId);
-      // Marked before anything is deleted: a restore locks its source and
-      // checks it isn't pruned, so it either finishes first (and its new
-      // row, sharing the file, is counted as kept below) or is refused.
       for (let i = 0; i < chosen.length; i += 5000) {
         await tx
           .update(versions)
           .set({ prunedAt: new Date() })
           .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
       }
+    });
+    // The deletes under the account's file lock (lockFiles) again: a merge
+    // or upload storing a file of the same content either added its row
+    // before this reads which files stay, or stores the file again once
+    // the delete is done (#112).
+    await db.transaction(async (tx) => {
+      await lockFiles(tx, userId);
       // Identical files are stored once, so a file goes only when no
       // version that stays has it. Read after marking, so a restore that
       // finished in between is counted.
