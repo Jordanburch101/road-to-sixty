@@ -51,6 +51,10 @@ export async function getPackedIfThere(userId: string, fp: string): Promise<Uint
   }
 }
 
+export async function isThere(userId: string, fp: string): Promise<boolean> {
+  return s3.exists(key(userId, fp));
+}
+
 export async function get(userId: string, fp: string): Promise<Uint8Array> {
   return unpack(await getPacked(userId, fp));
 }

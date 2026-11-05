@@ -32,7 +32,8 @@ So a merge to `main` that touches them is a deploy. The design is
 - `src/limits.ts` counts each PC's and account's requests, uploads and
   exports; `src/proxies.ts` lists the proxies sign-in trusts (Dokploy's and
   Cloudflare's); `src/prune.ts` is the daily clean-up of old versions,
-  finished jobs and expired sign-in rows.
+  finished jobs and expired sign-in rows, and its check of the heads'
+  files (`src/heads.ts`).
 - `src/worker.ts` runs merge jobs one at a time per character; it fills
   each character's level, class and time played, and each merged
   version's level, from the runner's `ok` line;
@@ -128,6 +129,13 @@ bun run dev               # port 3000, with .env copied from .env.example
   answers 429, so waiting uploads can't fill the connection pool. A
   version whose file is missing anyway answers 410, so the app shows it on
   that character and still delivers the others.
+- A head whose file is missing never stops a character (#114): the merge
+  and the restore build on the newest earlier version whose file is there
+  (`readableHead`, `src/heads.ts`), or merge the upload alone; the export
+  leaves that character out and names it in `Missing.txt`; restoring a
+  version whose file is missing answers 410. The daily clean-up logs each
+  missing head (`checkHeads`), in a dry run too. Read a head's file through
+  `readableHead`, never `get`.
 - A name has a row per journey (spec 2026-10-15, journeys): the addon's
   stamp, `journeyId`, is read from each upload (`stampOf`) and kept on the
   row and the upload. The newest row of a name is its current journey;

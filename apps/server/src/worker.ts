@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db, lockFiles } from "./db";
+import { readableHead } from "./heads";
 import { LIMITS, runMerge, runSame, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { MAX_RAW, fingerprint, get, pack, put, remove } from "./storage";
@@ -91,6 +92,9 @@ async function runJob(job: Job) {
   const [head] = character.headVersionId
     ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))
     : [];
+  // The head's journey, or an older one when its file is missing (#114).
+  const base = head ? await readableHead(character.userId, head) : null;
+  const mine = await get(character.userId, upload.fingerprint);
 
   // A stamped upload queued against a journey from before stamps joins it
   // only if it continues it; otherwise (a namesake remade before the old
@@ -111,9 +115,8 @@ async function runJob(job: Job) {
           eq(characters.journey, upload.journey),
         ),
       );
-    const apart =
-      own !== undefined ||
-      (head !== undefined && !(await runSame(await get(character.userId, head.fingerprint), await get(character.userId, upload.fingerprint))));
+    // With no journey left to compare, the upload stays on this row.
+    const apart = own !== undefined || (base !== null && !(await runSame(base.journey, mine)));
     if (apart) {
       const row = own ?? (await journeyRow(character.userId, character.game, character.realm, character.name, upload.journey));
       await db.transaction(async (tx) => {
@@ -141,12 +144,7 @@ async function runJob(job: Job) {
   }
   const windows: Window[] = stale ? restores.flatMap((r) => JSON.parse(r.removed!) as Window[]) : [];
 
-  const result = await runMerge(
-    await get(character.userId, upload.fingerprint),
-    head ? await get(character.userId, head.fingerprint) : null,
-    upload.deviceId ?? "server",
-    windows,
-  );
+  const result = await runMerge(mine, base?.journey ?? null, upload.deviceId ?? "server", windows);
   if (!result.ok) return settle(job, upload, "rejected", result.reason);
   // Never lowered: an alt's file untouched since an older addon is still
   // in its old layout.
@@ -161,7 +159,9 @@ async function runJob(job: Job) {
   // this character would fail on it.
   if (result.journey.length > MAX_RAW) return settle(job, upload, "rejected", "the merged journey would be too big to store");
   const fp = fingerprint(result.journey);
-  if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
+  // Nothing new in it. A head whose file was missing always gets a new
+  // version, which stores the file again.
+  if (head && base?.version.id === head.id && fp === head.fingerprint) return settle(job, upload, "accepted");
   try {
     await db.transaction(async (tx) => {
       // Stored under the lock, with the row that keeps it: put skips a file
@@ -183,7 +183,7 @@ async function runJob(job: Job) {
         .returning({ id: versions.id });
       await tx
         .insert(versionParents)
-        .values([upload.id, ...(head ? [head.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
+        .values([upload.id, ...(base ? [base.version.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
       const updated = await tx
         .update(characters)
         .set({

@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { client, db, lockFiles } from "./db";
+import { checkHeads } from "./heads";
 import { characters, deviceCode, session, verification, versions } from "./schema";
 import { remove } from "./storage";
 
@@ -47,6 +48,9 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
   // when a row is used but never clears these.
   await client`DELETE FROM jobs WHERE state IN ('done', 'failed') AND finished_at < now() - interval '30 days'`;
   for (const table of [session, verification, deviceCode]) await db.delete(table).where(lt(table.expiresAt, new Date()));
+  // Only reads, so a dry run checks too. A failure here doesn't lose the
+  // clean-up's own report below.
+  await checkHeads().catch((e) => console.error("heads: the check failed:", e));
   const total = pruned.reduce((t, p) => ({ versions: t.versions + p.versions, files: t.files + p.files, bytes: t.bytes + p.bytes }), {
     versions: 0,
     files: 0,

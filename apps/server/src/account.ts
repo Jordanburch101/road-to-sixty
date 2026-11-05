@@ -9,7 +9,8 @@ import { pcRoutes } from "./pc";
 import { characters, devices, jobs, user, versionParents, versions } from "./schema";
 import { exportSlot, exports, restoreSlot, restores } from "./limits";
 import { rowId } from "./ids";
-import { get, remove, removeAll } from "./storage";
+import { readableHead } from "./heads";
+import { getPackedIfThere, remove, removeAll, unpack } from "./storage";
 import { currentIds } from "./sync";
 import { zip } from "./zip";
 
@@ -173,8 +174,18 @@ export const account = pcRoutes()
     try {
       // Worked out before anything is written: a fault here answers 500 and
       // leaves the journey as it was.
+      const packed = await getPackedIfThere(c.userId, source.fingerprint);
+      if (!packed) {
+        console.error(`restore: version ${source.id} has no file in storage (character ${c.id})`);
+        set.status = 410;
+        return { error: "that version's file is missing on the server; pick another" };
+      }
+      // A current version whose file is missing doesn't stop the restore,
+      // which is the player's way out of it (#114): what it took out is
+      // worked out from the newest version still there, or is nothing.
       const [current] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
-      const removed = await runWindows(await get(c.userId, current!.fingerprint), await get(c.userId, source.fingerprint));
+      const from = await readableHead(c.userId, current!);
+      const removed = from ? await runWindows(from.journey, unpack(packed)) : [];
       // The restore, its parent and the head move are one change: a merge
       // finishing in between must either see all of it or none.
       const version = await db
@@ -343,12 +354,25 @@ export const account = pcRoutes()
     }
     try {
       const files = [];
+      const missing: string[] = [];
       for (const { c, head } of rows) {
-        const journey = await get(c.userId, head.fingerprint);
-        const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), journey, new TextEncoder().encode("\n")]);
         // An earlier journey of a name sits beside the current one.
         const file = now.has(c.id) ? safe(c.name) : `${safe(c.name)} (earlier ${c.id})`;
-        files.push({ name: `${safe(c.game)}/${safe(c.realm)}/${file}.lua`, data: new Uint8Array(data) });
+        const name = `${safe(c.game)}/${safe(c.realm)}/${file}.lua`;
+        // One character's missing file leaves that one out, not the whole
+        // download (#114).
+        const packed = await getPackedIfThere(c.userId, head.fingerprint);
+        if (!packed) {
+          console.error(`export: character ${c.id}'s head, version ${head.id}, has no file in storage`);
+          missing.push(name);
+          continue;
+        }
+        const data = Buffer.concat([new TextEncoder().encode("RoadToSixtyCharDB = "), unpack(packed), new TextEncoder().encode("\n")]);
+        files.push({ name, data: new Uint8Array(data) });
+      }
+      if (missing.length > 0) {
+        const note = ["These journeys are missing on the server, so they aren't in this download:", ...missing, ""].join("\n");
+        files.push({ name: "Missing.txt", data: new TextEncoder().encode(note) });
       }
       return new Response(zip(files), {
         headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="road-to-sixty.zip"' },
