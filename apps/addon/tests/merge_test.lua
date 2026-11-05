@@ -151,6 +151,25 @@ m = Merge.Merge(
     } }))
 check(#m.events == 4 and m.events[1][6][3] == "Human", "grpa, rare, a mount with no ID and the player's grps each match once")
 
+-- A rare looted after a sync (#100): the copy saved before has no NPC ID,
+-- inside an instance no name either. Both copies are one kill.
+for _, before in ipairs({
+    { 165, "rare", 0, 0, 0, "Blind Hunter", "rare", 32, nil, "x" },
+    { 165, "rare", 0, 0, 0, nil, "rare", 32, nil, "c" },
+}) do
+    local after = { 165, "rare", 0, 0, 0, "Blind Hunter", "rare", 32, 4425, "x" }
+    local a, b = Journey({ events = { before } }), Journey({ events = { after } })
+    m = Merge.Merge(a, b)
+    check(#m.events == 1 and m.events[1][9] == 4425 and m.events[1][6] == "Blind Hunter",
+        "a rare saved before its loot and after is one kill with its NPC ID")
+    check(Same(m, Merge.Merge(b, a)) and Same(Merge.Merge(m, m), m), "and merges the same either way, and again")
+end
+-- Two rares in one second stay two.
+m = Merge.Merge(
+    Journey({ events = { { 166, "rare", 0, 0, 0, "A", "rare", 30, nil, "x" }, { 166, "rare", 0, 0, 0, "B", "rare", 31, nil, "x" } } }),
+    Journey({ events = { { 166, "rare", 0, 0, 0, "A", "rare", 30, 1, "x" }, { 166, "rare", 0, 0, 0, "B", "rare", 31, 2, "x" } } }))
+check(#m.events == 2 and m.events[1][9] == 1 and m.events[2][9] == 2, "two rares in one second stay two, each with its ID")
+
 m = Merge.Merge(Journey({ events = { { 170, "newkind", 0, 0, 0, "a" } } }), Journey({ events = { { 170, "newkind", 0, 0, 0, "b" } } }))
 check(#m.events == 1 and m.events[1][6] == "b", "a kind this merge doesn't know matches on time and kind alone")
 
