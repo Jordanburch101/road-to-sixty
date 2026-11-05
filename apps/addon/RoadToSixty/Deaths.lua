@@ -88,7 +88,8 @@ end
 
 -- A recap kept from before (a death the session before) is not a new one.
 ns.On("PLAYER_LOGIN", function()
-    lastBlow = select(4, KillingBlow())
+    local read, _, _, _, when = pcall(KillingBlow)
+    lastBlow = read and when or nil
 end)
 
 -- Journal.lua logs the death first (it loads first): the newest event, now.

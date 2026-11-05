@@ -397,6 +397,19 @@ Fire("PLAYER_LOGOUT")
 local tx, ty = Last()
 check(tx == game.x and ty == game.y, ("logout keeps the last 12 yards: ends at %s, %s, stood at %s, %s"):format(
     tostring(tx), tostring(ty), game.x, game.y))
+-- Standing still a while before logging out: the last point is dated when
+-- the player got there, not at logout (second review of #109).
+Fire("PLAYER_ENTERING_WORLD")
+Tick()
+for _ = 1, 6 do
+    game.x = game.x + 2
+    Tick()
+end
+local arrived = math.floor(game.now)
+for _ = 1, 400 do Tick() end
+Fire("PLAYER_LOGOUT")
+local tail = Recorder:GetPath(#ns.char.segments)
+check(tail.t[#tail.t] == arrived, ("the tail is dated on arrival: %s, arrived %s"):format(tail.t[#tail.t], arrived))
 -- Recording carries on in the same segment after it.
 count = #ns.char.segments
 game.x = game.x + 2

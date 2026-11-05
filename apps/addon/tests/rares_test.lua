@@ -299,6 +299,13 @@ Rares:Health("target")
 now = now + 0.1
 Rares:Killed("Razorfen Thornweaver")
 check(Count() == base + 4 and Last()[6] == "Death's Head Priest", "a rare seen dead keeps its own message's name")
+-- Its own message as its target went, an add a moment after the clear: kept (second review of #109).
+now = now + 20 * 60
+Target(nil, "rare", 25, nil)
+KillTarget("Overlord Ramtusk")
+now = now + 0.05
+Rares:Killed("Razorfen Handler")
+check(Count() == base + 5 and Last()[6] == "Overlord Ramtusk", "an add just after the rare's own clear renames nothing")
 
 if failures > 0 then
     print(("rares_test: %d failure(s)"):format(failures))

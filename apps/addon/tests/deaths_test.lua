@@ -122,11 +122,12 @@ e = Die(60)
 for _ = 1, 10 do RunTimers() end
 check(e[6] == nil, "an inaccessible recap is left alone")
 canaccesstable = function() return true end
--- One that errors when read is left alone too.
+-- One that errors when read is left alone too, at a death and at login.
 C_DeathRecap = { GetRecapEvents = function() return setmetatable({}, { __index = function() error("secret") end }) end }
 e = Die(60)
 for _ = 1, 10 do RunTimers() end
 check(e[6] == nil, "a recap that errors when read is left alone")
+check(pcall(handlers.PLAYER_LOGIN), "and logging in with one raises nothing")
 C_DeathRecap = { GetRecapEvents = function() return recap end }
 
 -- A seeded journey is left alone.

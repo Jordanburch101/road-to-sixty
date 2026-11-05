@@ -36,6 +36,7 @@ local KILL_SECONDS = 1          -- the target is gone this soon after its XP mes
 local SEEN_SECONDS = 30 * 60    -- how long a rare seen counts
 local SAME_CORPSE = 10 * 60     -- a rare corpse inside an instance with the same classification
                                 -- and level this soon after one recorded is the same one
+local SAME_MOMENT = 0.2         -- a rare's own message and its target clearing come together
 local LOOKBACK = 15             -- seconds back the kill list may name a rare corpse clicked
 
 local Log = function(...) ns.Journal:Log(...) end
@@ -220,7 +221,9 @@ local function Confirm(cleared)
     pending, engaged = nil, nil
     local e, key = Record(info, name, "x")
     local gone = GetTime()
-    confirmed = cleared and not info.guid and e and { e = e, key = key, at = at, gone = gone } or nil
+    -- A message that came with the clear was the rare's own: nothing can be nearer.
+    confirmed = cleared and not info.guid and e and gone - at > SAME_MOMENT
+        and { e = e, key = key, at = at, gone = gone } or nil
 end
 
 -- The kill confirmed was this other name's: the message before was an add's.

@@ -246,9 +246,11 @@ end
 -- Standing near the last point adds nothing, as in Hold.
 StoreTail = function()
     if not current or not current.lx then return end
-    local x, y = current.lx, current.ly
+    local x, y, t, n = current.lx, current.ly, current.lt, current.n
+    -- Standing still since arriving: the time it got there, which Hold kept.
+    if n > 0 and current.hx[n] == x and current.hy[n] == y then t = current.ht[n] end
     if Dist(current.x, current.y, x, y) >= (MIN_STEP[current.mode] or 1) then
-        Store(x, y, current.lt)
+        Store(x, y, t)
     end
     current.n, current.lx = 0, nil
 end
