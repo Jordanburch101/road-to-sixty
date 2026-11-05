@@ -214,6 +214,9 @@ Treat them as the shared memory of what is planned, decided and done.
 Verified in game; trust these over web guides, and re-check after patches.
 
 - Combat log is blocked for addons; kills come from `CHAT_MSG_COMBAT_XP_GAIN`.
+  Even registering `COMBAT_LOG_EVENT_UNFILTERED` raises
+  `ADDON_ACTION_FORBIDDEN` (`UNKNOWN()`) and the game's "blocked from an
+  action" box, so never register it unasked.
 - Mobs are secret values (`issecretvalue`) **inside instances only**, in or
   out of combat: their name (every way: `UnitName`, `UnitNameUnmodified`,
   `GetUnitName`, tooltip, target frame text) and GUID. In the open world
