@@ -9,7 +9,8 @@ local _, ns = ...
 -- A sync is pulled: the side that wants a journey says what it has, and the
 -- other sends the next batch of its current character's journey. Each batch
 -- is kept as it arrives, so a sync that stops carries on from there, and
--- later syncs only cost what is new. Keys are lowercase names (Key):
+-- later syncs only cost what is new. Keys are lowercase names (Key); on
+-- Forever, where characters have surnames, full names ("first last"):
 --
 --   RoadToSixtyDB.friends[key] = {
 --     name, realm, class, level, zone, c, x, y, seen, played, synced (time),
@@ -370,16 +371,66 @@ local function SquashRealm(realm)
     return (realm:gsub("[%s%-]", ""):lower())
 end
 
--- The friends key of a whisper's sender, nil when they are on another realm
--- than the friend of that name. The sender comes as "Name-Realm", the realm
--- without the spaces and hyphens GetRealmName has.
+-- Forever gives every character a surname, and a full name is unique across
+-- the region: a friend is "First Last", and needs no realm to tell them apart.
+local function Surnames()
+    local ok, on = pcall(function() return RegionalUniqueNamesEnabled() end)
+    return ok and on == true
+end
+Friends.Surnames = Surnames
+
+-- This character's name as a friend would type it.
+local function MyName()
+    local name, surname = UnitName("player")
+    if Surnames() and type(surname) == "string" and surname ~= "" then return name .. " " .. surname end
+    return name
+end
+
+local function Capital(word)
+    return word:sub(1, 1):upper() .. word:sub(2):lower()
+end
+
+local function NameWord(word)
+    return word:find("^[^%s%d%p]+$") or word:find("[\128-\255]")
+end
+
+-- A typed name as the friends list keeps it, or nil if it can't be one.
+-- With surnames it is "First Last", typed that way or "First-Last" as the
+-- chat box takes it; a realm after the full name is dropped.
+local function TypedName(text)
+    text = strtrim(text or "")
+    if Surnames() then
+        if text:find("%s") then text = text:gsub("%-.*$", "") end
+        local first, last = text:match("^([^%s%-]+)[%s%-]+([^%s%-]+)$")
+        if not first or not NameWord(first) or not NameWord(last) then return nil end
+        return Capital(first) .. " " .. Capital(last)
+    end
+    text = text:gsub("%-.*$", "")
+    if text == "" or not NameWord(text) then return nil end
+    return Capital(text)
+end
+
+-- The friends key of a whisper's sender, and their name as the game writes
+-- it; nil when they are on another realm than the friend of that name. The
+-- sender comes as "Name-Realm", the realm without the spaces and hyphens
+-- GetRealmName has. With surnames the realm says nothing, and the sender may
+-- come as "First Last", "First Last-Realm" or "First-Last".
 local function SenderKey(sender)
+    if Surnames() then
+        local whole = sender:gsub("%-", " ")
+        local cut = sender:match("^(.-)%-[^-]*$")
+        cut = cut and cut:gsub("%-", " ")
+        for _, name in ipairs({ whole, cut }) do
+            if ns.db.friends[Key(name)] then return Key(name), name end
+        end
+        return Key(cut or whole), cut or whole
+    end
     local name, realm = sender:match("^([^-]+)%-?(.*)$")
     if not name then return nil end
     local key = Key(name)
     local rec = ns.db.friends[key]
     if rec and realm ~= "" and SquashRealm(realm) ~= SquashRealm(rec.realm or GetRealmName()) then return nil end
-    return key
+    return key, name
 end
 
 -- Whether a friend's guid may be used: never one of this account's characters.
@@ -696,8 +747,11 @@ end
 local function OnMessage(prefix, text, channel, sender)
     prefix, text, sender = Clean(prefix), Clean(text), Clean(sender)
     if prefix ~= PREFIX or channel ~= "WHISPER" or type(text) ~= "string" or type(sender) ~= "string" then return end
-    local key = SenderKey(sender)
+    local key, name = SenderKey(sender)
     if not key then return end
+    -- The name as the game writes it, for a surname typed in the wrong case.
+    local rec = ns.db.friends[key]
+    if rec and name and rec.name ~= name then rec.name = name end
     local kind, id, rest = text:match("^(%u):(%x+):(.*)$")
     if kind == "Q" then
         OnAsked(sender, key, id, rest)
@@ -755,16 +809,16 @@ end
 -- Adds a friend for every character on this account, so whichever is online
 -- shares its journey with them, and asks for theirs.
 function Friends:Add(name)
-    name = strtrim(name or ""):gsub("%-.*$", "")
-    if name == "" or not name:find("^[^%s%d%p]+$") and not name:find("[\128-\255]") then
-        ns.Print("Type the exact character name of a friend.")
+    name = TypedName(name)
+    if not name then
+        ns.Print(Surnames() and "Type the full name of a friend's character, first and last."
+            or "Type the exact character name of a friend.")
         return
     end
-    if Key(name) == Key(UnitName("player")) then
+    if Key(name) == Key(MyName()) then
         ns.Print("That's you.")
         return
     end
-    name = name:sub(1, 1):upper() .. name:sub(2):lower()
     local key = Key(name)
     if not ns.db.friends[key] then
         ns.db.friends[key] = { name = name, realm = GetRealmName() }
@@ -852,12 +906,13 @@ local function HideOffline(_, _, message)
         hiddenText, hiddenUntil = message, now + HIDE_FOR
         return true
     end
-    if rec and message == line:format(rec.name) then
+    -- Without case, as the game may name them as it writes them or as we did.
+    if rec and Key(message) == Key(line:format(rec.name)) then
         -- A chat filter runs outside ns.On, so an error here would reach the chat frame.
         ns.SafeCall(Finish, request.key, nil)
         return Hide()
     end
-    if outgoing and message == line:format(outgoing.to) then
+    if outgoing and Key(message) == Key(line:format(outgoing.to)) then
         outgoing = nil
         return Hide()
     end
@@ -881,6 +936,83 @@ end)
 ns.Command("sync", "sync a friend's journey again: /rts sync <name>", function(name)
     Friends:Sync(name)
 end)
+
+--@debug@
+-- /rts friendprobe [First Last]: how this client names players for the
+-- friends sync, tried alone. It whispers this character in each form of its
+-- name, and prints the sender each whisper comes back with and the friend
+-- key that gives; with a name, it whispers that player too (unseen without
+-- the addon) and prints the result and any "No player named" line.
+local probe
+ns.Command("friendprobe", "check how names reach the friends sync (developer): /rts friendprobe [First Last]",
+    function(typed)
+        if probe then
+            ns.Print("A probe is still running.")
+            return
+        end
+        local results = {}
+        for key, value in pairs(Enum and Enum.SendAddonMessageResult or {}) do results[value] = key end
+        local function Result(r) return tostring(r) .. (results[r] and " (" .. results[r] .. ")" or "") end
+
+        local first, surname = UnitName("player")
+        ns.Print(("Surnames %s; UnitName gives %q, %q; we send as %q."):format(tostring(Surnames()),
+            tostring(first), tostring(surname), tostring(MyName())))
+        local lockdown = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
+        if lockdown then ns.Print("Chat lockdown: " .. tostring(select(2, pcall(lockdown)))) end
+
+        probe = { got = {}, lines = {}, id = ("%x"):format(ns.Now() % 0xffffff) }
+        local frame = CreateFrame("Frame")
+        frame:RegisterEvent("CHAT_MSG_ADDON")
+        frame:RegisterEvent("CHAT_MSG_SYSTEM")
+        frame:SetScript("OnEvent", function(_, event, a, b, _, d)
+            if event == "CHAT_MSG_SYSTEM" then
+                probe.lines[#probe.lines + 1] = tostring(a)
+            elseif a == PREFIX and type(b) == "string" and b:find("^P:" .. probe.id) then
+                probe.got[#probe.got + 1] = { form = b:match("^P:%x+:(.*)$"), sender = tostring(d) }
+            end
+        end)
+
+        local targets = {}
+        local me = MyName()
+        targets[#targets + 1] = me
+        if me:find(" ") then targets[#targets + 1] = (me:gsub(" ", "-")) end
+        local them = typed ~= "" and TypedName(typed) or nil
+        if typed ~= "" then
+            ns.Print(("%q is kept as %s, key %s."):format(typed, tostring(them), them and Key(them) or "none"))
+        end
+        if them then
+            targets[#targets + 1] = them
+            if them:find(" ") then targets[#targets + 1] = (them:gsub(" ", "-")) end
+        end
+        for _, target in ipairs(targets) do
+            local send = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
+            local ok, r = pcall(send, PREFIX, "P:" .. probe.id .. ":" .. target, "WHISPER", target)
+            ns.Print(("Whisper to %q: %s."):format(target, ok and Result(r) or "error " .. tostring(r)))
+        end
+
+        C_Timer.After(4, function()
+            frame:UnregisterAllEvents()
+            -- Matched as if this character were a friend, for a moment.
+            local mine, held = Key(me), ns.db.friends[Key(me)]
+            for _, got in ipairs(probe.got) do
+                ns.db.friends[mine] = held or { name = me, realm = GetRealmName() }
+                local key = SenderKey(got.sender)
+                ns.db.friends[mine] = held
+                ns.Print(("Came back for %q as sender %q: %s."):format(got.form, got.sender,
+                    key == mine and "a friend of that name is found" or "NOT found, key " .. tostring(key)))
+            end
+            if not probe.got[1] then ns.Print("No whisper came back.") end
+            for _, line in ipairs(probe.lines) do
+                if them and Key(line):find(Key(them:match("^%S+")), 1, true) then
+                    local hidden = ERR_CHAT_PLAYER_NOT_FOUND_S
+                        and Key(line) == Key(ERR_CHAT_PLAYER_NOT_FOUND_S:format(them))
+                    ns.Print(("System line: %q; auto sync would hide it: %s."):format(line, tostring(hidden)))
+                end
+            end
+            probe = nil
+        end)
+    end)
+--@end-debug@
 
 ns.Command("autosync", "sync with online friends on a timer: /rts autosync <5, 15, 30 or off>", function(arg)
     arg = arg:lower()

@@ -40,7 +40,7 @@ for data, its exact format; read that before changing a module.
 | Duels.lua | duels the player fights (`duel` events): the opponent, the result, who challenged, `/rts duelprobe` (#88) |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
-| Friends.lua | syncing journeys with friends by addon whisper, and automatic sync; friends list through `Roster:Entries` but stay out of the roster; format in its header |
+| Friends.lua | syncing journeys with friends by addon whisper, and automatic sync; friends list through `Roster:Entries` but stay out of the roster; format in its header; `/rts friendprobe` |
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
@@ -214,6 +214,9 @@ Treat them as the shared memory of what is planned, decided and done.
 Verified in game; trust these over web guides, and re-check after patches.
 
 - Combat log is blocked for addons; kills come from `CHAT_MSG_COMBAT_XP_GAIN`.
+  Even registering `COMBAT_LOG_EVENT_UNFILTERED` raises
+  `ADDON_ACTION_FORBIDDEN` (`UNKNOWN()`) and the game's "blocked from an
+  action" box, so never register it unasked.
 - Mobs are secret values (`issecretvalue`) **inside instances only**, in or
   out of combat: their name (every way: `UnitName`, `UnitNameUnmodified`,
   `GetUnitName`, tooltip, target frame text) and GUID. In the open world
@@ -258,6 +261,12 @@ Verified in game; trust these over web guides, and re-check after patches.
   Brown Horse is mount 6). Mount vendors will not open without riding, so
   buying one was not seen on the beta.
 - Continents: Eastern Kingdoms is continent 0 / uiMap 1415, Kalimdor is 1 / 1414.
+- Characters have surnames, and full names are unique across the region
+  (`RegionalUniqueNamesEnabled()` is true). `UnitName` returns the first
+  name and the surname (not a realm) as its two values. An addon whisper
+  takes the target as "First Last" or "First-Last", and `CHAT_MSG_ADDON`
+  names the sender "First Last", with no realm. Seen 2026-11-05 by
+  whispering oneself (`/rts friendprobe`, #105).
 - Models of other characters: `DressUpModel:SetCustomRace` does not exist.
   `SetDisplayInfo` with a saved `C_PlayerInfo.GetDisplayID()` gives the right
   race shape but an untextured white body (weapons still show; armour shows

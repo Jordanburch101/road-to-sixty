@@ -76,7 +76,9 @@ local function Journey(points, events)
     }
 end
 
-local function Client(name, other, guid, char)
+-- forever: a client where characters have surnames ("First Last"), and
+-- c.sendAs, if set, is how the server writes this client as a sender.
+local function Client(name, other, guid, char, forever)
     local c = { handlers = {}, errors = {} }
     local env = setmetatable({}, { __index = _G })
     c.env = env
@@ -85,7 +87,11 @@ local function Client(name, other, guid, char)
     env.GetTime = function() return clock end
     env.date = function() return "Nov 02" end
     env.C_Timer = { After = function(d, f) At(d, f) end }
-    env.UnitName = function() return name end
+    env.UnitName = function()
+        if forever then return name:match("^(%S+) (%S+)$") end
+        return name
+    end
+    if forever then env.RegionalUniqueNamesEnabled = function() return true end end
     env.UnitClass = function() return "Paladin", "PALADIN" end
     env.UnitLevel = function() return 12 end
     env.GetRealmName = function() return "Era" end
@@ -105,12 +111,13 @@ local function Client(name, other, guid, char)
                 local answer = c.onSend(prefix, text, channel, target)
                 if answer ~= nil then return answer end
             end
-            if target:gsub("%-.*", ""):lower() ~= other:lower() then return true end
+            local to = forever and target:gsub("%-Era$", ""):gsub("%-", " ") or target:gsub("%-.*", "")
+            if to:lower() ~= other:lower() then return true end
             carried = carried + 1
             if text:sub(1, 1) == "Q" then clients[other].lastAsked = text:match("^Q:(%x+)") end
             At(0.05, function()
                 if c.offline or clients[other].offline or clients[other].mute then return end
-                clients[other].fire("CHAT_MSG_ADDON", prefix, text, channel, name .. "-Era")
+                clients[other].fire("CHAT_MSG_ADDON", prefix, text, channel, c.sendAs and c.sendAs(name) or name .. "-Era")
             end)
             return true
         end,
@@ -499,6 +506,43 @@ check(friends.bromm == nil, "remove left the friend")
 check(#z.ns.Roster:Entries() == 1, "remove left the friend listed")
 
 check(#z.errors == 0 and #b.errors == 0, "errors: " .. tostring(z.errors[1] or b.errors[1]))
+
+-- Without surnames a name with a space is no character's.
+F:Add("Bo Ray")
+check((z.printed or ""):find("exact character name") and friends["bo ray"] == nil, "took a name with a space")
+
+-- On Forever characters have surnames: a friend is added by full name, typed
+-- with a space or a hyphen in any case, and found however the server writes
+-- the sender, which also puts right the case of a surname typed wrong.
+clients["Ann Lee"] = Client("Ann Lee", "Bo McRay", "Player-1-0A01", Journey(20, 3), true)
+clients["Bo McRay"] = Client("Bo McRay", "Ann Lee", "Player-1-0B01", Journey(5, 2), true)
+local ann, bo = clients["Ann Lee"], clients["Bo McRay"]
+Run()
+ann.ns.Friends:Add("Bo")
+check((ann.printed or ""):find("full name") and next(ann.ns.db.friends) == nil, "took a first name alone")
+ann.ns.Friends:Add("ann LEE")
+check(ann.printed == "That's you." and next(ann.ns.db.friends) == nil, "added itself by full name")
+bo.ns.Friends:Add(" ann-lee ")
+check(bo.ns.db.friends["ann lee"] and bo.ns.db.friends["ann lee"].name == "Ann Lee", "hyphen form not taken")
+ann.ns.Friends:Add("bo mcray")
+Run()
+local bo_rec = ann.ns.db.friends["bo mcray"]
+check(bo_rec and bo_rec.synced and bo_rec.journey and #bo_rec.journey.segments[1].d > 0,
+    "full name sync did not finish: " .. (bo_rec and ann.ns.Friends:Status(bo_rec) or "no friend"))
+check(bo_rec and bo_rec.name == "Bo McRay", "name not taken from the sender: " .. tostring(bo_rec and bo_rec.name))
+local forms = {
+    { "plain", function(n) return n end },
+    { "realm", function(n) return n .. "-Era" end },
+    { "hyphen", function(n) return (n:gsub(" ", "-")) end },
+}
+for _, form in ipairs(forms) do
+    ann.sendAs, bo.sendAs = form[2], form[2]
+    bo_rec.synced = nil
+    ann.ns.Friends:Sync("Bo McRay")
+    Run()
+    check(bo_rec.synced, "sender written " .. form[1] .. " not matched: " .. ann.ns.Friends:Status(bo_rec))
+end
+check(#ann.errors == 0 and #bo.errors == 0, "errors: " .. tostring(ann.errors[1] or bo.errors[1]))
 
 if failures > 0 then os.exit(1) end
 print("friends_test: all passed")

@@ -283,7 +283,12 @@ local function OnDeathChat(event, msg)
     if GetTime() - diedAt <= DEATH_CHAT then Log(("  %s: %s"):format(event, Show(msg))) end
 end
 
-local combatLog = ns.On("COMBAT_LOG_EVENT_UNFILTERED", OnCombatLog)
+-- The combat log is asked for only once the probe is on: Forever forbids it
+-- to addons, and asking shows the game's "blocked from an action" box.
+local combatLog
+local function WatchCombatLog()
+    if combatLog == nil then combatLog = ns.On("COMBAT_LOG_EVENT_UNFILTERED", OnCombatLog) end
+end
 ns.On("PLAYER_DEAD", OnDeath)
 for _, event in ipairs({ "CHAT_MSG_SYSTEM", "CHAT_MSG_COMBAT_MISC_INFO", "CHAT_MSG_COMBAT_XP_GAIN" }) do
     ns.On(event, function(msg) OnDeathChat(event, msg) end)
@@ -303,6 +308,7 @@ ns.On("PLAYER_LOGIN", function()
         ns.db.bgProbe = nil     -- a log left from when it was on
         return
     end
+    WatchCombatLog()
     Log(("-- login: %d events registered; not on this client: %s; combat log %s"):format(#registered,
         #missing > 0 and table.concat(missing, ", ") or "none", combatLog and "registered" or "refused"))
 end)
@@ -310,6 +316,7 @@ end)
 ns.Command("bgprobe", "log what battlegrounds and deaths tell the addon; on, off, quiet, clear (developer)", function(arg)
     if arg == "on" or arg == "off" then
         ns.db.bgProbeOn = arg == "on" or nil
+        if arg == "on" then WatchCombatLog() end
         ns.Print("bgprobe " .. arg .. (arg == "off" and " (its saved log goes at the next login)." or "."))
         return
     end
