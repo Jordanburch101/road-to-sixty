@@ -41,10 +41,21 @@ export function levelClass(c: { level: number | null; class: string | null }): s
   return [c.level !== null ? `Level ${c.level}` : "", c.class ? (CLASSES[c.class]?.name ?? "") : ""].filter(Boolean).join(" ");
 }
 
+// Forever's realms reach the addon by their server names, such as
+// "CAMWOW AU1 Realm 1 PvE", while players only ever see the realm's type.
+const FOREVER_REALM = /^CAMWOW \S+ Realm \d+ (.+)$/;
+const REALM_TYPES: Record<string, string> = { PvE: "Normal", PvP: "PvP", RP: "RP", "RP PvP": "RP-PvP" };
+
+// A realm as players know it: a Forever realm's type, any other its name.
+export function realmName(realm: string): string {
+  const type = FOREVER_REALM.exec(realm)?.[1];
+  return (type && REALM_TYPES[type]) ?? realm;
+}
+
 // Under a character's name: its realm, and which PC last backed it up, when.
 export function characterLine(c: CharacterInfo, now: Date): string {
   const by = c.syncedFrom ? `${c.syncedFrom}, ${ago(c.syncedAt, now)}` : `restored ${ago(c.syncedAt, now)}`;
-  return `${c.realm} · ${by}`;
+  return `${realmName(c.realm)} · ${by}`;
 }
 
 export function versionLine(v: VersionInfo, now: Date): string {
@@ -75,14 +86,33 @@ export function updateWords(update: Update, checked: string | null | undefined):
 // The beta's game folder: its characters are tagged and removed together.
 export const BETA = "_classic_beta_";
 
-// The list's rows, this game's first and the beta's apart, by the server's
-// game for each. A row the server doesn't have stays in the main list.
-export function byGame<T extends { key: string }>(rows: T[], info: Map<string, CharacterInfo>): { main: T[]; beta: T[] } {
-  const beta = rows.filter((r) => info.get(r.key)?.game === BETA);
-  return { main: rows.filter((r) => !beta.includes(r)), beta };
+// Forever's game folder, and when its realms opened. At launch the beta's
+// characters came along into _forever_, and the stress test was played in
+// it too, so a Forever character last played before launch was on a test
+// realm, whatever the realm's name. Characters made during name reservation
+// could not be played before launch. The first play on a live realm the
+// server saw was at 23:35 UTC on launch day, the last on the beta 23 October.
+export const FOREVER = "_forever_";
+export const FOREVER_LAUNCH = Date.parse("2026-11-04T18:00:00Z");
+
+// A beta or stress test character, by the server's row for it.
+export function isTest(c: CharacterInfo): boolean {
+  if (c.game === BETA) return true;
+  return c.game === FOREVER && c.lastPlayedAt !== null && Date.parse(c.lastPlayedAt) < FOREVER_LAUNCH;
 }
 
-export const betaWords = (n: number) => `Remove ${n} beta ${n === 1 ? "journey" : "journeys"} from the backup? Journeys on your PCs stay.`;
+// The list's rows, the real ones first and the test ones apart, by the
+// server's row for each. A row the server doesn't have stays in the main list.
+export function byGame<T extends { key: string }>(rows: T[], info: Map<string, CharacterInfo>): { main: T[]; test: T[] } {
+  const test = rows.filter((r) => {
+    const i = info.get(r.key);
+    return i !== undefined && isTest(i);
+  });
+  return { main: rows.filter((r) => !test.includes(r)), test };
+}
+
+export const testWords = (n: number) =>
+  `Remove ${n} beta and stress test ${n === 1 ? "journey" : "journeys"} from the backup? Journeys on your PCs stay.`;
 
 // A character's earlier journeys: the same game, realm and name, newest first.
 export function earlierOf(all: CharacterInfo[], c: CharacterInfo): CharacterInfo[] {

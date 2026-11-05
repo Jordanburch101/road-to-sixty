@@ -4,7 +4,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { useState, type ReactNode } from "react";
 import { characters, removeCharacter, setPaused, useLoad, type Status } from "./api";
 import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
-import { BETA, CLASSES, betaWords, byGame, characterLine, levelClass, played } from "./format";
+import { BETA, CLASSES, byGame, characterLine, isTest, levelClass, played, realmName, testWords } from "./format";
 
 export type Tab = "characters" | "account";
 
@@ -12,15 +12,18 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
   const server = useLoad(characters, [status.lastSynced]);
   const now = new Date();
   const info = new Map((server.data ?? []).filter((c) => !c.earlier).map((c) => [`${c.name}-${c.realm}`, c]));
-  const { main, beta } = byGame(status.characters, info);
-  const betaRows = (server.data ?? []).filter((c) => c.game === BETA);
+  const { main, test } = byGame(status.characters, info);
+  // Oldest first, so a name's current journey is never removed while an
+  // earlier one is left (the server refuses that).
+  const testRows = (server.data ?? []).filter(isTest).sort((a, b) => a.id - b.id);
+  const [showTest, setShowTest] = useState(false);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function removeBeta() {
+  async function removeTest() {
     setError(null);
     try {
-      for (const c of betaRows) await removeCharacter(c.id);
+      for (const c of testRows) await removeCharacter(c.id);
       setAsking(false);
     } catch (e) {
       setError(`Couldn't remove them all: ${String(e)}`);
@@ -47,8 +50,10 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
             <span className="text-[15px] font-medium" style={{ color: look?.colour }}>
               {name}
             </span>
-            {i?.game === BETA && <span className="rounded-full border border-outline px-1.5 text-[10px] text-muted">Beta</span>}
-            <span className="truncate text-[13px] text-muted">{(i && levelClass(i)) || realm.join("-")}</span>
+            {i && isTest(i) && (
+              <span className="rounded-full border border-outline px-1.5 text-[10px] text-muted">{i.game === BETA || i.realm.includes("Beta") ? "Beta" : "Test"}</span>
+            )}
+            <span className="truncate text-[13px] text-muted">{(i && levelClass(i)) || realmName(realm.join("-"))}</span>
             {i?.played != null && <span className="ml-auto font-mono text-xs text-muted">{played(i.played)}</span>}
           </div>
           <div className={`text-xs leading-[1.45] ${warn ? "text-warn" : "text-faint"}`}>{warn || !i ? c.note : characterLine(i, now)}</div>
@@ -80,28 +85,31 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
           <li className="px-1 text-[13px] text-muted">No characters yet. Log in to a character with the addon, then log out or type /reload.</li>
         )}
         {main.map(row)}
-        {beta.length > 0 && (
+        {test.length > 0 && (
           <>
             <li className="mt-2 flex items-center gap-2 px-1">
-              <h2 className="text-xs font-medium text-faint">Beta</h2>
+              <h2 className="text-xs font-medium text-faint">Beta and stress test ({test.length})</h2>
+              <Button className="ml-auto h-[26px] rounded-lg px-2.5 text-xs" onClick={() => setShowTest(!showTest)}>
+                {showTest ? "Hide" : "Show"}
+              </Button>
               {!asking && (
-                <Button className="ml-auto h-[26px] rounded-lg px-2.5 text-xs" onClick={() => setAsking(true)}>
-                  Remove all beta characters
+                <Button className="h-[26px] rounded-lg px-2.5 text-xs" onClick={() => setAsking(true)}>
+                  Remove all
                 </Button>
               )}
             </li>
             {asking && (
               <li className="flex flex-col gap-2.5 rounded-[10px] border border-[#3a3746] bg-[#100f15] px-3.5 py-3">
-                <p className="text-[13px] leading-[1.45] text-[#c9c4d6]">{betaWords(betaRows.length)}</p>
+                <p className="text-[13px] leading-[1.45] text-[#c9c4d6]">{testWords(testRows.length)}</p>
                 <div className="flex gap-2">
-                  <Button look="cream" onClick={removeBeta}>
+                  <Button look="cream" onClick={removeTest}>
                     Remove
                   </Button>
                   <Button onClick={() => setAsking(false)}>Cancel</Button>
                 </div>
               </li>
             )}
-            {beta.map(row)}
+            {showTest && test.map(row)}
           </>
         )}
       </ul>
