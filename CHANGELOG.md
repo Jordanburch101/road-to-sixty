@@ -17,6 +17,11 @@ broken and now works. Leave out internal changes. Sections are
   you logged in inside is drawn as leaving it, not as a login.
 - A rare looted after a sync between two PCs no longer shows twice in
   History. Rares already shown twice are put back to one.
+- Inside a dungeon, a rare killed just after one of its adds is no longer
+  saved under the add's name.
+- Deaths name the killer even when your computer's clock is off.
+- Gear in your bags that loads late at login keeps where it came from
+  when you put it on, instead of showing as unknown.
 - If a character's saved journey belonged to another character of the
   same name (one deleted, or moved from another realm), it is now kept in
   the journey map's Characters list instead of being cleared, and chat
