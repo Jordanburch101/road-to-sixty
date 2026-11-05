@@ -47,6 +47,7 @@ local addonName, ns = ...
 do
     local interface = GetBuildInfo and select(4, GetBuildInfo()) or 0
     ns.Classic = interface < 16000 or interface >= 17000
+    ns.Forever = not ns.Classic     -- Forever, and its beta and stress test before it
     ns.Anniversary = interface >= 20000 and interface < 100000
     -- (Classic Era itself: the classic art, without the Anniversary realms' additions)
     ns.Era = ns.Classic and not ns.Anniversary

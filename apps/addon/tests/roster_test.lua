@@ -203,6 +203,23 @@ UnitGUID = function() return nil end
 check(Roster:Key() == "Eagin-Test" and Roster:Name() == "Eagin-Test", "Name-Realm when the client gives no GUID")
 UnitGUID = function() return GUID end
 
+-- On Forever, characters last seen before launch (the beta's, the stress
+-- test's) are not listed; this one always is, and friends are not touched.
+ns.Forever = true
+local LAUNCH = 1793815200
+ns.db.roster["Player-2-00000001"] = { name = "Beta", seen = LAUNCH - 86400 * 12 }
+ns.db.roster["Player-2-00000002"] = { name = "Stress", seen = LAUNCH - 86400 * 7 }
+ns.db.roster["Player-2-00000003"] = { name = "Live", seen = LAUNCH + 3600 }
+ns.db.roster["Player-2-00000004"] = { name = "Unseen" }
+ns.db.friends = { ["Player-3-00000001"] = { name = "Pal", key = "Player-3-00000001", journey = {}, seen = 100 } }
+local names = {}
+for _, entry in ipairs(Roster:Entries()) do names[#names + 1] = entry.name end
+check(table.concat(names, ",") == "Eagin,Live,Pal", "on Forever, characters gone with the test realms are hidden, got " .. table.concat(names, ","))
+ns.Forever = nil
+check(#Roster:Entries() == 8, "on other clients every character is listed, got " .. #Roster:Entries())
+ns.db.friends = nil
+for i = 1, 4 do ns.db.roster["Player-2-0000000" .. i] = nil end
+
 -- A reset journey empties the copy.
 Record({})
 Roster:Rebuild()
