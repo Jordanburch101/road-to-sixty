@@ -86,10 +86,16 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the per-user Run key on Windows, `~/.config/autostart` on Linux pointing
   at the AppImage file itself, so moving the file breaks it), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
-  The Characters list tags a character Beta from the server's `game`
-  (`_classic_beta_`) and lists them apart with one button to remove them
-  all; a character the server doesn't have stays in the main list, since
-  the app's own list doesn't know a file's game. History lists a name's
+  The Characters list puts test characters in a group of their own,
+  hidden until Show is pressed, with one button to remove them all
+  (`isTest` in `format.ts`): the server's `game` is `_classic_beta_`, or
+  it is `_forever_` and the character was last played before Forever's
+  launch. The beta's characters came along into `_forever_` and the
+  stress test was played there, so neither the folder nor the realm's
+  name tells them apart. A character the server doesn't have stays in the
+  main list, since the app's own list doesn't know a file's game. Forever's
+  realms show as their type (Normal, PvP, RP, RP-PvP), not their server
+  names (`realmName`). History lists a name's
   earlier journeys (`earlier` from the server), each removable, and
   removes the character itself from the backup.
   `api.ts` is the only file that talks to the app (its commands and the

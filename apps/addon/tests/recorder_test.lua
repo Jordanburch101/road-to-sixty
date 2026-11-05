@@ -173,6 +173,33 @@ game.x = game.x + 5000
 Tick()
 check(lastJump() == "h", "hearthstone jump, got " .. tostring(lastJump()))
 
+-- A short hearth with no loading screen, under TELEPORT_DIST (Northshire's
+-- vineyards to the abbey, 295 yards): still a jump, after the cast time.
+local count = #ns.char.segments
+for _ = 1, 40 do Tick() end   -- standing still through the cast
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
+game.x, game.y = game.x + 173, game.y + 239
+Tick()
+check(#ns.char.segments == count + 1 and lastJump() == "h",
+    ("a short hearthstone starts a segment, got %d new, reason %s"):format(#ns.char.segments - count, tostring(lastJump())))
+-- Without a cast, the same distance in one sample stays one walk.
+count = #ns.char.segments
+game.x, game.y = game.x + 173, game.y + 239
+Tick()
+check(#ns.char.segments == count, "a 295-yard move with no cast does not split the path")
+-- A charge just after a cast that moved nowhere does not split it either.
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
+game.x = game.x + 25
+Tick()
+check(#ns.char.segments == count, "a charge after a hearth cast does not split the path")
+-- A few seconds on, the cast no longer lowers the limit: a lag spike while
+-- mounted (60 yards in one sample) stays part of the walk.
+for _ = 1, 16 do Tick() end
+game.x = game.x + 60
+Tick()
+check(#ns.char.segments == count, "a jump seconds after a cast that moved nowhere does not split the path")
+game.now = game.now + 61   -- that cast no longer explains anything
+
 game.instance = true
 Tick()
 game.instance = false

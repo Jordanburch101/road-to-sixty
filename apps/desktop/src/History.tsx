@@ -3,7 +3,7 @@ import { Button } from "@road-to-sixty/ui/Button";
 import { useState } from "react";
 import { characters, removeCharacter, restore, useLoad, versions, type Status } from "./api";
 import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
-import { CLASSES, earlierLine, earlierOf, levelClass, played, removeWords, versionLine, when } from "./format";
+import { CLASSES, earlierLine, earlierOf, levelClass, played, realmName, removeWords, versionLine, when } from "./format";
 
 // A character's merged and restored versions, newest first, after the
 // A-History mockup. Restoring asks first, in the row itself.
@@ -69,7 +69,7 @@ export function History({ status, character, onBack }: { status: Status; charact
               <span className="text-[13px] text-muted">{levelClass(character)}</span>
             </div>
             <div className="text-xs text-faint">
-              {[character.realm, character.played !== null ? `${played(character.played)} played` : ""].filter(Boolean).join(" · ")}
+              {[realmName(character.realm), character.played !== null ? `${played(character.played)} played` : ""].filter(Boolean).join(" · ")}
             </div>
           </div>
         </div>

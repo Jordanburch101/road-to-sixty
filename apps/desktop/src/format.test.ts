@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
 import type { Folder } from "./api";
-import { BETA, ago, folderWords, gameName, installFolder, betaWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, removeWords, updateWords, versionLine, when } from "./format";
+import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, realmName, removeWords, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -36,6 +36,18 @@ test("a character's lines: level and class, then realm, PC and when", () => {
   expect(levelClass({ level: null, class: null })).toBe("");
   expect(characterLine(ann, now)).toBe("Classic Beta PvE 2 · Laptop, yesterday");
   expect(characterLine({ ...ann, syncedFrom: null }, now)).toBe("Classic Beta PvE 2 · restored yesterday");
+  expect(characterLine({ ...ann, realm: "CAMWOW AU1 Realm 1 PvE" }, now)).toBe("Normal · Laptop, yesterday");
+});
+
+test("Forever's realms read as their type, other realms as their name", () => {
+  expect(realmName("CAMWOW AU1 Realm 1 PvE")).toBe("Normal");
+  expect(realmName("CAMWOW US1 Realm 2 PvP")).toBe("PvP");
+  expect(realmName("CAMWOW US2 Realm 11 RP")).toBe("RP");
+  expect(realmName("CAMWOW US1 Realm 9 RP PvP")).toBe("RP-PvP");
+  expect(realmName("CAMWOW EU5 Realm 6 Something New")).toBe("CAMWOW EU5 Realm 6 Something New");
+  expect(realmName("Nightslayer")).toBe("Nightslayer");
+  expect(realmName("Classic Beta PvP")).toBe("Classic Beta PvP");
+  expect(realmName("CAMWOW EU5 Realm 6 constructor")).toBe("CAMWOW EU5 Realm 6 constructor");
 });
 
 test("a history entry says where it came from", () => {
@@ -57,16 +69,40 @@ test("the update row says what the update is doing", () => {
   expect(updateWords({ state: "failed", why: "no network" }, undefined)).toBe("Couldn't update: no network. It tries again in a few hours.");
 });
 
-test("beta characters are listed apart, by the server's game for each", () => {
+test("beta and stress test characters are listed apart, by the server's row for each", () => {
+  const forever = { ...ann, game: "_forever_", realm: "CAMWOW AU1 Realm 1 PvE" };
   const info = new Map([
     ["Ann-Classic Beta PvE 2", ann],
     ["Bob-Nightslayer", { ...ann, id: 2, name: "Bob", realm: "Nightslayer", game: "_classic_" }],
+    // The beta's characters came along into _forever_ at launch.
+    ["Di-Classic Beta PvP", { ...forever, id: 3, name: "Di", realm: "Classic Beta PvP", lastPlayedAt: "2026-10-23T04:11:58Z" }],
+    // Played on the stress test, on a realm named like a live one.
+    ["Ed-CAMWOW AU1 Realm 1 PvE", { ...forever, id: 4, name: "Ed", lastPlayedAt: "2026-10-28T10:00:00Z" }],
+    ["Flo-CAMWOW AU1 Realm 1 PvE", { ...forever, id: 5, name: "Flo", lastPlayedAt: "2026-11-04T23:35:21Z" }],
+    ["Gus-CAMWOW AU1 Realm 1 PvE", { ...forever, id: 6, name: "Gus", lastPlayedAt: null }],
   ]);
-  const rows = [{ key: "Ann-Classic Beta PvE 2" }, { key: "Bob-Nightslayer" }, { key: "Cy-Nightslayer" }];
-  expect(byGame(rows, info)).toEqual({ main: [rows[1]!, rows[2]!], beta: [rows[0]!] });
+  const rows = [...info.keys(), "Cy-Nightslayer"].map((key) => ({ key }));
+  const { main, test } = byGame(rows, info);
+  expect(main.map((r) => r.key)).toEqual(["Bob-Nightslayer", "Flo-CAMWOW AU1 Realm 1 PvE", "Gus-CAMWOW AU1 Realm 1 PvE", "Cy-Nightslayer"]);
+  expect(test.map((r) => r.key)).toEqual(["Ann-Classic Beta PvE 2", "Di-Classic Beta PvP", "Ed-CAMWOW AU1 Realm 1 PvE"]);
+  expect(isTest({ ...ann, game: "_anniversary_", lastPlayedAt: "2026-10-01T00:00:00Z" })).toBe(false);
   expect(BETA).toBe("_classic_beta_");
-  expect(betaWords(1)).toBe("Remove 1 beta journey from the backup? Journeys on your PCs stay.");
-  expect(betaWords(3)).toBe("Remove 3 beta journeys from the backup? Journeys on your PCs stay.");
+  expect(testWords(1)).toBe("Remove 1 beta and stress test character from the backup, earlier journeys included? Journeys on your PCs stay.");
+  expect(testWords(3)).toBe("Remove 3 beta and stress test characters from the backup, earlier journeys included? Journeys on your PCs stay.");
+});
+
+test("Remove all takes every journey of a test character, oldest first, and leaves live ones", () => {
+  const forever = { ...ann, game: "_forever_", realm: "CAMWOW AU1 Realm 1 PvE" };
+  const stress = { ...forever, id: 9, name: "Ed", lastPlayedAt: "2026-10-28T10:00:00Z" };
+  // An earlier journey with no last-played time: not test by itself, but the
+  // server would refuse to remove Ed's current one while it is left.
+  const stressEarlier = { ...stress, id: 4, earlier: true, lastPlayedAt: null };
+  const live = { ...forever, id: 8, name: "Flo", lastPlayedAt: "2026-11-05T01:00:00Z" };
+  // A live character's earlier test journey stays for its History.
+  const liveEarlier = { ...live, id: 3, earlier: true, lastPlayedAt: "2026-10-20T10:00:00Z" };
+  const { characters, journeys } = testJourneys([stress, live, ann, stressEarlier, liveEarlier]);
+  expect(characters).toBe(2);
+  expect(journeys.map((c) => c.id)).toEqual([1, 4, 9]);
 });
 
 test("a character's earlier journeys are its name's, newest first", () => {

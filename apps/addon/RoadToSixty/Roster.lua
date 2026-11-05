@@ -146,6 +146,13 @@ ns.On("PLAYER_LOGOUT", function()
     entry.seen = ns.Now()
 end)
 
+-- Forever's realms opened on 2026-11-04 (18:00 UTC is before anyone played
+-- on one). The beta's characters came along into Forever's folder, and the
+-- stress test was played in it, so on Forever a character of this account
+-- last seen before then was on a realm that is gone, and can never be
+-- logged in again. They stay saved but are not listed.
+local FOREVER_LAUNCH = 1793815200
+
 -- Every character and synced friend, this one first, then the most recently seen.
 -- Each entry gets its key as entry.key.
 function Roster:Entries()
@@ -153,7 +160,9 @@ function Roster:Entries()
     local roster = ns.db.roster or {}
     for key, e in pairs(roster) do
         e.key = key
-        list[#list + 1] = e
+        if not (ns.Forever and key ~= me and (e.seen or 0) < FOREVER_LAUNCH) then
+            list[#list + 1] = e
+        end
     end
     -- Synced friends (Friends.lua) list like characters, but stay out of
     -- the roster, which only holds this account's own.
