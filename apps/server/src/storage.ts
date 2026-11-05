@@ -36,6 +36,19 @@ export async function getPacked(userId: string, fp: string): Promise<Uint8Array>
   return new Uint8Array(await s3.file(key(userId, fp)).arrayBuffer());
 }
 
+// The file, or null when the store answers but has no such file, which is
+// never meant to happen to a version that isn't pruned (#112). Storage
+// being down still throws.
+export async function getPackedIfThere(userId: string, fp: string): Promise<Uint8Array | null> {
+  const file = s3.file(key(userId, fp));
+  try {
+    return new Uint8Array(await file.arrayBuffer());
+  } catch (e) {
+    if (!(await file.exists())) return null;
+    throw e;
+  }
+}
+
 export async function get(userId: string, fp: string): Promise<Uint8Array> {
   return unpack(await getPacked(userId, fp));
 }

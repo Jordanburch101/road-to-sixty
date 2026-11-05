@@ -1,11 +1,11 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
 import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
-import { db } from "./db";
+import { db, lockFiles } from "./db";
 import { rowId } from "./ids";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
 import { accountBytes, accountDaily, accountUploads, uploads } from "./limits";
-import { fingerprint, getPacked, MAX_PACKED, put, unpack } from "./storage";
+import { fingerprint, getPackedIfThere, MAX_PACKED, put, unpack } from "./storage";
 import { SERVER_FAILED, journeyRow } from "./worker";
 
 const MAX_FIELD = 64;
@@ -133,8 +133,11 @@ export const sync = pcRoutes()
             .from(versions)
             .where(and(eq(versions.characterId, character.id), eq(versions.id, rowId(received) ?? 0)))
         : [];
-      await put(userId, fp, packed);
       const id = await db.transaction(async (tx) => {
+        // Stored under the lock, so the clean-up can't delete a file of the
+        // same content while this row isn't there yet to keep it (#112).
+        await lockFiles(tx, userId);
+        await put(userId, fp, packed);
         // The newer file holds everything the older one did, so this PC's
         // older upload of the character still waiting in the queue is
         // dropped. Not across a restore (a different received id): those
@@ -283,5 +286,15 @@ export const sync = pcRoutes()
       set.status = 404;
       return { error: "no such version" };
     }
-    return new Response(await getPacked(row.userId, row.v.fingerprint), { headers: { "content-type": "application/zstd" } });
+    const packed = await getPackedIfThere(row.userId, row.v.fingerprint);
+    // A version whose file is gone (#112) is that one character's problem.
+    // A 500 here made every app take the server for down and stop
+    // delivering to every character; a 410 shows on that character's row
+    // and the others still go in. A 404 would read as "try again".
+    if (packed === null) {
+      console.error(`GET /v1/versions/${row.v.id}: its file is missing from storage (character ${row.v.characterId})`);
+      set.status = 410;
+      return { error: "this version's file is missing on the server" };
+    }
+    return new Response(packed, { headers: { "content-type": "application/zstd" } });
   });

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import { client, db } from "../src/db";
+import { client, db, lockFiles } from "../src/db";
 import { prune } from "../src/prune";
 import { characters, jobs, verification, versions } from "../src/schema";
 import * as storage from "../src/storage";
 import { remove } from "../src/storage";
-import { journey, newDevice, reset, savedFile, session, stored, upload, workAll } from "./helpers";
+import { call, journey, newDevice, reset, savedFile, session, stored, upload, workAll } from "./helpers";
 
 beforeEach(reset);
 afterEach(() => mock.restore());
@@ -174,4 +174,40 @@ test("one account the clean-up fails on doesn't stop it for the others", async (
     .where(and(eq(characters.userId, bob.device.userId), eq(versions.kind, "upload")));
   expect(bobUpload!.versions.prunedAt).not.toBeNull();
   expect(await stored(bob.device.userId, bobUpload!.versions.fingerprint)).toBe(false);
+});
+
+// #112: a merge whose result is identical to a file being deleted here
+// stored nothing (put skips a file that is there), and the delete then
+// took the file its new head needed. Both now hold the account's file lock.
+test("a merge reusing a file the clean-up is deleting keeps it", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [done] = await db.select().from(versions).where(eq(versions.kind, "upload"));
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  let cleaning: Promise<unknown> | undefined;
+  await db.transaction(async (tx) => {
+    // As the worker does: the lock, then the file (already there), then its row.
+    await lockFiles(tx, device.userId);
+    cleaning = prune("on");
+    await Bun.sleep(500);
+    expect(await stored(device.userId, done!.fingerprint)).toBe(true);
+    await tx.insert(versions).values({ ...head!, id: undefined, weekly: false, fingerprint: done!.fingerprint, createdAt: new Date() });
+  });
+  await cleaning;
+  expect((await row(done!.id)).prunedAt).not.toBeNull();
+  expect(await stored(device.userId, done!.fingerprint)).toBe(true);
+});
+
+test("a version whose file is missing answers 410, not 500", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  await upload(token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const [c] = await db.select().from(characters);
+  const [head] = await db.select().from(versions).where(eq(versions.id, c!.headVersionId!));
+  await remove(device.userId, head!.fingerprint);
+  const r = await call(token, `/v1/versions/${head!.id}`);
+  expect(r.status).toBe(410);
+  expect(((await r.json()) as { error: string }).error).toContain("missing");
 });

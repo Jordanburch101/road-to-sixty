@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
-import { client, db } from "./db";
+import { client, db, lockFiles } from "./db";
 import { characters, deviceCode, session, verification, versions } from "./schema";
 import { remove } from "./storage";
 
@@ -11,10 +11,9 @@ export type Pruned = { characterId: number; versions: number; files: number; byt
 // replaced); an upload's file goes once its merge is done. Rows stay, with
 // pruned_at set, because restores' windows, parents and the known-file
 // check still need them.
-// ponytail: a merge whose result is identical to a file being deleted here
-// can still lose it (put skips a file that exists); an upload in the same
-// spot fails its merge and the app sends it again. Lock per account if
-// that is ever seen.
+// A merge or an upload whose file is identical to one being deleted here
+// stores it under the same per-account lock (lockFiles), so it never loses
+// it to the delete (#112).
 export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
   // A week still under way is left alone, so the mark lands on the week's
   // last version and each finished week gets exactly one. Weeks are UTC.
@@ -88,36 +87,43 @@ async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[
   }));
   const chosen = rows.filter((r) => r.chosen);
   if (chosen.length === 0) return [];
-  // Marked before anything is deleted: a restore locks its source and
-  // checks it isn't pruned, so it either finishes first (and its new row,
-  // sharing the file, is counted as kept below) or is refused.
-  if (mode === "on") {
-    for (let i = 0; i < chosen.length; i += 5000) {
-      await db
-        .update(versions)
-        .set({ prunedAt: new Date() })
-        .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
-    }
-  }
-  // Identical files are stored once, so a file goes only when no version
-  // that stays has it. Read again after marking, so a restore that finished
-  // in between is counted.
-  const kept = new Set<string>(
-    mode === "on"
-      ? (
-          await db
+  const files = new Map<string, number>();
+  if (mode === "dry") {
+    const kept = new Set(rows.filter((r) => !r.chosen).map((r) => r.fingerprint));
+    for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
+  } else {
+    // Under the account's file lock (lockFiles), so no merge or upload can
+    // store a file of the same content as one going here until the delete
+    // is done, and then it stores it again (#112).
+    await db.transaction(async (tx) => {
+      await lockFiles(tx, userId);
+      // Marked before anything is deleted: a restore locks its source and
+      // checks it isn't pruned, so it either finishes first (and its new
+      // row, sharing the file, is counted as kept below) or is refused.
+      for (let i = 0; i < chosen.length; i += 5000) {
+        await tx
+          .update(versions)
+          .set({ prunedAt: new Date() })
+          .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
+      }
+      // Identical files are stored once, so a file goes only when no
+      // version that stays has it. Read after marking, so a restore that
+      // finished in between is counted.
+      const kept = new Set<string>(
+        (
+          await tx
             .selectDistinct({ fp: versions.fingerprint })
             .from(versions)
             .innerJoin(characters, eq(characters.id, versions.characterId))
             .where(and(eq(characters.userId, userId), isNull(versions.prunedAt)))
-        ).map((k) => k.fp)
-      : rows.filter((r) => !r.chosen).map((r) => r.fingerprint),
-  );
-  const files = new Map<string, number>();
-  for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
-  // ponytail: a crash here leaves files no row needs, which is only
-  // storage; a sweep of unreferenced files would find them.
-  if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
+        ).map((k) => k.fp),
+      );
+      for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
+      // ponytail: a crash here leaves files no row needs, which is only
+      // storage; a sweep of unreferenced files would find them.
+      for (const fp of files.keys()) await remove(userId, fp);
+    });
+  }
 
   const byCharacter = new Map<number, Row[]>();
   for (const r of chosen) byCharacter.set(r.characterId, [...(byCharacter.get(r.characterId) ?? []), r]);
