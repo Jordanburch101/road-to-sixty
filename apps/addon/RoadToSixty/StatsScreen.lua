@@ -714,11 +714,14 @@ end
 -- giving its value (a line of its own, so names have room), the line under
 -- it and, for items, the item's own icon and quality. Stats.Records also
 -- finds the best and longest session; they are left off the screen for now.
+-- fromLevel: the record counts levels from this one up (Stats.Records), so
+-- before the character has finished it, the empty record says so rather
+-- than "Nothing in this range yet", which read as a fault.
 local RECORDS = {
     { "slowest", "Slowest level", "Interface\\Icons\\INV_Misc_PocketWatch_01",
-        function(r) return Duration(r.seconds), LevelZone(r.t) end },
+        function(r) return Duration(r.seconds), LevelZone(r.t) end, fromLevel = 10 },
     { "bestRate", "Best XP per hour", "Interface\\Icons\\Spell_Holy_SealOfWisdom",
-        function(r) return Commas(r.perHour) .. " xp", LevelZone(r.t) end },
+        function(r) return Commas(r.perHour) .. " xp", LevelZone(r.t) end, fromLevel = 10 },
     { "deadliest", "Deadliest level", "Interface\\Icons\\Ability_Rogue_FeignDeath",
         function(r) return Count(r.deaths, "death", "deaths"), LevelZone(r.t) end },
     { "nemesis", "Nemesis", "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
@@ -863,6 +866,7 @@ local function FillRecords(w)
             end
         end
     end
+    local level = ns.Roster:ViewLevel() or 0
     for i, spec in ipairs(list) do
         local row, r = ui.recordRows[i], found[spec[1]]
         row.record, row.spec = r, spec
@@ -870,7 +874,11 @@ local function FillRecords(w)
         local value, sub, icon, quality
         if r then value, sub, icon, quality = spec[4](r) end
         row.value:SetText(value or "-")
-        row.sub:SetText(r and (sub or "") or "Nothing in this range yet")
+        local empty = "Nothing in this range yet"
+        if spec.fromLevel and level <= spec.fromLevel then
+            empty = ("Counts from level %d"):format(spec.fromLevel)
+        end
+        row.sub:SetText(r and (sub or "") or empty)
         SetItemButtonTexture(row.frame, icon or spec[3])
         SetItemButtonQuality(row.frame, quality)
         -- Nothing in the range: the whole record greyed, not only its icon.

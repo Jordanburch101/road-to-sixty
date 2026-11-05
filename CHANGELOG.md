@@ -6,6 +6,32 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.0
+
+### Fixed
+- The last few steps before logging out, a hearthstone, a loading screen
+  or a dungeon door are now kept on the map. Before, the path could stop
+  up to 30 seconds short of where you were.
+- Dying, or taking a flight, a little after a hearthstone that moved you
+  nowhere is no longer drawn as a hearthstone. Walking out of a dungeon
+  you logged in inside is drawn as leaving it, not as a login.
+- A rare looted after a sync between two PCs no longer shows twice in
+  History. Rares already shown twice are put back to one.
+- Inside a dungeon, a rare killed just after one of its adds is no longer
+  saved under the add's name.
+- Deaths name the killer even when your computer's clock is off.
+- Gear in your bags that loads late at login keeps where it came from
+  when you put it on, instead of showing as unknown.
+- Gear bought by dragging it from a merchant into your bags now shows
+  the merchant it came from.
+- On the Stats screen, Slowest level and Best XP per hour now say they
+  count from level 10, instead of "Nothing in this range yet", until
+  your character has finished level 10.
+- If a character's saved journey belonged to another character of the
+  same name (one deleted, or moved from another realm), it is now kept in
+  the journey map's Characters list instead of being cleared, and chat
+  says so.
+
 ## 1.19.5
 
 ### Fixed

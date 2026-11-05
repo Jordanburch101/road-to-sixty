@@ -17,6 +17,8 @@ local handlers, timers = {}, {}
 local now = 1793240000
 local ns = { char = { events = {} } }
 ns.Now = function() return now end
+local pcAhead = 0   -- how far the PC's clock is ahead of the realm's
+ns.PCTime = function() return now + pcAhead end
 function ns.On(event, fn) handlers[event] = fn return true end
 function ns.SafeCall(fn, ...) fn(...) end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
@@ -99,8 +101,36 @@ e = Die(60)
 for _ = 1, 10 do RunTimers() end
 check(e[6] == nil, "no death recap on this client")
 
--- A seeded journey is left alone.
 C_DeathRecap = { GetRecapEvents = function() return recap end }
+
+-- The recap's time is by the PC's clock (#100): a PC two minutes fast still
+-- gets the killer; a recap two minutes old by both clocks does not.
+pcAhead = 120
+recap = { { timestamp = now + 60 + 120, event = "SWING_DAMAGE", sourceName = "Bellygrub" } }
+e = Die(60)
+check(e[6] == "Bellygrub", "a PC with its clock off still gets the killer: " .. tostring(e[6]))
+recap = { { timestamp = now - 120, event = "SWING_DAMAGE", sourceName = "Old Kill" } }
+e = Die(60)
+for _ = 1, 10 do RunTimers() end
+check(e[6] == nil, "a recap stale by both clocks is the death before's")
+pcAhead = 0
+
+-- A recap the client keeps from addons is not read, and raises nothing.
+canaccesstable = function(t) return t ~= recap end
+recap = { { timestamp = now + 60, event = "SWING_DAMAGE", sourceName = "Hidden" } }
+e = Die(60)
+for _ = 1, 10 do RunTimers() end
+check(e[6] == nil, "an inaccessible recap is left alone")
+canaccesstable = function() return true end
+-- One that errors when read is left alone too, at a death and at login.
+C_DeathRecap = { GetRecapEvents = function() return setmetatable({}, { __index = function() error("secret") end }) end }
+e = Die(60)
+for _ = 1, 10 do RunTimers() end
+check(e[6] == nil, "a recap that errors when read is left alone")
+check(pcall(handlers.PLAYER_LOGIN), "and logging in with one raises nothing")
+C_DeathRecap = { GetRecapEvents = function() return recap end }
+
+-- A seeded journey is left alone.
 ns.char.seeded = true
 recap = { { timestamp = now + 60, event = "SWING_DAMAGE", sourceName = "Hogger" } }
 e = Die(60)

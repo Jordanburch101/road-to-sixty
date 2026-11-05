@@ -379,6 +379,131 @@ local run = Line({ { cx, cy } }, cx, cy, cx + 300, cy + 100, 1.75)
 path = Walk(run)
 check(#path.x <= 17, "a 316-yard run stores at most 17 points, got " .. #path.x)
 
+-- 12. A segment's tail is kept as it ends (#100): points wait for 20 yards
+-- or a bend, and used to be lost at logout, a jump or a loading screen.
+local function Dist(x1, y1, x2, y2)
+    return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+end
+local function Last(i)
+    local p = Recorder:GetPath(i or #ns.char.segments)
+    return p.x[#p.x], p.y[#p.y]
+end
+Fire("PLAYER_ENTERING_WORLD")
+for _ = 1, 6 do
+    game.x = game.x + 2
+    Tick()
+end
+Fire("PLAYER_LOGOUT")
+local tx, ty = Last()
+check(tx == game.x and ty == game.y, ("logout keeps the last 12 yards: ends at %s, %s, stood at %s, %s"):format(
+    tostring(tx), tostring(ty), game.x, game.y))
+-- Standing still a while before logging out: the last point is dated when
+-- the player got there, not at logout (second review of #109).
+Fire("PLAYER_ENTERING_WORLD")
+Tick()
+for _ = 1, 6 do
+    game.x = game.x + 2
+    Tick()
+end
+local arrived = math.floor(game.now)
+for _ = 1, 400 do Tick() end
+Fire("PLAYER_LOGOUT")
+local tail = Recorder:GetPath(#ns.char.segments)
+check(tail.t[#tail.t] == arrived, ("the tail is dated on arrival: %s, arrived %s"):format(tail.t[#tail.t], arrived))
+-- Recording carries on in the same segment after it.
+count = #ns.char.segments
+game.x = game.x + 2
+Tick()
+check(#ns.char.segments == count, "the segment stays open after the logout's tail")
+
+-- Before a teleport: the segment ends where the player stood, not 10 yards back.
+Fire("PLAYER_ENTERING_WORLD")
+for _ = 1, 5 do
+    game.x = game.x + 2
+    Tick()
+end
+local sx, sy = game.x, game.y
+game.x = game.x + 5000
+Tick()
+tx, ty = Last(#ns.char.segments - 1)
+check(tx == sx and ty == sy, "a segment ends where the player stood before a teleport")
+
+-- A bend in the tail keeps its corner: 8 yards east, then 8 north.
+Fire("PLAYER_ENTERING_WORLD")
+Tick()
+local corner = {}
+for _ = 1, 4 do game.x = game.x + 2; Tick() end
+corner.x, corner.y = game.x, game.y
+for _ = 1, 4 do game.y = game.y + 2; Tick() end
+Fire("PLAYER_ENTERING_WORLD")
+local bent = Recorder:GetPath(#ns.char.segments)
+check(#bent.x == 3 and Dist(bent.x[2], bent.y[2], corner.x, corner.y) <= 3
+    and bent.x[3] == game.x and bent.y[3] == game.y,
+    ("a corner in the tail is kept within 3 yards, to where the player stood: %d points"):format(#bent.x))
+
+-- Standing within a yard of the last point adds nothing.
+Fire("PLAYER_ENTERING_WORLD")
+Tick()
+game.x = game.x + 1
+Tick()
+Fire("PLAYER_ENTERING_WORLD")
+check(#Recorder:GetPath(#ns.char.segments).x == 1, "a yard's shuffle adds no tail")
+
+-- A flight's last stretch before landing (under its 75-yard steps).
+Fire("PLAYER_ENTERING_WORLD")
+game.taxi = true
+for _ = 1, 5 do
+    game.y = game.y + 30
+    Tick()
+end
+sx, sy = game.x, game.y
+game.taxi = false
+Tick()
+tx, ty = Last(#ns.char.segments - 1)
+check(tx == sx and ty == sy, "a flight ends where it landed")
+
+-- 13. Stale jump reasons (#100). A hearth cast at the inn moves the player
+-- nowhere; dying half a minute later is a death, not a hearthstone.
+game.now = game.now + 61
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
+for _ = 1, 120 do Tick() end
+game.ghost = true
+game.x = game.x + 500
+Tick()
+check(lastJump() == "d", "a death after a hearth that went nowhere is a death, got " .. tostring(lastJump()))
+game.ghost = false
+Tick()
+-- Taking a flight a little after one is not a hearthstone either.
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
+for _ = 1, 60 do Tick() end
+game.taxi = true
+Tick()
+check(lastJump() == nil, "a flight after a hearth that went nowhere has no reason, got " .. tostring(lastJump()))
+game.taxi = false
+Tick()
+-- A hearth with a loading screen still counts, however long the loading.
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
+Fire("PLAYER_ENTERING_WORLD")
+game.now = game.now + 30
+game.x = game.x + 9000
+Tick()
+check(lastJump() == "h", "a hearth through a long loading screen, got " .. tostring(lastJump()))
+
+-- Logged in inside a dungeon: walking out soon after is leaving it, not the login.
+game.now = game.now + 61
+game.instance = true
+Fire("PLAYER_ENTERING_WORLD", true, false)
+Tick()
+Tick()
+game.instance = false
+Tick()
+check(lastJump() == "i", "leaving a dungeon logged into is leaving it, got " .. tostring(lastJump()))
+-- Logged in outdoors: still the login.
+Fire("PLAYER_ENTERING_WORLD", false, true)
+game.x = game.x + 20
+Tick()
+check(lastJump() == "l", "a reload outdoors is the login, got " .. tostring(lastJump()))
+
 check(ns.errors.count == 0, "no errors while recording")
 
 if failures == 0 then

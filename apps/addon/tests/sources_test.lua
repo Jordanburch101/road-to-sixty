@@ -52,7 +52,7 @@ C_Item = { GetItemInfoInstant = function(itemID)
 end }
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 hooksecurefunc = function(name, fn) hooks[name] = fn end
-BuyMerchantItem, TakeInboxItem = function() end, function() end
+BuyMerchantItem, PickupMerchantItem, TakeInboxItem = function() end, function() end, function() end
 GetNumLootItems = function() return #game.loot end
 GetLootSlotLink = function(slot) return game.loot[slot] and game.loot[slot][1] end
 GetLootSourceInfo = function(slot) return game.loot[slot] and game.loot[slot][2] end
@@ -93,6 +93,7 @@ check(#timers == 0, "nothing is read before login")
 Fire("PLAYER_LOGIN")
 Settle()
 check(ns.char.got == nil, "what is already carried at login is not noted")
+now = now + 61      -- past the login's settling minute (section 13)
 
 -- 2. A drop: the loot window names the mob; things that can't be worn are left out.
 game.loot = { { Link(1372), "Creature-0-6836-0-2-69-A66013D72E" }, { Link(750), "Creature-0-6836-0-2-69-A66013D72E" } }
@@ -146,6 +147,23 @@ hooks.BuyMerchantItem(3, 1)
 Arrive(Link(2488))
 note = Got(2488)
 check(note and note.how == "vendor" and note.id == 152 and note.name == "Brother Danil", "a purchase names the vendor")
+-- Dragged from the merchant into the bags instead (#100), held a while first.
+local cursor
+GetCursorInfo = function() return cursor end
+game.merchant[4] = Link(2489)
+cursor = "merchant"
+hooks.PickupMerchantItem(4)
+cursor = nil
+now = now + 30
+Arrive(Link(2489))
+note = Got(2489)
+check(note and note.how == "vendor" and note.id == 152, "a purchase dragged to the bags names the vendor")
+-- Selling by dropping a bag item on a merchant slot calls it too, and buys nothing.
+game.merchant[5] = Link(2490)
+hooks.PickupMerchantItem(5)
+Fire("CHAT_MSG_LOOT", "You receive loot: " .. Link(2490) .. ".")
+Arrive(Link(2490))
+check(Got(2490) and Got(2490).how ~= "vendor", "a sale onto a merchant slot is no purchase")
 
 -- 5. Traded: the other player, with the realm when it differs.
 units.NPC = { "Tradefriend", "Player-1-0000000B", "Otherrealm" }
@@ -226,6 +244,30 @@ check(#ns.char.got[ns.ItemString(Link(38), true)] == 5, "at most five notes per 
 clock = clock + 31 * 86400
 Fire("PLAYER_LOGIN")
 check(ns.char.got[ns.ItemString(Link(38), true)] == nil, "notes older than 30 days go at login")
+
+-- 13. Bag items loading after the gear on a slow login (#100) are not new:
+-- no "?" note, so the real note from before is the one taken when worn.
+Fire("CHAT_MSG_LOOT", "You receive loot: " .. Link(10450) .. ".")
+Arrive(Link(10450))
+check(Got(10450) and Got(10450).how == "drop", "(a drop noted before the next login)")
+local late = free - 1
+game.bags[late] = nil
+Fire("PLAYER_LOGIN")
+Settle()
+game.bags[late] = Link(10450)     -- its bag slot loads a moment later
+Fire("BAG_UPDATE_DELAYED")
+Settle()
+local notes = ns.char.got[ns.ItemString(Link(10450), true)]
+check(#notes == 1 and notes[1].how == "drop", "a bag item loading late is not noted again")
+taken = Sources:Take(ns.ItemString(Link(10450), true))
+check(taken and taken.how == "drop", "so putting it on takes its real note")
+-- A loot in the first minute is still noted, and after it unknowns are again.
+Fire("CHAT_MSG_LOOT", "You receive loot: " .. Link(10451) .. ".")
+Arrive(Link(10451))
+check(Got(10451) and Got(10451).how == "drop", "a loot just after login is noted")
+now = now + 61
+Arrive(Link(10452))
+check(Got(10452) and Got(10452).how == "?", "after the first minute an unexplained item is noted as unknown")
 
 if failures == 0 then
     print("Sources tests passed.")

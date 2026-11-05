@@ -147,15 +147,17 @@ end
 -- Events ------------------------------------------------------------------
 
 -- What an event is about besides its time and kind, per the spec. Kinds not
--- listed (on, off, die, grp, grpk, grpx, and kinds from a newer addon)
--- match on time and kind alone.
+-- listed (on, off, die, grp, grpk, grpx, rare, and kinds from a newer addon)
+-- match on time and kind alone. A rare is not keyed by its NPC ID: looting
+-- it fills that in minutes after it was logged, so a copy saved before the
+-- loot and one after would not match (#100). Two rares in one second come from one PC in one order, and match
+-- the nth with the nth.
 local function Field6(e) return e[6] end
 local ABOUT = {
     qa = Field6, qd = Field6, eq = Field6, loot = Field6, craft = Field6, ["in"] = Field6, out = Field6,
     rep = Field6, prof = Field6, rec = Field6, skill = Field6, mount = Field6, ride = Field6, ench = Field6, duel = Field6,
     gj = Field6, gl = Field6, gr = Field6, lvl = Field6, zone = Field6, grpl = Field6, grps = Field6,
     grpa = function(e) return type(e[6]) == "table" and e[6][1] or nil end,
-    rare = function(e) return e[9] or e[6] end,     -- the rares key: NPC ID, else name
     gath = function(e) return e[7] end,             -- the main resource's item ID
 }
 

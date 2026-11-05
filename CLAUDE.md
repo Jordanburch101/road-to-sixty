@@ -234,7 +234,9 @@ Verified in game; trust these over web guides, and re-check after patches.
 - `GetServerTime()` exists and returns Unix seconds (1 second from `time()`
   on a PC with a correct clock). Every saved time uses it through `ns.Now()`,
   so journeys from PCs with different clocks line up; use `ns.Now()`, never
-  `time()`, outside developer tools.
+  `time()`, outside developer tools. The one exception is `ns.PCTime()`, the
+  PC's clock, only to compare with times the client gives by it (the death
+  recap's timestamps), never saved.
 - SavedVariables are written only on logout, quit, disconnect or `/reload`.
   `ReloadUI()` needs a hardware event (a click or key), never a timer.
 - Some UI values are retail-style "secret values"; reading their rects or

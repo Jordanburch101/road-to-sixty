@@ -47,6 +47,12 @@ local TELEPORT_SPELLS = {   -- mage city teleports
     [32271] = true, [32272] = true, [33690] = true, [35715] = true,
 }
 local PENDING_SECONDS = 60  -- a cast or login explains a jump within this long
+-- A teleport with no loading screen lands as its cast succeeds, and one with
+-- a loading screen closes the segment first. So a cast whose player is still
+-- seen in place this long after it moved them nowhere (a hearth at the inn),
+-- and explains nothing that follows: a death or a flight a minute later is
+-- not a hearthstone.
+local CAST_LANDS_SECONDS = 10
 -- Just after a hearthstone or teleport cast, a smaller jump between two
 -- samples is that teleport. A hearth from Northshire's vineyards to the
 -- abbey moved 295 yards with no loading screen, under TELEPORT_DIST, and was
@@ -61,8 +67,9 @@ local CAST_JUMP_SECONDS = 3
 -- jump is a teleport.
 local INSTANCE_DOOR = 150
 
-local current           -- open segment: { seg, buf, mode, c, x, y, t, n, hx, hy, ht }
-                        -- (x, y, t: the last stored point; n positions since, in hx, hy, ht)
+local current           -- open segment: { seg, buf, mode, c, x, y, t, n, hx, hy, ht, lx, ly, lt }
+                        -- (x, y, t: the last stored point; n positions since, in hx, hy, ht;
+                        -- lx, ly, lt: the last position sampled into it, nil until one is)
 local prev              -- previous sample, stored or not
 local lastKnown = {}    -- last outdoor position, used to place indoor events
 local ticker
@@ -143,7 +150,11 @@ local function Flush()
     end
 end
 
+-- Defined below, with the points.
+local StoreTail
+
 local function CloseSegment()
+    StoreTail()
     Flush()
     current = nil
 end
@@ -227,6 +238,23 @@ local function Hold(x, y, t, mode)
     current.hx[n], current.hy[n], current.ht[n], current.n = x, y, t, n
 end
 
+-- Stores the open segment's tail as it ends (a jump, a mode change, an
+-- instance, a loading screen, logout): the last position sampled. Points
+-- wait for MAX_STEP yards or a bend, so without this up to 30 seconds of
+-- walking, or 75 yards of a flight, were lost from every segment's end
+-- (#100). No bend check is needed: Sample made it against this position.
+-- Standing near the last point adds nothing, as in Hold.
+StoreTail = function()
+    if not current or not current.lx then return end
+    local x, y, t, n = current.lx, current.ly, current.lt, current.n
+    -- Standing still since arriving: the time it got there, which Hold kept.
+    if n > 0 and current.hx[n] == x and current.hy[n] == y then t = current.ht[n] end
+    if Dist(current.x, current.y, x, y) >= (MIN_STEP[current.mode] or 1) then
+        Store(x, y, t)
+    end
+    current.n, current.lx = 0, nil
+end
+
 local function Sample()
     Recorder.lastSample = GetTime()
     Recorder.samples = Recorder.samples + 1
@@ -250,6 +278,9 @@ local function Sample()
                 entered = { c = lastKnown.c, x = lastKnown.x, y = lastKnown.y }
             end
             leftInstance = true
+            -- Logged in inside: coming out later is leaving the instance,
+            -- not the login, however soon it is.
+            if pending == "l" then pending = nil end
         end
         CloseSegment()
         prev = nil
@@ -275,6 +306,10 @@ local function Sample()
         OpenSegment(mode, c, x, y, t, JumpReason(mode, c, x, y, previousMode, previousC))
         return
     end
+    if pending and GetTime() - pendingAt >= CAST_LANDS_SECONDS then
+        pending = nil
+    end
+    current.lx, current.ly, current.lt = x, y, t
 
     local bend, n = BEND[mode], current.n
     if bend and n > 0 and Bent(x, y, bend)
@@ -459,7 +494,12 @@ ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     end
 end)
 
-ns.On("PLAYER_LOGOUT", Flush)
+-- The segment stays open: Store leaves it ready for more points. Roster.lua
+-- loads later, so its copy at logout has the tail.
+ns.On("PLAYER_LOGOUT", function()
+    StoreTail()
+    Flush()
+end)
 
 ns.Command("where", "show current position as the recorder sees it", function()
     local c, x, y, mapID = ns.GetWorldPosition()

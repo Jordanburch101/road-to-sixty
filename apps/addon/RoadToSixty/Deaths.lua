@@ -42,6 +42,8 @@ local function KillingBlow()
     if type(recap) ~= "table" or type(recap.GetRecapEvents) ~= "function" then return end
     local ok, events = pcall(recap.GetRecapEvents)
     if not ok or type(events) ~= "table" or Secret(events) then return end
+    -- A table the client keeps from addons errors when indexed.
+    if canaccesstable and not canaccesstable(events) then return end
     local blow = events[1]
     if type(blow) ~= "table" then return end
     local when = Plain(blow.timestamp)
@@ -66,10 +68,14 @@ end
 -- Fills in death event e from the recap, retrying while it is not there yet.
 -- A recap is this death's when its killing blow is not the one last seen
 -- (at login, or the death before); and, when its time reads as Unix time
--- (as the combat log's), from the last STALE seconds.
+-- (as the combat log's), from the last STALE seconds. That time is by the
+-- PC's clock, so it is checked against both clocks: by the realm's alone,
+-- a PC more than STALE seconds off never got a killer (#100).
 local function Fill(e, tries)
-    local killer, kind, spell, when = KillingBlow()
-    local fresh = when and when ~= lastBlow and (when < 1e9 or math.abs(when - ns.Now()) <= STALE)
+    local read, killer, kind, spell, when = pcall(KillingBlow)
+    if not read then when = nil end
+    local fresh = when and when ~= lastBlow
+        and (when < 1e9 or math.abs(when - ns.PCTime()) <= STALE or math.abs(when - ns.Now()) <= STALE)
     if fresh then
         lastBlow = when
         e[6], e[7], e[8] = killer, kind, spell
@@ -82,7 +88,8 @@ end
 
 -- A recap kept from before (a death the session before) is not a new one.
 ns.On("PLAYER_LOGIN", function()
-    lastBlow = select(4, KillingBlow())
+    local read, _, _, _, when = pcall(KillingBlow)
+    lastBlow = read and when or nil
 end)
 
 -- Journal.lua logs the death first (it loads first): the newest event, now.

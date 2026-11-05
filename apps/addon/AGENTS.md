@@ -51,11 +51,13 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   the sync server reads only that file, never the account-wide one.
 - Each character file carries `journeyId`, the journey's stamp
   (`<GUID>:<start>`, Core.lua). The login writes it, a GUID that differs
-  starts the file fresh (a deleted namesake's), Erase gives a new start,
+  starts the file fresh (a deleted namesake's, or a transfer's copied by
+  hand) with the old journey kept in the roster, Erase gives a new start,
   and `Sync.Apply` and `Merge.Merge` never join two different stamps. The
   sync server reads it from uploads to keep journeys of one name apart.
 - Saved times use `ns.Now()`, never `time()` (a test fails on `time()` in
-  shipped files).
+  shipped files). `ns.PCTime()` is the PC's clock, for comparing with times
+  the client gives by it (the death recap's), and is never saved.
 - Map.lua is near Lua's 200-local limit: new map features go in their own file.
 - Developer-only code sits between `--@debug@` and `--@end-debug@`; release
   builds strip it.

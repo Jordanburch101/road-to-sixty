@@ -36,6 +36,7 @@ local KILL_SECONDS = 1          -- the target is gone this soon after its XP mes
 local SEEN_SECONDS = 30 * 60    -- how long a rare seen counts
 local SAME_CORPSE = 10 * 60     -- a rare corpse inside an instance with the same classification
                                 -- and level this soon after one recorded is the same one
+local SAME_MOMENT = 0.2         -- a rare's own message and its target clearing come together
 local LOOKBACK = 15             -- seconds back the kill list may name a rare corpse clicked
 
 local Log = function(...) ns.Journal:Log(...) end
@@ -161,6 +162,7 @@ local function Record(info, name, how)
     end
     Log("rare", name, info.class, info.level, info.npc, how)
     rares[key] = { { [ns.pc] = 1 }, ns.Now(), name, info.npc, info.class }
+    return ns.char.events[#ns.char.events], key
 end
 
 -- Inside an instance (no GUID), a rare corpse clicked has no name; if the
@@ -206,10 +208,42 @@ local function Fresh()
     return pending and engaged and GetTime() - pending[2] <= KILL_SECONDS
 end
 
-local function Confirm()
-    local name, info = pending[1], engaged
+-- Inside an instance, the kill just confirmed as its target went, from a
+-- message that came before: { e = its event, key, at = the message's
+-- GetTime(), gone = when the target went }. An add dying to area damage just
+-- before the rare gives a message too, and the rare's own can come a moment
+-- after its target went (#100); see Killed. Only a target clearing makes
+-- one: a rare seen dead (UNIT_HEALTH) died then, whatever came after.
+local confirmed
+
+local function Confirm(cleared)
+    local name, info, at = pending[1], engaged, pending[2]
     pending, engaged = nil, nil
-    Record(info, name, "x")
+    local e, key = Record(info, name, "x")
+    local gone = GetTime()
+    -- A message that came with the clear was the rare's own: nothing can be nearer.
+    confirmed = cleared and not info.guid and e and gone - at > SAME_MOMENT
+        and { e = e, key = key, at = at, gone = gone } or nil
+end
+
+-- The kill confirmed was this other name's: the message before was an add's.
+local function Rename(c, name)
+    local rares, events = ns.char.rares, ns.char.events
+    local entry = rares and rares[c.key]
+    if not entry or entry[3] == name then return end
+    local known = KnownByName(name)
+    if known then
+        -- A rare killed before (by NPC ID or name): counted there, and this
+        -- first kill was none.
+        rares[c.key] = nil
+        ns.Tally.Add(known, 1, ns.pc, 1)
+        for i = #events, 1, -1 do
+            if events[i] == c.e then table.remove(events, i) break end
+        end
+        return
+    end
+    rares[c.key], rares[name] = nil, entry
+    entry[3], c.e[6] = name, name
 end
 
 -- A new target: the engaged rare gone just after its kill message was its
@@ -219,7 +253,7 @@ function Rares:Target()
     local info = UnitInfo("target")
     local gone = not info or info.dead
     if Fresh() and gone then
-        Confirm()
+        Confirm(true)
     end
     lost = engaged and not pending and gone and { engaged, GetTime() } or nil
     pending, engaged = nil, nil
@@ -272,6 +306,17 @@ function Rares:Killed(name)
         if s.name == name and not done[guid] and Seen(guid) then
             Record(s, name, "x")
             if engaged and engaged.guid == guid then engaged = nil end
+            return
+        end
+    end
+    -- A kill confirmed from a message before its target went, when this
+    -- message comes nearer the moment it went: this one was the rare's, and
+    -- that an add's.
+    if confirmed and not engaged then
+        local c, since = confirmed, GetTime() - confirmed.gone
+        confirmed = nil
+        if since <= KILL_SECONDS and since < c.gone - c.at then
+            Rename(c, name)
             return
         end
     end

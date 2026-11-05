@@ -94,15 +94,35 @@ function Tidy.Runs(char)
     end
 end
 
--- Takes out events that versions up to 1.5.0 saved wrongly, from a journey
--- (a character's, or a roster copy): "zone" events for a continent, and a
--- death logged a second time in the same second (the client fired
--- PLAYER_DEAD twice), which the totals counted too. isPlace(mapID) says
--- whether a map is a place rather than a continent: ns.IsPlaceMap in game,
--- a table from the map data on the server.
+-- True when rare event e is a copy of one in rares (the rare events kept
+-- from its second), which then takes whatever e has that it lacks. One kill
+-- has one name (or none), classification and level; its NPC ID may be
+-- missing from one copy, as looting fills it in later (Rares.lua).
+function Tidy.SameRare(rares, e)
+    for _, r in ipairs(rares) do
+        if r[6] == e[6] and r[7] == e[7] and r[8] == e[8]
+            and (r[9] == nil or e[9] == nil or r[9] == e[9]) then
+            for k, v in pairs(e) do
+                if r[k] == nil then r[k] = v end
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Takes out events saved wrongly, from a journey (a character's, or a
+-- roster copy): "zone" events for a continent, and a death logged a second
+-- time in the same second (the client fired PLAYER_DEAD twice, up to
+-- 1.5.0), which the totals counted too; and a rare kill twice in one second,
+-- once without the NPC ID its loot gave later, which the merge kept as two
+-- up to 1.19.5 (#100). isPlace(mapID) says whether a map is a place rather
+-- than a continent: ns.IsPlaceMap in game, a table from the map data on the
+-- server.
 function Tidy.Events(journey, isPlace)
     local events, kept, lastDeath = journey.events or {}, 0, nil
     local doubled = 0
+    local rares = {}    -- rare events kept in the second being read
     for i = 1, #events do
         local e = events[i]
         local keep = true
@@ -112,6 +132,10 @@ function Tidy.Events(journey, isPlace)
             keep = e[1] ~= lastDeath
             doubled = doubled + (keep and 0 or 1)
             lastDeath = e[1]
+        elseif e[2] == "rare" then
+            if rares.t ~= e[1] then rares = { t = e[1] } end
+            keep = not Tidy.SameRare(rares, e)
+            if keep then rares[#rares + 1] = e end
         end
         if keep then
             kept = kept + 1

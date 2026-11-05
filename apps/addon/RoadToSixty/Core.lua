@@ -188,6 +188,12 @@ function ns.Now()
     return t and t > 0 and t or time()
 end
 
+-- The PC's own clock, only to compare with times the client gives by it
+-- (the death recap's timestamps, Deaths.lua). Never saved: see ns.Now.
+function ns.PCTime()
+    return time()
+end
+
 -- Index of the last entry of times (sorted ascending) that is at or before
 -- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)]. With
 -- key, entries are tables sorted by entry[key].
@@ -279,20 +285,60 @@ local function StampGUID(char)
     return type(char.journeyId) == "string" and char.journeyId:match("^([%w%-]+):%d+$") or nil
 end
 
+-- Keeps the journey of another GUID, about to be wiped from this file, in
+-- the roster under that GUID, so the map's Characters list still shows it.
+-- The roster already has it when that character played on this account
+-- (its copy from its last logout); not when the file came without the
+-- account's, copied by hand after a realm transfer, say. Returns its name,
+-- and whether the Characters list shows it (Roster:Gone).
+local function KeepAside(char, guid)
+    local roster = ns.db.roster or {}
+    ns.db.roster = roster
+    local name, realm = tostring(char.rosterKey or ""):match("^([^%-]+)%-(.+)$")
+    local function Listed(e) return not (ns.Roster and ns.Roster.Gone and ns.Roster:Gone(e)) end
+    local entry = roster[guid]
+    if entry and entry.journey then return entry.name or name, Listed(entry) end
+    local journey, level, seen = {}, 1, nil
+    for k, v in pairs(char) do journey[k] = v end
+    for _, e in ipairs(type(char.events) == "table" and char.events or {}) do
+        if e[2] == "lvl" and type(e[6]) == "number" then level = math.max(level, e[6]) end
+        if type(e[1]) == "number" then seen = math.max(seen or e[1], e[1]) end
+    end
+    local kept = {
+        name = name, realm = realm, guid = guid, class = char.class, level = level, zone = char.lastZone,
+        seen = seen, played = char.played, journey = journey,
+    }
+    -- Where it was last seen outdoors, as Roster:Sync notes it, for its marker.
+    local segments = type(char.segments) == "table" and char.segments or {}
+    local last = segments[#segments]
+    if ns.Packed and type(last) == "table" then
+        local ok, _, xs, ys = pcall(ns.Packed.DecodePath, last, last.d)
+        if ok and xs and #xs > 0 then kept.c, kept.x, kept.y = last.c, xs[#xs], ys[#ys] end
+    end
+    roster[guid] = kept
+    return name, Listed(kept)
+end
+
 -- Stamps the journey as this character's, first at login so Sync.lua sees
 -- it. A file stamped with another GUID was a deleted namesake's (WoW keeps
--- it under the same name): this character starts fresh, as a new one would,
--- before the recorder, journal and roster read it. The old journey is on
--- the server if it was ever synced.
+-- it under the same name), or this character's from before a realm
+-- transfer: this character starts fresh, as a new one would, before the
+-- recorder, journal and roster read it. The old journey stays in the
+-- roster (KeepAside) and on the server if it was ever synced, and the
+-- player is told, since a transfer can look like a lost journey.
 ns.On("PLAYER_LOGIN", function()
     local guid = PlayerGUID()
     if guid then
         local char, stamped = ns.char, StampGUID(ns.char)
         if stamped and stamped ~= guid then
+            local name, listed = KeepAside(char, stamped)
             local addon = char.addon
             wipe(char)
             ApplyDefaults(char, charDefaults)
             char.addon, stamped = addon, nil
+            Print(("The journey saved for this character belonged to another character named %s, deleted or moved"
+                .. " from another realm. %s, and this character starts a new journey."):format(name or "the same",
+                listed and "It is kept in the journey map's Characters list" or "It stays saved on this PC"))
         end
         if not stamped then char.journeyId = guid .. ":0" end
     end
