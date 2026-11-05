@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
-import { client, db } from "./db";
+import { client, db, lockFiles } from "./db";
 import { characters, deviceCode, session, verification, versions } from "./schema";
 import { remove } from "./storage";
 
@@ -11,10 +11,9 @@ export type Pruned = { characterId: number; versions: number; files: number; byt
 // replaced); an upload's file goes once its merge is done. Rows stay, with
 // pruned_at set, because restores' windows, parents and the known-file
 // check still need them.
-// ponytail: a merge whose result is identical to a file being deleted here
-// can still lose it (put skips a file that exists); an upload in the same
-// spot fails its merge and the app sends it again. Lock per account if
-// that is ever seen.
+// A merge or an upload whose file is identical to one being deleted here
+// stores it under the same per-account lock (lockFiles), so it never loses
+// it to the delete (#112).
 export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
   // A week still under way is left alone, so the mark lands on the week's
   // last version and each finished week gets exactly one. Weeks are UTC.
@@ -61,6 +60,9 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
 
 type Row = { id: number; fingerprint: string; rawSize: number; characterId: number; chosen: boolean };
 
+// Files deleted per hold of the account's file lock (see pruneAccount).
+const DELETE_BATCH = 50;
+
 async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[]> {
   const rows: Row[] = (
     await client`
@@ -88,36 +90,65 @@ async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[
   }));
   const chosen = rows.filter((r) => r.chosen);
   if (chosen.length === 0) return [];
-  // Marked before anything is deleted: a restore locks its source and
-  // checks it isn't pruned, so it either finishes first (and its new row,
-  // sharing the file, is counted as kept below) or is refused.
-  if (mode === "on") {
-    for (let i = 0; i < chosen.length; i += 5000) {
-      await db
-        .update(versions)
-        .set({ prunedAt: new Date() })
-        .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
+  const files = new Map<string, number>();
+  if (mode === "dry") {
+    const kept = new Set(rows.filter((r) => !r.chosen).map((r) => r.fingerprint));
+    for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
+  } else {
+    // Marked, and committed, before anything is deleted: a restore locks its
+    // source and checks it isn't pruned, so it either finishes first (and
+    // its new row, sharing the file, is counted as kept below) or is
+    // refused; and nothing reads a file of a version shown as not pruned.
+    await db.transaction(async (tx) => {
+      await lockFiles(tx, userId);
+      for (let i = 0; i < chosen.length; i += 5000) {
+        await tx
+          .update(versions)
+          .set({ prunedAt: new Date() })
+          .where(inArray(versions.id, chosen.slice(i, i + 5000).map((r) => r.id)));
+      }
+    });
+    // The deletes under the account's file lock (lockFiles) again: a merge
+    // or upload storing a file of the same content either added its row
+    // before a batch reads which files stay, or stores the file again once
+    // that batch is done (#112). A batch at a time, so the lock, which the
+    // one merge worker waits on, is never held across many storage calls.
+    const candidates = [...new Map(chosen.map((r) => [r.fingerprint, r.rawSize]))];
+    for (let i = 0; i < candidates.length; i += DELETE_BATCH) {
+      const batch = candidates.slice(i, i + DELETE_BATCH);
+      await db.transaction(async (tx) => {
+        await lockFiles(tx, userId);
+        // Identical files are stored once, so a file goes only when no
+        // version that stays has it. Read after marking, so a restore that
+        // finished in between is counted.
+        const kept = new Set<string>(
+          (
+            await tx
+              .selectDistinct({ fp: versions.fingerprint })
+              .from(versions)
+              .innerJoin(characters, eq(characters.id, versions.characterId))
+              .where(
+                and(
+                  eq(characters.userId, userId),
+                  isNull(versions.prunedAt),
+                  inArray(
+                    versions.fingerprint,
+                    batch.map(([fp]) => fp),
+                  ),
+                ),
+              )
+          ).map((k) => k.fp),
+        );
+        for (const [fp, size] of batch) {
+          if (kept.has(fp)) continue;
+          files.set(fp, size);
+          // ponytail: a crash here leaves files no row needs, which is
+          // only storage; a sweep of unreferenced files would find them.
+          await remove(userId, fp);
+        }
+      });
     }
   }
-  // Identical files are stored once, so a file goes only when no version
-  // that stays has it. Read again after marking, so a restore that finished
-  // in between is counted.
-  const kept = new Set<string>(
-    mode === "on"
-      ? (
-          await db
-            .selectDistinct({ fp: versions.fingerprint })
-            .from(versions)
-            .innerJoin(characters, eq(characters.id, versions.characterId))
-            .where(and(eq(characters.userId, userId), isNull(versions.prunedAt)))
-        ).map((k) => k.fp)
-      : rows.filter((r) => !r.chosen).map((r) => r.fingerprint),
-  );
-  const files = new Map<string, number>();
-  for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
-  // ponytail: a crash here leaves files no row needs, which is only
-  // storage; a sweep of unreferenced files would find them.
-  if (mode === "on") for (const fp of files.keys()) await remove(userId, fp);
 
   const byCharacter = new Map<number, Row[]>();
   for (const r of chosen) byCharacter.set(r.characterId, [...(byCharacter.get(r.characterId) ?? []), r]);

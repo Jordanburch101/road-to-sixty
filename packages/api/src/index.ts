@@ -57,6 +57,9 @@ export type CheckResponse = { characters: CheckEntry[] };
 
 // GET /v1/versions/:id returns the journey as zstd-compressed Parse.Write
 // text: what the app puts in data.lua's journey string, after decompressing.
+// It answers 404 for a version that isn't this account's or is pruned (a
+// moment's state: check names only heads), and 410 when the version's file
+// is missing on the server, which no retry fixes (#112).
 
 // The account API: the app's window, with the PC token. Times are ISO 8601.
 

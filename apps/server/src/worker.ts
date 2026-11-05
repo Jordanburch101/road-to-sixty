@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { client, db } from "./db";
+import { client, db, lockFiles } from "./db";
 import { LIMITS, runMerge, runSame, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { MAX_RAW, fingerprint, get, pack, put, remove } from "./storage";
@@ -162,9 +162,13 @@ async function runJob(job: Job) {
   if (result.journey.length > MAX_RAW) return settle(job, upload, "rejected", "the merged journey would be too big to store");
   const fp = fingerprint(result.journey);
   if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
-  await put(character.userId, fp, pack(result.journey));
   try {
     await db.transaction(async (tx) => {
+      // Stored under the lock, with the row that keeps it: put skips a file
+      // that is already there, so a merge identical to a file the clean-up
+      // was deleting lost it, and its head's downloads failed for good (#112).
+      await lockFiles(tx, character.userId);
+      await put(character.userId, fp, pack(result.journey));
       const [merged] = await tx
         .insert(versions)
         .values({

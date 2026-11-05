@@ -117,6 +117,17 @@ bun run dev               # port 3000, with .env copied from .env.example
   version's file must skip pruned versions, and a restore must lock its
   source `FOR SHARE` and check it isn't pruned. `PRUNE` is `dry` by
   default: read its log before setting `on` in Dokploy.
+- Identical files are stored once and `put` skips one that is there, so
+  anything that stores a journey file does it inside the transaction
+  that adds its version row, after `lockFiles` (`src/db.ts`); the
+  clean-up holds the same lock while it marks, and again for each batch of
+  50 deletes (so the one merge worker never waits long), and removing a
+  character holds it for its deletes. Otherwise a delete can take a file a
+  new head just reused, and every download of that head fails (#112). An
+  upload waits at most 5 seconds for the lock (`tryLockFiles`), then
+  answers 429, so waiting uploads can't fill the connection pool. A
+  version whose file is missing anyway answers 410, so the app shows it on
+  that character and still delivers the others.
 - A name has a row per journey (spec 2026-10-15, journeys): the addon's
   stamp, `journeyId`, is read from each upload (`stampOf`) and kept on the
   row and the upload. The newest row of a name is its current journey;
