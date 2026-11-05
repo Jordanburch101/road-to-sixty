@@ -52,7 +52,7 @@ C_Item = { GetItemInfoInstant = function(itemID)
 end }
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 hooksecurefunc = function(name, fn) hooks[name] = fn end
-BuyMerchantItem, TakeInboxItem = function() end, function() end
+BuyMerchantItem, PickupMerchantItem, TakeInboxItem = function() end, function() end, function() end
 GetNumLootItems = function() return #game.loot end
 GetLootSlotLink = function(slot) return game.loot[slot] and game.loot[slot][1] end
 GetLootSourceInfo = function(slot) return game.loot[slot] and game.loot[slot][2] end
@@ -147,6 +147,12 @@ hooks.BuyMerchantItem(3, 1)
 Arrive(Link(2488))
 note = Got(2488)
 check(note and note.how == "vendor" and note.id == 152 and note.name == "Brother Danil", "a purchase names the vendor")
+-- Dragged from the merchant into the bags instead (#100).
+game.merchant[4] = Link(2489)
+hooks.PickupMerchantItem(4)
+Arrive(Link(2489))
+note = Got(2489)
+check(note and note.how == "vendor" and note.id == 152, "a purchase dragged to the bags names the vendor")
 
 -- 5. Traded: the other player, with the realm when it differs.
 units.NPC = { "Tradefriend", "Player-1-0000000B", "Otherrealm" }

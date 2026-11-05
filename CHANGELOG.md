@@ -22,6 +22,8 @@ broken and now works. Leave out internal changes. Sections are
 - Deaths name the killer even when your computer's clock is off.
 - Gear in your bags that loads late at login keeps where it came from
   when you put it on, instead of showing as unknown.
+- Gear bought by dragging it from a merchant into your bags now shows
+  the merchant it came from.
 - If a character's saved journey belonged to another character of the
   same name (one deleted, or moved from another realm), it is now kept in
   the journey map's Characters list instead of being cleared, and chat

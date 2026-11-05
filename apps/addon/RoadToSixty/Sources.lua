@@ -291,13 +291,18 @@ ns.On("CHAT_MSG_LOOT", function(msg)
     end
 end)
 
-if BuyMerchantItem then
-    hooksecurefunc("BuyMerchantItem", function(index)
-        ns.SafeCall(function()
-            local id = FromGUID(UnitGUID("npc"))
-            Signal(GetMerchantItemLink(index), "vendor", { id = id, name = Plain(UnitName("npc")) })
+-- Bought with a click (BuyMerchantItem) or dragged from the merchant to
+-- the bags (PickupMerchantItem, #100): the purchase happens as it is put
+-- down, a moment later, inside the signal's window.
+for _, buy in ipairs({ "BuyMerchantItem", "PickupMerchantItem" }) do
+    if _G[buy] then
+        hooksecurefunc(buy, function(index)
+            ns.SafeCall(function()
+                local id = FromGUID(UnitGUID("npc"))
+                Signal(GetMerchantItemLink(index), "vendor", { id = id, name = Plain(UnitName("npc")) })
+            end)
         end)
-    end)
+    end
 end
 
 -- Trades: what the other player puts in, while the window is open.
