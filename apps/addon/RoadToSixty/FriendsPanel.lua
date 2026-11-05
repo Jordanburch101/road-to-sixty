@@ -180,7 +180,7 @@ function FriendsPanel:Create(parent)
     box:SetAutoFocus(false)
     local hint = box:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     hint:SetPoint("LEFT", 0, 0)
-    hint:SetText("Friend's character name")
+    hint:SetText(ns.Friends.Surnames() and "Friend's full name" or "Friend's character name")
     local function ShowHint() hint:SetShown(box:GetText() == "" and not box:HasFocus()) end
     local function Add()
         local name = box:GetText() or ""

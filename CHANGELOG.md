@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.19.4
+
+### Fixed
+- Friends on Forever can be added by their full name, first and last
+  (`/rts friend Ann Lee`, or Ann-Lee). Before, a name with a space was
+  refused, so a Forever friend could not be added at all.
+
 ## 1.19.3
 
 ### Fixed
