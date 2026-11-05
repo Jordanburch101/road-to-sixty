@@ -117,8 +117,9 @@ bun run dev               # port 3000, with .env copied from .env.example
 - Removing a character locks its jobs and answers 409 while one runs, and
   while it is a name's current journey with earlier ones left (removed
   first, an earlier one would become current again); its files go only
-  when no other version of the account shares them. The app's "Remove all
-  beta characters" removes oldest first, so it never meets that 409.
+  when no other version of the account shares them. The app's Remove all (beta
+  and stress test characters) takes every journey of each such name,
+  oldest first (`testJourneys`), so it never meets that 409.
 - Delete everything (`deleteEverything`) runs only from the delete page
   (`src/delete.ts`, `delete.html`, `delete-page.ts`): `POST /delete` from
   this server's origin with a Battle.net sign-in cookie made in the last 10

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
 import type { Folder } from "./api";
-import { BETA, ago, folderWords, gameName, installFolder, isTest, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, realmName, removeWords, updateWords, versionLine, when } from "./format";
+import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, realmName, removeWords, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -47,6 +47,7 @@ test("Forever's realms read as their type, other realms as their name", () => {
   expect(realmName("CAMWOW EU5 Realm 6 Something New")).toBe("CAMWOW EU5 Realm 6 Something New");
   expect(realmName("Nightslayer")).toBe("Nightslayer");
   expect(realmName("Classic Beta PvP")).toBe("Classic Beta PvP");
+  expect(realmName("CAMWOW EU5 Realm 6 constructor")).toBe("CAMWOW EU5 Realm 6 constructor");
 });
 
 test("a history entry says where it came from", () => {
@@ -86,8 +87,22 @@ test("beta and stress test characters are listed apart, by the server's row for 
   expect(test.map((r) => r.key)).toEqual(["Ann-Classic Beta PvE 2", "Di-Classic Beta PvP", "Ed-CAMWOW AU1 Realm 1 PvE"]);
   expect(isTest({ ...ann, game: "_anniversary_", lastPlayedAt: "2026-10-01T00:00:00Z" })).toBe(false);
   expect(BETA).toBe("_classic_beta_");
-  expect(testWords(1)).toBe("Remove 1 beta and stress test journey from the backup? Journeys on your PCs stay.");
-  expect(testWords(3)).toBe("Remove 3 beta and stress test journeys from the backup? Journeys on your PCs stay.");
+  expect(testWords(1)).toBe("Remove 1 beta and stress test character from the backup, earlier journeys included? Journeys on your PCs stay.");
+  expect(testWords(3)).toBe("Remove 3 beta and stress test characters from the backup, earlier journeys included? Journeys on your PCs stay.");
+});
+
+test("Remove all takes every journey of a test character, oldest first, and leaves live ones", () => {
+  const forever = { ...ann, game: "_forever_", realm: "CAMWOW AU1 Realm 1 PvE" };
+  const stress = { ...forever, id: 9, name: "Ed", lastPlayedAt: "2026-10-28T10:00:00Z" };
+  // An earlier journey with no last-played time: not test by itself, but the
+  // server would refuse to remove Ed's current one while it is left.
+  const stressEarlier = { ...stress, id: 4, earlier: true, lastPlayedAt: null };
+  const live = { ...forever, id: 8, name: "Flo", lastPlayedAt: "2026-11-05T01:00:00Z" };
+  // A live character's earlier test journey stays for its History.
+  const liveEarlier = { ...live, id: 3, earlier: true, lastPlayedAt: "2026-10-20T10:00:00Z" };
+  const { characters, journeys } = testJourneys([stress, live, ann, stressEarlier, liveEarlier]);
+  expect(characters).toBe(2);
+  expect(journeys.map((c) => c.id)).toEqual([1, 4, 9]);
 });
 
 test("a character's earlier journeys are its name's, newest first", () => {

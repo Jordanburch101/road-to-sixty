@@ -44,12 +44,17 @@ export function levelClass(c: { level: number | null; class: string | null }): s
 // Forever's realms reach the addon by their server names, such as
 // "CAMWOW AU1 Realm 1 PvE", while players only ever see the realm's type.
 const FOREVER_REALM = /^CAMWOW \S+ Realm \d+ (.+)$/;
-const REALM_TYPES: Record<string, string> = { PvE: "Normal", PvP: "PvP", RP: "RP", "RP PvP": "RP-PvP" };
+const REALM_TYPES = new Map([
+  ["PvE", "Normal"],
+  ["PvP", "PvP"],
+  ["RP", "RP"],
+  ["RP PvP", "RP-PvP"],
+]);
 
 // A realm as players know it: a Forever realm's type, any other its name.
 export function realmName(realm: string): string {
   const type = FOREVER_REALM.exec(realm)?.[1];
-  return (type && REALM_TYPES[type]) ?? realm;
+  return (type !== undefined && REALM_TYPES.get(type)) || realm;
 }
 
 // Under a character's name: its realm, and which PC last backed it up, when.
@@ -111,8 +116,21 @@ export function byGame<T extends { key: string }>(rows: T[], info: Map<string, C
   return { main: rows.filter((r) => !test.includes(r)), test };
 }
 
+// What Remove all takes out: every journey of each name whose current
+// journey is a test one, earlier ones too, oldest first. The server refuses
+// to remove a name's current journey while an earlier one is left, so the
+// earlier ones go with it even when they don't look like test journeys
+// themselves (one with no last-played time). An earlier test journey of a
+// live character stays; its History removes it. characters is how many
+// names that is, the count the list's heading shows.
+export function testJourneys(all: CharacterInfo[]): { characters: number; journeys: CharacterInfo[] } {
+  const nameOf = (c: CharacterInfo) => `${c.game}\n${c.realm}\n${c.name}`;
+  const names = new Set(all.filter((c) => !c.earlier && isTest(c)).map(nameOf));
+  return { characters: names.size, journeys: all.filter((c) => names.has(nameOf(c))).sort((a, b) => a.id - b.id) };
+}
+
 export const testWords = (n: number) =>
-  `Remove ${n} beta and stress test ${n === 1 ? "journey" : "journeys"} from the backup? Journeys on your PCs stay.`;
+  `Remove ${n} beta and stress test ${n === 1 ? "character" : "characters"} from the backup, earlier journeys included? Journeys on your PCs stay.`;
 
 // A character's earlier journeys: the same game, realm and name, newest first.
 export function earlierOf(all: CharacterInfo[], c: CharacterInfo): CharacterInfo[] {
