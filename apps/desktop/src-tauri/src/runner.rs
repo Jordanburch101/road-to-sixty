@@ -236,8 +236,14 @@ impl Runner {
 
     /// After the player approves on the link page: keep the new token,
     /// forget what was uploaded under any old link, and start again.
-    pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
+    /// `current` says whether this link is still the one the window shows:
+    /// a link pressed again while this one waited for the file is left
+    /// alone, its code and all (#111 review).
+    pub fn linked(&mut self, linked: LinkResponse, current: &dyn Fn() -> bool) -> Result<(), String> {
         let result = self.keep_link(linked);
+        if result.is_err() && !current() {
+            return Ok(());
+        }
         // Approved, but not kept: the code on screen is spent, and the
         // window would wait for the browser for good (#111 review).
         if result.is_err() {
@@ -319,10 +325,16 @@ impl Runner {
         self.stop();
         let mut state = match load_for_action(&self.state_path, ACTION_TRIES) {
             Ok(state) => state,
-            // Reset at once, as the ticker would, with the same words.
+            // Reset at once, as the ticker would, with the same words; or,
+            // if start found the file held instead, its note (#111 review).
             Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
                 self.start()?;
-                return Err(format!("{RESET} Then add the folder again."));
+                let reset = self.notifier.get().problems.iter().any(|p| p == RESET);
+                return Err(if reset {
+                    format!("{RESET} Then add the folder again.")
+                } else {
+                    BUSY_SETTINGS.into()
+                });
             }
             Err(_) => return Err(BUSY_SETTINGS.into()),
         };
@@ -370,7 +382,8 @@ const RESET: &str = "The app's settings were damaged, so they were reset. Link t
 /// Reads of a held state.json for unlinking or adding a folder (a second),
 /// and for keeping a link (ten seconds: the server already made the PC).
 const ACTION_TRIES: u32 = 4;
-const LINK_TRIES: u32 = 40;
+// Fewer in tests, which hold the file on purpose.
+const LINK_TRIES: u32 = if cfg!(test) { 4 } else { 40 };
 
 /// state.json for something the player did (link, unlink, add a folder),
 /// read again up to `tries` times, a quarter second apart, while another
@@ -614,11 +627,14 @@ mod tests {
         .unwrap();
         t.runner.start().unwrap();
         t.runner
-            .linked(LinkResponse {
-                token: "new-token".into(),
-                pc: "pc-2".into(),
-                battletag: "Ann#1234".into(),
-            })
+            .linked(
+                LinkResponse {
+                    token: "new-token".into(),
+                    pc: "pc-2".into(),
+                    battletag: "Ann#1234".into(),
+                },
+                &|| true,
+            )
             .unwrap();
         assert_eq!(t.tokens.get().as_deref(), Some("new-token"));
         let state = State::load(&data.join("state.json")).unwrap();
@@ -694,11 +710,14 @@ mod tests {
         State::default().save(&data.join("state.json")).unwrap();
         // A folder where the state's temporary file goes makes the save fail.
         std::fs::create_dir_all(data.join("state.tmp")).unwrap();
-        let linked = t.runner.linked(LinkResponse {
-            token: "new-token".into(),
-            pc: "pc-2".into(),
-            battletag: "Ann#1234".into(),
-        });
+        let linked = t.runner.linked(
+            LinkResponse {
+                token: "new-token".into(),
+                pc: "pc-2".into(),
+                battletag: "Ann#1234".into(),
+            },
+            &|| true,
+        );
         assert!(linked.is_err());
         // With the token but not the new PC id and cleared uploads, the app
         // would think the old link's files were already sent.
@@ -763,7 +782,15 @@ mod tests {
             pc: "pc-2".into(),
             battletag: "Ann#1234".into(),
         };
-        assert_eq!(t.runner.linked(link), Err(LINK_UNSAVED.to_string()));
+        // Pressed again meanwhile: the newer link's code stays, and no note.
+        let again = LinkResponse {
+            token: "new-token".into(),
+            pc: "pc-2".into(),
+            battletag: "Ann#1234".into(),
+        };
+        assert_eq!(t.runner.linked(again, &|| false), Ok(()));
+        assert_eq!(t.notifier.get().link_code.as_deref(), Some("ABCD-EFGH"), "a newer link's code kept");
+        assert_eq!(t.runner.linked(link, &|| true), Err(LINK_UNSAVED.to_string()));
         assert_eq!(t.notifier.get().link_code, None, "not waiting for the browser for good");
         assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "the old link kept");
         // Readable again: the ticker's next look starts it, and the note goes.

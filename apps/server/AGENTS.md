@@ -6,7 +6,7 @@ Battle.net through Better Auth. Dokploy builds it from `Dockerfile` on every
 push to `main` that touches its watch paths (`apps/server/**`,
 `packages/**`, `apps/addon/RoadToSixty/*.lua`, `package.json`,
 `bun.lock`): any addon Lua file, not only the pure files its image copies.
-So a merge to `main` is a deploy. The design is
+So a merge to `main` that touches them is a deploy. The design is
 `docs/superpowers/specs/2026-10-12-sync-and-backup-design.md`.
 
 ## Layout

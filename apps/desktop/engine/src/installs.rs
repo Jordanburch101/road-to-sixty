@@ -75,8 +75,12 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
                 continue;
             }
             // Otherwise the length byte before a 47-byte path is itself a
-            // `/` (0x2f): the path starts one on (#111 review).
+            // `/` (0x2f): the path starts one on (#111 review). Unless that
+            // leaves `//host/...` again, a network share as above.
             start += 1;
+            if text[start..].starts_with("//") {
+                continue;
+            }
         }
         let path = PathBuf::from(text[start..].trim_end_matches('\u{FFFD}'));
         if !found.contains(&path) {
@@ -348,6 +352,16 @@ mod tests {
         let mut slash = b"\x0a\x2f".to_vec();
         slash.extend(path.as_bytes());
         assert_eq!(installs_in_product_db(&slash), [PathBuf::from(path)]);
+        // But a 47-byte `//host/...` read the same way is still no path.
+        let share = "//nas/games2/World of Warcraft/_classic_era_one";
+        assert_eq!(share.len(), 47);
+        let mut slashes = b"\x0a\x2f".to_vec();
+        slashes.extend(share.as_bytes());
+        assert!(
+            installs_in_product_db(&slashes).is_empty(),
+            "{:?}",
+            installs_in_product_db(&slashes)
+        );
         let found = installs_in_product_db(&bytes);
         assert_eq!(
             found,

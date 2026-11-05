@@ -219,8 +219,11 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
             Err(ApiError::Busy | ApiError::Status(404, _)) => {
                 later.insert(&entry.game);
             }
-            // The server's own answers here are 200, 401, 404, 429 or a 5xx,
-            // so another code is a proxy's page, which is no words for a
+            // A version whose file the server lost (#112): its own words,
+            // which promise no retry, since none will help.
+            Err(e @ ApiError::Status(410, _)) => report.problems.push(Problem { who, why: e.to_string() }),
+            // The server's own answers here are 200, 401, 404, 410, 429 or a
+            // 5xx, so another code is a proxy's page, which is no words for a
             // player (#111 review).
             Err(ApiError::Status(code, _)) if code != 0 && code != 200 => report.problems.push(Problem {
                 who,
@@ -844,6 +847,22 @@ mod tests {
         );
         let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
         assert!(data.contains("Ann-Test Realm") && !data.contains("Bob-Test Realm"), "{data}");
+    }
+
+    #[test]
+    fn a_version_the_server_lost_shows_its_own_words() {
+        // 410 (#112): permanent, so no "it will try again".
+        let (dir, game) = game();
+        let fake = fake::serve(|_, url| {
+            if url == "/v1/check" {
+                let list = r#"{"characters":[{"game":"_classic_beta_","realm":"Test Realm","name":"Bob","version":10,"fingerprint":"x","replace":false,"updateAddon":false}]}"#;
+                return (200, list.as_bytes().to_vec());
+            }
+            (410, br#"{"error":"this version's file is missing on the server"}"#.to_vec())
+        });
+        let report = deliver_once(&fake, std::slice::from_ref(&game), &dir.path().join("journeys"));
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        assert_eq!(report.problems[0].why, "this version's file is missing on the server");
     }
 
     #[test]
