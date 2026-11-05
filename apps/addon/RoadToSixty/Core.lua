@@ -380,4 +380,30 @@ ns.Command("perf", "toggle timing info on the journey map", function()
     ns.db.perf = not ns.db.perf
     Print("Map timing info " .. (ns.db.perf and "shown" or "hidden") .. ".")
 end)
+
+-- The game's "blocked from an action" box names no function, so blocked and
+-- forbidden calls are kept as they come (some before chat is ready) and
+-- printed once the world is up, or with /rts blocked.
+local blocked, ready = {}, false
+local function ShowBlocked(item)
+    Print(("%s: %s blocked %s"):format(item.event, tostring(item.addon), tostring(item.call)))
+end
+for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+    ns.On(event, function(addon, call)
+        local item = { event = event, addon = addon, call = call }
+        blocked[#blocked + 1] = item
+        if ready then ShowBlocked(item) end
+    end)
+end
+ns.On("PLAYER_ENTERING_WORLD", function()
+    if ready then return end
+    C_Timer.After(3, function()
+        ready = true
+        for _, item in ipairs(blocked) do ShowBlocked(item) end
+    end)
+end)
+ns.Command("blocked", "list the calls the game blocked this session (developer)", function()
+    for _, item in ipairs(blocked) do ShowBlocked(item) end
+    Print(("%d blocked."):format(#blocked))
+end)
 --@end-debug@
