@@ -192,6 +192,12 @@ Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 8690)
 game.x = game.x + 25
 Tick()
 check(#ns.char.segments == count, "a charge after a hearth cast does not split the path")
+-- A few seconds on, the cast no longer lowers the limit: a lag spike while
+-- mounted (60 yards in one sample) stays part of the walk.
+for _ = 1, 16 do Tick() end
+game.x = game.x + 60
+Tick()
+check(#ns.char.segments == count, "a jump seconds after a cast that moved nowhere does not split the path")
 game.now = game.now + 61   -- that cast no longer explains anything
 
 game.instance = true

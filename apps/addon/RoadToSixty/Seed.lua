@@ -1595,9 +1595,11 @@ ns.Command("seedalt", "add made-up characters to compare with on the Stats scree
         local names = {}
         for k = 1, count do
             local alt = SEED_ALTS[k]
-            local journey, seen = SeedAltJourney(alt[3], alt[4], ns.Now() - (40 + k * 5) * 86400)
+            local journey = SeedAltJourney(alt[3], alt[4], ns.Now() - (40 + k * 5) * 86400)
+            -- Seen now: on Forever the roster hides characters last seen
+            -- before launch (Roster.lua), and these journeys start weeks back.
             ns.db.roster[alt[1] .. "-Seed"] = {
-                name = alt[1], realm = "Seed", class = alt[2], level = alt[3], seen = seen,
+                name = alt[1], realm = "Seed", class = alt[2], level = alt[3], seen = ns.Now(),
                 played = journey.played, journey = journey,
             }
             names[#names + 1] = ("%s (level %d)"):format(alt[1], alt[3])
