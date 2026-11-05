@@ -2,6 +2,7 @@
 //! tray and window show. Linking, pausing, adding a game folder and
 //! unlinking stop the thread, change the saved state, and start it again.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -132,16 +133,29 @@ impl Runner {
     pub fn start(&mut self) -> Result<(), String> {
         self.stop();
         let state = match State::load(&self.state_path) {
-            Ok(state) => state,
+            Ok(state) => {
+                self.notifier
+                    .update(|s| s.problems.retain(|p| p != UNREADABLE && p != BUSY_SETTINGS));
+                state
+            }
+            // Not readable now (an antivirus or backup program holding it):
+            // nothing changes, and the 30-second ticker tries again, since
+            // nothing is running (#102). Not an Err: the app's setup would
+            // stop on it, and callers show an Err's words, path and all.
+            Err(e) if e.kind() != std::io::ErrorKind::InvalidData => {
+                self.notifier.update(|s| s.problems = vec![UNREADABLE.into()]);
+                return Ok(());
+            }
             // Without its state the app can't tell which uploads went up or
             // which PC it is, so it starts over: kept aside to look at, and
             // the player links again, which the first run's steps offer.
             Err(_) => {
                 let _ = fs::rename(&self.state_path, self.state_path.with_extension("json.damaged"));
                 let _ = self.tokens.clear();
-                State::default().save(&self.state_path).map_err(|e| e.to_string())?;
-                self.notifier
-                    .update(|s| s.problems = vec!["The app's settings were damaged, so they were reset. Link this PC again.".into()]);
+                // Not with ?: the app's setup stops on an Err (#111 review).
+                // A save that fails here is tried again at the next start.
+                let _ = State::default().save(&self.state_path);
+                self.notifier.update(|s| s.problems = vec![RESET.into()]);
                 State::default()
             }
         };
@@ -222,10 +236,39 @@ impl Runner {
 
     /// After the player approves on the link page: keep the new token,
     /// forget what was uploaded under any old link, and start again.
-    pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
+    /// `current` says whether this link is still the one the window shows:
+    /// a link pressed again while this one waited for the file is left
+    /// alone, its code and all (#111 review).
+    pub fn linked(&mut self, linked: LinkResponse, current: &dyn Fn() -> bool) -> Result<(), String> {
+        let result = self.keep_link(linked);
+        if result.is_err() && !current() {
+            return Ok(());
+        }
+        // Approved, but not kept: the code on screen is spent, and the
+        // window would wait for the browser for good (#111 review).
+        if result.is_err() {
+            self.notifier.update(|s| {
+                s.link_code = None;
+                s.link_url = None;
+            });
+        }
+        result
+    }
+
+    fn keep_link(&mut self, linked: LinkResponse) -> Result<(), String> {
         self.stop();
         self.refused.store(false, Ordering::Relaxed);
-        let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        // The server made this PC already, so wait longer than for other
+        // actions before giving up on a held file. A damaged file is moved
+        // aside, as start does: linking starts afresh anyway.
+        let mut state = match load_for_action(&self.state_path, LINK_TRIES) {
+            Ok(state) => state,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                let _ = fs::rename(&self.state_path, self.state_path.with_extension("json.damaged"));
+                State::default()
+            }
+            Err(_) => return Err(LINK_UNSAVED.into()),
+        };
         state.pc = Some(linked.pc);
         state.battletag = Some(linked.battletag);
         state.uploaded.clear();
@@ -233,7 +276,7 @@ impl Runner {
         let _ = fs::remove_dir_all(&self.cache);
         // The token last: if the app stops in between, it is unlinked, not
         // linked with the old link's list of files already sent.
-        state.save(&self.state_path).map_err(|e| e.to_string())?;
+        state.save(&self.state_path).map_err(|_| LINK_UNSAVED.to_string())?;
         self.tokens.set(&linked.token)?;
         self.notifier.update(|s| {
             s.link_code = None;
@@ -246,16 +289,23 @@ impl Runner {
     pub fn unlink(&mut self) -> Result<(), String> {
         self.stop();
         self.refused.store(false, Ordering::Relaxed);
+        // Read once, before anything changes: a file held for a moment must
+        // neither skip the revoke nor lose the picked folders (#111 review).
+        // A damaged state file is replaced: unlinking is how to start fresh.
+        let old = match load_for_action(&self.state_path, ACTION_TRIES) {
+            Ok(state) => state,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => State::default(),
+            Err(_) => return Err(BUSY_SETTINGS.into()),
+        };
         // Revoked on the server first, so the token stops working there too.
         // Offline, this PC still unlinks; the player can remove it from
         // another PC's list.
-        if let (Some(token), Ok(State { pc: Some(pc), .. })) = (self.tokens.get(), State::load(&self.state_path)) {
+        if let (Some(token), Some(pc)) = (self.tokens.get(), &old.pc) {
             let _ = Client::new(&self.server, Some(token)).account("DELETE", &format!("/v1/devices/{pc}"), None);
         }
         self.tokens.clear()?;
         let _ = fs::remove_dir_all(&self.cache);
-        // A damaged state file is replaced: unlinking is how to start fresh.
-        let picked = State::load(&self.state_path).map(|s| s.picked).unwrap_or_default();
+        let picked = old.picked;
         State {
             picked,
             ..State::default()
@@ -273,7 +323,21 @@ impl Runner {
 
     pub fn add_folder(&mut self, path: PathBuf) -> Result<(), String> {
         self.stop();
-        let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        let mut state = match load_for_action(&self.state_path, ACTION_TRIES) {
+            Ok(state) => state,
+            // Reset at once, as the ticker would, with the same words; or,
+            // if start found the file held instead, its note (#111 review).
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                self.start()?;
+                let reset = self.notifier.get().problems.iter().any(|p| p == RESET);
+                return Err(if reset {
+                    format!("{RESET} Then add the folder again.")
+                } else {
+                    BUSY_SETTINGS.into()
+                });
+            }
+            Err(_) => return Err(BUSY_SETTINGS.into()),
+        };
         if !state.picked.contains(&path) {
             state.picked.push(path.clone());
             state.save(&self.state_path).map_err(|e| e.to_string())?;
@@ -305,6 +369,39 @@ impl Runner {
     }
 }
 
+/// Said while state.json can't be read, until it can.
+const UNREADABLE: &str = "Couldn't read the app's settings just now. Trying again.";
+/// Said when the player's action couldn't read state.json, after a few tries.
+/// Cleared by the next start that reads it, like UNREADABLE.
+const BUSY_SETTINGS: &str = "Couldn't read the app's settings just now. Try again in a moment.";
+/// Said when a link approved in the browser couldn't be kept. The server
+/// has made the PC, so it shows in the account's list until removed there.
+const LINK_UNSAVED: &str = "Couldn't save the link: the app's settings were busy. Link this PC again.";
+/// Said when a damaged state.json was set aside and the app started over.
+const RESET: &str = "The app's settings were damaged, so they were reset. Link this PC again.";
+/// Reads of a held state.json for unlinking or adding a folder (a second),
+/// and for keeping a link (ten seconds: the server already made the PC).
+const ACTION_TRIES: u32 = 4;
+// Fewer in tests, which hold the file on purpose.
+const LINK_TRIES: u32 = if cfg!(test) { 4 } else { 40 };
+
+/// state.json for something the player did (link, unlink, add a folder),
+/// read again up to `tries` times, a quarter second apart, while another
+/// program holds it. Those run on threads of their own, so the wait holds
+/// up nothing.
+fn load_for_action(path: &Path, tries: u32) -> std::io::Result<State> {
+    let mut tried = 0;
+    loop {
+        match State::load(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::InvalidData && tried < tries => {
+                tried += 1;
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            result => return result,
+        }
+    }
+}
+
 fn shown(games: &[GameFolder]) -> Vec<Game> {
     games
         .iter()
@@ -322,9 +419,34 @@ pub fn local_keys(games: &[GameFolder]) -> Vec<String> {
     games
         .iter()
         .flat_map(installs::saved_files)
-        .filter_map(|f| fs::read(&f.path).ok().as_deref().and_then(sync::roster_key))
+        .filter_map(|f| key_of(&f.path))
         .map(|(name, realm)| format!("{name}-{realm}"))
         .collect()
+}
+
+/// A saved file's size and change time.
+type Stamp = (u64, Option<SystemTime>);
+/// The rosterKey's name and realm.
+type Key = Option<(String, String)>;
+
+/// The name and realm in a saved file's rosterKey, read again only when the
+/// file's size or change time differ from the last read. Characters are
+/// listed every 30 seconds and after every pass, and a journey at 60 is
+/// megabytes, so reading every file whole each time cost a laptop's battery
+/// (#102). A failed read isn't kept: the game may only be writing it.
+fn key_of(path: &Path) -> Key {
+    static KEYS: Mutex<BTreeMap<PathBuf, (Stamp, Key)>> = Mutex::new(BTreeMap::new());
+    let meta = fs::metadata(path).ok()?;
+    let stamp = (meta.len(), meta.modified().ok());
+    let mut keys = KEYS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((seen, key)) = keys.get(path)
+        && *seen == stamp
+    {
+        return key.clone();
+    }
+    let key = sync::roster_key(&fs::read(path).ok()?);
+    keys.insert(path.to_path_buf(), (stamp, key.clone()));
+    key
 }
 
 #[cfg(test)]
@@ -505,11 +627,14 @@ mod tests {
         .unwrap();
         t.runner.start().unwrap();
         t.runner
-            .linked(LinkResponse {
-                token: "new-token".into(),
-                pc: "pc-2".into(),
-                battletag: "Ann#1234".into(),
-            })
+            .linked(
+                LinkResponse {
+                    token: "new-token".into(),
+                    pc: "pc-2".into(),
+                    battletag: "Ann#1234".into(),
+                },
+                &|| true,
+            )
             .unwrap();
         assert_eq!(t.tokens.get().as_deref(), Some("new-token"));
         let state = State::load(&data.join("state.json")).unwrap();
@@ -585,11 +710,14 @@ mod tests {
         State::default().save(&data.join("state.json")).unwrap();
         // A folder where the state's temporary file goes makes the save fail.
         std::fs::create_dir_all(data.join("state.tmp")).unwrap();
-        let linked = t.runner.linked(LinkResponse {
-            token: "new-token".into(),
-            pc: "pc-2".into(),
-            battletag: "Ann#1234".into(),
-        });
+        let linked = t.runner.linked(
+            LinkResponse {
+                token: "new-token".into(),
+                pc: "pc-2".into(),
+                battletag: "Ann#1234".into(),
+            },
+            &|| true,
+        );
         assert!(linked.is_err());
         // With the token but not the new PC id and cleared uploads, the app
         // would think the old link's files were already sent.
@@ -625,6 +753,84 @@ mod tests {
         assert!(State::load(&t.dir.path().join("data/state.json")).is_ok());
         assert!(t.dir.path().join("data/state.json.damaged").exists(), "kept to look at");
         assert_eq!(t.tokens.get(), None);
+    }
+
+    #[test]
+    fn a_settings_file_that_cant_be_read_just_now_keeps_the_link() {
+        // An antivirus or backup program holding it: here, a folder in its
+        // place, which can't be read but isn't bad JSON either (#102).
+        let mut t = setup(true);
+        let state = t.dir.path().join("data/state.json");
+        std::fs::remove_file(&state).unwrap();
+        std::fs::create_dir(&state).unwrap();
+        // Ok, not an Err: the app's setup would stop on an Err (#111 review).
+        assert!(t.runner.start().is_ok());
+        assert!(!t.runner.is_running());
+        assert_eq!(t.notifier.get().problems, [UNREADABLE], "the plain note, no path");
+        assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "still linked");
+        assert!(!t.dir.path().join("data/state.json.damaged").exists(), "nothing moved aside");
+        // Unlinking now changes nothing either: no lost folders, no skipped revoke.
+        assert_eq!(t.runner.unlink(), Err(BUSY_SETTINGS.to_string()));
+        assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "still linked after a refused unlink");
+        assert!(state.is_dir(), "nothing saved over it");
+        // As the window shows it (with_runner), until a start reads the file.
+        t.notifier.update(|s| s.problems = vec![BUSY_SETTINGS.into()]);
+        // A link approved while it stays held: the spent code goes (#111 review).
+        t.notifier.update(|s| s.link_code = Some("ABCD-EFGH".into()));
+        let link = LinkResponse {
+            token: "new-token".into(),
+            pc: "pc-2".into(),
+            battletag: "Ann#1234".into(),
+        };
+        // Pressed again meanwhile: the newer link's code stays, and no note.
+        let again = LinkResponse {
+            token: "new-token".into(),
+            pc: "pc-2".into(),
+            battletag: "Ann#1234".into(),
+        };
+        assert_eq!(t.runner.linked(again, &|| false), Ok(()));
+        assert_eq!(t.notifier.get().link_code.as_deref(), Some("ABCD-EFGH"), "a newer link's code kept");
+        assert_eq!(t.runner.linked(link, &|| true), Err(LINK_UNSAVED.to_string()));
+        assert_eq!(t.notifier.get().link_code, None, "not waiting for the browser for good");
+        assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "the old link kept");
+        // Readable again: the ticker's next look starts it, and the note goes.
+        std::fs::remove_dir(&state).unwrap();
+        State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        }
+        .save(&state)
+        .unwrap();
+        assert!(t.runner.rescan().is_ok());
+        assert!(t.runner.is_running());
+        assert!(!t.notifier.get().problems.iter().any(|p| p.contains("Trying again")));
+        assert!(!t.notifier.get().problems.iter().any(|p| p == BUSY_SETTINGS), "both notes go");
+        t.runner.stop();
+    }
+
+    #[test]
+    fn adding_a_folder_over_damaged_settings_resets_them_in_plain_words() {
+        let mut t = setup(true);
+        std::fs::write(t.dir.path().join("data/state.json"), "{ not json").unwrap();
+        let picked = t.dir.path().join("elsewhere");
+        let err = t.runner.add_folder(picked).unwrap_err();
+        assert!(err.starts_with(RESET), "{err}");
+        assert!(t.dir.path().join("data/state.json.damaged").exists(), "kept to look at");
+        assert_eq!(t.tokens.get(), None);
+    }
+
+    #[test]
+    fn a_saved_file_is_read_again_only_when_it_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("RoadToSixty.lua");
+        std::fs::write(&file, FILE).unwrap();
+        assert_eq!(key_of(&file), Some(("Ann".into(), "Test Realm".into())));
+        // Another character's file of another size: read again.
+        std::fs::write(&file, FILE.replace("Ann-Test Realm", "Bobby-Test Realm")).unwrap();
+        assert_eq!(key_of(&file), Some(("Bobby".into(), "Test Realm".into())));
+        // Gone: nothing, and nothing kept.
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(key_of(&file), None);
     }
 
     #[test]

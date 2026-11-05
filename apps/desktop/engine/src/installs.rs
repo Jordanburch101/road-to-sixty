@@ -53,9 +53,35 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
         let text = String::from_utf8_lossy(run);
         let drive = text
             .char_indices()
-            .find(|&(i, c)| c.is_ascii_alphabetic() && (text[i + 1..].starts_with(":/") || text[i + 1..].starts_with(":\\")))
+            .find(|&(i, c)| {
+                // Only after the ASCII check is i + 1 a character boundary:
+                // the text holds U+FFFD for every byte over 0x7f (#111 review).
+                if !c.is_ascii_alphabetic() {
+                    return false;
+                }
+                let rest = &text[i + 1..];
+                // `s://` is the end of `https://`, not a drive.
+                (rest.starts_with(":/") && !rest.starts_with("://")) || rest.starts_with(":\\")
+            })
             .map(|(i, _)| i);
-        let Some(start) = drive.or_else(|| text.find('/')) else { continue };
+        let Some(mut start) = drive.or_else(|| text.find('/')) else {
+            continue;
+        };
+        if drive.is_none() && text[start..].starts_with("//") {
+            // A web address (https://...) is no install, and on Windows
+            // `//host/...` is a network share that checking for a folder
+            // would go out and ask (#102).
+            if text[..start].ends_with(':') {
+                continue;
+            }
+            // Otherwise the length byte before a 47-byte path is itself a
+            // `/` (0x2f): the path starts one on (#111 review). Unless that
+            // leaves `//host/...` again, a network share as above.
+            start += 1;
+            if text[start..].starts_with("//") {
+                continue;
+            }
+        }
         let path = PathBuf::from(text[start..].trim_end_matches('\u{FFFD}'));
         if !found.contains(&path) {
             found.push(path);
@@ -310,6 +336,32 @@ mod tests {
             b"\x0a\x03wow\x12\x1f/Applications/World of Warcraft\x1a\x02en\x12J/Users/x/Games/World of Warcraft Classic Stuff Here\x00"
                 .to_vec();
         bytes.extend(b"\x00\x01C:/Program Files (x86)/World of Warcraft\x00");
+        // A web address is no install, and not a network share either (#102).
+        bytes.extend(b"\x00\x1fhttps://us.patch.battle.net:1119/wow_classic\x00");
+        // Bytes over 0x7f (protobuf lengths, letters such as é) read as
+        // several-byte characters; a real file starts `0a be 02` (#111 review).
+        let mut real = b"\x0a\xbe\x02".to_vec();
+        real.extend(&bytes);
+        real.extend(b"\x00\xc3\xa9:\\not a drive\x00\x00\xbeD:/Games/World of Warcraft\x00");
+        let found_real = installs_in_product_db(&real);
+        assert_eq!(found_real.len(), 4, "{found_real:?}");
+        assert_eq!(found_real[3], PathBuf::from("D:/Games/World of Warcraft"));
+        // A 47-byte Mac path: its length byte 0x2f reads as a slash (#111 review).
+        let path = "/Users/jordan/Games/World of Warcraft/_classic_";
+        assert_eq!(path.len(), 47);
+        let mut slash = b"\x0a\x2f".to_vec();
+        slash.extend(path.as_bytes());
+        assert_eq!(installs_in_product_db(&slash), [PathBuf::from(path)]);
+        // But a 47-byte `//host/...` read the same way is still no path.
+        let share = "//nas/games2/World of Warcraft/_classic_era_one";
+        assert_eq!(share.len(), 47);
+        let mut slashes = b"\x0a\x2f".to_vec();
+        slashes.extend(share.as_bytes());
+        assert!(
+            installs_in_product_db(&slashes).is_empty(),
+            "{:?}",
+            installs_in_product_db(&slashes)
+        );
         let found = installs_in_product_db(&bytes);
         assert_eq!(
             found,

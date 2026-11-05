@@ -37,21 +37,28 @@ pub struct Refused {
 }
 
 impl State {
-    /// The saved state, or a fresh one when there is none yet.
+    /// The saved state, or a fresh one when there is none yet. A file that
+    /// isn't the state (damaged, or empty after a power cut) is an
+    /// `InvalidData` error; any other error is reading it, which may work
+    /// again soon (an antivirus or backup program holding it), and must
+    /// never be taken for damage (#102).
     pub fn load(path: &Path) -> io::Result<State> {
         match fs::read(path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(State::default()),
             Err(e) => Err(e),
         }
     }
 
-    /// Written beside the old file and renamed over it, so a crash never
-    /// leaves half a file.
+    /// Written beside the old file, on disk, then renamed over it, so a
+    /// crash or a power cut never leaves half a file or an empty one (#102).
     pub fn save(&self, path: &Path) -> io::Result<()> {
         fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
         let temp = path.with_extension("tmp");
-        fs::write(&temp, serde_json::to_vec_pretty(self).map_err(io::Error::other)?)?;
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(&serde_json::to_vec_pretty(self).map_err(io::Error::other)?)?;
+        file.sync_all()?;
+        drop(file);
         fs::rename(&temp, path)
     }
 }

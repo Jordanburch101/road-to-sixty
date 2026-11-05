@@ -3,7 +3,10 @@
 The backend for sync and backup (#1): Elysia on Bun, Postgres through
 Drizzle, journeys in an S3 store (Cloudflare R2 in production), sign-in with
 Battle.net through Better Auth. Dokploy builds it from `Dockerfile` on every
-push to `main` that touches it. The design is
+push to `main` that touches its watch paths (`apps/server/**`,
+`packages/**`, `apps/addon/RoadToSixty/*.lua`, `package.json`,
+`bun.lock`): any addon Lua file, not only the pure files its image copies.
+So a merge to `main` that touches them is a deploy. The design is
 `docs/superpowers/specs/2026-10-12-sync-and-backup-design.md`.
 
 ## Layout
@@ -54,6 +57,14 @@ bun run dev               # port 3000, with .env copied from .env.example
 
 ## Rules that bite
 
+- A change goes live when it merges, not when the addon or app is
+  released: players keep the released addon and app for days after. A
+  server change, and a change to the pure files `src/runner.lua` loads
+  (Merge.lua above all), must work with the addon and app versions already
+  out. #109's merge rules were live from the merge while players still ran
+  1.19.5. Each redeploy also kills the old container after its stop
+  timeout (exit 137), cutting off a request or merge job in flight; the
+  worker takes a stuck job back, and the app retries an upload.
 - The request and response shapes live in `packages/api`; the desktop
   app's Rust side mirrors them by hand. Change all three together.
 - Never change `ACCOUNT_HASH_KEY` once players have signed in: everyone

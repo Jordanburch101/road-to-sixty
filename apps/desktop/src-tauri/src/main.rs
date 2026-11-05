@@ -81,7 +81,11 @@ fn main() {
                     };
                 }
             });
-            runner.start()?;
+            // Never with ?: Tauri ends the app on a setup error, and the
+            // 30-second ticker starts the sync again (#111 review).
+            if let Err(e) = runner.start() {
+                notifier.update(|s| s.problems = vec![e]);
+            }
             app.manage(notifier.clone());
             // The updater's public key also checks addon releases.
             let key = app

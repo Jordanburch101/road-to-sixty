@@ -50,7 +50,10 @@ pub fn link(app: AppHandle, name: String) {
             return;
         }
         match result {
-            Ok(linked) => with_runner(app.clone(), move |r| r.linked(linked)),
+            Ok(linked) => {
+                let still = app.clone();
+                with_runner(app.clone(), move |r| r.linked(linked, &|| still.state::<Links>().is_current(this)))
+            }
             Err(e) => notifier.update(|s| {
                 s.link_code = None;
                 s.link_url = None;
