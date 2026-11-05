@@ -45,7 +45,14 @@ local WINDOW = 10           -- seconds a signal counts for after it ends
 local NOTES_PER_ITEM, NOTES_KEPT, NOTE_DAYS = 5, 300, 30
 local TRADE_SLOTS = 6       -- the seventh is "will not be traded"
 
+-- Bag items load after the gear on a slow login, and would look like new
+-- arrivals with no reason: a "?" note, which putting one on later took
+-- instead of its real note from before (#100). For this long after login,
+-- an item turning up with nothing to explain it is counted, not noted.
+local LOGIN_SETTLE = 60
+
 local loggedIn = false
+local settleUntil = 0       -- GetTime() until which unexplained arrivals are the bags loading
 local counts                -- item string -> count, at the last read
 local signals = {}          -- { key, how, until, ... } what could explain an item arriving
 local lootOpen, bankOpen = false, false
@@ -189,7 +196,8 @@ function Sources:Scan()
         table.sort(keys)
         for _, key in ipairs(keys) do
             for _ = 1, now[key] - (counts[key] or 0) do
-                Note(key, Explain(key))
+                local signal = Explain(key)
+                if signal or GetTime() >= settleUntil then Note(key, signal) end
             end
         end
     end
@@ -227,6 +235,7 @@ end
 
 ns.On("PLAYER_LOGIN", function()
     loggedIn = true
+    settleUntil = GetTime() + LOGIN_SETTLE
     if ns.char.got then Trim(ns.char.got) end
     QueueScan()
 end)
