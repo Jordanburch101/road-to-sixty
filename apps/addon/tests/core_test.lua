@@ -29,6 +29,7 @@ time = function() return 1000 end
 GetServerTime = function() return 2000 end
 C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "9.9.9" or nil end }
 
+local realPrint = print
 local guid = "Player-1-0A"
 UnitGUID = function() return guid end
 issecretvalue = function(v) return v == "secret" end
@@ -37,6 +38,7 @@ local function Load(saved, db)
     RoadToSixtyDB, RoadToSixtyCharDB = db, saved
     local ns = {}
     assert(loadfile("RoadToSixty/Core.lua"))("RoadToSixty", ns)
+    assert(loadfile("RoadToSixty/Packed.lua"))("RoadToSixty", ns)
     assert(loadfile("RoadToSixty/Tally.lua"))("RoadToSixty", ns)
     script(nil, "ADDON_LOADED", "RoadToSixty")
     return ns
@@ -60,6 +62,10 @@ check(#ns.char.events == 1 and ns.char.kills and ns.char.totals, "an old file ke
 -- 3. Loading again changes nothing more.
 ns = Load(ns.char)
 check(ns.char.clockFrom == 2000, "clockFrom is set once")
+
+-- A file from a newer addon keeps its layout after a rollback (#100).
+ns = Load({ version = 9, events = {} })
+check(ns.char.version == 9, "a newer layout is not relabelled, got " .. tostring(ns.char.version))
 
 -- 4. Each PC gets an ID once, kept with the account's saved variables.
 ns = Load(nil)
@@ -123,6 +129,37 @@ script(nil, "PLAYER_LOGIN")
 check(ns.char.journeyId == "Player-1-0A:0", "a namesake's file starts again for this character: " .. tostring(ns.char.journeyId))
 check(#ns.char.events == 0 and ns.char.totals.kills == 0 and ns.char.version == 4, "with nothing of the old journey")
 check(ns.char.addon == "9.9.9", "and the addon version kept")
+
+-- The old journey is kept in the roster under its GUID (#100), with a word
+-- in chat, when the roster has none: the file came without the account's.
+local printed = {}
+local function Capture(msg) if msg:find("journey saved") then printed[#printed + 1] = msg end end
+print = Capture
+local namesake = { version = 4, journeyId = "Player-1-0C:0", rosterKey = "Ann-Realm One", class = "MAGE", played = 70,
+    lastZone = 1429, segments = { { m = "w", c = 0, t = 500, x = 10, y = 20, d = "5,3,4;5,3,4" } },
+    events = { { 500, "on" }, { 600, "lvl", 0, 0, 0, 7 }, { 700, "off" } }, totals = { kills = 9 } }
+local accountDB = {}
+ns = Load(namesake, accountDB)
+script(nil, "PLAYER_LOGIN")
+print = realPrint
+local kept = accountDB.roster and accountDB.roster["Player-1-0C"]
+check(kept and kept.name == "Ann" and kept.realm == "Realm One" and kept.guid == "Player-1-0C" and kept.class == "MAGE"
+    and kept.level == 7 and kept.seen == 700 and kept.played == 70, "the old journey gets a roster entry of its own")
+check(kept and kept.zone == 1429 and kept.c == 0 and kept.x == 16 and kept.y == 28, "placed where it was last seen")
+check(kept and kept.journey and #kept.journey.events == 3 and kept.journey.totals.kills == 9
+    and kept.journey.journeyId == "Player-1-0C:0", "with the whole journey, stamp and all")
+check(#ns.char.events == 0 and ns.char.journeyId == "Player-1-0A:0", "while this character starts afresh")
+check(#printed == 1 and printed[1]:find("Ann") and printed[1]:find("Characters list"), "and the player is told")
+-- A roster copy already there (that character played on this account) is left as it was.
+printed = {}
+local rosterCopy = { name = "Bea", guid = "Player-1-0D", journey = { events = { { 1, "on" } } } }
+accountDB = { roster = { ["Player-1-0D"] = rosterCopy } }
+ns = Load({ version = 4, journeyId = "Player-1-0D:0", events = { { 500, "on" } } }, accountDB)
+print = Capture
+script(nil, "PLAYER_LOGIN")
+print = realPrint
+check(accountDB.roster["Player-1-0D"] == rosterCopy and #rosterCopy.journey.events == 1, "a roster copy already there stays")
+check(#printed == 1 and printed[1]:find("Bea"), "and the message names it")
 
 -- 12. A GUID the client won't give leaves the file as it is.
 for _, broken in ipairs({ function() error("blocked") end, function() return "secret" end, function() return nil end }) do
