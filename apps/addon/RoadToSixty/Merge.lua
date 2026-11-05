@@ -148,10 +148,9 @@ end
 
 -- What an event is about besides its time and kind, per the spec. Kinds not
 -- listed (on, off, die, grp, grpk, grpx, rare, and kinds from a newer addon)
--- match on time and kind alone. A rare is never keyed by what it is: looting
--- it fills in its NPC ID, and inside an instance its name, minutes after it
--- was logged, so a copy saved before the loot and one after would not match
--- (#100). Two rares in one second come from one PC in one order, and match
+-- match on time and kind alone. A rare is not keyed by its NPC ID: looting
+-- it fills that in minutes after it was logged, so a copy saved before the
+-- loot and one after would not match (#100). Two rares in one second come from one PC in one order, and match
 -- the nth with the nth.
 local function Field6(e) return e[6] end
 local ABOUT = {

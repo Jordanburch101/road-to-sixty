@@ -80,7 +80,7 @@ check(took < 0.5 and #long.events == 100000, ("100,000 events without dungeons t
 local function Place() return true end
 local doubled = {
     events = {
-        { 100, "rare", 0, 0, 0, nil, "rare", 32, nil, "c" },
+        { 100, "rare", 0, 0, 0, "Blind Hunter", "rare", 32, nil, "c" },
         { 100, "loot", 0, 0, 0, "x" },
         { 100, "rare", 0, 0, 0, "Blind Hunter", "rare", 32, 4425, "x" },
         { 100, "rare", 0, 0, 0, "Other", "rareelite", 40, nil, "x" },     -- another rare that second
@@ -101,6 +101,13 @@ local two = { events = {
 } }
 Tidy.Events(two, Place)
 check(#two.events == 2, "two rares of other names in one second stay two")
+-- A nameless one beside a named one of the same level is another rare (review of #109).
+local nameless = { events = {
+    { 300, "rare", 0, 0, 0, "A", "rare", 30, nil, "x" },
+    { 300, "rare", 0, 0, 0, nil, "rare", 30, nil, "c" },
+} }
+Tidy.Events(nameless, Place)
+check(#nameless.events == 2, "a nameless rare beside a named one stays")
 
 if failures == 0 then
     print("Tidy tests passed.")

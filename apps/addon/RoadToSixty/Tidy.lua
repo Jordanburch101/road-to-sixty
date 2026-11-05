@@ -96,12 +96,11 @@ end
 
 -- True when rare event e is a copy of one in rares (the rare events kept
 -- from its second), which then takes whatever e has that it lacks. One kill
--- has one classification and level; its name and NPC ID may be missing
--- from one copy, as looting fills them in later (Rares.lua).
+-- has one name (or none), classification and level; its NPC ID may be
+-- missing from one copy, as looting fills it in later (Rares.lua).
 function Tidy.SameRare(rares, e)
     for _, r in ipairs(rares) do
-        if r[7] == e[7] and r[8] == e[8]
-            and (r[6] == nil or e[6] == nil or r[6] == e[6])
+        if r[6] == e[6] and r[7] == e[7] and r[8] == e[8]
             and (r[9] == nil or e[9] == nil or r[9] == e[9]) then
             for k, v in pairs(e) do
                 if r[k] == nil then r[k] = v end
@@ -127,7 +126,6 @@ function Tidy.Events(journey, isPlace)
     for i = 1, #events do
         local e = events[i]
         local keep = true
-        if rares.t ~= e[1] then rares = { t = e[1] } end
         if e[2] == "zone" then
             keep = isPlace(e[6])
         elseif e[2] == "die" then
@@ -135,6 +133,7 @@ function Tidy.Events(journey, isPlace)
             doubled = doubled + (keep and 0 or 1)
             lastDeath = e[1]
         elseif e[2] == "rare" then
+            if rares.t ~= e[1] then rares = { t = e[1] } end
             keep = not Tidy.SameRare(rares, e)
             if keep then rares[#rares + 1] = e end
         end
