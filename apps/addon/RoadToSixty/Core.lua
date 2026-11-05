@@ -291,13 +291,15 @@ end
 -- the roster under that GUID, so the map's Characters list still shows it.
 -- The roster already has it when that character played on this account
 -- (its copy from its last logout); not when the file came without the
--- account's, copied by hand after a realm transfer, say. Returns its name.
+-- account's, copied by hand after a realm transfer, say. Returns its name,
+-- and whether the Characters list shows it (Roster:Gone).
 local function KeepAside(char, guid)
     local roster = ns.db.roster or {}
     ns.db.roster = roster
     local name, realm = tostring(char.rosterKey or ""):match("^([^%-]+)%-(.+)$")
+    local function Listed(e) return not (ns.Roster and ns.Roster.Gone and ns.Roster:Gone(e)) end
     local entry = roster[guid]
-    if entry and entry.journey then return entry.name or name end
+    if entry and entry.journey then return entry.name or name, Listed(entry) end
     local journey, level, seen = {}, 1, nil
     for k, v in pairs(char) do journey[k] = v end
     for _, e in ipairs(type(char.events) == "table" and char.events or {}) do
@@ -316,7 +318,7 @@ local function KeepAside(char, guid)
         if ok and xs and #xs > 0 then kept.c, kept.x, kept.y = last.c, xs[#xs], ys[#ys] end
     end
     roster[guid] = kept
-    return name
+    return name, Listed(kept)
 end
 
 -- Stamps the journey as this character's, first at login so Sync.lua sees
@@ -331,14 +333,14 @@ ns.On("PLAYER_LOGIN", function()
     if guid then
         local char, stamped = ns.char, StampGUID(ns.char)
         if stamped and stamped ~= guid then
-            local name = KeepAside(char, stamped)
+            local name, listed = KeepAside(char, stamped)
             local addon = char.addon
             wipe(char)
             ApplyDefaults(char, charDefaults)
             char.addon, stamped = addon, nil
             Print(("The journey saved for this character belonged to another character named %s, deleted or moved"
-                .. " from another realm. It is kept in the journey map's Characters list, and this character"
-                .. " starts a new journey."):format(name or "the same"))
+                .. " from another realm. %s, and this character starts a new journey."):format(name or "the same",
+                listed and "It is kept in the journey map's Characters list" or "It stays saved on this PC"))
         end
         if not stamped then char.journeyId = guid .. ":0" end
     end

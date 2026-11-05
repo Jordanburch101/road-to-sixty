@@ -153,6 +153,11 @@ end)
 -- logged in again. They stay saved but are not listed.
 local FOREVER_LAUNCH = 1793815200
 
+-- Whether a roster entry is one of those, left out of the lists.
+function Roster:Gone(e)
+    return ns.Forever and (e.seen or 0) < FOREVER_LAUNCH
+end
+
 -- Every character and synced friend, this one first, then the most recently seen.
 -- Each entry gets its key as entry.key.
 function Roster:Entries()
@@ -160,7 +165,7 @@ function Roster:Entries()
     local roster = ns.db.roster or {}
     for key, e in pairs(roster) do
         e.key = key
-        if not (ns.Forever and key ~= me and (e.seen or 0) < FOREVER_LAUNCH) then
+        if key == me or not self:Gone(e) then
             list[#list + 1] = e
         end
     end

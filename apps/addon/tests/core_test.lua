@@ -160,6 +160,15 @@ script(nil, "PLAYER_LOGIN")
 print = realPrint
 check(accountDB.roster["Player-1-0D"] == rosterCopy and #rosterCopy.journey.events == 1, "a roster copy already there stays")
 check(#printed == 1 and printed[1]:find("Bea"), "and the message names it")
+-- One the Characters list leaves out (a test realm's, on Forever) is not promised there.
+printed = {}
+ns = Load({ version = 4, journeyId = "Player-1-0E:0", events = { { 500, "on" } } }, { roster = {} })
+ns.Roster = { Gone = function() return true end }
+print = Capture
+script(nil, "PLAYER_LOGIN")
+print = realPrint
+check(#printed == 1 and printed[1]:find("stays saved") and not printed[1]:find("Characters list"),
+    "a journey the list hides is not promised in it")
 
 -- 12. A GUID the client won't give leaves the file as it is.
 for _, broken in ipairs({ function() error("blocked") end, function() return "secret" end, function() return nil end }) do
