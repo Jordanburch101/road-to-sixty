@@ -1,6 +1,6 @@
 import type { CheckResponse, UploadResponse } from "@road-to-sixty/api";
 import { and, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
-import { db, lockFiles } from "./db";
+import { db, tryLockFiles } from "./db";
 import { rowId } from "./ids";
 import { pcRoutes } from "./pc";
 import { characters, devices, jobs, versions } from "./schema";
@@ -10,6 +10,8 @@ import { SERVER_FAILED, journeyRow } from "./worker";
 
 const MAX_FIELD = 64;
 const MAX_CHARACTERS = 100;
+// Milliseconds an upload waits for its account's file lock (#112).
+const UPLOAD_LOCK_WAIT = 5000;
 const STAMP = '["journeyId"] = "';
 
 // The journey's stamp the addon saved (Core.lua): null when the file has
@@ -136,7 +138,9 @@ export const sync = pcRoutes()
       const id = await db.transaction(async (tx) => {
         // Stored under the lock, so the clean-up can't delete a file of the
         // same content while this row isn't there yet to keep it (#112).
-        await lockFiles(tx, userId);
+        // Waited for a few seconds only: each waiting upload holds one of
+        // the pool's connections, which every player's requests share.
+        if (!(await tryLockFiles(tx, userId, UPLOAD_LOCK_WAIT))) return null;
         await put(userId, fp, packed);
         // The newer file holds everything the older one did, so this PC's
         // older upload of the character still waiting in the queue is
@@ -191,6 +195,12 @@ export const sync = pcRoutes()
         await tx.insert(jobs).values({ characterId: character.id, versionId: version!.id });
         return version!.id;
       });
+      // Busy: the app sends it again later, as for any 429.
+      if (id === null) {
+        set.status = 429;
+        set.headers["retry-after"] = "60";
+        return { error: "this account's journeys are busy; try again in a minute" };
+      }
       return { version: id, status: "queued" };
     },
     { parse: "none" },

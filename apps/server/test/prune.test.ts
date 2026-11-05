@@ -211,3 +211,17 @@ test("a version whose file is missing answers 410, not 500", async () => {
   expect(r.status).toBe(410);
   expect(((await r.json()) as { error: string }).error).toContain("missing");
 });
+
+test("an upload waits for the account's file lock only a few seconds, then is busy", async () => {
+  const { device, token } = await newDevice("user-1", "Desk");
+  let answer: Response | undefined;
+  await db.transaction(async (tx) => {
+    // A long clean-up holding the lock.
+    await lockFiles(tx, device.userId);
+    answer = await upload(token, savedFile(journey({ events: session(1000) })));
+  });
+  expect(answer!.status).toBe(429);
+  expect(await db.select().from(versions)).toHaveLength(0);
+  // Free again: it goes in.
+  expect((await upload(token, savedFile(journey({ events: session(1000) })))).status).toBe(200);
+}, 15000);

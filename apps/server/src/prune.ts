@@ -60,6 +60,9 @@ export async function prune(mode: "dry" | "on"): Promise<Pruned[]> {
 
 type Row = { id: number; fingerprint: string; rawSize: number; characterId: number; chosen: boolean };
 
+// Files deleted per hold of the account's file lock (see pruneAccount).
+const DELETE_BATCH = 50;
+
 async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[]> {
   const rows: Row[] = (
     await client`
@@ -107,27 +110,44 @@ async function pruneAccount(userId: string, mode: "dry" | "on"): Promise<Pruned[
     });
     // The deletes under the account's file lock (lockFiles) again: a merge
     // or upload storing a file of the same content either added its row
-    // before this reads which files stay, or stores the file again once
-    // the delete is done (#112).
-    await db.transaction(async (tx) => {
-      await lockFiles(tx, userId);
-      // Identical files are stored once, so a file goes only when no
-      // version that stays has it. Read after marking, so a restore that
-      // finished in between is counted.
-      const kept = new Set<string>(
-        (
-          await tx
-            .selectDistinct({ fp: versions.fingerprint })
-            .from(versions)
-            .innerJoin(characters, eq(characters.id, versions.characterId))
-            .where(and(eq(characters.userId, userId), isNull(versions.prunedAt)))
-        ).map((k) => k.fp),
-      );
-      for (const r of chosen) if (!kept.has(r.fingerprint)) files.set(r.fingerprint, r.rawSize);
-      // ponytail: a crash here leaves files no row needs, which is only
-      // storage; a sweep of unreferenced files would find them.
-      for (const fp of files.keys()) await remove(userId, fp);
-    });
+    // before a batch reads which files stay, or stores the file again once
+    // that batch is done (#112). A batch at a time, so the lock, which the
+    // one merge worker waits on, is never held across many storage calls.
+    const candidates = [...new Map(chosen.map((r) => [r.fingerprint, r.rawSize]))];
+    for (let i = 0; i < candidates.length; i += DELETE_BATCH) {
+      const batch = candidates.slice(i, i + DELETE_BATCH);
+      await db.transaction(async (tx) => {
+        await lockFiles(tx, userId);
+        // Identical files are stored once, so a file goes only when no
+        // version that stays has it. Read after marking, so a restore that
+        // finished in between is counted.
+        const kept = new Set<string>(
+          (
+            await tx
+              .selectDistinct({ fp: versions.fingerprint })
+              .from(versions)
+              .innerJoin(characters, eq(characters.id, versions.characterId))
+              .where(
+                and(
+                  eq(characters.userId, userId),
+                  isNull(versions.prunedAt),
+                  inArray(
+                    versions.fingerprint,
+                    batch.map(([fp]) => fp),
+                  ),
+                ),
+              )
+          ).map((k) => k.fp),
+        );
+        for (const [fp, size] of batch) {
+          if (kept.has(fp)) continue;
+          files.set(fp, size);
+          // ponytail: a crash here leaves files no row needs, which is
+          // only storage; a sweep of unreferenced files would find them.
+          await remove(userId, fp);
+        }
+      });
+    }
   }
 
   const byCharacter = new Map<number, Row[]>();

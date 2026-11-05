@@ -20,6 +20,21 @@ export async function lockFiles(tx: Tx, userId: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`files:${userId}`}))`);
 }
 
+// lockFiles, waiting at most `ms`: false when another transaction still
+// holds it then. For requests, which shouldn't sit on a pool connection
+// behind a long clean-up.
+export async function tryLockFiles(tx: Tx, userId: string, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const [row] = (await tx.execute(sql`SELECT pg_try_advisory_xact_lock(hashtext(${`files:${userId}`})) AS got`)) as unknown as {
+      got: boolean;
+    }[];
+    if (row?.got) return true;
+    if (Date.now() >= until) return false;
+    await Bun.sleep(100);
+  }
+}
+
 export function migrateDb() {
   return migrate(db, { migrationsFolder: `${import.meta.dir}/../drizzle` });
 }

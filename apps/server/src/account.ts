@@ -2,7 +2,7 @@ import type { CharacterInfo, DeviceInfo, RestoreResponse, VersionInfo } from "@r
 import { TransactionRollbackError, and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { config } from "./config";
-import { db } from "./db";
+import { db, lockFiles } from "./db";
 import { type Device, pcName } from "./devices";
 import { runWindows } from "./lua";
 import { pcRoutes } from "./pc";
@@ -239,9 +239,6 @@ export const account = pcRoutes()
 
   // Spec 2026-10-15 journeys, "Removing a character". Its files go after its
   // rows, each only when no other version of the account has it.
-  // ponytail: an upload storing the same file for another character at
-  // that moment can lose it, as with the clean-up; its merge fails and the
-  // app sends it again.
   .delete("/characters/:id", async ({ device, params, set }) => {
     const c = await own(device!, params.id);
     if (!c) {
@@ -278,15 +275,21 @@ export const account = pcRoutes()
       set.status = 409;
       return { error: "Its latest upload is being merged; try again in a minute" };
     }
-    for (const fp of files) {
-      const [shared] = await db
-        .select({ id: versions.id })
-        .from(versions)
-        .innerJoin(characters, eq(characters.id, versions.characterId))
-        .where(and(eq(characters.userId, c.userId), eq(versions.fingerprint, fp)))
-        .limit(1);
-      if (!shared) await remove(c.userId, fp);
-    }
+    // Under the account's file lock, as the clean-up deletes: an upload
+    // storing the same file meanwhile either has its row in already, or
+    // stores the file again after this (#112).
+    await db.transaction(async (tx) => {
+      await lockFiles(tx, c.userId);
+      for (const fp of files) {
+        const [shared] = await tx
+          .select({ id: versions.id })
+          .from(versions)
+          .innerJoin(characters, eq(characters.id, versions.characterId))
+          .where(and(eq(characters.userId, c.userId), eq(versions.fingerprint, fp)))
+          .limit(1);
+        if (!shared) await remove(c.userId, fp);
+      }
+    });
     return { ok: true };
   })
 

@@ -44,7 +44,9 @@ export async function getPackedIfThere(userId: string, fp: string): Promise<Uint
   try {
     return new Uint8Array(await file.arrayBuffer());
   } catch (e) {
-    if (!(await file.exists())) return null;
+    // The read's error is the one worth logging, even if the check fails too.
+    const there = await file.exists().catch(() => true);
+    if (!there) return null;
     throw e;
   }
 }
