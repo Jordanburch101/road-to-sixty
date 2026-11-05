@@ -2,7 +2,8 @@
 -- journeys from two computers with different clocks can be merged without
 -- their sessions seeming to overlap (#35). Saved times go through ns.Now(),
 -- and this fails on any time() call in a file the release toc lists, except
--- ns.Now's own fallback in Core.lua. Developer-only files keep time(). Run
+-- ns.Now's own fallback in Core.lua and ns.PCTime, which is never saved.
+-- Developer-only files keep time(). Run
 -- with LuaJIT from the repo root: luajit tests/clock_test.lua
 
 local failures = 0
@@ -28,7 +29,7 @@ for _, name in ipairs(files) do
     local n, inNow = 0, false
     for line in io.lines("RoadToSixty/" .. name) do
         n = n + 1
-        if name == "Core.lua" and line:find("^function ns%.Now%(") then
+        if name == "Core.lua" and (line:find("^function ns%.Now%(") or line:find("^function ns%.PCTime%(")) then
             inNow = true
         elseif inNow and line:find("^end") then
             inNow = false

@@ -190,6 +190,12 @@ function ns.Now()
     return t and t > 0 and t or time()
 end
 
+-- The PC's own clock, only to compare with times the client gives by it
+-- (the death recap's timestamps, Deaths.lua). Never saved: see ns.Now.
+function ns.PCTime()
+    return time()
+end
+
 -- Index of the last entry of times (sorted ascending) that is at or before
 -- t, or 0 if none is. For timelines: values[ns.LastIndex(times, t)]. With
 -- key, entries are tables sorted by entry[key].
