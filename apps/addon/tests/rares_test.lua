@@ -267,6 +267,39 @@ now = now + 0.1
 Rares:Killed("Roogug")
 check(Count() == base + 2 and ns.char.rares["Razorfen Spearhide"] == nil and ns.Tally.Total(ns.char.rares.Roogug[1]) == 2,
     "a rare killed before is counted under its own name")
+-- Two adds of one name (review of #109): the second is no rename, and nothing breaks.
+now = now + 20 * 60
+Target(nil, "rare", 27, nil)
+Rares:Killed("Razorfen Quilguard")
+now = now + 0.5
+units.target = nil
+Fire("PLAYER_TARGET_CHANGED")
+now = now + 0.1
+Rares:Killed("Razorfen Quilguard")
+check(Count() == base + 3 and ns.char.rares["Razorfen Quilguard"], "a second message of the same name keeps the entry")
+-- A rare known by its NPC ID (killed in the open world): counted there.
+ns.char.rares[7354] = { { testpc = 1 }, 1, "Ragglesnout", 7354, "rareelite" }
+now = now + 20 * 60
+Target(nil, "rareelite", 37, nil)
+Rares:Killed("Razorfen Beastmaster")
+now = now + 0.5
+units.target = nil
+Fire("PLAYER_TARGET_CHANGED")
+now = now + 0.1
+Rares:Killed("Ragglesnout")
+check(Count() == base + 3 and ns.char.rares["Razorfen Beastmaster"] == nil and ns.char.rares.Ragglesnout == nil
+    and ns.Tally.Total(ns.char.rares[7354][1]) == 2, "a rare known by its NPC ID is counted under it")
+-- The rare seen dead (UNIT_HEALTH) after its own message: an add a moment on renames nothing.
+now = now + 20 * 60
+Target(nil, "rare", 26, nil)
+Rares:Killed("Death's Head Priest")
+now = now + 0.4
+units.target[5] = true
+Rares:Health("target")
+now = now + 0.1
+Rares:Killed("Razorfen Thornweaver")
+check(Count() == base + 4 and Last()[6] == "Death's Head Priest", "a rare seen dead keeps its own message's name")
+
 if failures > 0 then
     print(("rares_test: %d failure(s)"):format(failures))
     os.exit(1)

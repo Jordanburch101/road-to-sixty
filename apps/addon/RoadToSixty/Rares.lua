@@ -207,30 +207,33 @@ local function Fresh()
     return pending and engaged and GetTime() - pending[2] <= KILL_SECONDS
 end
 
--- Inside an instance, the kill just confirmed from a message that came
--- before its target went: { e = its event, key, at = the message's GetTime(),
--- gone = when the target went }. An add dying to area damage just before the
--- rare gives a message too, and the rare's own can come a moment after its
--- target went (#100); see Killed.
+-- Inside an instance, the kill just confirmed as its target went, from a
+-- message that came before: { e = its event, key, at = the message's
+-- GetTime(), gone = when the target went }. An add dying to area damage just
+-- before the rare gives a message too, and the rare's own can come a moment
+-- after its target went (#100); see Killed. Only a target clearing makes
+-- one: a rare seen dead (UNIT_HEALTH) died then, whatever came after.
 local confirmed
 
-local function Confirm(gone)
+local function Confirm(cleared)
     local name, info, at = pending[1], engaged, pending[2]
     pending, engaged = nil, nil
     local e, key = Record(info, name, "x")
-    gone = gone or GetTime()
-    confirmed = not info.guid and e and at <= gone and { e = e, key = key, at = at, gone = gone } or nil
+    local gone = GetTime()
+    confirmed = cleared and not info.guid and e and { e = e, key = key, at = at, gone = gone } or nil
 end
 
 -- The kill confirmed was this other name's: the message before was an add's.
 local function Rename(c, name)
     local rares, events = ns.char.rares, ns.char.events
     local entry = rares and rares[c.key]
-    if not entry then return end
-    if rares[name] then
-        -- A rare killed before: counted there, and this first kill was none.
+    if not entry or entry[3] == name then return end
+    local known = KnownByName(name)
+    if known then
+        -- A rare killed before (by NPC ID or name): counted there, and this
+        -- first kill was none.
         rares[c.key] = nil
-        ns.Tally.Add(rares[name], 1, ns.pc, 1)
+        ns.Tally.Add(known, 1, ns.pc, 1)
         for i = #events, 1, -1 do
             if events[i] == c.e then table.remove(events, i) break end
         end
@@ -247,7 +250,7 @@ function Rares:Target()
     local info = UnitInfo("target")
     local gone = not info or info.dead
     if Fresh() and gone then
-        Confirm()
+        Confirm(true)
     end
     lost = engaged and not pending and gone and { engaged, GetTime() } or nil
     pending, engaged = nil, nil
@@ -316,9 +319,8 @@ function Rares:Killed(name)
     end
     -- The engaged rare's target went just before its message.
     if not engaged and lost and GetTime() - lost[2] <= KILL_SECONDS then
-        local gone = lost[2]
         engaged, pending, lost = lost[1], { name, GetTime() }, nil
-        Confirm(gone)
+        Confirm()
         return
     end
     if engaged then
