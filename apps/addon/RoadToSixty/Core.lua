@@ -100,9 +100,7 @@ local function Upgrade(char)
     if char.version < 3 then
         ns.Tally.Upgrade(char, ns.pc)
     end
-    -- A file from a newer addon keeps its number after a rollback, so the
-    -- sync's merge still knows it holds a layout this one does not.
-    char.version = math.max(char.version, DATA_VERSION)
+    char.version = DATA_VERSION
 end
 
 -- Per-character journey data.

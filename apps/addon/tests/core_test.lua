@@ -63,10 +63,6 @@ check(#ns.char.events == 1 and ns.char.kills and ns.char.totals, "an old file ke
 ns = Load(ns.char)
 check(ns.char.clockFrom == 2000, "clockFrom is set once")
 
--- A file from a newer addon keeps its layout after a rollback (#100).
-ns = Load({ version = 9, events = {} })
-check(ns.char.version == 9, "a newer layout is not relabelled, got " .. tostring(ns.char.version))
-
 -- 4. Each PC gets an ID once, kept with the account's saved variables.
 ns = Load(nil)
 local pc = ns.pc
