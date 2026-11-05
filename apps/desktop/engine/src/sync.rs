@@ -179,9 +179,11 @@ pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Optio
 /// folder of each game folder here. Journeys are kept in `cache` by version,
 /// so each is downloaded once. A journey that is broken is a problem and the
 /// others are still delivered. One the server couldn't give just now (busy,
-/// or an error page during a deploy) leaves its game's sync folder as it
-/// was, with that character's last version, for the next pass: written
-/// without it, the character was gone from the folder until then (#102).
+/// or a 404 during a deploy: the server never prunes the version `check`
+/// names) leaves its game's sync folder as it was, with that character's
+/// last version, for the next pass: written without it, the character was
+/// gone from the folder until then (#102). Any other answer may last, so it
+/// is a problem the player sees, never a folder left as it was for good.
 pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, report: &mut Report) -> Result<(), ApiError> {
     let check = client.check()?;
     let mut by_game: BTreeMap<&str, Vec<Delivery>> = BTreeMap::new();
@@ -214,10 +216,7 @@ pub fn deliver(client: &Client, pc: &str, games: &[GameFolder], cache: &Path, re
                 });
             }
             Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
-            Err(ApiError::Busy) => {
-                later.insert(&entry.game);
-            }
-            Err(ApiError::Status(code, _)) if code != 0 && code != 200 => {
+            Err(ApiError::Busy | ApiError::Status(404, _)) => {
                 later.insert(&entry.game);
             }
             Err(e) => report.problems.push(Problem { who, why: e.to_string() }),
@@ -808,6 +807,31 @@ mod tests {
         deliver_once(&both, std::slice::from_ref(&game), &cache);
         let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
         assert!(data.contains("version = 11,") && data.contains("version = 12,"), "{data}");
+    }
+
+    #[test]
+    fn an_answer_that_may_last_is_a_problem_not_a_folder_left_for_good() {
+        // A 403 from a proxy, say: shown, and the others still go in (#111 review).
+        let (dir, game) = game();
+        let ann = "{[\"ann\"]=1,}";
+        let print = fingerprint(ann.as_bytes());
+        let fake = fake::serve(move |_, url| {
+            if url == "/v1/check" {
+                let list = format!(
+                    r#"{{"characters":[{{"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":9,"fingerprint":"{print}","replace":false,"updateAddon":false}},{{"game":"_classic_beta_","realm":"Test Realm","name":"Bob","version":10,"fingerprint":"x","replace":false,"updateAddon":false}}]}}"#
+                );
+                return (200, list.into_bytes());
+            }
+            match url {
+                "/v1/versions/9" => (200, zstd::encode_all(ann.as_bytes(), 3).unwrap()),
+                _ => (403, b"forbidden".to_vec()),
+            }
+        });
+        let report = deliver_once(&fake, std::slice::from_ref(&game), &dir.path().join("journeys"));
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        assert_eq!(report.problems[0].who, "Bob-Test Realm");
+        let data = fs::read_to_string(sync_folder(&game.path).join("data.lua")).unwrap();
+        assert!(data.contains("Ann-Test Realm") && !data.contains("Bob-Test Realm"), "{data}");
     }
 
     #[test]

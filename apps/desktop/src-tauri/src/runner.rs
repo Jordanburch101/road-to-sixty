@@ -138,10 +138,12 @@ impl Runner {
                 state
             }
             // Not readable now (an antivirus or backup program holding it):
-            // nothing changes, and the 30-second ticker tries again (#102).
+            // nothing changes, and the 30-second ticker tries again, since
+            // nothing is running (#102). Not an Err: the app's setup would
+            // stop on it, and callers show an Err's words, path and all.
             Err(e) if e.kind() != std::io::ErrorKind::InvalidData => {
                 self.notifier.update(|s| s.problems = vec![UNREADABLE.into()]);
-                return Err(format!("couldn't read {}: {e}", self.state_path.display()));
+                return Ok(());
             }
             // Without its state the app can't tell which uploads went up or
             // which PC it is, so it starts over: kept aside to look at, and
@@ -235,7 +237,12 @@ impl Runner {
     pub fn linked(&mut self, linked: LinkResponse) -> Result<(), String> {
         self.stop();
         self.refused.store(false, Ordering::Relaxed);
-        let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        // A damaged file is replaced: linking starts afresh anyway.
+        let mut state = match load_for_action(&self.state_path) {
+            Ok(state) => state,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => State::default(),
+            Err(_) => return Err(BUSY_SETTINGS.into()),
+        };
         state.pc = Some(linked.pc);
         state.battletag = Some(linked.battletag);
         state.uploaded.clear();
@@ -256,16 +263,23 @@ impl Runner {
     pub fn unlink(&mut self) -> Result<(), String> {
         self.stop();
         self.refused.store(false, Ordering::Relaxed);
+        // Read once, before anything changes: a file held for a moment must
+        // neither skip the revoke nor lose the picked folders (#111 review).
+        // A damaged state file is replaced: unlinking is how to start fresh.
+        let old = match load_for_action(&self.state_path) {
+            Ok(state) => state,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => State::default(),
+            Err(_) => return Err(BUSY_SETTINGS.into()),
+        };
         // Revoked on the server first, so the token stops working there too.
         // Offline, this PC still unlinks; the player can remove it from
         // another PC's list.
-        if let (Some(token), Ok(State { pc: Some(pc), .. })) = (self.tokens.get(), State::load(&self.state_path)) {
+        if let (Some(token), Some(pc)) = (self.tokens.get(), &old.pc) {
             let _ = Client::new(&self.server, Some(token)).account("DELETE", &format!("/v1/devices/{pc}"), None);
         }
         self.tokens.clear()?;
         let _ = fs::remove_dir_all(&self.cache);
-        // A damaged state file is replaced: unlinking is how to start fresh.
-        let picked = State::load(&self.state_path).map(|s| s.picked).unwrap_or_default();
+        let picked = old.picked;
         State {
             picked,
             ..State::default()
@@ -283,7 +297,11 @@ impl Runner {
 
     pub fn add_folder(&mut self, path: PathBuf) -> Result<(), String> {
         self.stop();
-        let mut state = State::load(&self.state_path).map_err(|e| e.to_string())?;
+        let mut state = match load_for_action(&self.state_path) {
+            Ok(state) => state,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Err(e.to_string()),
+            Err(_) => return Err(BUSY_SETTINGS.into()),
+        };
         if !state.picked.contains(&path) {
             state.picked.push(path.clone());
             state.save(&self.state_path).map_err(|e| e.to_string())?;
@@ -317,6 +335,24 @@ impl Runner {
 
 /// Said while state.json can't be read, until it can.
 const UNREADABLE: &str = "Couldn't read the app's settings just now. Trying again.";
+/// Said when the player's action couldn't read state.json, after a few tries.
+const BUSY_SETTINGS: &str = "Couldn't read the app's settings just now. Try again in a moment.";
+
+/// state.json for something the player did (link, unlink, add a folder),
+/// read again for up to a second while another program holds it. Those run
+/// on threads of their own, so the wait holds up nothing.
+fn load_for_action(path: &Path) -> std::io::Result<State> {
+    let mut tries = 0;
+    loop {
+        match State::load(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::InvalidData && tries < 4 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            result => return result,
+        }
+    }
+}
 
 fn shown(games: &[GameFolder]) -> Vec<Game> {
     games
@@ -673,14 +709,16 @@ mod tests {
         let state = t.dir.path().join("data/state.json");
         std::fs::remove_file(&state).unwrap();
         std::fs::create_dir(&state).unwrap();
-        assert!(t.runner.start().is_err());
-        assert!(
-            t.notifier.get().problems[0].contains("Trying again"),
-            "{:?}",
-            t.notifier.get().problems
-        );
+        // Ok, not an Err: the app's setup would stop on an Err (#111 review).
+        assert!(t.runner.start().is_ok());
+        assert!(!t.runner.is_running());
+        assert_eq!(t.notifier.get().problems, [UNREADABLE], "the plain note, no path");
         assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "still linked");
         assert!(!t.dir.path().join("data/state.json.damaged").exists(), "nothing moved aside");
+        // Unlinking now changes nothing either: no lost folders, no skipped revoke.
+        assert_eq!(t.runner.unlink(), Err(BUSY_SETTINGS.to_string()));
+        assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "still linked after a refused unlink");
+        assert!(state.is_dir(), "nothing saved over it");
         // Readable again: the ticker's next look starts it, and the note goes.
         std::fs::remove_dir(&state).unwrap();
         State {
