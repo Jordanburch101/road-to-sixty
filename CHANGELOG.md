@@ -6,7 +6,7 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
-## 1.19.6
+## 1.20.0
 
 ### Fixed
 - The last few steps before logging out, a hearthstone, a loading screen
