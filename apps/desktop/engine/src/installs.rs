@@ -64,12 +64,19 @@ pub fn installs_in_product_db(bytes: &[u8]) -> Vec<PathBuf> {
                 (rest.starts_with(":/") && !rest.starts_with("://")) || rest.starts_with(":\\")
             })
             .map(|(i, _)| i);
-        let Some(start) = drive.or_else(|| text.find('/')) else { continue };
-        // No install path starts with two slashes, but a web address's text
-        // does (https://...), and on Windows `//host/...` is a network share
-        // that checking for a folder would go out and ask (#102).
-        if drive.is_none() && text[start..].starts_with("//") {
+        let Some(mut start) = drive.or_else(|| text.find('/')) else {
             continue;
+        };
+        if drive.is_none() && text[start..].starts_with("//") {
+            // A web address (https://...) is no install, and on Windows
+            // `//host/...` is a network share that checking for a folder
+            // would go out and ask (#102).
+            if text[..start].ends_with(':') {
+                continue;
+            }
+            // Otherwise the length byte before a 47-byte path is itself a
+            // `/` (0x2f): the path starts one on (#111 review).
+            start += 1;
         }
         let path = PathBuf::from(text[start..].trim_end_matches('\u{FFFD}'));
         if !found.contains(&path) {
@@ -335,6 +342,12 @@ mod tests {
         let found_real = installs_in_product_db(&real);
         assert_eq!(found_real.len(), 4, "{found_real:?}");
         assert_eq!(found_real[3], PathBuf::from("D:/Games/World of Warcraft"));
+        // A 47-byte Mac path: its length byte 0x2f reads as a slash (#111 review).
+        let path = "/Users/jordan/Games/World of Warcraft/_classic_";
+        assert_eq!(path.len(), 47);
+        let mut slash = b"\x0a\x2f".to_vec();
+        slash.extend(path.as_bytes());
+        assert_eq!(installs_in_product_db(&slash), [PathBuf::from(path)]);
         let found = installs_in_product_db(&bytes);
         assert_eq!(
             found,
