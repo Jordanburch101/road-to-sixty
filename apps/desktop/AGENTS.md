@@ -57,8 +57,10 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   saved state and start it again, and every change to the status goes
   through its `Notifier`. While nothing syncs (not linked, no WoW yet, the
   thread stopped) the 30-second ticker calls `rescan`, which starts it
-  again; a damaged `state.json` is moved aside to `state.json.damaged` and
-  the app starts over unlinked, saying so, so the player can link again. Problems that name a character show on its row and
+  again; a damaged `state.json` (not JSON: `State::load`'s `InvalidData`) is moved aside to `state.json.damaged` and
+  the app starts over unlinked, saying so, so the player can link again.
+  One that can't be read just now (an antivirus or backup program holding
+  it) changes nothing: the app says so and the ticker tries again (#102). Problems that name a character show on its row and
   count in the tray line ("2 characters not backed up"). `src/status.rs` words the tray line and each
   character's note from the engine's reports, as plain tested functions.
   `src/tray.rs` is the menu bar or tray icon (a left click opens the window, a right click the menu), `src/window.rs` opens the window under it with tauri-plugin-positioner and hides it when it loses focus, except while one of our dialogs is open or a link waits on the browser (so dialogs run from Rust, through `window::holding`, and confirmations are inline in the window), `src/commands.rs` is what the

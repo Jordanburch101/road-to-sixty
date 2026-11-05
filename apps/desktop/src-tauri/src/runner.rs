@@ -2,6 +2,7 @@
 //! tray and window show. Linking, pausing, adding a game folder and
 //! unlinking stop the thread, change the saved state, and start it again.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -132,7 +133,16 @@ impl Runner {
     pub fn start(&mut self) -> Result<(), String> {
         self.stop();
         let state = match State::load(&self.state_path) {
-            Ok(state) => state,
+            Ok(state) => {
+                self.notifier.update(|s| s.problems.retain(|p| p != UNREADABLE));
+                state
+            }
+            // Not readable now (an antivirus or backup program holding it):
+            // nothing changes, and the 30-second ticker tries again (#102).
+            Err(e) if e.kind() != std::io::ErrorKind::InvalidData => {
+                self.notifier.update(|s| s.problems = vec![UNREADABLE.into()]);
+                return Err(format!("couldn't read {}: {e}", self.state_path.display()));
+            }
             // Without its state the app can't tell which uploads went up or
             // which PC it is, so it starts over: kept aside to look at, and
             // the player links again, which the first run's steps offer.
@@ -305,6 +315,9 @@ impl Runner {
     }
 }
 
+/// Said while state.json can't be read, until it can.
+const UNREADABLE: &str = "Couldn't read the app's settings just now. Trying again.";
+
 fn shown(games: &[GameFolder]) -> Vec<Game> {
     games
         .iter()
@@ -322,9 +335,34 @@ pub fn local_keys(games: &[GameFolder]) -> Vec<String> {
     games
         .iter()
         .flat_map(installs::saved_files)
-        .filter_map(|f| fs::read(&f.path).ok().as_deref().and_then(sync::roster_key))
+        .filter_map(|f| key_of(&f.path))
         .map(|(name, realm)| format!("{name}-{realm}"))
         .collect()
+}
+
+/// A saved file's size and change time.
+type Stamp = (u64, Option<SystemTime>);
+/// The rosterKey's name and realm.
+type Key = Option<(String, String)>;
+
+/// The name and realm in a saved file's rosterKey, read again only when the
+/// file's size or change time differ from the last read. Characters are
+/// listed every 30 seconds and after every pass, and a journey at 60 is
+/// megabytes, so reading every file whole each time cost a laptop's battery
+/// (#102). A failed read isn't kept: the game may only be writing it.
+fn key_of(path: &Path) -> Key {
+    static KEYS: Mutex<BTreeMap<PathBuf, (Stamp, Key)>> = Mutex::new(BTreeMap::new());
+    let meta = fs::metadata(path).ok()?;
+    let stamp = (meta.len(), meta.modified().ok());
+    let mut keys = KEYS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((seen, key)) = keys.get(path)
+        && *seen == stamp
+    {
+        return key.clone();
+    }
+    let key = sync::roster_key(&fs::read(path).ok()?);
+    keys.insert(path.to_path_buf(), (stamp, key.clone()));
+    key
 }
 
 #[cfg(test)]
@@ -625,6 +663,50 @@ mod tests {
         assert!(State::load(&t.dir.path().join("data/state.json")).is_ok());
         assert!(t.dir.path().join("data/state.json.damaged").exists(), "kept to look at");
         assert_eq!(t.tokens.get(), None);
+    }
+
+    #[test]
+    fn a_settings_file_that_cant_be_read_just_now_keeps_the_link() {
+        // An antivirus or backup program holding it: here, a folder in its
+        // place, which can't be read but isn't bad JSON either (#102).
+        let mut t = setup(true);
+        let state = t.dir.path().join("data/state.json");
+        std::fs::remove_file(&state).unwrap();
+        std::fs::create_dir(&state).unwrap();
+        assert!(t.runner.start().is_err());
+        assert!(
+            t.notifier.get().problems[0].contains("Trying again"),
+            "{:?}",
+            t.notifier.get().problems
+        );
+        assert_eq!(t.tokens.get().as_deref(), Some("pc-token"), "still linked");
+        assert!(!t.dir.path().join("data/state.json.damaged").exists(), "nothing moved aside");
+        // Readable again: the ticker's next look starts it, and the note goes.
+        std::fs::remove_dir(&state).unwrap();
+        State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        }
+        .save(&state)
+        .unwrap();
+        assert!(t.runner.rescan().is_ok());
+        assert!(t.runner.is_running());
+        assert!(!t.notifier.get().problems.iter().any(|p| p.contains("Trying again")));
+        t.runner.stop();
+    }
+
+    #[test]
+    fn a_saved_file_is_read_again_only_when_it_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("RoadToSixty.lua");
+        std::fs::write(&file, FILE).unwrap();
+        assert_eq!(key_of(&file), Some(("Ann".into(), "Test Realm".into())));
+        // Another character's file of another size: read again.
+        std::fs::write(&file, FILE.replace("Ann-Test Realm", "Bobby-Test Realm")).unwrap();
+        assert_eq!(key_of(&file), Some(("Bobby".into(), "Test Realm".into())));
+        // Gone: nothing, and nothing kept.
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(key_of(&file), None);
     }
 
     #[test]
