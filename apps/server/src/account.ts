@@ -182,7 +182,10 @@ export const account = pcRoutes()
       }
       // A current version whose file is missing doesn't stop the restore,
       // which is the player's way out of it (#114): what it took out is
-      // worked out from the newest version still there, or is nothing.
+      // worked out from the nearest version the head was made from whose
+      // file is there, or is nothing. Play only the lost file held can't be
+      // seen, so a PC that hasn't taken the restore in yet may bring it
+      // back with its upload: the one way that play comes back at all.
       const [current] = await db.select().from(versions).where(eq(versions.id, c.headVersionId!));
       const from = await readableHead(c.userId, current!);
       const removed = from ? await runWindows(from.journey, unpack(packed)) : [];

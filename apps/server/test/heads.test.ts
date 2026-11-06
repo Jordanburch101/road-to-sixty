@@ -9,7 +9,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { checkHeads } from "../src/heads";
 import { prune } from "../src/prune";
-import { characters, versionParents, versions } from "../src/schema";
+import { characters, jobs, versionParents, versions } from "../src/schema";
+import * as storage from "../src/storage";
 import { remove, unpack } from "../src/storage";
 import { call, journey, newDevice, reset, savedFile, session, sessions, stored, upload, workAll } from "./helpers";
 
@@ -67,6 +68,67 @@ test("an upload onto a head whose file is missing merges onto the newest version
   expect(sessions((await download(desk.token, (await character()).headVersionId!)).text)).toBe(4);
 });
 
+test("building on an earlier version follows what the head was made from, so a restore's removed play stays out", async () => {
+  spyOn(console, "error").mockImplementation(() => {});
+  const desk = await newDevice("user-1", "Desk");
+  const made: number[] = [];
+  for (const events of [session(1000), [...session(1000), ...session(3000)], [...session(1000), ...session(3000), ...session(5000)]]) {
+    await upload(desk.token, savedFile(journey({ events })));
+    await workAll();
+    made.push((await character()).headVersionId!);
+  }
+  const [first, second] = made;
+  const c = await character();
+  // Back to the second version, taking 5000 out. Its file is the second's.
+  const r = await call(desk.token, `/v1/characters/${c.id}/restore`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ version: second }),
+  });
+  const { version: restored } = (await r.json()) as RestoreResponse;
+  await remove(desk.device.userId, (await version(restored)).fingerprint);
+
+  // The third version is newer and still there, but the restore replaced
+  // it: the merge builds on the first, which the restore holds.
+  const laptop = await newDevice("user-1", "Laptop");
+  await upload(laptop.token, savedFile(journey({ events: session(9000) })), { received: String(restored) });
+  await workAll();
+  const head = (await character()).headVersionId!;
+  const parents = await db.select().from(versionParents).where(eq(versionParents.versionId, head));
+  expect(parents.map((p) => p.parentId)).toContain(first!);
+  const { text } = await download(desk.token, head);
+  expect(text).toContain("9000");
+  expect(text).not.toContain("5000");
+});
+
+test("storage failing is not a missing file: the merge waits and tries again, and the head stays", async () => {
+  const { desk, head } = await twoVersions();
+  spyOn(storage, "getPackedIfThere").mockImplementation(async () => {
+    throw new Error("storage is down");
+  });
+  await upload(desk.token, savedFile(journey({ events: [...session(1000), ...session(5000), ...session(9000)] })));
+  await workAll();
+  expect((await character()).headVersionId).toBe(head.id);
+  const [job] = await db.select().from(jobs).where(eq(jobs.state, "queued"));
+  expect(job!.error).toContain("storage is down");
+});
+
+test("a stamped upload with nothing of the pre-stamp journey left to compare goes to its own row", async () => {
+  spyOn(console, "error").mockImplementation(() => {});
+  const desk = await newDevice("user-1", "Desk");
+  await upload(desk.token, savedFile(journey({ events: session(1000) })));
+  await workAll();
+  const old = await character();
+  await remove(desk.device.userId, (await version(old.headVersionId!)).fingerprint);
+  await upload(desk.token, savedFile(journey({ journeyId: "stamp-b", events: session(9000) })));
+  await workAll();
+  const rows = await db.select().from(characters).orderBy(characters.id);
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toMatchObject({ id: old.id, journey: null, headVersionId: old.headVersionId });
+  expect(rows[1]!.journey).toBe("stamp-b");
+  expect(sessions((await download(desk.token, rows[1]!.headVersionId!)).text)).toBe(1);
+});
+
 test("with no version's file left, an upload is merged alone and the character works again", async () => {
   spyOn(console, "error").mockImplementation(() => {});
   const desk = await newDevice("user-1", "Desk");
@@ -97,8 +159,8 @@ test("a head whose file is missing can still be restored away from", async () =>
   const { version: made } = (await r.json()) as RestoreResponse;
   const history = await json<VersionInfo[]>(call(desk.token, `/v1/characters/${c!.id}/versions`));
   expect(history[0]).toMatchObject({ id: made, kind: "restore", current: true, restoredFrom: { id: first.id } });
-  // Worked out from the newest version still there, the first itself, so
-  // nothing is taken out.
+  // Worked out from the nearest version the head was made from whose file
+  // is there, the first itself, so nothing is taken out.
   expect(JSON.parse((await version(made)).removed!)).toEqual([]);
   expect((await download(desk.token, made)).status).toBe(200);
 });

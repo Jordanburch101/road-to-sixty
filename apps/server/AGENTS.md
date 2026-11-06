@@ -130,8 +130,12 @@ bun run dev               # port 3000, with .env copied from .env.example
   version whose file is missing anyway answers 410, so the app shows it on
   that character and still delivers the others.
 - A head whose file is missing never stops a character (#114): the merge
-  and the restore build on the newest earlier version whose file is there
-  (`readableHead`, `src/heads.ts`), or merge the upload alone; the export
+  and the restore build on the nearest version the head was made from
+  whose file is there (`readableHead`, `src/heads.ts`), or merge the upload
+  alone. It walks the parents, never by age: the newest earlier version
+  may be one a restore replaced, and building on it brings back what the
+  restore took out. A stamped upload on a pre-stamp row with nothing left
+  to compare goes to its own row. The export
   leaves that character out and names it in `Missing.txt`; restoring a
   version whose file is missing answers 410. The daily clean-up logs each
   missing head (`checkHeads`), in a dry run too. Read a head's file through
