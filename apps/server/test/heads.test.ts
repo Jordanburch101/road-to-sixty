@@ -120,12 +120,12 @@ test("a stamped upload with nothing of the pre-stamp journey left to compare goe
   await workAll();
   const old = await character();
   await remove(desk.device.userId, (await version(old.headVersionId!)).fingerprint);
-  await upload(desk.token, savedFile(journey({ journeyId: "stamp-b", events: session(9000) })));
+  await upload(desk.token, savedFile(journey({ journeyId: "b:1700000000", events: session(9000) })));
   await workAll();
   const rows = await db.select().from(characters).orderBy(characters.id);
   expect(rows).toHaveLength(2);
   expect(rows[0]).toMatchObject({ id: old.id, journey: null, headVersionId: old.headVersionId });
-  expect(rows[1]!.journey).toBe("stamp-b");
+  expect(rows[1]!.journey).toBe("b:1700000000");
   expect(sessions((await download(desk.token, rows[1]!.headVersionId!)).text)).toBe(1);
 });
 
