@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { client, db, lockFiles } from "./db";
+import { readableHead } from "./heads";
 import { LIMITS, runMerge, runSame, type Window } from "./lua";
 import { characters, devices, jobs, versionParents, versions } from "./schema";
 import { MAX_RAW, fingerprint, get, pack, put, remove } from "./storage";
@@ -83,6 +84,10 @@ async function settle(job: Job, upload: Version, status: "accepted" | "rejected"
   });
 }
 
+// Whether a stamped upload continues the journey it was queued against;
+// never when none of that journey is left to compare.
+const sameAs = async (base: { journey: Uint8Array } | null, upload: Uint8Array) => base !== null && (await runSame(base.journey, upload));
+
 // Merges one upload into its character's journey (spec, "Merge jobs").
 async function runJob(job: Job) {
   const [upload] = await db.select().from(versions).where(eq(versions.id, job.versionId));
@@ -91,6 +96,16 @@ async function runJob(job: Job) {
   const [head] = character.headVersionId
     ? await db.select().from(versions).where(eq(versions.id, character.headVersionId))
     : [];
+  // The head's journey, or an earlier one when its file is missing (#114),
+  // and the upload's, each read once and only when needed: an upload set
+  // aside below reads neither.
+  let base: Awaited<ReturnType<typeof readableHead>> | undefined;
+  const getBase = async () => {
+    if (base === undefined) base = head ? await readableHead(character.userId, head) : null;
+    return base;
+  };
+  let mine: Uint8Array | undefined;
+  const getMine = async () => (mine ??= await get(character.userId, upload.fingerprint));
 
   // A stamped upload queued against a journey from before stamps joins it
   // only if it continues it; otherwise (a namesake remade before the old
@@ -111,9 +126,9 @@ async function runJob(job: Job) {
           eq(characters.journey, upload.journey),
         ),
       );
-    const apart =
-      own !== undefined ||
-      (head !== undefined && !(await runSame(await get(character.userId, head.fingerprint), await get(character.userId, upload.fingerprint))));
+    // With no journey left to compare it with, it goes to its own row too:
+    // two journeys are never mixed on a guess.
+    const apart = own !== undefined || (head !== undefined && !(await sameAs(await getBase(), await getMine())));
     if (apart) {
       const row = own ?? (await journeyRow(character.userId, character.game, character.realm, character.name, upload.journey));
       await db.transaction(async (tx) => {
@@ -141,12 +156,8 @@ async function runJob(job: Job) {
   }
   const windows: Window[] = stale ? restores.flatMap((r) => JSON.parse(r.removed!) as Window[]) : [];
 
-  const result = await runMerge(
-    await get(character.userId, upload.fingerprint),
-    head ? await get(character.userId, head.fingerprint) : null,
-    upload.deviceId ?? "server",
-    windows,
-  );
+  const on = await getBase();
+  const result = await runMerge(await getMine(), on?.journey ?? null, upload.deviceId ?? "server", windows);
   if (!result.ok) return settle(job, upload, "rejected", result.reason);
   // Never lowered: an alt's file untouched since an older addon is still
   // in its old layout.
@@ -161,7 +172,9 @@ async function runJob(job: Job) {
   // this character would fail on it.
   if (result.journey.length > MAX_RAW) return settle(job, upload, "rejected", "the merged journey would be too big to store");
   const fp = fingerprint(result.journey);
-  if (head && fp === head.fingerprint) return settle(job, upload, "accepted"); // nothing new in it
+  // Nothing new in it. A head whose file was missing always gets a new
+  // version, which stores the file again.
+  if (head && on?.id === head.id && fp === head.fingerprint) return settle(job, upload, "accepted");
   try {
     await db.transaction(async (tx) => {
       // Stored under the lock, with the row that keeps it: put skips a file
@@ -183,7 +196,7 @@ async function runJob(job: Job) {
         .returning({ id: versions.id });
       await tx
         .insert(versionParents)
-        .values([upload.id, ...(head ? [head.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
+        .values([upload.id, ...(on ? [on.id] : [])].map((parentId) => ({ versionId: merged!.id, parentId })));
       const updated = await tx
         .update(characters)
         .set({
