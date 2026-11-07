@@ -149,17 +149,22 @@ mod tests {
         ];
         write(game.path(), "pc-1", &d).unwrap();
         let data = sync_folder(game.path()).join("data.lua");
+        // To a binary file, not stdout: on Windows stdout turns each \n into
+        // \r\n, which isn't what the journey holds.
+        let read_back = game.path().join("read-back.txt");
         let script = format!(
             "dofile({}) local e = RoadToSixtySync.chars['Zo\\195\\171-Test Realm'] \
-             io.write(RoadToSixtySync.pc, '|', e.version, '|', tostring(e.restore), '|', e.journey, '|', \
-             tostring(RoadToSixtySync.chars['Ann-Test Realm'].restore))",
-            lua_quote(&data.to_string_lossy())
+             local f = assert(io.open({}, 'wb')) \
+             f:write(RoadToSixtySync.pc, '|', e.version, '|', tostring(e.restore), '|', e.journey, '|', \
+             tostring(RoadToSixtySync.chars['Ann-Test Realm'].restore)) f:close()",
+            lua_quote(&data.to_string_lossy()),
+            lua_quote(&read_back.to_string_lossy())
         );
         let out = Command::new("luajit")
             .args(["-e", &script])
             .output()
             .expect("luajit must be on the path");
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        assert_eq!(out.stdout, format!("pc-1|7|6|{TRICKY}|nil").into_bytes());
+        assert_eq!(fs::read(&read_back).unwrap(), format!("pc-1|7|6|{TRICKY}|nil").into_bytes());
     }
 }
