@@ -17,7 +17,7 @@ broken and now works. Leave out internal changes. Sections are
   numbers that can't be real, could break the map, History or the Stats
   screen. It is now refused.
 - After a friend played on a second PC, the next sync could put part of
-  their journey in the wrong place. It now brings the whole journey again.
+  their journey in the wrong place. It now fetches that part again.
 - An automatic sync hides more of the "No player named" lines for friends
   who are offline.
 
