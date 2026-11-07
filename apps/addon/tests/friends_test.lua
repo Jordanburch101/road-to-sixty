@@ -385,11 +385,35 @@ for name, bad in pairs({
     left_level = { ef = nextEvent, e = { { 1, "grpl", 0, 1, 1, "Player-1-0001", "x" } } },
     group_end = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1 } } },
     group_end_counts = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { duration = 5 } } } },
-    group_end_levels = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, levels = 5 } } } },
+    group_end_levels = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, levels = { x = "y" } } } } },
     pvp_teams = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
-        levels = 0, pvp = { teams = { 1 } } } } } },
+        levels = 0, items = {}, pvp = { teams = { 1 } } } } } },
     pvp_stat = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
-        levels = 0, pvp = { stats = { { nil, 3 } } } } } } },
+        levels = 0, items = {}, pvp = { stats = { { nil, 3 } } } } } } },
+    run_items = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0 } } } },
+    no_profession = { ef = nextEvent, e = { { 1, "prof", 0, 1, 1 } } },
+    no_gather_item = { ef = nextEvent, e = { { 1, "gath", 0, 1, 1, "m" } } },
+    tabard_colour = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = 1, border = 1 } } } },
+    guild_tabard = { m = { guild = { "Pals", "Member", 1, { bg = 1, border = 1 } } } },
+    tabard_colour_text = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = { "red" }, border = { 1 } } } } },
+    skill_key = { m = { skills = { [1] = { 5 }, Mining = { 5 } } } },
+    snapshot_skill_key = { m = { levels = { [3] = { skills = { [1] = { 5 }, Mining = { 5 } } } } } },
+    loot_not_a_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, "junk|Hitem:1" } } },
+    -- Times and levels the screens step through: past these they would never finish.
+    far_time = { ef = nextEvent, e = { { 1e15, "zone", 0, 1, 1, 12 } } },
+    far_past = { ef = nextEvent, e = { { -1e15, "zone", 0, 1, 1, 12 } } },
+    far_start = { s = { { i = 3, m = "w", c = 0, t = 1e15, x = 1, y = 1, d = "" } } },
+    far_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "9999999999,1,1;9999999999,1,1;9999999999,1,1" } } },
+    far_step_on = { s = { { i = 1, o = #firstPath, d = "9999999999,1,1;9999999999,1,1;" } } },
+    long_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = string.rep("9", 400) .. ",1,1" } } },
+    long_position = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "1," .. string.rep("9", 400) .. ",1" } } },
+    far_snapshot = { m = { levels = { [3] = { t = 1e15 } } } },
+    far_last_kill = { m = { kills = { d = "", last = 1e15, names = {} } } },
+    far_kill = { m = { kills = { d = "1785000000,1,1;9999999999,1,1;", last = 1, names = {} } } },
+    long_kill = { m = { kills = { d = string.rep("9", 400) .. ",1,1;", last = 1, names = {} } } },
+    high_level_key = { m = { levels = { [1e15] = { t = 1 } } } },
+    high_level = { ef = nextEvent, e = { { 1, "lvl", 0, 1, 1, 1e15 } } },
+    high_login_level = { ef = nextEvent, e = { { 1, "on", 0, 1, 1, 1e15 } } },
     -- A level's snapshot and rows of the fields beside the events.
     snapshot_time = { m = { levels = { [3] = { t = "soon" } } } },
     snapshot_count = { m = { levels = { [3] = { kills = "many" } } } },
@@ -426,8 +450,17 @@ do
         { 1, "grpk", 0, 1, 1, "raid" },
         { 1, "grpx", 0, 1, 1, { duration = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0, met = 1,
             levels = { ["Player-1-0001"] = 12 } } },
-        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, type = "pvp",
+        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, type = "pvp",
             pvp = { won = true, teams = { 1, 2 }, kb = 1, stats = { { "Flags", 1 } }, rep = { Frostwolf = 5 } } } },
+        { 1, "prof", 0, 1, 1, "Mining", 1, 75 },
+        { 1, "gath", 0, 1, 1, "f", 6303 },
+        { 1, "gj", 0, 1, 1, "Pals", "Member", true, { files = { 1, 2 }, emblem = 3, style = 2, bg = { 1, 0, 0 }, border = { 0, 0, 1 } } },
+        { 1, "loot", 0, 1, 1, "|cnIQ2:|Hitem:2:0|h[Sword]|h|r", 2 },
+        -- A field a newer version adds may be a table where this version has letters.
+        { 1, "grpa", 0, 1, 1, { "Player-1-0001", [20] = { 1 } } },
+        { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, later = { 1 } } },
+        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, later = { 1 },
+            pvp = { later = { 1 } } } },
     } })
     check(after:find("^Last synced"), "real shapes refused: " .. after)
     for i = #stored.events, heldEvents + 1, -1 do stored.events[i] = nil end
@@ -448,6 +481,19 @@ do
     check(rec.journey == stored, "dropped the journey before the new one came")
     check(Deliver(base):find("did not fit"), "a second print that doesn't match wasn't refused: " .. status(rec))
     check(#asked == 2, "asked a third time")
+    -- Events alone: the path stays, and only the events are asked for again.
+    local held = {}
+    for i, e in ipairs(stored.events) do held[i] = e end
+    local heldSize = rec.size
+    asked = {}
+    F:Sync("Bromm")
+    local segments = #stored.segments
+    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }) == "Asking...", "events that don't match weren't asked again")
+    check(#asked == 2 and asked[2]:find(("^Q:%%x+:1:4:%d:%%d+:0:"):format(segments)), "not asked for the events alone: " .. tostring(asked[2]))
+    check(#stored.events == 0 and rec.journey == stored and #stored.segments == segments, "not ready for the events again")
+    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }):find("did not fit"), "a second mismatch wasn't refused")
+    for i, e in ipairs(held) do stored.events[i] = e end
+    rec.size = heldSize
     b.mute, z.onSend = false, nil
     Run()
 end
@@ -659,11 +705,19 @@ Same("first sync")
 
 -- A session from a late second PC lands in the middle: same stamp, more of
 -- everything, so counts alone would carry on from the wrong place.
+-- An event landing there costs only the events again, as a run's summary saved
+-- late does, and the path isn't sent again.
 local held = copy.journey
 table.insert(cy.ns.char.events, 5, { 1785000003, "zone", 0, 1, 1, 12 })
+local pathSent = 0
+cy.onSend = function(_, text)
+    if text:sub(1, 1) == "B" and text:find('sd~s1,3,-2', 1, true) then pathSent = pathSent + 1 end
+end
 DF:Sync("Cy")
 Run()
-check(copy.journey ~= held, "an event merged in the middle was grafted onto")
+cy.onSend = nil
+check(copy.journey == held, "an event merged in the middle fetched the path too")
+check(pathSent == 0, "an event merged in the middle sent the path again")
 Same("event in the middle")
 held = copy.journey
 table.insert(cy.ns.char.segments, 2, { m = "w", c = 0, t = 1785005000, x = 1, y = 1, d = "1,1,1" })
@@ -676,9 +730,16 @@ Same("segment in the middle")
 held = copy.journey
 table.insert(cy.ns.char.events, #cy.ns.char.events - 2, { 1785000037, "zone", 0, 1, 1, 12 })
 cy.ns.char.events[#cy.ns.char.events + 1] = { 1786000000, "zone", 0, 1, 1, 12 }
+local asks = {}
+di.onSend = function(_, text)
+    local have = text:match("^Q:%x+:%d+:%d+:%d+:%d+:(%d+):")
+    if have then asks[#asks + 1] = have end
+end
 DF:Sync("Cy")
 Run()
+di.onSend = nil
 check(copy.journey == held, "an event among the latest fetched the whole journey again")
+check(#asks == 1 and asks[1] ~= "0", "an event among the latest fetched the events again")
 Same("event among the latest")
 
 -- A sender from before stamps gets the same: its rewind has no print to check,
@@ -693,6 +754,11 @@ DF:Sync("Cy")
 Run()
 check(DF:Status(copy):find("^Last synced"), "a rewind without a stamp stopped: " .. DF:Status(copy))
 Same("event in the middle, no stamp")
+table.insert(cy.ns.char.segments, 2, { m = "w", c = 0, t = 1785004000, x = 1, y = 1, d = "1,1,1" })
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^Last synced"), "a path rewind without a stamp stopped: " .. DF:Status(copy))
+Same("segment in the middle, no stamp")
 cy.ns.char.journeyId = stamped
 
 -- A stamp kept from before its length was checked can't stop the asking (the
@@ -703,66 +769,53 @@ Run()
 check(copy.journey.journeyId == "Player-1-FFFF:0", "a long stamp kept: " .. DF:Status(copy))
 Same("after a long stamp")
 
-local function Lock(client, on)
-    client.env.C_ChatInfo.InChatMessagingLockdown = on and function() return true end or nil
-end
-local function Count(client)
-    local sent = {}
-    client.onSend = function(_, text) sent[#sent + 1] = text end
-    return sent
-end
-
--- Locked here: nothing is sent, and it says why.
-Lock(di, true)
-local sent = Count(di)
-DF:Sync("Cy")
-check(#sent == 0, "asked from inside lockdown")
-check(DF:Status(copy):find("inside a dungeon"), "no reason given: " .. DF:Status(copy))
-Run()
-Lock(di, false)
-di.onSend = nil
-check(not DF:Busy(), "still asking")
-
--- Locked there: they can't answer, not even to say so, and the wait says it may be that.
-Lock(cy, true)
-sent = Count(cy)
-DF:Sync("Cy")
-Run()
-check(#sent == 0, "answered from inside lockdown")
-check(DF:Status(copy):find("^No answer") and DF:Status(copy):find("dungeon"), "no answer not explained: " .. DF:Status(copy))
-Lock(cy, false)
-cy.onSend = nil
-
--- The send's own result counts when the check above didn't catch it.
+-- Locked here: the send's result says so, and it says why.
 di.onSend = function() return 11 end
 DF:Sync("Cy")
 check(DF:Status(copy):find("inside a dungeon"), "result 11 not named: " .. DF:Status(copy))
+check(not DF:Busy(), "still asking")
 di.onSend = function() return 9 end
 DF:Sync("Cy")
 check(DF:Status(copy) == "Could not send. Are they online?", "other results changed: " .. DF:Status(copy))
 di.onSend = nil
 
--- An automatic round asks nobody in lockdown, and says nothing.
-Lock(di, true)
-sent = Count(di)
+-- Lockdown said but the send still goes: the game decides, so the sync works.
+di.env.C_ChatInfo.InChatMessagingLockdown = function() return true end
+cy.env.C_ChatInfo.InChatMessagingLockdown = function() return true end
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^Last synced"), "refused a sync the game would have sent: " .. DF:Status(copy))
+di.env.C_ChatInfo.InChatMessagingLockdown, cy.env.C_ChatInfo.InChatMessagingLockdown = nil, nil
+
+-- Locked there: they can't answer, not even to say so, and the wait says it may be that.
+cy.onSend = function() return 11 end
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^No answer") and DF:Status(copy):find("dungeon"), "no answer not explained: " .. DF:Status(copy))
+cy.onSend = nil
+DF:Sync("Cy")
+Run()
+
+-- An automatic round in lockdown says nothing.
+di.onSend = function() return 11 end
 check(DF:ParseAutoSync("5"), "choice not taken")
 At(330, function() DF:ParseAutoSync("off") end)
 Run()
-check(#sent == 0, "an automatic round asked from inside lockdown")
 check(DF:Status(copy):find("^Last synced"), "an automatic round reported lockdown: " .. DF:Status(copy))
-Lock(di, false)
 di.onSend = nil
 
 -- A send said to be offline may still bring the game's line: hidden, once a
--- friend's ask has ended, and only for a moment.
-local gone = OFFLINE:format("Gone")
+-- friend's ask has ended, for each of them, and only for a moment.
 local hid = {}
-di.ns.db.friends.gone = { name = "Gone", realm = "Era" }
+for _, name in ipairs({ "Gone", "Away", "Left" }) do
+    di.ns.db.friends[name:lower()] = { name = name, realm = "Era" }
+end
 di.onSend = function(_, _, _, target)
-    if target == "Gone" then
-        At(0.05, function() hid.first = di.filter(nil, "CHAT_MSG_SYSTEM", gone) end)
-        At(0.1, function() hid.again = di.filter(nil, "CHAT_MSG_SYSTEM", gone) end)
-        At(5, function() hid.later = di.filter(nil, "CHAT_MSG_SYSTEM", gone) end)
+    if target ~= "Cy" then
+        local line = OFFLINE:format(target)
+        At(0.05, function() hid[#hid + 1] = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
+        At(0.1, function() hid[#hid + 1] = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
+        At(5, function() hid.later = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
         return 12
     end
 end
@@ -770,10 +823,11 @@ check(DF:ParseAutoSync("5"), "choice not taken")
 At(330, function() DF:ParseAutoSync("off") end)
 Run()
 di.onSend = nil
-check(hid.first == true and hid.again == true, "offline line not hidden after result 12")
+check(#hid >= 6, "not every offline friend was asked: " .. #hid)
+for i, seen in ipairs(hid) do check(seen == true, "offline line " .. i .. " not hidden after result 12") end
 check(hid.later == false, "offline line hidden too long")
 check(DF:Status(di.ns.db.friends.gone) == "Not synced yet.", "offline friend reported: " .. DF:Status(di.ns.db.friends.gone))
-di.ns.db.friends.gone = nil
+for _, name in ipairs({ "gone", "away", "left" }) do di.ns.db.friends[name] = nil end
 
 -- A send that can't go on stops at once, and the friend carries on later.
 for _, result in ipairs({ 11, 12 }) do
