@@ -9,16 +9,17 @@ broken and now works. Leave out internal changes. Sections are
 ## 1.20.1
 
 ### Fixed
-- Syncing with a friend from inside a dungeon, raid or battleground now
-  says that is why it can't start, instead of asking if they are online.
-  When a friend inside one can't answer, the message says that may be why.
+- When the game won't let a sync start from inside a dungeon, raid or
+  battleground, Road to Sixty now says that is why, instead of asking if
+  your friend is online. When a friend doesn't answer, the message says
+  they may be inside one.
 - A friend's journey that was missing details the map needs, or held
   numbers that can't be real, could break the map, History or the Stats
   screen. It is now refused.
 - After a friend played on a second PC, the next sync could put part of
   their journey in the wrong place. It now brings the whole journey again.
-- An automatic sync no longer risks printing "No player named" for each
-  friend who is offline.
+- An automatic sync hides more of the "No player named" lines for friends
+  who are offline.
 
 ## 1.20.0
 

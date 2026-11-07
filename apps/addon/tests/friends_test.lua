@@ -743,6 +743,30 @@ Run()
 check(copy.journey ~= held, "a segment merged in the middle was grafted onto")
 Same("segment in the middle")
 
+-- A rewind that stops part way leaves a copy that says it is partial.
+table.insert(cy.ns.char.events, 6, { 1785000004, "zone", 0, 1, 1, 12 })
+local armed, cut = false, 0
+di.onSend = function(_, text)
+    -- The ask for the events again: those it then sends are the ones cut.
+    if text:match("^Q:%x+:%d+:%d+:%d+:%d+:0:") then armed = true end
+end
+cy.onSend = function(_, text)
+    if armed and text:sub(1, 1) == "B" then
+        cut = cut + 1
+        if cut > 3 then return 12 end
+    end
+end
+DF:Sync("Cy")
+Run()
+cy.onSend, di.onSend = nil, nil
+check(armed and cut > 3, "the rewind wasn't cut part way")
+check(DF:Status(copy) == "Stopped. Sync again to carry on.", "a stopped rewind not said: " .. DF:Status(copy))
+check(not copy.synced, "a copy part fetched again still says when it was last synced")
+DF:Sync("Cy")
+Run()
+check(copy.synced, "the next sync didn't finish it")
+Same("after a stopped rewind")
+
 -- The latest events are sent again anyway, so one landing there costs no more.
 held = copy.journey
 table.insert(cy.ns.char.events, #cy.ns.char.events - 2, { 1785000037, "zone", 0, 1, 1, 12 })
@@ -813,11 +837,16 @@ cy.onSend = nil
 DF:Sync("Cy")
 Run()
 
--- An automatic round in lockdown says nothing.
-di.onSend = function() return 11 end
+-- An automatic round in lockdown asks, and says nothing when it can't.
+local refused = 0
+di.onSend = function()
+    refused = refused + 1
+    return 11
+end
 check(DF:ParseAutoSync("5"), "choice not taken")
 At(330, function() DF:ParseAutoSync("off") end)
 Run()
+check(refused > 0, "the automatic round didn't ask")
 check(DF:Status(copy):find("^Last synced"), "an automatic round reported lockdown: " .. DF:Status(copy))
 di.onSend = nil
 

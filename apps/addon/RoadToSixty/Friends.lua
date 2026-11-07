@@ -38,7 +38,7 @@ local _, ns = ...
 --   B:id:n:total:data                part n of a batch
 --
 -- A batch that carries on from what the asker has holds p and pe, prints of
--- that path and those events (Print). A session from a late second PC lands in
+-- that path and those events (PathPrint, EventsPrint). A session from a late second PC lands in
 -- the middle of a merged journey, and a run's summary is saved at its leave
 -- time up to 30 minutes late, so the same counts can point at different data:
 -- when a print differs the asker asks for that part again, once a sync. A
@@ -101,7 +101,7 @@ local LOCKED = "Can't sync from inside a dungeon, raid or battleground."
 -- shapes the addon saves. Letters name a value's type: n number, s string,
 -- b boolean, t table, c a tally (a number, or a table of numbers, see
 -- Tally.lua), . anything but a table, ? anything, for fields a newer version
--- may add, which nothing here reads. A missing value always fits, unless an
+-- may add: nothing here reads them, or only inside a pcall. A missing value always fits, unless an
 -- event's field is in capitals (EVENT_FIELDS).
 
 local TYPES = { n = "number", s = "string", b = "boolean", t = "table" }
@@ -189,7 +189,7 @@ local function Tabard(t)
 end
 
 -- A level's snapshot (Journal.lua). The gear card compares its times, and the
--- other counts are shown; fields it doesn't name may be anything but a table.
+-- other counts are shown; fields it doesn't name may be anything.
 local SNAPSHOT = {
     gear = "t", links = "t", skills = "t", t = "n", played = "n", money = "n", kills = "n", killXP = "n",
     questXP = "n", deaths = "n", quests = "n", instances = "n", distance = "n", flown = "n",
@@ -698,7 +698,7 @@ local function Watch(asked)
         local limit = asked.answered and STALLED or NO_ANSWER
         if GetTime() - asked.heard < limit then return Watch(asked) end
         Finish(asked.key, asked.answered and "Stopped. Sync again to carry on."
-            or "No answer. They need this version of Road to Sixty, online and not in a dungeon, raid or battleground.")
+            or "No answer. They need this version of Road to Sixty, and must be online and outside dungeons, raids and battlegrounds.")
     end)
 end
 
@@ -737,6 +737,8 @@ local function Ask(rec, key, bytes, auto, rewind)
         for _, e in ipairs(journey.events) do rec.size = (rec.size or 0) - #Serialize(e) end
         wipe(journey.events)
     end
+    -- The copy is part of one until this sync ends, and the tab says so if it stops.
+    if rewind == "path" or rewind == "events" then rec.synced = nil end
     Changed()
     Watch(asked)
 end
@@ -777,7 +779,7 @@ local function OnPart(key, id, n, total, data)
         Finish(key, "Their journey changed while it came. Sync again to carry on.")
     elseif not fits then
         if rec then rec.capped = why == "big" or nil end
-        Finish(key, why == "big" and TOO_BIG or "Their data did not fit. Removing and adding them starts afresh.", true)
+        Finish(key, why == "big" and TOO_BIG or "Their data did not fit, so this sync kept none of it.", true)
     elseif batch.done then
         rec.synced = ns.Now()
         Finish(key, nil)
