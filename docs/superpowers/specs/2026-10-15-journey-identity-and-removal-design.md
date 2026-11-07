@@ -149,7 +149,9 @@ the 100 frees at once.
 
 A removed character that is played again comes back: the app's next upload
 of a changed file makes a new row with the whole journey. Removing one that
-is still played therefore resets its backup, which the app says.
+is still played therefore resets its backup, which the app says. A beta or
+stress test journey the app does not upload at all (#108), so one removed
+stays removed, whichever PC still has its file.
 
 ### Limits
 

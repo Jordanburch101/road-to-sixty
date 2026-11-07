@@ -74,6 +74,8 @@ pub enum Sent {
     Uploaded(String),
     /// The same file went up before.
     Unchanged,
+    /// A beta or stress test journey, which isn't sent.
+    TestJourney,
     /// Refused now or before; it's in `State::refused`.
     Refused,
     /// Couldn't be read (the game may be writing it); tried again when it changes.
@@ -119,7 +121,36 @@ fn key(name: &str, realm: &str) -> String {
     format!("{name}-{realm}")
 }
 
-/// Uploads one saved file unless this exact file went up, or was refused, before.
+/// Forever's launch, in Unix seconds: the same moment as `FOREVER_LAUNCH` in
+/// the window's `format.ts` and the addon's `Roster.lua`.
+const FOREVER_LAUNCH: u64 = 1_793_815_200;
+
+/// Whether a saved file is a beta or stress test journey: in a game folder
+/// those were played in, and with times in it, none of them since launch.
+/// The beta's characters came along into `_forever_`, and the stress test was
+/// played there, so the folder alone doesn't say. Every login saves its time,
+/// so a character played since launch always holds one.
+///
+/// Any whole number of exactly ten digits counts as a time, wherever it is in
+/// the file, so that a mistake can only send a test journey up, never keep a
+/// real one back. A file with no times at all isn't called a test one.
+pub fn test_journey(game: &str, file: &[u8]) -> bool {
+    if game != "_forever_" && game != "_classic_beta_" {
+        return false;
+    }
+    let mut times = file
+        .split(|b| !b.is_ascii_digit() && *b != b'.')
+        // The whole part only: a distance's fraction is often ten digits.
+        .filter_map(|number| number.split(|b| *b == b'.').next())
+        .filter(|run| run.len() == 10)
+        .filter_map(|run| std::str::from_utf8(run).ok()?.parse::<u64>().ok())
+        .peekable();
+    times.peek().is_some() && times.all(|t| t < FOREVER_LAUNCH)
+}
+
+/// Uploads one saved file unless this exact file went up, or was refused,
+/// before, or it is a test journey: those stay on the PC, so one taken out of
+/// the backup doesn't come back from a PC that still has its file (#108).
 pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Option<&str>) -> Result<Sent, ApiError> {
     let Ok(bytes) = fs::read(&file.path) else {
         return Ok(Sent::Unreadable(Problem {
@@ -130,6 +161,10 @@ pub fn upload(client: &Client, state: &mut State, file: &SavedFile, addon: Optio
     let print = fingerprint(&bytes);
     if state.uploaded.get(&file.path) == Some(&print) {
         return Ok(Sent::Unchanged);
+    }
+    if test_journey(&file.game, &bytes) {
+        state.refused.remove(&file.path);
+        return Ok(Sent::TestJourney);
     }
     if state.refused.get(&file.path).is_some_and(|r| r.fingerprint == print) {
         return Ok(Sent::Refused);
@@ -305,14 +340,14 @@ pub fn pass(
                     report.uploaded.push(sent);
                     state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
                 }
-                Ok(Sent::Refused) if state.refused.get(&file.path) != before.as_ref() => {
+                Ok(Sent::Refused | Sent::TestJourney) if state.refused.get(&file.path) != before.as_ref() => {
                     state.save(state_path).map_err(|e| ApiError::Status(0, e.to_string()))?;
                 }
                 Ok(Sent::Unreadable(problem)) => {
                     report.problems.push(problem);
                     report.unread.push(file.path.clone());
                 }
-                Ok(Sent::Unchanged | Sent::Refused) => {}
+                Ok(Sent::Unchanged | Sent::Refused | Sent::TestJourney) => {}
                 Err(e @ (ApiError::Unauthorized | ApiError::Network(_))) => return Err(e),
                 // Not sent, so it goes up on a later pass; the rest carry on.
                 Err(ApiError::Busy) => report.busy.push(file.path.clone()),
@@ -387,6 +422,133 @@ mod tests {
         );
         assert_eq!(roster_key(b"[\"rosterKey\"] = \"NoRealm\","), None);
         assert_eq!(roster_key(b"RoadToSixtyCharDB = {}"), None);
+    }
+
+    // As Forever writes an event: its time, its kind, and the rest.
+    fn saved(time: &str) -> String {
+        format!("{FILE}[\"events\"] = {{\r\n{{\r\n{time},\r\n\"on\",\r\n0,\r\n-8950,\r\n-132,\r\n1,\r\n0,\r\n}},\r\n}}\r\n")
+    }
+
+    #[test]
+    fn a_test_journey_is_one_with_times_in_a_test_folder_and_none_since_launch() {
+        let (before, launch) = (saved("1793815199"), saved("1793815200"));
+        for game in ["_forever_", "_classic_beta_"] {
+            assert!(test_journey(game, before.as_bytes()), "{game}");
+            assert!(!test_journey(game, launch.as_bytes()), "{game}: played at launch is real");
+            assert!(!test_journey(game, FILE.as_bytes()), "{game}: no times says nothing");
+        }
+        for game in ["_anniversary_", "_classic_era_"] {
+            assert!(!test_journey(game, before.as_bytes()), "{game} has no test realms");
+        }
+        // One time since launch is enough, wherever it is: old play and a late login.
+        let both = format!("{before}{}", saved("1794019838"));
+        assert!(!test_journey("_forever_", both.as_bytes()));
+        let fraction = format!("{before}1794019838.5,\r\n");
+        assert!(!test_journey("_forever_", fraction.as_bytes()));
+        // Longer runs of digits aren't times, nor is a distance's fraction.
+        let longer = format!("{before}17938152000,\r\n");
+        assert!(test_journey("_forever_", longer.as_bytes()));
+        let distance = format!("{before}[\"distance\"] = 123456.7891234567,\r\n");
+        assert!(test_journey("_forever_", distance.as_bytes()));
+        // And neither alone makes a file a test one.
+        let neither = format!("{FILE}17938152000,\r\n123456.7891234567,\r\n");
+        assert!(!test_journey("_forever_", neither.as_bytes()));
+    }
+
+    #[test]
+    fn a_test_journey_on_the_server_is_still_delivered() {
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0).path;
+        fs::write(&file, saved("1793815199")).unwrap();
+        let print = fingerprint(b"{[\"version\"]=3,}");
+        let server = fake::serve(move |_, url| {
+            if url == "/v1/check" {
+                (200, r#"{"characters":[{"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":9,"fingerprint":"ANN","replace":false,"updateAddon":false}]}"#
+                    .replace("ANN", &print).into_bytes())
+            } else {
+                (200, zstd::encode_all(&b"{[\"version\"]=3,}"[..], 3).unwrap())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&server.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            std::slice::from_ref(&game),
+            &dir.path().join("j"),
+            |_| true,
+        )
+        .unwrap();
+        assert!(report.uploaded.is_empty());
+        assert_eq!(report.delivered, ["_classic_beta_"]);
+        assert!(!server.seen.lock().unwrap().iter().any(|r| r.url.starts_with("/v1/upload")));
+    }
+
+    fn pass_over(game: &GameFolder, dir: &Path, state: &mut State) -> Report {
+        let server = fake::serve(|_, url| {
+            if url.starts_with("/v1/upload") {
+                (200, br#"{"version":8,"status":"queued"}"#.to_vec())
+            } else {
+                (200, br#"{"characters":[]}"#.to_vec())
+            }
+        });
+        pass(
+            &Client::new(&server.url, Some("t".into())),
+            state,
+            &dir.join("s.json"),
+            std::slice::from_ref(game),
+            &dir.join("j"),
+            |_| true,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_test_journey_stays_on_the_pc_until_it_is_played_again() {
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0).path;
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        fs::write(&file, saved("1793815199")).unwrap();
+        let report = pass_over(&game, dir.path(), &mut state);
+        assert!(report.uploaded.is_empty());
+        assert!(state.uploaded.is_empty());
+        assert!(report.problems.is_empty(), "nothing for the player to act on");
+        // Played since launch: it goes up like any other.
+        fs::write(&file, saved("1794019838")).unwrap();
+        assert_eq!(pass_over(&game, dir.path(), &mut state).uploaded, ["Ann-Test Realm"]);
+    }
+
+    #[test]
+    fn a_test_journey_drops_an_older_refusal_of_its_file() {
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0).path;
+        // From before this rule, and with no rosterKey to name it.
+        fs::write(&file, "RoadToSixtyCharDB = {\r\n1793815199,\r\n}\r\n").unwrap();
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        state.refused.insert(
+            file.clone(),
+            Refused {
+                fingerprint: "older".into(),
+                who: "Ann".into(),
+                why: "Log in once".into(),
+            },
+        );
+        // Saved with the refusal, so only a save after dropping it clears it.
+        state.save(&dir.path().join("s.json")).unwrap();
+        assert!(pass_over(&game, dir.path(), &mut state).problems.is_empty());
+        assert!(
+            State::load(&dir.path().join("s.json")).unwrap().refused.is_empty(),
+            "and it stays dropped"
+        );
     }
 
     #[test]

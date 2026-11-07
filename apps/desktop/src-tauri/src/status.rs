@@ -106,8 +106,9 @@ pub fn ago(secs: u64) -> String {
 }
 
 /// Folds one engine report into the status. `local` is every character
-/// with a saved file on this PC.
-pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[String], now: u64) {
+/// with a saved file on this PC, and `test` those among them with nothing but
+/// a test journey here, listed only while the server has them.
+pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[String], test: &[String], now: u64) {
     match result {
         Ok(report) => {
             status.offline = false;
@@ -122,7 +123,8 @@ pub fn apply(status: &mut Status, result: &Result<Report, ApiError>, local: &[St
                 .filter(|p| !p.who.is_empty() && !report.characters.contains(&p.who))
                 .map(|p| p.who.clone())
                 .collect();
-            let mut keys: Vec<String> = report.characters.iter().chain(local).chain(&only_named).cloned().collect();
+            let listed = local.iter().filter(|key| !test.contains(key));
+            let mut keys: Vec<String> = report.characters.iter().chain(listed).chain(&only_named).cloned().collect();
             keys.sort();
             keys.dedup();
             let before = std::mem::take(&mut status.characters);
@@ -248,6 +250,7 @@ mod tests {
             &mut s,
             &report(&["Ann-Test", "Bob-Test"], &["Ann-Test"], &[]),
             &["Ann-Test".into(), "Cy-Test".into()],
+            &[],
             1000,
         );
         refresh(&mut s, 1000);
@@ -264,10 +267,23 @@ mod tests {
     }
 
     #[test]
+    fn a_test_journey_here_is_listed_only_while_the_server_has_it() {
+        let mut s = linked();
+        let here: [String; 2] = ["Ann-Test".into(), "Cy-Test".into()];
+        apply(&mut s, &report(&["Ann-Test"], &[], &[]), &here, &here, 1000);
+        refresh(&mut s, 1000);
+        let keys: Vec<_> = s.characters.iter().map(|c| (c.key.as_str(), c.here, c.note.as_str())).collect();
+        assert_eq!(keys, [("Ann-Test", true, "Up to date")]);
+        // Removed from the backup: gone from the list, though its file stays.
+        apply(&mut s, &report(&[], &[], &[]), &here, &here, 1100);
+        assert!(s.characters.is_empty());
+    }
+
+    #[test]
     fn an_upload_time_survives_later_passes_that_send_nothing() {
         let mut s = linked();
-        apply(&mut s, &report(&["Ann-Test"], &["Ann-Test"], &[]), &["Ann-Test".into()], 1000);
-        apply(&mut s, &report(&["Ann-Test"], &[], &[]), &["Ann-Test".into()], 1300);
+        apply(&mut s, &report(&["Ann-Test"], &["Ann-Test"], &[]), &["Ann-Test".into()], &[], 1000);
+        apply(&mut s, &report(&["Ann-Test"], &[], &[]), &["Ann-Test".into()], &[], 1300);
         refresh(&mut s, 1300);
         assert_eq!(s.characters[0].note, "Backed up 5 min ago");
     }
@@ -277,7 +293,7 @@ mod tests {
         let mut s = linked();
         refresh(&mut s, 0);
         assert_eq!(s.line, "Syncing…");
-        apply(&mut s, &report(&["Ann-Test"], &[], &["Ann-Test"]), &["Ann-Test".into()], 100);
+        apply(&mut s, &report(&["Ann-Test"], &[], &["Ann-Test"]), &["Ann-Test".into()], &[], 100);
         refresh(&mut s, 100);
         assert_eq!(s.line, "Update the addon on this PC");
         assert_eq!(
@@ -298,19 +314,19 @@ mod tests {
     #[test]
     fn no_answer_keeps_the_last_sync_and_says_it_will_try_again() {
         let mut s = linked();
-        apply(&mut s, &report(&[], &[], &[]), &[], 100);
-        apply(&mut s, &Err(ApiError::Network("timed out".into())), &[], 200);
+        apply(&mut s, &report(&[], &[], &[]), &[], &[], 100);
+        apply(&mut s, &Err(ApiError::Network("timed out".into())), &[], &[], 200);
         refresh(&mut s, 200);
         assert_eq!((s.offline, s.last_synced), (true, Some(100)));
         assert_eq!(s.line, "Can't reach the server, trying again");
-        apply(&mut s, &report(&[], &[], &[]), &[], 300);
+        apply(&mut s, &report(&[], &[], &[]), &[], &[], 300);
         assert!(!s.offline);
     }
 
     #[test]
     fn a_refused_token_means_link_again() {
         let mut s = linked();
-        apply(&mut s, &Err(ApiError::Unauthorized), &[], 100);
+        apply(&mut s, &Err(ApiError::Unauthorized), &[], &[], 100);
         refresh(&mut s, 100);
         assert_eq!(s.linked_to, None);
         assert_eq!(s.line, "Not linked");
@@ -334,7 +350,7 @@ mod tests {
             ],
             ..Report::default()
         };
-        apply(&mut s, &Ok(r), &["Ann-Test".into()], 100);
+        apply(&mut s, &Ok(r), &["Ann-Test".into()], &[], 100);
         refresh(&mut s, 100);
         let rows: Vec<_> = s.characters.iter().map(|c| (c.key.as_str(), c.here, c.note.as_str())).collect();
         assert_eq!(
@@ -355,7 +371,7 @@ mod tests {
             problems: vec![Problem::general("Couldn't watch for saved games")],
             ..Report::default()
         };
-        apply(&mut s, &Ok(r), &[], 100);
+        apply(&mut s, &Ok(r), &[], &[], 100);
         refresh(&mut s, 100);
         assert_eq!(s.line, "Needs a look: open Road to Sixty");
     }
