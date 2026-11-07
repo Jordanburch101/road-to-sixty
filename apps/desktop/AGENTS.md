@@ -94,7 +94,12 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   it is `_forever_` and the character was last played before Forever's
   launch. The beta's characters came along into `_forever_` and the
   stress test was played there, so neither the folder nor the realm's
-  name tells them apart. A character the server doesn't have stays in the
+  name tells them apart. The engine doesn't upload such a file
+  (`test_journey` in `sync.rs`, by the times in the file, as the server's
+  row isn't there to ask), so one taken out of the backup doesn't come back
+  from another PC (#108); a later login sends it like any other. The launch
+  time is in `format.ts`, `sync.rs` and the addon's `Roster.lua`: change all
+  three together. A character the server doesn't have stays in the
   main list, since the app's own list doesn't know a file's game. Forever's
   realms show as their type (Normal, PvP, RP, RP-PvP), not their server
   names (`realmName`). History lists a name's
