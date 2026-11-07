@@ -11,7 +11,7 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rts_sync::api::{ApiError, Client, LinkResponse};
-use rts_sync::installs::{self, GameFolder};
+use rts_sync::installs::{self, GameFolder, SavedFile};
 use rts_sync::state::{State, TokenFile};
 use rts_sync::sync::{self, Report};
 use rts_sync::watch;
@@ -161,13 +161,13 @@ impl Runner {
         };
         let games = (self.find)(&state);
         let token = self.tokens.get();
-        let local = local_keys(&games);
+        let (local, test) = local_characters(&games);
         let mut paused = false;
         self.notifier.update(|s| {
             s.linked_to = token.as_ref().and(state.battletag.clone());
             s.pc = token.as_ref().and(state.pc.clone());
             s.games = shown(&games);
-            for key in &local {
+            for key in local.iter().filter(|key| !test.contains(key)) {
                 if !s.characters.iter().any(|c| &c.key == key) {
                     s.characters.push(Character {
                         key: key.clone(),
@@ -212,12 +212,12 @@ impl Runner {
                     refused.store(true, Ordering::Relaxed);
                 }
                 let games = result.as_ref().map(|r| r.games.clone()).unwrap_or_default();
-                let local = local_keys(&games);
+                let (local, test) = local_characters(&games);
                 notifier.update(|s| {
                     if result.is_ok() {
                         s.games = shown(&games);
                     }
-                    apply(s, result, &local, now());
+                    apply(s, result, &local, &test, now());
                 });
             };
             if let Err(e) = watch::run(&client, &mut state, &state_path, &cache, &lookup, &stop, &busy, report) {
@@ -416,37 +416,58 @@ fn shown(games: &[GameFolder]) -> Vec<Game> {
 
 /// `Name-Realm` of every character with a saved file in these game folders.
 pub fn local_keys(games: &[GameFolder]) -> Vec<String> {
-    games
+    local_characters(games).0
+}
+
+/// `local_keys`, and those among them with nothing but a test journey here
+/// (`sync::test_journey`). Those never go up, so they are listed only while
+/// the server has them: a row saying "Up to date" for one taken out of the
+/// backup would look as if it had come back (#108). A name can be in two game
+/// folders, so a file played since launch in the other keeps its row.
+pub fn local_characters(games: &[GameFolder]) -> (Vec<String>, Vec<String>) {
+    let files: Vec<(String, bool)> = games
         .iter()
         .flat_map(installs::saved_files)
-        .filter_map(|f| key_of(&f.path))
-        .map(|(name, realm)| format!("{name}-{realm}"))
-        .collect()
+        .filter_map(|f| {
+            let (key, test) = read_of(&f)?;
+            let (name, realm) = key?;
+            Some((format!("{name}-{realm}"), test))
+        })
+        .collect();
+    let test = files
+        .iter()
+        .filter(|(key, test)| *test && !files.iter().any(|(other, t)| other == key && !t))
+        .map(|(key, _)| key.clone())
+        .collect();
+    (files.into_iter().map(|(key, _)| key).collect(), test)
 }
 
 /// A saved file's size and change time.
 type Stamp = (u64, Option<SystemTime>);
 /// The rosterKey's name and realm.
 type Key = Option<(String, String)>;
+/// What a saved file says: its rosterKey, and whether it is a test journey.
+type Read = (Key, bool);
 
-/// The name and realm in a saved file's rosterKey, read again only when the
-/// file's size or change time differ from the last read. Characters are
-/// listed every 30 seconds and after every pass, and a journey at 60 is
-/// megabytes, so reading every file whole each time cost a laptop's battery
-/// (#102). A failed read isn't kept: the game may only be writing it.
-fn key_of(path: &Path) -> Key {
-    static KEYS: Mutex<BTreeMap<PathBuf, (Stamp, Key)>> = Mutex::new(BTreeMap::new());
-    let meta = fs::metadata(path).ok()?;
+/// What a saved file says, read again only when the file's size or change
+/// time differ from the last read. Characters are listed every 30 seconds and
+/// after every pass, and a journey at 60 is megabytes, so reading every file
+/// whole each time cost a laptop's battery (#102). A failed read isn't kept:
+/// the game may only be writing it.
+fn read_of(file: &SavedFile) -> Option<Read> {
+    static READS: Mutex<BTreeMap<PathBuf, (Stamp, Read)>> = Mutex::new(BTreeMap::new());
+    let meta = fs::metadata(&file.path).ok()?;
     let stamp = (meta.len(), meta.modified().ok());
-    let mut keys = KEYS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((seen, key)) = keys.get(path)
+    let mut reads = READS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((seen, read)) = reads.get(&file.path)
         && *seen == stamp
     {
-        return key.clone();
+        return Some(read.clone());
     }
-    let key = sync::roster_key(&fs::read(path).ok()?);
-    keys.insert(path.to_path_buf(), (stamp, key.clone()));
-    key
+    let bytes = fs::read(&file.path).ok()?;
+    let read = (sync::roster_key(&bytes), sync::test_journey(&file.game, &bytes));
+    reads.insert(file.path.clone(), (stamp, read.clone()));
+    Some(read)
 }
 
 #[cfg(test)]
@@ -822,15 +843,41 @@ mod tests {
     #[test]
     fn a_saved_file_is_read_again_only_when_it_changes() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("RoadToSixty.lua");
-        std::fs::write(&file, FILE).unwrap();
-        assert_eq!(key_of(&file), Some(("Ann".into(), "Test Realm".into())));
+        let path = dir.path().join("RoadToSixty.lua");
+        let file = SavedFile {
+            game: "_forever_".into(),
+            path: path.clone(),
+        };
+        std::fs::write(&path, FILE).unwrap();
+        assert_eq!(read_of(&file), Some((Some(("Ann".into(), "Test Realm".into())), false)));
         // Another character's file of another size: read again.
-        std::fs::write(&file, FILE.replace("Ann-Test Realm", "Bobby-Test Realm")).unwrap();
-        assert_eq!(key_of(&file), Some(("Bobby".into(), "Test Realm".into())));
+        std::fs::write(&path, FILE.replace("Ann-Test Realm", "Bobby-Test Realm")).unwrap();
+        assert_eq!(read_of(&file), Some((Some(("Bobby".into(), "Test Realm".into())), false)));
         // Gone: nothing, and nothing kept.
-        std::fs::remove_file(&file).unwrap();
-        assert_eq!(key_of(&file), None);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(read_of(&file), None);
+    }
+
+    #[test]
+    fn a_name_played_since_launch_in_another_folder_is_not_a_test_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = |name: &str, files: &[(&str, &str)]| {
+            let path = dir.path().join(name);
+            for (who, time) in files {
+                let saved = path.join(format!("WTF/Account/ACCOUNT1/70/{who}/SavedVariables"));
+                std::fs::create_dir_all(&saved).unwrap();
+                std::fs::write(saved.join("RoadToSixty.lua"), format!("{}{time},\r\n", FILE.replace("Ann", who))).unwrap();
+            }
+            GameFolder { path, name: name.into() }
+        };
+        let games = [
+            game("_classic_beta_", &[("Ann", "1793815199")]),
+            game("_forever_", &[("Ann", "1794019838"), ("Cy", "1793815199")]),
+        ];
+        let (mut local, test) = local_characters(&games);
+        local.sort();
+        assert_eq!(local, ["Ann-Test Realm", "Ann-Test Realm", "Cy-Test Realm"]);
+        assert_eq!(test, ["Cy-Test Realm"]);
     }
 
     #[test]

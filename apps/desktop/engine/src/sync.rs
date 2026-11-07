@@ -131,15 +131,17 @@ const FOREVER_LAUNCH: u64 = 1_793_815_200;
 /// played there, so the folder alone doesn't say. Every login saves its time,
 /// so a character played since launch always holds one.
 ///
-/// Any run of exactly ten digits counts as a time, wherever it is in the file,
-/// so that a mistake can only send a test journey up, never keep a real one
-/// back. A file with no times at all isn't called a test one.
+/// Any whole number of exactly ten digits counts as a time, wherever it is in
+/// the file, so that a mistake can only send a test journey up, never keep a
+/// real one back. A file with no times at all isn't called a test one.
 pub fn test_journey(game: &str, file: &[u8]) -> bool {
     if game != "_forever_" && game != "_classic_beta_" {
         return false;
     }
     let mut times = file
-        .split(|b| !b.is_ascii_digit())
+        .split(|b| !b.is_ascii_digit() && *b != b'.')
+        // The whole part only: a distance's fraction is often ten digits.
+        .filter_map(|number| number.split(|b| *b == b'.').next())
         .filter(|run| run.len() == 10)
         .filter_map(|run| std::str::from_utf8(run).ok()?.parse::<u64>().ok())
         .peekable();
@@ -443,9 +445,46 @@ mod tests {
         assert!(!test_journey("_forever_", both.as_bytes()));
         let fraction = format!("{before}1794019838.5,\r\n");
         assert!(!test_journey("_forever_", fraction.as_bytes()));
-        // Shorter and longer runs of digits aren't times.
-        let neither = format!("{FILE}179381520,\r\n17938152000,\r\n");
+        // Longer runs of digits aren't times, nor is a distance's fraction.
+        let longer = format!("{before}17938152000,\r\n");
+        assert!(test_journey("_forever_", longer.as_bytes()));
+        let distance = format!("{before}[\"distance\"] = 123456.7891234567,\r\n");
+        assert!(test_journey("_forever_", distance.as_bytes()));
+        // And neither alone makes a file a test one.
+        let neither = format!("{FILE}17938152000,\r\n123456.7891234567,\r\n");
         assert!(!test_journey("_forever_", neither.as_bytes()));
+    }
+
+    #[test]
+    fn a_test_journey_on_the_server_is_still_delivered() {
+        let (dir, game) = game();
+        let file = installs::saved_files(&game).remove(0).path;
+        fs::write(&file, saved("1793815199")).unwrap();
+        let print = fingerprint(b"{[\"version\"]=3,}");
+        let server = fake::serve(move |_, url| {
+            if url == "/v1/check" {
+                (200, r#"{"characters":[{"game":"_classic_beta_","realm":"Test Realm","name":"Ann","version":9,"fingerprint":"ANN","replace":false,"updateAddon":false}]}"#
+                    .replace("ANN", &print).into_bytes())
+            } else {
+                (200, zstd::encode_all(&b"{[\"version\"]=3,}"[..], 3).unwrap())
+            }
+        });
+        let mut state = State {
+            pc: Some("pc-1".into()),
+            ..State::default()
+        };
+        let report = pass(
+            &Client::new(&server.url, Some("t".into())),
+            &mut state,
+            &dir.path().join("s.json"),
+            std::slice::from_ref(&game),
+            &dir.path().join("j"),
+            |_| true,
+        )
+        .unwrap();
+        assert!(report.uploaded.is_empty());
+        assert_eq!(report.delivered, ["_classic_beta_"]);
+        assert!(!server.seen.lock().unwrap().iter().any(|r| r.url.starts_with("/v1/upload")));
     }
 
     fn pass_over(game: &GameFolder, dir: &Path, state: &mut State) -> Report {
@@ -503,6 +542,8 @@ mod tests {
                 why: "Log in once".into(),
             },
         );
+        // Saved with the refusal, so only a save after dropping it clears it.
+        state.save(&dir.path().join("s.json")).unwrap();
         assert!(pass_over(&game, dir.path(), &mut state).problems.is_empty());
         assert!(
             State::load(&dir.path().join("s.json")).unwrap().refused.is_empty(),
