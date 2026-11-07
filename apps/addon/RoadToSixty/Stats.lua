@@ -281,7 +281,8 @@ function Stats.Index(journey, now, money)
 end
 
 -- What the index was built from, to tell when a journey has changed: the
--- events and segments only grow, and the kills' packed string with them.
+-- events and segments only grow, and the kills' packed string with them, or a
+-- friend's are fetched again, which changes their counts too.
 function Stats.Key(journey)
     local segments = journey.segments or {}
     local open = segments[#segments]

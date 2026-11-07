@@ -68,6 +68,8 @@ local MAX_FAILS = 30            -- refused sends in a row before giving up
 local MAX_STAMP = 64            -- longest journeyId: longer and the ask wouldn't fit a message (255)
 local MAX_LEVEL = 255           -- the highest level taken: charts and marks loop up to it
 local TIME_AHEAD = 366 * 86400  -- how far past now a time may be: screens loop over the weeks up to it
+local TIME_FROM = 1e9           -- 2001, before any journey: screens loop over the weeks from it too
+local BIGGEST = 2 ^ 32          -- no number saved is this big; IDs past it go to the client's C calls
 -- Enum.SendAddonMessageResult (ChatConstantsDocumentation, Forever's UI source).
 local RESULT_LOCKDOWN, RESULT_OFFLINE = 11, 12
 local AUTO_MINUTES = { 0, 5, 15, 30 }   -- the choices for automatic syncing; 0 is off
@@ -137,7 +139,7 @@ end
 -- Whether v is a time a journey could hold. A far-future one would keep the
 -- screens that step through the weeks to it looping for ever.
 local function Time(v)
-    return type(v) == "number" and v >= 0 and v <= ns.Now() + TIME_AHEAD
+    return type(v) == "number" and v >= TIME_FROM and v <= ns.Now() + TIME_AHEAD
 end
 
 local function Level(v)
@@ -145,7 +147,8 @@ local function Level(v)
 end
 
 -- Whether the times of a packed list (Packed.lua), counting from t, all could be.
--- Ten digits is a whole time; much longer reads as infinity.
+-- Ten digits is a whole time; much longer reads as infinity. A kill list counts
+-- from 0, its first step being its first kill's whole time.
 local function PackedTimes(d, t, pattern)
     if d:find("%d%d%d%d%d%d%d%d%d%d%d") then return false end
     for dt in d:gmatch(pattern) do
@@ -153,6 +156,12 @@ local function PackedTimes(d, t, pattern)
         if not Time(t) then return false end
     end
     return true
+end
+
+-- A colour as the client gives it, { r, g, b }: it is unpacked into calls
+-- that need all three.
+local function Colour(c)
+    return Shaped(c, nil, "n") and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number"
 end
 
 local function Plain(t) return Shaped(t) end
@@ -172,8 +181,9 @@ end
 -- plain numbers as a tally can.
 local function Tabard(t)
     if not Shaped(t, { files = "t", emblem = "n", bg = "t", border = "t", emblemColor = "t" }, "?") then return false end
-    for _, part in ipairs({ "files", "bg", "border", "emblemColor" }) do
-        if t[part] and not Shaped(t[part], nil, "n") then return false end
+    if t.files and not Shaped(t.files, nil, "n") then return false end
+    for _, part in ipairs({ "bg", "border", "emblemColor" }) do
+        if t[part] and not Colour(t[part]) then return false end
     end
     return true
 end
@@ -206,7 +216,8 @@ local FIELDS = {
         return true
     end,
     kills = function(v)
-        return Shaped(v, { names = "t" }) and type(v.d) == "string" and Time(v.last)
+        -- (last is 0 in a journey with no kills yet)
+        return Shaped(v, { names = "t" }) and type(v.d) == "string" and (v.last == 0 or Time(v.last))
             and Shaped(v.names, nil, "s") and PackedTimes(v.d, 0, "(-?%d+),%d+,%d+;")
     end,
     recipes = function(v) return Rows(v, Plain) end,
@@ -446,8 +457,9 @@ local function Parse(text)
             value = top.t
         elseif kind == "n" then
             value = tonumber(body)
-            -- "1e999" reads as infinity, which no journey holds and every check on a number passes.
-            if not value or value ~= value or value == math.huge or value == -math.huge then return nil end
+            -- "1e999" reads as infinity, which no journey holds and every check on a number passes,
+            -- and a number this big would reach the client's calls as an ID or a position.
+            if not value or value ~= value or value >= BIGGEST or value <= -BIGGEST then return nil end
         elseif kind == "s" then
             value = Unescape(body)
         elseif kind == "t" then
@@ -705,24 +717,25 @@ local function Ask(rec, key, bytes, auto, rewind)
     -- A stamp kept from before MAX_STAMP was checked would never fit the ask.
     if journey and #(journey.journeyId or "") > MAX_STAMP then journey = nil end
     if rewind == "path" then journey = nil end
-    if journey and rewind == "events" then
-        -- Dropped now, so the counts asked for from here on say what has come.
-        for _, e in ipairs(journey.events) do rec.size = (rec.size or 0) - #Serialize(e) end
-        wipe(journey.events)
-    end
     local segments = journey and #journey.segments or 0
+    local events = journey and rewind ~= "events" and #journey.events or 0
     local last = journey and journey.segments[segments]
     local asked = { id = id, key = key, parts = {}, got = 0, bytes = bytes or 0, heard = GetTime(),
         answered = bytes ~= nil, auto = auto, rewound = rewind ~= nil }
     request = asked
     status[key] = "Asking..."
     local sent, result = Send(("Q:%s:%d:%d:%d:%d:%d:%d:%s"):format(id, VERSION, ns.char.version or 0, segments,
-        last and #last.d or 0, journey and #journey.events or 0, journey and rec.metaSum or 0,
+        last and #last.d or 0, events, journey and rec.metaSum or 0,
         Escape(journey and journey.journeyId or "")), rec.name)
     if not sent then
         if result == RESULT_OFFLINE then ExpectOffline(rec.name) end
         Finish(key, result == RESULT_LOCKDOWN and LOCKED or "Could not send. Are they online?")
         return
+    end
+    if journey and rewind == "events" then
+        -- Dropped once asked for again, so the counts asked for from here on say what has come.
+        for _, e in ipairs(journey.events) do rec.size = (rec.size or 0) - #Serialize(e) end
+        wipe(journey.events)
     end
     Changed()
     Watch(asked)
@@ -759,6 +772,9 @@ local function OnPart(key, id, n, total, data)
     if rec then fits, why = Apply(rec, batch) end
     if (why == "path" or why == "events") and not asked.rewound then
         Ask(rec, key, asked.bytes, asked.auto, why)
+    elseif why == "path" or why == "events" then
+        -- Changed again while it came, as a friend still playing can: it carries on next time.
+        Finish(key, "Their journey changed while it came. Sync again to carry on.")
     elseif not fits then
         if rec then rec.capped = why == "big" or nil end
         Finish(key, why == "big" and TOO_BIG or "Their data did not fit. Removing and adding them starts afresh.", true)

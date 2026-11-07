@@ -36,6 +36,7 @@ end
 local clients = {}
 local carried = 0
 local OFFLINE = "No player named '%s' is currently playing."
+local AT = 1785000000           -- a time a journey can hold, for made-up events
 
 local function Journey(points, events)
     local steps = {}
@@ -64,7 +65,7 @@ local function Journey(points, events)
         events = list,
         levels = { [2] = { t = 1785000100, played = 600, gear = { 1, 2, 3 }, links = { "item:1" },
             skills = { Mining = { 1, 75 } }, partial = true } },
-        kills = { d = "1,10,1;", last = 1785000000, names = { "Boar" } },
+        kills = { d = "1785000000,10,1;", last = 1785000000, names = { "Boar" } },
         recipes = { Cooking = { Stew = true } },
         people = { ["Player-1-0001"] = { name = "Ann", race = "Human", sex = "Female", class = "MAGE", level = 10,
             guild = "Pals", first = 1785000000, last = 1785000500, c = 0, x = 1, y = 2, groups = { pc1 = 2 }, seconds = 30 } },
@@ -344,7 +345,7 @@ local stored, storedEvents = rec.journey, #rec.journey.events
 local firstPath = rec.journey.segments[1].d
 local nextEvent = storedEvents + 1
 for name, bad in pairs({
-    later_segment = { s = { { i = 1, o = #firstPath, d = "1,1,1;" }, { i = 99, m = "w", c = 0, t = 1, x = 1, y = 1, d = "" } } },
+    later_segment = { s = { { i = 1, o = #firstPath, d = "1,1,1;" }, { i = 99, m = "w", c = 0, t = AT, x = 1, y = 1, d = "" } } },
     guild_true = { m = { guild = true } },
     guild_number = { m = { guild = { 5 } } },
     level_not_table = { m = { levels = { [2] = "x" } } },
@@ -355,65 +356,75 @@ for name, bad in pairs({
     rep = { m = { reps = { [1] = { "a" } } } },
     totals = { m = { totals = { kills = "many" } } },
     played = { m = { played = "long" } },
-    loot_table = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, {} } } },
-    loot_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, "|Hjunk|h" } } },
-    place = { ef = nextEvent, e = { { 1, "lvl", "x", 1, 1, 2 } } },
-    run = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = "long" } } } },
-    named_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12, x = 1 } } },
-    table_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, { 12 } } } },
-    good_events_bad_meta = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12 } }, m = { guild = true } },
+    loot_table = { ef = nextEvent, e = { { AT, "loot", 0, 1, 1, {} } } },
+    loot_link = { ef = nextEvent, e = { { AT, "loot", 0, 1, 1, "|Hjunk|h" } } },
+    place = { ef = nextEvent, e = { { AT, "lvl", "x", 1, 1, 2 } } },
+    run = { ef = nextEvent, e = { { AT, "out", 0, 1, 1, 3, { duration = "long" } } } },
+    named_field = { ef = nextEvent, e = { { AT, "zone", 0, 1, 1, 12, x = 1 } } },
+    table_field = { ef = nextEvent, e = { { AT, "zone", 0, 1, 1, { 12 } } } },
+    good_events_bad_meta = { ef = nextEvent, e = { { AT, "zone", 0, 1, 1, 12 } }, m = { guild = true } },
     -- A number too big to hold reads as infinity, which passes any check on a number.
     infinite_time = { ef = nextEvent, e = { { math.huge, "zone", 0, 1, 1, 12 } } },
     infinite_total = { m = { totals = { kills = math.huge } } },
     infinite_start = { s = { { i = 3, m = "w", c = 0, t = math.huge, x = 1, y = 1, d = "" } } },
     -- Fields the map, History and Stats read without a check.
-    no_level = { ef = nextEvent, e = { { 1, "lvl", 0, 1, 1 } } },
-    no_zone = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1 } } },
-    no_quest = { ef = nextEvent, e = { { 1, "qd", 0, 1, 1, nil, 450 } } },
-    no_instance = { ef = nextEvent, e = { { 1, "in", 0, 1, 1, nil, "Deadmines" } } },
-    no_slot = { ef = nextEvent, e = { { 1, "eq", 0, 1, 1, nil, 2 } } },
-    no_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1 } } },
-    no_standing = { ef = nextEvent, e = { { 1, "rep", 0, 1, 1, 72 } } },
-    no_enchant = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, 5 } } },
-    enchant_item = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, "sword", 6 } } },
-    enchant_by = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, 5, 6, nil, nil, true } } },
-    rare_level = { ef = nextEvent, e = { { 1, "rare", 0, 1, 1, "Thuzadin", "rare", "high" } } },
-    duel_level = { ef = nextEvent, e = { { 1, "duel", 0, 1, 1, "Ann", "won", nil, nil, "high" } } },
-    no_member = { ef = nextEvent, e = { { 1, "grpa", 0, 1, 1 } } },
-    member_guid = { ef = nextEvent, e = { { 1, "grpa", 0, 1, 1, { [2] = "Ann" } } } },
-    member_level = { ef = nextEvent, e = { { 1, "grp", 0, 1, 1, "party", { { "Player-1-0001", "Ann", nil, nil, nil, "x" } } } } },
-    left_level = { ef = nextEvent, e = { { 1, "grpl", 0, 1, 1, "Player-1-0001", "x" } } },
-    group_end = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1 } } },
-    group_end_counts = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { duration = 5 } } } },
-    group_end_levels = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, levels = { x = "y" } } } } },
-    pvp_teams = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
+    no_level = { ef = nextEvent, e = { { AT, "lvl", 0, 1, 1 } } },
+    no_zone = { ef = nextEvent, e = { { AT, "zone", 0, 1, 1 } } },
+    no_quest = { ef = nextEvent, e = { { AT, "qd", 0, 1, 1, nil, 450 } } },
+    no_instance = { ef = nextEvent, e = { { AT, "in", 0, 1, 1, nil, "Deadmines" } } },
+    no_slot = { ef = nextEvent, e = { { AT, "eq", 0, 1, 1, nil, 2 } } },
+    no_link = { ef = nextEvent, e = { { AT, "loot", 0, 1, 1 } } },
+    no_standing = { ef = nextEvent, e = { { AT, "rep", 0, 1, 1, 72 } } },
+    no_enchant = { ef = nextEvent, e = { { AT, "ench", 0, 1, 1, 5 } } },
+    enchant_item = { ef = nextEvent, e = { { AT, "ench", 0, 1, 1, "sword", 6 } } },
+    enchant_by = { ef = nextEvent, e = { { AT, "ench", 0, 1, 1, 5, 6, nil, nil, true } } },
+    rare_level = { ef = nextEvent, e = { { AT, "rare", 0, 1, 1, "Thuzadin", "rare", "high" } } },
+    duel_level = { ef = nextEvent, e = { { AT, "duel", 0, 1, 1, "Ann", "won", nil, nil, "high" } } },
+    no_member = { ef = nextEvent, e = { { AT, "grpa", 0, 1, 1 } } },
+    member_guid = { ef = nextEvent, e = { { AT, "grpa", 0, 1, 1, { [2] = "Ann" } } } },
+    member_level = { ef = nextEvent, e = { { AT, "grp", 0, 1, 1, "party", { { "Player-1-0001", "Ann", nil, nil, nil, "x" } } } } },
+    left_level = { ef = nextEvent, e = { { AT, "grpl", 0, 1, 1, "Player-1-0001", "x" } } },
+    group_end = { ef = nextEvent, e = { { AT, "grpx", 0, 1, 1 } } },
+    group_end_counts = { ef = nextEvent, e = { { AT, "grpx", 0, 1, 1, { duration = 5 } } } },
+    group_end_levels = { ef = nextEvent, e = { { AT, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, levels = { x = "y" } } } } },
+    pvp_teams = { ef = nextEvent, e = { { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
         levels = 0, items = {}, pvp = { teams = { 1 } } } } } },
-    pvp_stat = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
+    pvp_stat = { ef = nextEvent, e = { { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
         levels = 0, items = {}, pvp = { stats = { { nil, 3 } } } } } } },
-    run_items = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0 } } } },
-    no_profession = { ef = nextEvent, e = { { 1, "prof", 0, 1, 1 } } },
-    no_gather_item = { ef = nextEvent, e = { { 1, "gath", 0, 1, 1, "m" } } },
-    tabard_colour = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = 1, border = 1 } } } },
+    run_items = { ef = nextEvent, e = { { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0 } } } },
+    no_profession = { ef = nextEvent, e = { { AT, "prof", 0, 1, 1 } } },
+    no_gather_item = { ef = nextEvent, e = { { AT, "gath", 0, 1, 1, "m" } } },
+    tabard_colour = { ef = nextEvent, e = { { AT, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = 1, border = 1 } } } },
     guild_tabard = { m = { guild = { "Pals", "Member", 1, { bg = 1, border = 1 } } } },
-    tabard_colour_text = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = { "red" }, border = { 1 } } } } },
+    tabard_colour_text = { ef = nextEvent, e = { { AT, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = { "red" }, border = { 1 } } } } },
     skill_key = { m = { skills = { [1] = { 5 }, Mining = { 5 } } } },
     snapshot_skill_key = { m = { levels = { [3] = { skills = { [1] = { 5 }, Mining = { 5 } } } } } },
-    loot_not_a_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, "junk|Hitem:1" } } },
+    loot_not_a_link = { ef = nextEvent, e = { { AT, "loot", 0, 1, 1, "junk|Hitem:1" } } },
     -- Times and levels the screens step through: past these they would never finish.
-    far_time = { ef = nextEvent, e = { { 1e15, "zone", 0, 1, 1, 12 } } },
-    far_past = { ef = nextEvent, e = { { -1e15, "zone", 0, 1, 1, 12 } } },
-    far_start = { s = { { i = 3, m = "w", c = 0, t = 1e15, x = 1, y = 1, d = "" } } },
-    far_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "9999999999,1,1;9999999999,1,1;9999999999,1,1" } } },
-    far_step_on = { s = { { i = 1, o = #firstPath, d = "9999999999,1,1;9999999999,1,1;" } } },
-    long_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = string.rep("9", 400) .. ",1,1" } } },
-    long_position = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "1," .. string.rep("9", 400) .. ",1" } } },
-    far_snapshot = { m = { levels = { [3] = { t = 1e15 } } } },
-    far_last_kill = { m = { kills = { d = "", last = 1e15, names = {} } } },
-    far_kill = { m = { kills = { d = "1785000000,1,1;9999999999,1,1;", last = 1, names = {} } } },
-    long_kill = { m = { kills = { d = string.rep("9", 400) .. ",1,1;", last = 1, names = {} } } },
-    high_level_key = { m = { levels = { [1e15] = { t = 1 } } } },
-    high_level = { ef = nextEvent, e = { { 1, "lvl", 0, 1, 1, 1e15 } } },
-    high_login_level = { ef = nextEvent, e = { { 1, "on", 0, 1, 1, 1e15 } } },
+    far_time = { ef = nextEvent, e = { { 4e9, "zone", 0, 1, 1, 12 } } },
+    far_past = { ef = nextEvent, e = { { -4e9, "zone", 0, 1, 1, 12 } } },
+    far_start = { s = { { i = 3, m = "w", c = 0, t = 4e9, x = 1, y = 1, d = "" } } },
+    far_step = { s = { { i = 3, m = "w", c = 0, t = AT, x = 1, y = 1, d = "9999999999,1,1;9999999999,1,1;9999999999,1,1" } } },
+    far_step_on = { s = { { i = 1, o = #firstPath, d = ";9999999999,1,1;9999999999,1,1" } } },
+    -- Eleven digits that read as 1: only the cap on digits refuses it.
+    long_step = { s = { { i = 3, m = "w", c = 0, t = AT, x = 1, y = 1, d = "00000000001,1,1" } } },
+    long_position = { s = { { i = 3, m = "w", c = 0, t = AT, x = 1, y = 1, d = "1," .. string.rep("9", 400) .. ",1" } } },
+    far_snapshot = { m = { levels = { [3] = { t = 4e9 } } } },
+    far_last_kill = { m = { kills = { d = "", last = 4e9, names = {} } } },
+    far_kill = { m = { kills = { d = "1785000000,1,1;9999999999,1,1;", last = 0, names = {} } } },
+    long_kill = { m = { kills = { d = "001785000000,1,1;", last = 0, names = {} } } },
+    early_time = { ef = nextEvent, e = { { 5e8, "zone", 0, 1, 1, 12 } } },
+    early_kill = { m = { kills = { d = "", last = 5e8, names = {} } } },
+    big_id = { ef = nextEvent, e = { { AT, "zone", 0, 1, 1, 1e300 } } },
+    big_position = { s = { { i = 3, m = "w", c = 0, t = AT, x = 1e300, y = 1, d = "" } } },
+    run_item_kind = { ef = nextEvent, e = { { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
+        levels = 0, items = { true } } } } },
+    no_recipe = { ef = nextEvent, e = { { AT, "rec", 0, 1, 1 } } },
+    no_skill = { ef = nextEvent, e = { { AT, "skill", 0, 1, 1 } } },
+    tabard_colour_short = { ef = nextEvent, e = { { AT, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = {}, border = {} } } } },
+    high_level_key = { m = { levels = { [1000] = { t = AT } } } },
+    high_level = { ef = nextEvent, e = { { AT, "lvl", 0, 1, 1, 1000 } } },
+    high_login_level = { ef = nextEvent, e = { { AT, "on", 0, 1, 1, 1000 } } },
     -- A level's snapshot and rows of the fields beside the events.
     snapshot_time = { m = { levels = { [3] = { t = "soon" } } } },
     snapshot_count = { m = { levels = { [3] = { kills = "many" } } } },
@@ -432,39 +443,40 @@ check(#z.errors == 0, "errors: " .. tostring(z.errors[1]))
 
 -- The shapes the addon does save pass those checks, a nil in the middle too.
 do
-    local heldEvents, heldSize = #stored.events, rec.size
-    local after = Reply({ g = "Player-1-FFFF", j = "Player-1-FFFF:9", s = {}, ef = nextEvent, done = true, e = {
-        { 1, "lvl", 0, 1, 1, 2 },
-        { 1, "zone", 0, 1, 1, 12 },
-        { 1, "qd", 0, 1, 1, 100 },
-        { 1, "in", 0, 1, 1, 33, "Deadmines", "party" },
-        { 1, "eq", 0, 1, 1, 16, 0 },
-        { 1, "rep", 0, 1, 1, 72, 5, "Stormwind", true },
-        { 1, "ench", 0, 1, 1, 5, 6, 0, 16, "self", nil, 7, "+3 Agility" },
-        { 1, "rare", 0, 1, 1, "Thuzadin", "rare", 61, 61, "kill" },
-        { 1, "duel", 0, 1, 1, "Ann", "won", "me", "MAGE", 10, "Human", "Pals", true },
-        { 1, "grp", 0, 1, 1, "raid", { { "Player-1-0001" }, { "Player-1-0002", "Ann", "Human", "Female", "MAGE", 10, "Pals", 1 } }, true, 2 },
-        { 1, "grpa", 0, 1, 1, { "Player-1-0001" } },
-        { 1, "grpl", 0, 1, 1, "Player-1-0001", 12 },
-        { 1, "grps", 0, 1, 1, false, 2 },
-        { 1, "grpk", 0, 1, 1, "raid" },
-        { 1, "grpx", 0, 1, 1, { duration = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0, met = 1,
+    local heldEvents, heldSize, heldKills = #stored.events, rec.size, stored.kills
+    local after = Reply({ g = "Player-1-FFFF", j = "Player-1-FFFF:9", s = {}, ef = nextEvent, done = true,
+        m = { kills = { d = "", last = 0, names = {} } }, e = {
+        { AT, "lvl", 0, 1, 1, 2 },
+        { AT, "zone", 0, 1, 1, 12 },
+        { AT, "qd", 0, 1, 1, 100 },
+        { AT, "in", 0, 1, 1, 33, "Deadmines", "party" },
+        { AT, "eq", 0, 1, 1, 16, 0 },
+        { AT, "rep", 0, 1, 1, 72, 5, "Stormwind", true },
+        { AT, "ench", 0, 1, 1, 5, 6, 0, 16, "self", nil, 7, "+3 Agility" },
+        { AT, "rare", 0, 1, 1, "Thuzadin", "rare", 61, 61, "kill" },
+        { AT, "duel", 0, 1, 1, "Ann", "won", "me", "MAGE", 10, "Human", "Pals", true },
+        { AT, "grp", 0, 1, 1, "raid", { { "Player-1-0001" }, { "Player-1-0002", "Ann", "Human", "Female", "MAGE", 10, "Pals", 1 } }, true, 2 },
+        { AT, "grpa", 0, 1, 1, { "Player-1-0001" } },
+        { AT, "grpl", 0, 1, 1, "Player-1-0001", 12 },
+        { AT, "grps", 0, 1, 1, false, 2 },
+        { AT, "grpk", 0, 1, 1, "raid" },
+        { AT, "grpx", 0, 1, 1, { duration = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0, met = 1,
             levels = { ["Player-1-0001"] = 12 } } },
-        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, type = "pvp",
+        { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, type = "pvp",
             pvp = { won = true, teams = { 1, 2 }, kb = 1, stats = { { "Flags", 1 } }, rep = { Frostwolf = 5 } } } },
-        { 1, "prof", 0, 1, 1, "Mining", 1, 75 },
-        { 1, "gath", 0, 1, 1, "f", 6303 },
-        { 1, "gj", 0, 1, 1, "Pals", "Member", true, { files = { 1, 2 }, emblem = 3, style = 2, bg = { 1, 0, 0 }, border = { 0, 0, 1 } } },
-        { 1, "loot", 0, 1, 1, "|cnIQ2:|Hitem:2:0|h[Sword]|h|r", 2 },
+        { AT, "prof", 0, 1, 1, "Mining", 1, 75 },
+        { AT, "gath", 0, 1, 1, "f", 6303 },
+        { AT, "gj", 0, 1, 1, "Pals", "Member", true, { files = { 1, 2 }, emblem = 3, style = 2, bg = { 1, 0, 0 }, border = { 0, 0, 1 } } },
+        { AT, "loot", 0, 1, 1, "|cnIQ2:|Hitem:2:0|h[Sword]|h|r", 2 },
         -- A field a newer version adds may be a table where this version has letters.
-        { 1, "grpa", 0, 1, 1, { "Player-1-0001", [20] = { 1 } } },
-        { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, later = { 1 } } },
-        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, later = { 1 },
+        { AT, "grpa", 0, 1, 1, { "Player-1-0001", [20] = { 1 } } },
+        { AT, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, later = { 1 } } },
+        { AT, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, later = { 1 },
             pvp = { later = { 1 } } } },
     } })
     check(after:find("^Last synced"), "real shapes refused: " .. after)
     for i = #stored.events, heldEvents + 1, -1 do stored.events[i] = nil end
-    rec.size = heldSize
+    rec.size, stored.kills = heldSize, heldKills
 end
 
 -- A print that doesn't match asks for the whole journey again, once a sync:
@@ -479,7 +491,7 @@ do
     check(#asked == 2 and asked[1]:find("^Q:%x+:1:4:2:") and asked[2]:find("^Q:%x+:1:4:0:0:0:0:$"),
         "not asked for the whole journey: " .. tostring(asked[2]))
     check(rec.journey == stored, "dropped the journey before the new one came")
-    check(Deliver(base):find("did not fit"), "a second print that doesn't match wasn't refused: " .. status(rec))
+    check(Deliver(base):find("changed while it came"), "a second print that doesn't match wasn't stopped: " .. status(rec))
     check(#asked == 2, "asked a third time")
     -- Events alone: the path stays, and only the events are asked for again.
     local held = {}
@@ -491,9 +503,14 @@ do
     check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }) == "Asking...", "events that don't match weren't asked again")
     check(#asked == 2 and asked[2]:find(("^Q:%%x+:1:4:%d:%%d+:0:"):format(segments)), "not asked for the events alone: " .. tostring(asked[2]))
     check(#stored.events == 0 and rec.journey == stored and #stored.segments == segments, "not ready for the events again")
-    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }):find("did not fit"), "a second mismatch wasn't refused")
+    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }):find("changed while it came"), "a second mismatch wasn't stopped")
     for i, e in ipairs(held) do stored.events[i] = e end
     rec.size = heldSize
+    -- An ask for the events again that can't go keeps the events there were.
+    F:Sync("Bromm")
+    z.onSend = function() return 11 end
+    Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 })
+    check(#stored.events == #held and rec.size == heldSize, "events dropped though the ask didn't go")
     b.mute, z.onSend = false, nil
     Run()
 end
