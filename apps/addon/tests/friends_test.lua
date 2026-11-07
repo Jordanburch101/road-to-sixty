@@ -1,9 +1,11 @@
+---@diagnostic disable: duplicate-set-field
 -- Offline test of Friends.lua: two clients joined by a modelled server, with
 -- made-up journeys. Nothing is shared without both adding each other, a first
 -- sync brings a whole journey in batches, later ones only what is new, a sync
 -- that stops carries on, a friend can't replace one of the account's own
 -- characters, broken and hostile batches are refused, and an automatic sync
--- passes over someone offline without a line in chat.
+-- passes over someone offline without a line in chat, nothing is asked or sent
+-- where chat is locked down, and a resume never grafts onto data that moved.
 -- Run with LuaJIT from apps/addon: luajit tests/friends_test.lua
 
 local clock, queue, seq = 0, {}, 0
@@ -310,7 +312,7 @@ check(rec.journey.journeyId == "Player-1-FFFF:9" and status(rec):find("^Last syn
 -- fields too, and a batch that fails leaves the journey as it was.
 local function Ser(v)
     local kind = type(v)
-    if kind == "number" then return "n" .. v .. "~" end
+    if kind == "number" then return v == math.huge and "n1e999~" or "n" .. v .. "~" end
     if kind == "boolean" then return v and "t~" or "f~" end
     if kind == "string" then
         return "s" .. v:gsub("[%%~|%c\128-\255]", function(ch) return ("%%%02X"):format(ch:byte()) end) .. "~"
@@ -320,9 +322,7 @@ local function Ser(v)
     out[#out + 1] = "}~"
     return table.concat(out)
 end
-local function Reply(batch, from)
-    b.mute = true
-    F:Sync("Bromm")
+local function Deliver(batch, from)
     local text = Ser(batch)
     local parts = {}
     for at = 1, #text, 200 do parts[#parts + 1] = text:sub(at, at + 199) end
@@ -330,7 +330,12 @@ local function Reply(batch, from)
         z.fire("CHAT_MSG_ADDON", "RTSFriends", ("B:%s:%d:%d:%s"):format(b.lastAsked, n, #parts, part), "WHISPER",
             from or "Bromm-Era")
     end
-    local after = status(rec)
+    return status(rec)
+end
+local function Reply(batch, from)
+    b.mute = true
+    F:Sync("Bromm")
+    local after = Deliver(batch, from)
     b.mute = false
     Run()
     return after
@@ -357,14 +362,141 @@ for name, bad in pairs({
     named_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12, x = 1 } } },
     table_field = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, { 12 } } } },
     good_events_bad_meta = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1, 12 } }, m = { guild = true } },
+    -- A number too big to hold reads as infinity, which passes any check on a number.
+    infinite_time = { ef = nextEvent, e = { { math.huge, "zone", 0, 1, 1, 12 } } },
+    infinite_total = { m = { totals = { kills = math.huge } } },
+    infinite_start = { s = { { i = 3, m = "w", c = 0, t = math.huge, x = 1, y = 1, d = "" } } },
+    -- Fields the map, History and Stats read without a check.
+    no_level = { ef = nextEvent, e = { { 1, "lvl", 0, 1, 1 } } },
+    no_zone = { ef = nextEvent, e = { { 1, "zone", 0, 1, 1 } } },
+    no_quest = { ef = nextEvent, e = { { 1, "qd", 0, 1, 1, nil, 450 } } },
+    no_instance = { ef = nextEvent, e = { { 1, "in", 0, 1, 1, nil, "Deadmines" } } },
+    no_slot = { ef = nextEvent, e = { { 1, "eq", 0, 1, 1, nil, 2 } } },
+    no_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1 } } },
+    no_standing = { ef = nextEvent, e = { { 1, "rep", 0, 1, 1, 72 } } },
+    no_enchant = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, 5 } } },
+    enchant_item = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, "sword", 6 } } },
+    enchant_by = { ef = nextEvent, e = { { 1, "ench", 0, 1, 1, 5, 6, nil, nil, true } } },
+    rare_level = { ef = nextEvent, e = { { 1, "rare", 0, 1, 1, "Thuzadin", "rare", "high" } } },
+    duel_level = { ef = nextEvent, e = { { 1, "duel", 0, 1, 1, "Ann", "won", nil, nil, "high" } } },
+    no_member = { ef = nextEvent, e = { { 1, "grpa", 0, 1, 1 } } },
+    member_guid = { ef = nextEvent, e = { { 1, "grpa", 0, 1, 1, { [2] = "Ann" } } } },
+    member_level = { ef = nextEvent, e = { { 1, "grp", 0, 1, 1, "party", { { "Player-1-0001", "Ann", nil, nil, nil, "x" } } } } },
+    left_level = { ef = nextEvent, e = { { 1, "grpl", 0, 1, 1, "Player-1-0001", "x" } } },
+    group_end = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1 } } },
+    group_end_counts = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { duration = 5 } } } },
+    group_end_levels = { ef = nextEvent, e = { { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, levels = { x = "y" } } } } },
+    pvp_teams = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
+        levels = 0, items = {}, pvp = { teams = { 1 } } } } } },
+    pvp_stat = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0,
+        levels = 0, items = {}, pvp = { stats = { { nil, 3 } } } } } } },
+    run_items = { ef = nextEvent, e = { { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0 } } } },
+    no_profession = { ef = nextEvent, e = { { 1, "prof", 0, 1, 1 } } },
+    no_gather_item = { ef = nextEvent, e = { { 1, "gath", 0, 1, 1, "m" } } },
+    tabard_colour = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = 1, border = 1 } } } },
+    guild_tabard = { m = { guild = { "Pals", "Member", 1, { bg = 1, border = 1 } } } },
+    tabard_colour_text = { ef = nextEvent, e = { { 1, "gj", 0, 1, 1, "Pals", "Member", nil, { bg = { "red" }, border = { 1 } } } } },
+    skill_key = { m = { skills = { [1] = { 5 }, Mining = { 5 } } } },
+    snapshot_skill_key = { m = { levels = { [3] = { skills = { [1] = { 5 }, Mining = { 5 } } } } } },
+    loot_not_a_link = { ef = nextEvent, e = { { 1, "loot", 0, 1, 1, "junk|Hitem:1" } } },
+    -- Times and levels the screens step through: past these they would never finish.
+    far_time = { ef = nextEvent, e = { { 1e15, "zone", 0, 1, 1, 12 } } },
+    far_past = { ef = nextEvent, e = { { -1e15, "zone", 0, 1, 1, 12 } } },
+    far_start = { s = { { i = 3, m = "w", c = 0, t = 1e15, x = 1, y = 1, d = "" } } },
+    far_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "9999999999,1,1;9999999999,1,1;9999999999,1,1" } } },
+    far_step_on = { s = { { i = 1, o = #firstPath, d = "9999999999,1,1;9999999999,1,1;" } } },
+    long_step = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = string.rep("9", 400) .. ",1,1" } } },
+    long_position = { s = { { i = 3, m = "w", c = 0, t = 1, x = 1, y = 1, d = "1," .. string.rep("9", 400) .. ",1" } } },
+    far_snapshot = { m = { levels = { [3] = { t = 1e15 } } } },
+    far_last_kill = { m = { kills = { d = "", last = 1e15, names = {} } } },
+    far_kill = { m = { kills = { d = "1785000000,1,1;9999999999,1,1;", last = 1, names = {} } } },
+    long_kill = { m = { kills = { d = string.rep("9", 400) .. ",1,1;", last = 1, names = {} } } },
+    high_level_key = { m = { levels = { [1e15] = { t = 1 } } } },
+    high_level = { ef = nextEvent, e = { { 1, "lvl", 0, 1, 1, 1e15 } } },
+    high_login_level = { ef = nextEvent, e = { { 1, "on", 0, 1, 1, 1e15 } } },
+    -- A level's snapshot and rows of the fields beside the events.
+    snapshot_time = { m = { levels = { [3] = { t = "soon" } } } },
+    snapshot_count = { m = { levels = { [3] = { kills = "many" } } } },
+    riding_row = { m = { riding = { [1] = { "Riding", "soon" } } } },
+    mount_row = { m = { mounts = { [1] = { "soon" } } } },
+    -- A stamp this long would push every later ask past 255 bytes.
+    long_stamp = { j = string.rep("x", 65) },
 }) do
-    bad.g, bad.j, bad.s = "Player-1-FFFF", "Player-1-FFFF:9", bad.s or {}
+    bad.g, bad.j, bad.s = "Player-1-FFFF", bad.j or "Player-1-FFFF:9", bad.s or {}
     local after = Reply(bad)
     check(after:find("did not fit"), name .. " taken: " .. after)
     check(rec.journey == stored and #stored.events == storedEvents and stored.segments[1].d == firstPath
         and stored.guild == false, name .. " changed the journey")
 end
 check(#z.errors == 0, "errors: " .. tostring(z.errors[1]))
+
+-- The shapes the addon does save pass those checks, a nil in the middle too.
+do
+    local heldEvents, heldSize = #stored.events, rec.size
+    local after = Reply({ g = "Player-1-FFFF", j = "Player-1-FFFF:9", s = {}, ef = nextEvent, done = true, e = {
+        { 1, "lvl", 0, 1, 1, 2 },
+        { 1, "zone", 0, 1, 1, 12 },
+        { 1, "qd", 0, 1, 1, 100 },
+        { 1, "in", 0, 1, 1, 33, "Deadmines", "party" },
+        { 1, "eq", 0, 1, 1, 16, 0 },
+        { 1, "rep", 0, 1, 1, 72, 5, "Stormwind", true },
+        { 1, "ench", 0, 1, 1, 5, 6, 0, 16, "self", nil, 7, "+3 Agility" },
+        { 1, "rare", 0, 1, 1, "Thuzadin", "rare", 61, 61, "kill" },
+        { 1, "duel", 0, 1, 1, "Ann", "won", "me", "MAGE", 10, "Human", "Pals", true },
+        { 1, "grp", 0, 1, 1, "raid", { { "Player-1-0001" }, { "Player-1-0002", "Ann", "Human", "Female", "MAGE", 10, "Pals", 1 } }, true, 2 },
+        { 1, "grpa", 0, 1, 1, { "Player-1-0001" } },
+        { 1, "grpl", 0, 1, 1, "Player-1-0001", 12 },
+        { 1, "grps", 0, 1, 1, false, 2 },
+        { 1, "grpk", 0, 1, 1, "raid" },
+        { 1, "grpx", 0, 1, 1, { duration = 1, kills = 0, xp = 0, quests = 0, deaths = 0, instances = 0, met = 1,
+            levels = { ["Player-1-0001"] = 12 } } },
+        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, type = "pvp",
+            pvp = { won = true, teams = { 1, 2 }, kb = 1, stats = { { "Flags", 1 } }, rep = { Frostwolf = 5 } } } },
+        { 1, "prof", 0, 1, 1, "Mining", 1, 75 },
+        { 1, "gath", 0, 1, 1, "f", 6303 },
+        { 1, "gj", 0, 1, 1, "Pals", "Member", true, { files = { 1, 2 }, emblem = 3, style = 2, bg = { 1, 0, 0 }, border = { 0, 0, 1 } } },
+        { 1, "loot", 0, 1, 1, "|cnIQ2:|Hitem:2:0|h[Sword]|h|r", 2 },
+        -- A field a newer version adds may be a table where this version has letters.
+        { 1, "grpa", 0, 1, 1, { "Player-1-0001", [20] = { 1 } } },
+        { 1, "grpx", 0, 1, 1, { kills = 0, xp = 0, quests = 0, deaths = 0, later = { 1 } } },
+        { 1, "out", 0, 1, 1, 3, { duration = 1, kills = 0, xp = 0, deaths = 0, money = 0, levels = 0, items = {}, later = { 1 },
+            pvp = { later = { 1 } } } },
+    } })
+    check(after:find("^Last synced"), "real shapes refused: " .. after)
+    for i = #stored.events, heldEvents + 1, -1 do stored.events[i] = nil end
+    rec.size = heldSize
+end
+
+-- A print that doesn't match asks for the whole journey again, once a sync:
+-- a sender that keeps sending one can't keep a sync going for ever.
+do
+    local asked = {}
+    z.onSend = function(_, text) asked[#asked + 1] = text end
+    b.mute = true
+    F:Sync("Bromm")
+    local base = { g = "Player-1-FFFF", j = "Player-1-FFFF:9", s = {}, p = 12345 }
+    check(Deliver(base) == "Asking...", "a print that doesn't match wasn't asked again: " .. status(rec))
+    check(#asked == 2 and asked[1]:find("^Q:%x+:1:4:2:") and asked[2]:find("^Q:%x+:1:4:0:0:0:0:$"),
+        "not asked for the whole journey: " .. tostring(asked[2]))
+    check(rec.journey == stored, "dropped the journey before the new one came")
+    check(Deliver(base):find("did not fit"), "a second print that doesn't match wasn't refused: " .. status(rec))
+    check(#asked == 2, "asked a third time")
+    -- Events alone: the path stays, and only the events are asked for again.
+    local held = {}
+    for i, e in ipairs(stored.events) do held[i] = e end
+    local heldSize = rec.size
+    asked = {}
+    F:Sync("Bromm")
+    local segments = #stored.segments
+    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }) == "Asking...", "events that don't match weren't asked again")
+    check(#asked == 2 and asked[2]:find(("^Q:%%x+:1:4:%d:%%d+:0:"):format(segments)), "not asked for the events alone: " .. tostring(asked[2]))
+    check(#stored.events == 0 and rec.journey == stored and #stored.segments == segments, "not ready for the events again")
+    check(Deliver({ g = base.g, j = base.j, s = {}, pe = 12345 }):find("did not fit"), "a second mismatch wasn't refused")
+    for i, e in ipairs(held) do stored.events[i] = e end
+    rec.size = heldSize
+    b.mute, z.onSend = false, nil
+    Run()
+end
 
 -- A friend can't grow the saved file without end: past the cap, the sync
 -- stops asking and says why.
@@ -543,6 +675,189 @@ for _, form in ipairs(forms) do
     check(bo_rec.synced, "sender written " .. form[1] .. " not matched: " .. ann.ns.Friends:Status(bo_rec))
 end
 check(#ann.errors == 0 and #bo.errors == 0, "errors: " .. tostring(ann.errors[1] or bo.errors[1]))
+
+-- A resume never grafts onto data that moved, and chat lockdown stops only what it must.
+clients.Cy = Client("Cy", "Di", "Player-1-CC01", Journey(400, 40))
+clients.Di = Client("Di", "Cy", "Player-1-DD01", Journey(5, 2))
+local cy, di = clients.Cy, clients.Di
+local CF, DF = cy.ns.Friends, di.ns.Friends
+CF:Add("Di")
+DF:Add("Cy")
+Run()
+DF:Sync("Cy")
+Run()
+local copy = di.ns.db.friends.cy
+check(copy.journey and copy.synced, "second pair didn't sync: " .. DF:Status(copy))
+
+local function Same(what)
+    local mine, theirs = copy.journey, cy.ns.char
+    check(#mine.segments == #theirs.segments, what .. ": segments " .. #mine.segments .. " of " .. #theirs.segments)
+    for i, seg in ipairs(theirs.segments) do
+        local got = mine.segments[i]
+        check(got and got.t == seg.t and got.d == seg.d, what .. ": segment " .. i .. " differs")
+    end
+    check(#mine.events == #theirs.events, what .. ": events " .. #mine.events .. " of " .. #theirs.events)
+    for i, e in ipairs(theirs.events) do
+        check(mine.events[i] and mine.events[i][1] == e[1], what .. ": event " .. i .. " differs")
+    end
+end
+Same("first sync")
+
+-- A session from a late second PC lands in the middle: same stamp, more of
+-- everything, so counts alone would carry on from the wrong place.
+-- An event landing there costs only the events again, as a run's summary saved
+-- late does, and the path isn't sent again.
+local held = copy.journey
+table.insert(cy.ns.char.events, 5, { 1785000003, "zone", 0, 1, 1, 12 })
+local pathSent = 0
+cy.onSend = function(_, text)
+    if text:sub(1, 1) == "B" and text:find('sd~s1,3,-2', 1, true) then pathSent = pathSent + 1 end
+end
+DF:Sync("Cy")
+Run()
+cy.onSend = nil
+check(copy.journey == held, "an event merged in the middle fetched the path too")
+check(pathSent == 0, "an event merged in the middle sent the path again")
+Same("event in the middle")
+held = copy.journey
+table.insert(cy.ns.char.segments, 2, { m = "w", c = 0, t = 1785005000, x = 1, y = 1, d = "1,1,1" })
+DF:Sync("Cy")
+Run()
+check(copy.journey ~= held, "a segment merged in the middle was grafted onto")
+Same("segment in the middle")
+
+-- The latest events are sent again anyway, so one landing there costs no more.
+held = copy.journey
+table.insert(cy.ns.char.events, #cy.ns.char.events - 2, { 1785000037, "zone", 0, 1, 1, 12 })
+cy.ns.char.events[#cy.ns.char.events + 1] = { 1786000000, "zone", 0, 1, 1, 12 }
+local asks = {}
+di.onSend = function(_, text)
+    local have = text:match("^Q:%x+:%d+:%d+:%d+:%d+:(%d+):")
+    if have then asks[#asks + 1] = have end
+end
+DF:Sync("Cy")
+Run()
+di.onSend = nil
+check(copy.journey == held, "an event among the latest fetched the whole journey again")
+check(#asks == 1 and asks[1] ~= "0", "an event among the latest fetched the events again")
+Same("event among the latest")
+
+-- A sender from before stamps gets the same: its rewind has no print to check,
+-- as it can't say it is starting again.
+local stamped = cy.ns.char.journeyId
+cy.ns.char.journeyId = nil
+DF:Sync("Cy")
+Run()
+Same("sender without a stamp")
+table.insert(cy.ns.char.events, 5, { 1785000002, "zone", 0, 1, 1, 12 })
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^Last synced"), "a rewind without a stamp stopped: " .. DF:Status(copy))
+Same("event in the middle, no stamp")
+table.insert(cy.ns.char.segments, 2, { m = "w", c = 0, t = 1785004000, x = 1, y = 1, d = "1,1,1" })
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^Last synced"), "a path rewind without a stamp stopped: " .. DF:Status(copy))
+Same("segment in the middle, no stamp")
+cy.ns.char.journeyId = stamped
+
+-- A stamp kept from before its length was checked can't stop the asking (the
+-- client model checks each message is under 255 bytes).
+copy.journey.journeyId = string.rep("x", 300)
+DF:Sync("Cy")
+Run()
+check(copy.journey.journeyId == "Player-1-FFFF:0", "a long stamp kept: " .. DF:Status(copy))
+Same("after a long stamp")
+
+-- Locked here: the send's result says so, and it says why.
+di.onSend = function() return 11 end
+DF:Sync("Cy")
+check(DF:Status(copy):find("inside a dungeon"), "result 11 not named: " .. DF:Status(copy))
+check(not DF:Busy(), "still asking")
+di.onSend = function() return 9 end
+DF:Sync("Cy")
+check(DF:Status(copy) == "Could not send. Are they online?", "other results changed: " .. DF:Status(copy))
+di.onSend = nil
+
+-- Lockdown said but the send still goes: the game decides, so the sync works.
+di.env.C_ChatInfo.InChatMessagingLockdown = function() return true end
+cy.env.C_ChatInfo.InChatMessagingLockdown = function() return true end
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^Last synced"), "refused a sync the game would have sent: " .. DF:Status(copy))
+di.env.C_ChatInfo.InChatMessagingLockdown, cy.env.C_ChatInfo.InChatMessagingLockdown = nil, nil
+
+-- Locked there: they can't answer, not even to say so, and the wait says it may be that.
+cy.onSend = function() return 11 end
+DF:Sync("Cy")
+Run()
+check(DF:Status(copy):find("^No answer") and DF:Status(copy):find("dungeon"), "no answer not explained: " .. DF:Status(copy))
+cy.onSend = nil
+DF:Sync("Cy")
+Run()
+
+-- An automatic round in lockdown says nothing.
+di.onSend = function() return 11 end
+check(DF:ParseAutoSync("5"), "choice not taken")
+At(330, function() DF:ParseAutoSync("off") end)
+Run()
+check(DF:Status(copy):find("^Last synced"), "an automatic round reported lockdown: " .. DF:Status(copy))
+di.onSend = nil
+
+-- A send said to be offline may still bring the game's line: hidden, once a
+-- friend's ask has ended, for each of them, and only for a moment.
+local hid = {}
+for _, name in ipairs({ "Gone", "Away", "Left" }) do
+    di.ns.db.friends[name:lower()] = { name = name, realm = "Era" }
+end
+di.onSend = function(_, _, _, target)
+    if target ~= "Cy" then
+        local line = OFFLINE:format(target)
+        At(0.05, function() hid[#hid + 1] = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
+        At(0.1, function() hid[#hid + 1] = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
+        At(5, function() hid.later = di.filter(nil, "CHAT_MSG_SYSTEM", line) end)
+        return 12
+    end
+end
+check(DF:ParseAutoSync("5"), "choice not taken")
+At(330, function() DF:ParseAutoSync("off") end)
+Run()
+di.onSend = nil
+check(#hid >= 6, "not every offline friend was asked: " .. #hid)
+for i, seen in ipairs(hid) do check(seen == true, "offline line " .. i .. " not hidden after result 12") end
+check(hid.later == false, "offline line hidden too long")
+check(DF:Status(di.ns.db.friends.gone) == "Not synced yet.", "offline friend reported: " .. DF:Status(di.ns.db.friends.gone))
+for _, name in ipairs({ "gone", "away", "left" }) do di.ns.db.friends[name] = nil end
+
+-- A send that can't go on stops at once, and the friend carries on later.
+for _, result in ipairs({ 11, 12 }) do
+    local bigger2 = Journey(9000, 300)
+    bigger2.journeyId = "Player-1-FFFF:" .. (30 + result)
+    cy.ns.char = bigger2
+    local parts, lineHidden = 0, nil
+    cy.onSend = function(_, text)
+        if text:sub(1, 1) == "B" then
+            parts = parts + 1
+            if parts > 5 then
+                if result == 12 then
+                    At(0.05, function() lineHidden = cy.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Di-Era")) end)
+                end
+                return result
+            end
+        end
+    end
+    DF:Sync("Cy")
+    Run()
+    check(parts == 6, "result " .. result .. " didn't stop the send: " .. parts .. " parts")
+    check(DF:Status(copy):find("^Stopped"), "sync not stopped: " .. DF:Status(copy))
+    check(result ~= 12 or lineHidden == true, "offline line not hidden for a send")
+    cy.onSend = nil
+    DF:Sync("Cy")
+    Run()
+    check(copy.synced and DF:Status(copy):find("^Last synced"), "didn't carry on: " .. DF:Status(copy))
+    Same("after result " .. result)
+end
+check(#cy.errors == 0 and #di.errors == 0, "errors: " .. tostring(cy.errors[1] or di.errors[1]))
 
 if failures > 0 then os.exit(1) end
 print("friends_test: all passed")

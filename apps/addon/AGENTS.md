@@ -73,7 +73,11 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   players, so treat them as untrusted. `Apply` checks the shape of every
   field, nested ones too, before it keeps anything. A new journey field or
   event field the panels read needs a check there, or one bad friend can
-  break the Characters list or the Stats screen. They live in the
+  break the Characters list or the Stats screen. A number a screen loops up
+  to needs a bound too: a far-future time or a huge level hangs the client
+  (`Time`, `Level`, `PackedTimes`), and a field in capitals in `EVENT_FIELDS`
+  is required, so one an older version didn't always save mustn't be one: a
+  refused event refuses the friend's whole batch. They live in the
   account-wide `ns.db.friends`, never in the character file, so the sync
   server and the app never see them.
 - `Roster:Entries` lists friends too (`e.friend`). Anything that saves
