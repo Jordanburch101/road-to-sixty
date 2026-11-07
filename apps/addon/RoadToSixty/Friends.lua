@@ -37,6 +37,16 @@ local _, ns = ...
 --   N:id:reason                      not sent, and why
 --   B:id:n:total:data                part n of a batch
 --
+-- A batch that carries on from what the asker has holds p, a print of that
+-- (PathPrint). A session from a late second PC lands in the middle of a merged
+-- journey, so the same counts can point at different data: when the prints
+-- differ the asker asks for the whole journey again. A version without p
+-- isn't checked, so neither side needs the other's version.
+--
+-- Inside a dungeon, raid or battleground on Forever chat messaging is locked
+-- down and a send answers AddOnMessageLockdown, so a player there can't ask
+-- or answer, not even to say so.
+--
 -- Anything may arrive from anyone, and a batch comes from someone else's
 -- saved file, so it is parsed as plain data and checked before it is kept.
 
@@ -52,6 +62,9 @@ local EVENTS_AGAIN = 20         -- latest events sent again, as open ones are fi
 local MAX_PARTS = 4500          -- the most a batch may be, about 25 minutes
 local MAX_DEPTH = 16
 local MAX_FAILS = 30            -- refused sends in a row before giving up
+local MAX_STAMP = 64            -- longest journeyId: longer and the ask wouldn't fit a message (255)
+-- Enum.SendAddonMessageResult (ChatConstantsDocumentation, Forever's UI source).
+local RESULT_LOCKDOWN, RESULT_OFFLINE = 11, 12
 local AUTO_MINUTES = { 0, 5, 15, 30 }   -- the choices for automatic syncing; 0 is off
 Friends.AUTO_MINUTES = AUTO_MINUTES
 local AUTO_GAP = 2              -- seconds between friends in an automatic sync
@@ -73,13 +86,15 @@ local REASONS = {
 }
 local BUSY = "Another sync is running. Try again when it ends."
 local TOO_BIG = "Their journey is too big to keep any more of it."
+local LOCKED = "Can't sync from inside a dungeon, raid or battleground."
 
 -- Shapes ----------------------------------------------------------------------------
 -- A friend's journey is read by the same code as the account's own, which
 -- trusts its shape, so everything a friend sends is checked against the
 -- shapes the addon saves. Letters name a value's type: n number, s string,
 -- b boolean, t table, c a tally (a number, or a table of numbers, see
--- Tally.lua), . anything but a table. A missing value always fits.
+-- Tally.lua), . anything but a table. A missing value always fits, unless an
+-- event's field is in capitals (EVENT_FIELDS).
 
 local TYPES = { n = "number", s = "string", b = "boolean", t = "table" }
 local Shaped
@@ -116,6 +131,13 @@ end
 local function Plain(t) return Shaped(t) end
 local function Skill(s) return Shaped(s, { "n", "n", "n" }) end
 
+-- A level's snapshot (Journal.lua). The gear card compares its times, and the
+-- other counts are shown; fields it doesn't name may be anything but a table.
+local SNAPSHOT = {
+    gear = "t", links = "t", skills = "t", t = "n", played = "n", money = "n", kills = "n", killXP = "n",
+    questXP = "n", deaths = "n", quests = "n", instances = "n", distance = "n", flown = "n",
+}
+
 local PERSON = {
     name = "s", race = "s", sex = "s", class = "s", level = "n", guild = "s", first = "n", last = "n",
     c = "n", x = "n", y = "n",
@@ -126,7 +148,7 @@ local PERSON = {
 local FIELDS = {
     levels = function(v)
         for level, snap in pairs(v) do
-            if not Whole(level) or not Shaped(snap, { gear = "t", links = "t", skills = "t" })
+            if not Whole(level) or not Shaped(snap, SNAPSHOT)
                 or snap.gear and not Shaped(snap.gear, nil, "n")
                 or snap.links and not Shaped(snap.links, nil, "s")
                 or snap.skills and not Rows(snap.skills, Skill) then
@@ -148,8 +170,8 @@ local FIELDS = {
             and (v[4] == nil or Shaped(v[4], nil, "c"))
     end,
     reps = function(v) return Rows(v, function(r) return Shaped(r, { "n", "s" }) end) end,
-    riding = function(v) return Rows(v, Plain) end,
-    mounts = function(v) return Rows(v, Plain) end,
+    riding = function(v) return Rows(v, function(r) return Shaped(r, { "s", "n", "n" }) end) end,
+    mounts = function(v) return Rows(v, function(m) return Shaped(m, { "n", "n", "n", "n", "n" }) end) end,
     rares = function(v) return Rows(v, function(r) return Shaped(r, { "c" }) end) end,
     played = function(v) return type(v) == "number" end,
     version = function(v) return type(v) == "number" end,
@@ -159,17 +181,37 @@ local FIELDS = {
 -- kinds). Fields past these, and every field of other kinds, may be anything:
 -- a new kind or field doesn't bump DATA_VERSION, so a friend on a newer
 -- version can send ones this code has never seen, and nothing here reads them.
+-- A capital marks a field the addon always saves and the map, History or
+-- Stats read without a check: the event is refused without it.
 local EVENT_FIELDS = {
-    on = "nn", off = "n", lvl = "n", die = "s", qa = "n", qd = "nnns", zone = "n",
-    ["in"] = "nss", out = "nt", loot = "sn", eq = "nn..t", prof = "snn", skill = "snn",
-    rec = "sns", craft = "sn", gj = "ssbt", gl = "ss", gr = "ssb", rep = "nns",
-    ride = "ns", mount = "ns", rare = "ss", duel = "ss", gath = "sn.s",
-    grp = "stbn", grpa = "t", grpx = "t",
+    on = "nn", off = "n", lvl = "N", die = "s", qa = "n", qd = "Nnns", zone = "N",
+    ["in"] = "Nss", out = "nt", loot = "Sn", eq = "Nns.t", prof = "snn", skill = "snn",
+    rec = "sns", craft = "sn", gj = "ssbt", gl = "ss", gr = "ssb", rep = "NNs.",
+    ride = "ns", mount = "nsn.", rare = "ssn..", duel = "ssssnss", gath = "sn.s",
+    ench = "NNn.ssns",
+    grp = "stbn", grpa = "T", grpl = "sn", grps = ".n", grpk = "s", grpx = "T",
 }
 local RUN = {
     name = "s", duration = "n", kills = "n", xp = "n", deaths = "n", money = "n", levels = "n",
     items = "t", party = "t", type = "s", pvp = "t",
 }
+-- A group member (Groups.lua): the rest may not have loaded when it was saved.
+local function Member(m)
+    return Shaped(m, { "s", "s", "s", "s", "s", "n", "s", "n" }) and type(m[1]) == "string"
+end
+-- The summary of a group that ended: the group's card counts all of these.
+local GROUP_END = { duration = "n", kills = "n", xp = "n", quests = "n", deaths = "n", instances = "n", met = "n", levels = "t" }
+-- A battleground's result, kept on its run (Battlegrounds.lua).
+local PVP = {
+    teams = "t", kb = "n", hk = "n", chatKills = "n", deaths = "n", honor = "n", scoreHonor = "n",
+    damage = "n", healing = "n", stats = "t", rep = "t",
+}
+local function ValidPvp(p)
+    if not Shaped(p, PVP) then return false end
+    if p.teams and not (Shaped(p.teams, nil, "n") and p.teams[1] and p.teams[2]) then return false end
+    if p.stats and not Rows(p.stats, function(r) return Shaped(r, { "s", "n" }) and r[1] end) then return false end
+    return p.rep == nil or Shaped(p.rep, nil, "n")
+end
 -- What is inside the tables some kinds hold.
 local EVENT_TABLES = {
     -- The panel hands the link to the tooltip, which errors on anything but a link.
@@ -181,12 +223,17 @@ local EVENT_TABLES = {
         for _, field in ipairs({ "duration", "kills", "xp", "deaths", "money", "levels" }) do
             if s[field] == nil then return false end
         end
-        return true
+        return s.pvp == nil or ValidPvp(s.pvp)
     end,
     eq = function(e) return e[10] == nil or Plain(e[10]) end,
     gj = function(e) return e[9] == nil or Shaped(e[9], nil, "c") end,
-    grp = function(e) return e[7] == nil or Rows(e[7], Plain) end,
-    grpa = function(e) return e[6] == nil or Plain(e[6]) end,
+    grp = function(e) return e[7] == nil or Rows(e[7], Member) end,
+    grpa = function(e) return Member(e[6]) end,
+    grpx = function(e)
+        local s = e[6]
+        if not Shaped(s, GROUP_END) or (s.levels and not Shaped(s.levels, nil, "n")) then return false end
+        return s.kills and s.quests and s.deaths and s.xp
+    end,
 }
 
 local function ValidEvent(e)
@@ -199,8 +246,11 @@ local function ValidEvent(e)
         if not Whole(key) or key < 1 then return false end
         local letter = key > 5 and spec:sub(key - 5, key - 5) or ""
         if key <= 5 or letter ~= "" then
-            if not Fits(v, letter ~= "" and letter or nil) then return false end
+            if not Fits(v, letter ~= "" and letter:lower() or nil) then return false end
         end
+    end
+    for at = 1, #spec do
+        if spec:sub(at, at):find("%u") and e[at + 5] == nil then return false end
     end
     local check = EVENT_TABLES[e[2]]
     return not check or check(e) and true or false
@@ -213,6 +263,7 @@ local serial = 0
 local autoQueue = {}            -- keys of friends waiting for an automatic sync
 local autoRun = 0               -- which schedule is current, as a timer can't be stopped
 local hiddenText, hiddenUntil   -- the offline line being kept out of chat
+local expected, expectedUntil   -- the friend a send just said is offline, whose line may still come
 local NextAuto
 
 local function Clean(v)
@@ -228,11 +279,27 @@ local function Later(delay, fn)
     C_Timer.After(delay, function() ns.SafeCall(fn) end)
 end
 
+-- True when it went; false, and the game's result if it gave one, when not.
 local function Send(text, target)
     local send = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
     if not send then return false end
     local ok, result = pcall(send, PREFIX, text, "WHISPER", target)
-    return ok and result ~= false and not (type(result) == "number" and result ~= 0)
+    if ok and type(result) == "number" and result ~= 0 then return false, result end
+    return ok and result ~= false
+end
+
+-- Whether sends are locked down here. It is only asked for what it saves:
+-- Send's result is what counts if this is wrong or missing.
+local function Locked()
+    local locked = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
+    if not locked then return false end
+    local ok, on = pcall(locked)
+    return ok and on == true
+end
+
+-- The game may still print its offline line for a send it said was offline.
+local function ExpectOffline(name)
+    expected, expectedUntil = name, GetTime() + HIDE_FOR
 end
 
 -- Plain data as text ------------------------------------------------------------------
@@ -301,6 +368,16 @@ local function MetaSum(journey)
     return Sum(meta, 0)
 end
 
+-- A print of the first s segments and first e events, by when each began: a
+-- session merged in among them changes it. The latest events are left out, as
+-- they are sent again anyway (EVENTS_AGAIN).
+local function PathPrint(segments, s, events, e)
+    local h = 0
+    for i = 1, s do h = (h * 31 + math.floor(segments[i].t or 0)) % MOD end
+    for i = 1, e - EVENTS_AGAIN do h = (h * 31 + math.floor(events[i][1])) % MOD end
+    return h
+end
+
 -- The value in text, or nil unless it is well formed.
 -- Keep this one loop with no inner function: LuaJIT, which runs the tests,
 -- miscompiled an earlier version whose inner function changed the loop's
@@ -322,7 +399,8 @@ local function Parse(text)
             value = top.t
         elseif kind == "n" then
             value = tonumber(body)
-            if not value then return nil end
+            -- "1e999" reads as infinity, which no journey holds and every check on a number passes.
+            if not value or value ~= value or value == math.huge or value == -math.huge then return nil end
         elseif kind == "s" then
             value = Unescape(body)
         elseif kind == "t" then
@@ -454,17 +532,21 @@ local function ValidSegment(s)
 end
 
 -- Puts a batch into the friend's journey. False if it does not fit, and then
--- none of it is kept; false, "big" if it would take them over MAX_SIZE.
+-- none of it is kept; false, "big" if it would take them over MAX_SIZE; false,
+-- "moved" if what it carries on from isn't what this copy holds.
 -- rec.size is what their path and events take, in characters as sent.
 local function Apply(rec, b)
     if type(b) ~= "table" or type(b.g) ~= "string" or not b.g:find("^Player%-%d+%-%x+$")
-        or type(b.j) ~= "string" or type(b.s) ~= "table" or not FreeSlot(b.g) then
+        or type(b.j) ~= "string" or #b.j > MAX_STAMP or type(b.s) ~= "table" or not FreeSlot(b.g) then
         return false
     end
     local fresh = b.r or rec.guid ~= b.g or not rec.journey
     local journey = fresh and NewJourney() or rec.journey
     local segments, events = journey.segments, journey.events
     local size = not fresh and rec.size or 0
+    if b.p ~= nil and not fresh and b.p ~= PathPrint(segments, #segments, events, #events) then
+        return false, "moved"
+    end
 
     local segs, count = {}, #segments
     for i = 1, #b.s do
@@ -555,29 +637,41 @@ local function Watch(asked)
         local limit = asked.answered and STALLED or NO_ANSWER
         if GetTime() - asked.heard < limit then return Watch(asked) end
         Finish(asked.key, asked.answered and "Stopped. Sync again to carry on."
-            or "No answer. They need this version of Road to Sixty and must be online.")
+            or "No answer. They need this version of Road to Sixty, online and not in a dungeon, raid or battleground.")
     end)
 end
 
-local function Ask(rec, key, bytes, auto)
+-- rewind: "now" asks for the whole journey again because what this copy held
+-- had moved, "done" once that has been asked, so it happens once a sync.
+local function Ask(rec, key, bytes, auto, rewind)
     if rec.capped then
         Finish(key, TOO_BIG, true)
+        return
+    end
+    if Locked() then
+        -- (not yet the request, so Finish can't tell it is automatic, which says nothing)
+        Finish(key, not auto and LOCKED or nil)
         return
     end
     serial = serial + 1
     local journey, id = rec.journey, ("%x"):format((ns.Now() * 16 + serial % 16) % 0xffffff)
     -- A copy kept in another layout is asked for again whole, as for a new journey.
     if journey and journey.version and journey.version ~= ns.char.version then journey = nil end
+    -- A stamp kept from before MAX_STAMP was checked would never fit the ask.
+    if journey and #(journey.journeyId or "") > MAX_STAMP then journey = nil end
+    if rewind == "now" then journey = nil end
     local segments = journey and #journey.segments or 0
     local last = journey and journey.segments[segments]
     local asked = { id = id, key = key, parts = {}, got = 0, bytes = bytes or 0, heard = GetTime(),
-        answered = bytes ~= nil, auto = auto }
+        answered = bytes ~= nil, auto = auto, rewound = rewind ~= nil }
     request = asked
     status[key] = "Asking..."
-    if not Send(("Q:%s:%d:%d:%d:%d:%d:%d:%s"):format(id, VERSION, ns.char.version or 0, segments, last and #last.d or 0,
-        journey and #journey.events or 0, journey and rec.metaSum or 0, Escape(journey and journey.journeyId or "")),
-        rec.name) then
-        Finish(key, "Could not send. Are they online?")
+    local sent, result = Send(("Q:%s:%d:%d:%d:%d:%d:%d:%s"):format(id, VERSION, ns.char.version or 0, segments,
+        last and #last.d or 0, journey and #journey.events or 0, journey and rec.metaSum or 0,
+        Escape(journey and journey.journeyId or "")), rec.name)
+    if not sent then
+        if result == RESULT_OFFLINE then ExpectOffline(rec.name) end
+        Finish(key, result == RESULT_LOCKDOWN and LOCKED or "Could not send. Are they online?")
         return
     end
     Changed()
@@ -613,14 +707,16 @@ local function OnPart(key, id, n, total, data)
     local batch = rec and Parse(table.concat(asked.parts, "", 1, total))
     local fits, why = false, nil
     if rec then fits, why = Apply(rec, batch) end
-    if not fits then
+    if why == "moved" and not asked.rewound then
+        Ask(rec, key, asked.bytes, asked.auto, "now")
+    elseif not fits then
         if rec then rec.capped = why == "big" or nil end
         Finish(key, why == "big" and TOO_BIG or "Their data did not fit. Removing and adding them starts afresh.", true)
     elseif batch.done then
         rec.synced = ns.Now()
         Finish(key, nil)
     else
-        Ask(rec, key, asked.bytes, asked.auto)
+        Ask(rec, key, asked.bytes, asked.auto, asked.rewound and "done" or nil)
     end
 end
 
@@ -629,12 +725,18 @@ end
 local function SendNext()
     local o = outgoing
     if not o then return end
-    if Send(("B:%s:%d:%d:%s"):format(o.id, o.n, #o.parts, o.parts[o.n]), o.to) then
+    local sent, result = Send(("B:%s:%d:%d:%s"):format(o.id, o.n, #o.parts, o.parts[o.n]), o.to)
+    if sent then
         o.n, o.fails = o.n + 1, 0
         if o.n > #o.parts then
             outgoing = nil
             return
         end
+    elseif result == RESULT_LOCKDOWN or result == RESULT_OFFLINE then
+        -- Trying again won't help. The asker sees the sync stop and can carry on later.
+        if result == RESULT_OFFLINE then ExpectOffline(o.to) end
+        outgoing = nil
+        return
     else
         o.fails = o.fails + 1
         if o.fails > MAX_FAILS then
@@ -667,6 +769,8 @@ local function BuildBatch(have)
         level = UnitLevel("player"), played = char.played,
         zone = entry and entry.zone, c = entry and entry.c, x = entry and entry.x, y = entry and entry.y,
     }
+
+    if not reset and (have.s > 0 or have.e > 0) then batch.p = PathPrint(segments, have.s, events, have.e) end
 
     local room, i, offset = BATCH, math.max(have.s, 1), have.s > 0 and have.o or 0
     while i <= #segments and room > 0 do
@@ -708,6 +812,8 @@ local function BuildBatch(have)
 end
 
 local function OnAsked(sender, key, id, rest)
+    -- No answer could leave here, so nothing is built for one.
+    if Locked() then return end
     local version, layout, segments, offset, eventCount, sum, journeyId
     version, rest = rest:match("^(%d+):(.*)$")
     if version and tonumber(version) == VERSION then
@@ -905,6 +1011,9 @@ local function HideOffline(_, _, message)
     local function Hide()
         hiddenText, hiddenUntil = message, now + HIDE_FOR
         return true
+    end
+    if expected and now < expectedUntil and Key(message) == Key(line:format(expected)) then
+        return Hide()
     end
     -- Without case, as the game may name them as it writes them or as we did.
     if rec and Key(message) == Key(line:format(rec.name)) then

@@ -6,6 +6,20 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.1
+
+### Fixed
+- Syncing with a friend from inside a dungeon, raid or battleground now
+  says that is why it can't start, instead of asking if they are online.
+  When a friend inside one can't answer, the message says that may be why.
+- A friend's journey that was missing details the map needs, or held
+  numbers that can't be real, could break the map, History or the Stats
+  screen. It is now refused.
+- After a friend played on a second PC, the next sync could put part of
+  their journey in the wrong place. It now brings the whole journey again.
+- An automatic sync no longer risks printing "No player named" for each
+  friend who is offline.
+
 ## 1.20.0
 
 ### Fixed
