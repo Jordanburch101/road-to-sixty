@@ -523,8 +523,23 @@ local function MyName()
     return name
 end
 
+-- The first letter is a whole UTF-8 character: cutting "Âura" after its
+-- first byte left the game's string functions half a letter, which they
+-- dropped, and a friend typed "Âura" was kept as "ura". Accented Latin and
+-- Cyrillic small letters are raised as Key lowers them.
 local function Capital(word)
-    return word:sub(1, 1):upper() .. word:sub(2):lower()
+    local head = word:match("^[%z\1-\127\194-\244][\128-\191]*") or ""
+    local rest = Key(word:sub(#head + 1))
+    if #head == 1 then return head:upper() .. rest end
+    local lead, b = head:byte(1), head:byte(2)
+    if lead == 195 and b >= 160 and b <= 190 and b ~= 183 then
+        head = "\195" .. string.char(b - 32)
+    elseif lead == 208 and b >= 176 then
+        head = "\208" .. string.char(b - 32)
+    elseif lead == 209 and b <= 159 then
+        head = "\208" .. string.char(b < 144 and b + 32 or b - 16)
+    end
+    return head .. rest
 end
 
 local function NameWord(word)
