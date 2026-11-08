@@ -327,6 +327,10 @@ end
 -- gone (#116). Only a copy stamped with this GUID comes back, so a
 -- namesake's never does, and an erased journey has a stamp of its own, so
 -- it never gets here. Returns whether it did.
+--
+-- The journey is made whole apart, and the file changed only once that
+-- worked: a damaged account file then leaves the file as a new character's,
+-- as before, never half filled.
 local function Recover(char, guid)
     if next(char.events) or next(char.segments) then return false end
     local entry = ns.db.roster and ns.db.roster[guid]
@@ -335,26 +339,32 @@ local function Recover(char, guid)
         or type(copy.segments) ~= "table" or not (next(copy.events) or next(copy.segments)) then
         return false
     end
+    local ok, journey = pcall(function()
+        local made = {}
+        for k, v in pairs(copy) do
+            -- The copy's segments are its own, every point kept (Roster.lua); the
+            -- other tables it shares with the journey anyway, as at every logout.
+            if k == "segments" then
+                made.segments = {}
+                for i, seg in ipairs(v) do
+                    local own = {}
+                    for field, value in pairs(seg) do own[field] = value end
+                    made.segments[i] = own
+                end
+            elseif k ~= "rosterBuilt" then
+                made[k] = v
+            end
+        end
+        -- A copy made by an older version is in its layout (1 if it says none).
+        if type(made.version) ~= "number" then made.version = 1 end
+        ApplyDefaults(made, charDefaults)
+        Upgrade(made)
+        return made
+    end)
+    if not ok then return false end
     local addon = char.addon
     wipe(char)
-    for k, v in pairs(copy) do
-        -- The copy's segments are its own, every point kept (Roster.lua); the
-        -- other tables it shares with the journey anyway, as at every logout.
-        if k == "segments" then
-            char.segments = {}
-            for i, seg in ipairs(v) do
-                local own = {}
-                for field, value in pairs(seg) do own[field] = value end
-                char.segments[i] = own
-            end
-        elseif k ~= "rosterBuilt" then
-            char[k] = v
-        end
-    end
-    -- A copy made by an older version is in its layout (1 if it says none).
-    if type(char.version) ~= "number" then char.version = 1 end
-    ApplyDefaults(char, charDefaults)
-    Upgrade(char)
+    for k, v in pairs(journey) do char[k] = v end
     char.addon = addon
     return true
 end

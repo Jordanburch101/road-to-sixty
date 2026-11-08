@@ -218,6 +218,23 @@ char = LoginWith({ version = 3, events = { { 900, "on" } } }, Copy("Player-1-0A:
 check(#char.events == 1 and char.events[1][1] == 900 and #recovered == 0, "a file with a journey keeps it")
 char = LoginWith({ version = 4, journeyId = "Player-1-0A:4000" }, Copy("Player-1-0A:0"))
 check(#char.events == 0 and char.journeyId == "Player-1-0A:4000" and #recovered == 0, "an erased journey stays erased")
+-- A damaged copy (a hand edit, say) that can't be made whole leaves the file
+-- as a new character's, never half filled.
+for name, damage in pairs({
+    segment = function(c) c.segments = { 5 } end,
+    tally = function(c) c.version, c.people = 2, { g = true } end,
+}) do
+    local damaged = Copy("Player-1-0A:0")
+    damage(damaged)
+    char = LoginWith(nil, damaged)
+    check(type(char.events) == "table" and #char.events == 0 and type(char.totals) == "table" and char.version == 4
+        and char.journeyId == "Player-1-0A:0" and char.addon == "9.9.9" and #recovered == 0,
+        "a copy with a damaged " .. name .. " leaves a new character's file")
+    local keys = 0
+    for _ in pairs(char) do keys = keys + 1 end
+    check(char.played == nil and char.rosterKey == nil and keys <= 10, "with nothing of the damaged copy in it")
+end
+
 -- A namesake's file wiped at login, for a character the roster has, brings this one's back.
 local account
 char, account = LoginWith({ version = 4, journeyId = "Player-1-0B:0", events = { { 900, "on" } } }, Copy("Player-1-0A:0"))
