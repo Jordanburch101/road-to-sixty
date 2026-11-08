@@ -574,7 +574,7 @@ check(rec.journey ~= old and rec.journey.version == 4 and status(rec):find("^Las
 -- adding says the list is shared by the whole account.
 local asked
 z.onSend = function(_, text, _, target)
-    if target == "émile" then asked = text:match("^Q:(%x+)") end
+    if target == "Émile" then asked = text:match("^Q:(%x+)") end
 end
 F:Add("émile")
 z.onSend = nil
@@ -692,6 +692,45 @@ for _, form in ipairs(forms) do
     check(bo_rec.synced, "sender written " .. form[1] .. " not matched: " .. ann.ns.Friends:Status(bo_rec))
 end
 check(#ann.errors == 0 and #bo.errors == 0, "errors: " .. tostring(ann.errors[1] or bo.errors[1]))
+
+-- A name that starts with an accented letter keeps it whole, typed in either
+-- case, and Cyrillic is raised the same way. The game's upper and lower drop
+-- half a letter, which plain Lua keeps, so they do here too.
+local plainUpper, plainLower = string.upper, string.lower
+local function Whole(fn)
+    return function(s)
+        local out, at = {}, 1
+        while at <= #s do
+            local c = s:match("^[%z\1-\127]", at) or s:match("^[\194-\223][\128-\191]", at)
+                or s:match("^[\224-\239][\128-\191][\128-\191]", at)
+                or s:match("^[\240-\244][\128-\191][\128-\191][\128-\191]", at)
+            if c then out[#out + 1] = c end
+            at = at + (c and #c or 1)
+        end
+        return fn(table.concat(out))
+    end
+end
+string.upper, string.lower = Whole(plainUpper), Whole(plainLower)
+for typed, kept in pairs({
+    ["Âura Feldragon"] = "Âura Feldragon",
+    ["âura feldragon"] = "Âura Feldragon",
+    ["ÉMILE ÄRLIG"] = "Émile Ärlig",
+    ["øya ßon"] = "Øya ßon",
+    ["яна рыбова"] = "Яна Рыбова",
+    ["ёлка ѐнд"] = "Ёлка Ѐнд",
+}) do
+    ann.ns.Friends:Add(typed)
+    local function Other()
+        for _, rec in pairs(ann.ns.db.friends) do
+            if rec.name ~= "Bo McRay" then return rec.name end
+        end
+    end
+    check(Other() == kept, typed .. " kept as " .. tostring(Other()))
+    ann.ns.Friends:Remove(typed)
+    Run()
+    check(Other() == nil and ann.ns.db.friends["bo mcray"], "removing " .. kept .. " left it or took another")
+end
+string.upper, string.lower = plainUpper, plainLower
 
 -- A resume never grafts onto data that moved, and chat lockdown stops only what it must.
 clients.Cy = Client("Cy", "Di", "Player-1-CC01", Journey(400, 40))
