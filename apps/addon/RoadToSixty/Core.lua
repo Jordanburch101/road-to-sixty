@@ -319,13 +319,54 @@ local function KeepAside(char, guid)
     return name, Listed(kept)
 end
 
+-- Brings this character's journey back from the roster's copy (its last
+-- logout on this account) into a file with nothing in it. WoW keeps each
+-- character's file under its name, so after a rename the new name finds
+-- none; a file lost or deleted by hand looks the same. Without this, the
+-- roster's copy was rebuilt from the empty file at login and the journey was
+-- gone (#116). Only a copy stamped with this GUID comes back, so a
+-- namesake's never does, and an erased journey has a stamp of its own, so
+-- it never gets here. Returns whether it did.
+local function Recover(char, guid)
+    if next(char.events) or next(char.segments) then return false end
+    local entry = ns.db.roster and ns.db.roster[guid]
+    local copy = type(entry) == "table" and entry.journey
+    if type(copy) ~= "table" or StampGUID(copy) ~= guid or type(copy.events) ~= "table"
+        or type(copy.segments) ~= "table" or not (next(copy.events) or next(copy.segments)) then
+        return false
+    end
+    local addon = char.addon
+    wipe(char)
+    for k, v in pairs(copy) do
+        -- The copy's segments are its own, every point kept (Roster.lua); the
+        -- other tables it shares with the journey anyway, as at every logout.
+        if k == "segments" then
+            char.segments = {}
+            for i, seg in ipairs(v) do
+                local own = {}
+                for field, value in pairs(seg) do own[field] = value end
+                char.segments[i] = own
+            end
+        elseif k ~= "rosterBuilt" then
+            char[k] = v
+        end
+    end
+    -- A copy made by an older version is in its layout (1 if it says none).
+    if type(char.version) ~= "number" then char.version = 1 end
+    ApplyDefaults(char, charDefaults)
+    Upgrade(char)
+    char.addon = addon
+    return true
+end
+
 -- Stamps the journey as this character's, first at login so Sync.lua sees
 -- it. A file stamped with another GUID was a deleted namesake's (WoW keeps
 -- it under the same name), or this character's from before a realm
 -- transfer: this character starts fresh, as a new one would, before the
 -- recorder, journal and roster read it. The old journey stays in the
 -- roster (KeepAside) and on the server if it was ever synced, and the
--- player is told, since a transfer can look like a lost journey.
+-- player is told, since a transfer can look like a lost journey. An empty
+-- file whose journey the roster holds gets it back (Recover).
 ns.On("PLAYER_LOGIN", function()
     local guid = PlayerGUID()
     if guid then
@@ -339,6 +380,11 @@ ns.On("PLAYER_LOGIN", function()
             Print(("The journey saved for this character belonged to another character named %s, deleted or moved"
                 .. " from another realm. %s, and this character starts a new journey."):format(name or "the same",
                 listed and "It is kept in the journey map's Characters list" or "It stays saved on this PC"))
+        end
+        if not stamped and Recover(char, guid) then
+            stamped = guid
+            Print("This character's saved journey was missing, after a rename or a lost file, so it was brought"
+                .. " back from the copy this PC keeps for the journey map.")
         end
         if not stamped then char.journeyId = guid .. ":0" end
     end

@@ -166,6 +166,64 @@ print = realPrint
 check(#printed == 1 and printed[1]:find("stays saved") and not printed[1]:find("Characters list"),
     "a journey the list hides is not promised in it")
 
+-- 11b. A file with nothing in it whose journey the roster holds, stamped with
+-- this GUID, gets it back: a rename, as WoW keeps each file under its name,
+-- or a file lost (#116).
+local recovered = {}
+local function Recovered(msg) if msg:find("brought back") then recovered[#recovered + 1] = msg end end
+local function Copy(stamp, version)
+    return {
+        version = version or 4, journeyId = stamp, rosterKey = "Old-Realm", rosterBuilt = 5, addon = "1.0.0",
+        segments = { { m = "w", c = 0, t = 500, x = 10, y = 20, d = "5,3,4;5,3,4" } },
+        events = { { 500, "on" }, { 600, "lvl", 0, 0, 0, 7 } }, totals = { kills = 9 }, played = 70,
+    }
+end
+local function LoginWith(saved, copy)
+    local account = { roster = { [guid] = { name = "Old", guid = guid, journey = copy } } }
+    recovered = {}
+    ns = Load(saved, account)
+    print = Recovered
+    script(nil, "PLAYER_LOGIN")
+    print = realPrint
+    return ns.char, account
+end
+local copy = Copy("Player-1-0A:3000")
+local char = LoginWith(nil, copy)
+check(#char.events == 2 and #char.segments == 1 and char.totals.kills == 9 and char.played == 70,
+    "a renamed character's journey comes back from the roster's copy")
+check(char.journeyId == "Player-1-0A:3000", "with its own stamp, an erase's start kept: " .. tostring(char.journeyId))
+check(char.segments[1] ~= copy.segments[1] and char.segments[1].d == copy.segments[1].d,
+    "the segments are its own, as the roster keeps a copy of each")
+check(char.rosterBuilt == nil and char.addon == "9.9.9" and char.version == 4,
+    "the roster rebuilds its copy, and the file says this version loaded it")
+check(#recovered == 1, "and the player is told")
+-- A copy saved by an older version is brought up to this layout.
+char = LoginWith(nil, Copy("Player-1-0A:0", 1))
+check(char.version == 4 and char.clockFrom == 2000 and #char.events == 2, "an older copy is upgraded: " .. tostring(char.version))
+local versionless = Copy("Player-1-0A:0")
+versionless.version = nil
+char = LoginWith(nil, versionless)
+check(char.version == 4 and char.clockFrom == 2000, "a copy that says no layout is taken as the first")
+-- Nothing comes back: another GUID's copy, an empty one, or a file with a journey of its own.
+char = LoginWith(nil, Copy("Player-1-0B:0"))
+check(#char.events == 0 and char.journeyId == "Player-1-0A:0" and #recovered == 0, "a copy stamped with another GUID stays where it is")
+local unstamped = Copy(nil)
+char = LoginWith(nil, unstamped)
+check(#char.events == 0 and #recovered == 0, "a copy from before stamps doesn't say whose it is, so it stays")
+local empty = Copy("Player-1-0A:0")
+empty.events, empty.segments = {}, {}
+char = LoginWith(nil, empty)
+check(#char.events == 0 and char.journeyId == "Player-1-0A:0" and #recovered == 0, "an empty copy brings nothing")
+char = LoginWith({ version = 3, events = { { 900, "on" } } }, Copy("Player-1-0A:0"))
+check(#char.events == 1 and char.events[1][1] == 900 and #recovered == 0, "a file with a journey keeps it")
+char = LoginWith({ version = 4, journeyId = "Player-1-0A:4000" }, Copy("Player-1-0A:0"))
+check(#char.events == 0 and char.journeyId == "Player-1-0A:4000" and #recovered == 0, "an erased journey stays erased")
+-- A namesake's file wiped at login, for a character the roster has, brings this one's back.
+local account
+char, account = LoginWith({ version = 4, journeyId = "Player-1-0B:0", events = { { 900, "on" } } }, Copy("Player-1-0A:0"))
+check(#char.events == 2 and char.journeyId == "Player-1-0A:0" and #recovered == 1, "a namesake's file gives way to this character's own")
+check(account.roster["Player-1-0B"] and #account.roster["Player-1-0B"].journey.events == 1, "and the namesake's goes in the roster")
+
 -- 12. A GUID the client won't give leaves the file as it is.
 for _, broken in ipairs({ function() error("blocked") end, function() return "secret" end, function() return nil end }) do
     UnitGUID = broken

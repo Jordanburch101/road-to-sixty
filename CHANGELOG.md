@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.2
+
+### Fixed
+- A character whose saved journey is missing at login, as after a rename,
+  gets it back from the copy the journey map keeps on this PC, instead of
+  starting a new one. Chat says when this happens.
+
 ## 1.20.1
 
 ### Fixed

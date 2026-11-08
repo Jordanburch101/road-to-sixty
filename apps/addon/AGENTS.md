@@ -56,7 +56,10 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   (`<GUID>:<start>`, Core.lua). The login writes it, a GUID that differs
   starts the file fresh (a deleted namesake's, or a transfer's copied by
   hand) with the old journey kept in the roster, Erase gives a new start,
-  and `Sync.Apply` and `Merge.Merge` never join two different stamps. The
+  a file with nothing in it gets its journey back from the roster's copy
+  stamped with its GUID (`Recover`: a rename, as WoW keeps files by name,
+  or a lost file), and `Sync.Apply` and `Merge.Merge` never join two
+  different stamps. The
   sync server reads it from uploads to keep journeys of one name apart.
 - Saved times use `ns.Now()`, never `time()` (a test fails on `time()` in
   shipped files). `ns.PCTime()` is the PC's clock, for comparing with times
