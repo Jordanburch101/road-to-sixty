@@ -518,9 +518,7 @@ Friends.Surnames = Surnames
 
 -- This character's name as a friend would type it.
 local function MyName()
-    local name, surname = UnitName("player")
-    if Surnames() and type(surname) == "string" and surname ~= "" then return name .. " " .. surname end
-    return name
+    return ns.Roster:FullName()
 end
 
 -- The first letter is a whole UTF-8 character: cutting "Âura" after its

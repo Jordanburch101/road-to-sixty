@@ -139,8 +139,14 @@ local function Client(name, other, guid, char, forever)
         PlayerGUID = function() return c.guid end,
         Command = function() end,
     }
-    function ns.On(event, fn) c.handlers[event] = fn return true end
     c.guid, c.ns = guid, ns
+    -- Roster.lua loads first, as in the toc, for Roster:FullName; its own
+    -- handlers aren't tested here.
+    function ns.On() return true end
+    local roster = assert(loadfile("RoadToSixty/Roster.lua"))
+    setfenv(roster, env)
+    roster("RoadToSixty", ns)
+    function ns.On(event, fn) c.handlers[event] = fn return true end
     function c.fire(event, ...) c.handlers[event](...) end
     local chunk = assert(loadfile("RoadToSixty/Friends.lua"))
     setfenv(chunk, env)

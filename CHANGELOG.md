@@ -6,6 +6,15 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.3
+
+### Fixed
+- On Forever, your own characters show by first and last name in the
+  journey map's Characters list, on the map and on the Stats screen, as
+  friends already do, so characters that share a first name can be told
+  apart. Each character's surname shows once it has logged in with this
+  version.
+
 ## 1.20.2
 
 ### Fixed

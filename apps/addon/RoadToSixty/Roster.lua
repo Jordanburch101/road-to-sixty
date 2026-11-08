@@ -6,7 +6,8 @@ local _, ns = ...
 -- summary and a copy of each journey:
 --
 --   RoadToSixtyDB.roster[GUID] = {
---     name, realm, guid, class (class file, e.g. "MAGE"), level, zone (uiMapID),
+--     name ("First Last" on Forever, Roster:FullName), realm, guid,
+--     class (class file, e.g. "MAGE"), level, zone (uiMapID),
 --     c, x, y (last outdoor position, world yards), seen (time), played,
 --     journey = copy of RoadToSixtyCharDB as of the last logout,
 --   }
@@ -43,6 +44,21 @@ local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded
 -- Name-Realm, the name the app and the sync folder know the character by.
 function Roster:Name()
     return UnitName("player") .. "-" .. GetRealmName()
+end
+
+-- This character's name as players see it: on Forever, where characters have
+-- surnames and full names are unique across the region, "First Last", as
+-- several of an account's characters can share a first name. Elsewhere the
+-- name alone. Only for showing and whispering: Name stays the first name.
+-- UnitNameUnmodified is Blizzard's own source for it (UnitPopupShared): an
+-- effect that disguises the player changes UnitName, not it.
+function Roster:FullName()
+    local name, surname = (UnitNameUnmodified or UnitName)("player")
+    local ok, on = pcall(function() return RegionalUniqueNamesEnabled() end)
+    if ok and on == true and type(surname) == "string" and surname ~= "" then
+        return name .. " " .. surname
+    end
+    return name
 end
 
 -- This character's roster key: its GUID, or Name-Realm if the client gives none.
@@ -119,7 +135,7 @@ ns.On("PLAYER_LOGIN", function()
     entry = roster[key] or {}
     roster[key] = entry
     ns.char.rosterKey = name
-    entry.name, entry.realm, entry.guid = UnitName("player"), GetRealmName(), ns.PlayerGUID()
+    entry.name, entry.realm, entry.guid = Roster:FullName(), GetRealmName(), ns.PlayerGUID()
     entry.class = select(2, UnitClass("player"))
     ns.char.class = entry.class
     entry.level = UnitLevel("player")
@@ -143,6 +159,8 @@ end)
 
 ns.On("PLAYER_LOGOUT", function()
     Roster:Sync()
+    -- Again here, in case the surname wasn't there yet at login.
+    entry.name = Roster:FullName()
     entry.seen = ns.Now()
 end)
 
