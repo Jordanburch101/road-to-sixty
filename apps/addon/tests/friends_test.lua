@@ -694,7 +694,23 @@ end
 check(#ann.errors == 0 and #bo.errors == 0, "errors: " .. tostring(ann.errors[1] or bo.errors[1]))
 
 -- A name that starts with an accented letter keeps it whole, typed in either
--- case, and Cyrillic is raised the same way.
+-- case, and Cyrillic is raised the same way. The game's upper and lower drop
+-- half a letter, which plain Lua keeps, so they do here too.
+local plainUpper, plainLower = string.upper, string.lower
+local function Whole(fn)
+    return function(s)
+        local out, at = {}, 1
+        while at <= #s do
+            local c = s:match("^[%z\1-\127]", at) or s:match("^[\194-\223][\128-\191]", at)
+                or s:match("^[\224-\239][\128-\191][\128-\191]", at)
+                or s:match("^[\240-\244][\128-\191][\128-\191][\128-\191]", at)
+            if c then out[#out + 1] = c end
+            at = at + (c and #c or 1)
+        end
+        return fn(table.concat(out))
+    end
+end
+string.upper, string.lower = Whole(plainUpper), Whole(plainLower)
 for typed, kept in pairs({
     ["Âura Feldragon"] = "Âura Feldragon",
     ["âura feldragon"] = "Âura Feldragon",
@@ -714,6 +730,7 @@ for typed, kept in pairs({
     Run()
     check(Other() == nil and ann.ns.db.friends["bo mcray"], "removing " .. kept .. " left it or took another")
 end
+string.upper, string.lower = plainUpper, plainLower
 
 -- A resume never grafts onto data that moved, and chat lockdown stops only what it must.
 clients.Cy = Client("Cy", "Di", "Player-1-CC01", Journey(400, 40))

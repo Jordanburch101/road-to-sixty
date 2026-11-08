@@ -14,7 +14,7 @@ broken and now works. Leave out internal changes. Sections are
   starting a new one. Chat says when this happens.
 - A friend whose name starts with an accented letter, such as "Âura",
   lost that letter when added and could not be synced. Their name is now
-  kept whole, typed in either case.
+  kept whole.
 
 ## 1.20.1
 
