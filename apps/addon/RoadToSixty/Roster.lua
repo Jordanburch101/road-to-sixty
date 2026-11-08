@@ -50,8 +50,10 @@ end
 -- surnames and full names are unique across the region, "First Last", as
 -- several of an account's characters can share a first name. Elsewhere the
 -- name alone. Only for showing and whispering: Name stays the first name.
+-- UnitNameUnmodified is Blizzard's own source for it (UnitPopupShared): an
+-- effect that disguises the player changes UnitName, not it.
 function Roster:FullName()
-    local name, surname = UnitName("player")
+    local name, surname = (UnitNameUnmodified or UnitName)("player")
     local ok, on = pcall(function() return RegionalUniqueNamesEnabled() end)
     if ok and on == true and type(surname) == "string" and surname ~= "" then
         return name .. " " .. surname
@@ -157,6 +159,8 @@ end)
 
 ns.On("PLAYER_LOGOUT", function()
     Roster:Sync()
+    -- Again here, in case the surname wasn't there yet at login.
+    entry.name = Roster:FullName()
     entry.seen = ns.Now()
 end)
 

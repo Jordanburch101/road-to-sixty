@@ -209,9 +209,27 @@ RegionalUniqueNamesEnabled = function() return true end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin Stormbrew" and Roster:FullName() == "Eagin Stormbrew", "on Forever the full name, got " .. tostring(e.name))
 check(ns.char.rosterKey == "Eagin-Test" and Roster:Name() == "Eagin-Test", "the roster key keeps the first name")
+-- A disguise changes UnitName but not UnitNameUnmodified, Blizzard's source.
+UnitNameUnmodified = function() return "Eagin", "Stormbrew" end
+UnitName = function() return "Disguised", "Stranger" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin Stormbrew", "the unmodified name is the one kept, got " .. tostring(e.name))
+---@diagnostic disable-next-line: assign-type-mismatch
+UnitNameUnmodified = nil
+-- A surname that arrives after login is caught at logout.
+UnitName = function() return "Eagin" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin", "no surname yet at login, got " .. tostring(e.name))
+UnitName = function() return "Eagin", "Stormbrew" end
+Fire("PLAYER_LOGOUT")
+check(e.name == "Eagin Stormbrew", "logout saves the surname that came late, got " .. tostring(e.name))
 UnitName = function() return "Eagin", "" end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin", "an empty surname adds nothing, got " .. tostring(e.name))
+RegionalUniqueNamesEnabled = function() return false end
+UnitName = function() return "Eagin", "Stormbrew" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin", "regional names off keeps the name, got " .. tostring(e.name))
 RegionalUniqueNamesEnabled = function() error("not on this client") end
 UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGIN")
