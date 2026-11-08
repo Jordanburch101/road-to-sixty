@@ -371,20 +371,25 @@ ns.On("PLAYER_LOGIN", function()
     local guid = PlayerGUID()
     if guid then
         local char, stamped = ns.char, StampGUID(ns.char)
+        local other     -- what was said of another character's journey set aside, if one was
         if stamped and stamped ~= guid then
             local name, listed = KeepAside(char, stamped)
             local addon = char.addon
             wipe(char)
             ApplyDefaults(char, charDefaults)
             char.addon, stamped = addon, nil
-            Print(("The journey saved for this character belonged to another character named %s, deleted or moved"
-                .. " from another realm. %s, and this character starts a new journey."):format(name or "the same",
-                listed and "It is kept in the journey map's Characters list" or "It stays saved on this PC"))
+            other = ("The journey saved for this character belonged to another character named %s, deleted or moved"
+                .. " from another realm. %s"):format(name or "the same",
+                listed and "It is kept in the journey map's Characters list" or "It stays saved on this PC")
         end
         if not stamped and Recover(char, guid) then
             stamped = guid
-            Print("This character's saved journey was missing, after a rename or a lost file, so it was brought"
-                .. " back from the copy this PC keeps for the journey map.")
+            -- A namesake's file on disk under a name this character was renamed to: one line for both.
+            Print((other and other .. ", and this character's own journey" or "This character's saved journey was"
+                .. " missing, after a rename or a lost file, so it") .. " was brought back from the copy of its last"
+                .. " logout on this PC.")
+        elseif other then
+            Print(other .. ", and this character starts a new journey.")
         end
         if not stamped then char.journeyId = guid .. ":0" end
     end

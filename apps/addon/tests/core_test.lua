@@ -222,6 +222,8 @@ check(#char.events == 0 and char.journeyId == "Player-1-0A:4000" and #recovered 
 local account
 char, account = LoginWith({ version = 4, journeyId = "Player-1-0B:0", events = { { 900, "on" } } }, Copy("Player-1-0A:0"))
 check(#char.events == 2 and char.journeyId == "Player-1-0A:0" and #recovered == 1, "a namesake's file gives way to this character's own")
+check(recovered[1]:find("another character") and recovered[1]:find("own journey was brought back")
+    and not recovered[1]:find("starts a new journey"), "and chat says both in one line: " .. tostring(recovered[1]))
 check(account.roster["Player-1-0B"] and #account.roster["Player-1-0B"].journey.events == 1, "and the namesake's goes in the roster")
 
 -- 12. A GUID the client won't give leaves the file as it is.
