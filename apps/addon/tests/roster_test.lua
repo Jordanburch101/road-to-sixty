@@ -198,6 +198,28 @@ check(second.journey and #Roster:Entries() == 3, "with a journey copy of its own
 GUID = "Player-1-0000000E"
 Fire("PLAYER_LOGIN")
 
+-- On Forever, characters have surnames (UnitName's second value) and full
+-- names are unique across the region: the list shows "First Last", as an
+-- account's characters can share a first name (#125). The app and the sync
+-- folder still know it by Name-Realm.
+UnitName = function() return "Eagin", "Stormbrew" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin", "without regional names the surname is left out, got " .. tostring(e.name))
+RegionalUniqueNamesEnabled = function() return true end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin Stormbrew" and Roster:FullName() == "Eagin Stormbrew", "on Forever the full name, got " .. tostring(e.name))
+check(ns.char.rosterKey == "Eagin-Test" and Roster:Name() == "Eagin-Test", "the roster key keeps the first name")
+UnitName = function() return "Eagin", "" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin", "an empty surname adds nothing, got " .. tostring(e.name))
+RegionalUniqueNamesEnabled = function() error("not on this client") end
+UnitName = function() return "Eagin", "Stormbrew" end
+Fire("PLAYER_LOGIN")
+check(e.name == "Eagin", "a client without the call keeps the name, got " .. tostring(e.name))
+RegionalUniqueNamesEnabled = function() return false end
+UnitName = function() return "Eagin" end
+Fire("PLAYER_LOGIN")
+
 -- Without a GUID from the client, the key is Name-Realm and nothing moves.
 UnitGUID = function() return nil end
 check(Roster:Key() == "Eagin-Test" and Roster:Name() == "Eagin-Test", "Name-Realm when the client gives no GUID")
