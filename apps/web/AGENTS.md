@@ -43,8 +43,9 @@ bun run build
 
 ## Rules that bite
 
-- The contact email, the addon's address and the site's address are
-  build settings (`.env.example`), never in the public repo.
+- The addon's address (CurseForge, also the Privacy and Terms pages'
+  contact) and the site's address are build settings (`.env.example`),
+  never in the public repo.
   A missing one stops the build, and so does an address without https://.
 - The app demo (`AppDemo`, `client:visible`) is the one island that sends
   React to the browser. Everything else renders at build time, and its

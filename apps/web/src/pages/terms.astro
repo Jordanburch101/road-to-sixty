@@ -1,8 +1,6 @@
 ---
 import Prose from "../layouts/Prose.astro";
-import { contactEmail } from "../config";
-
-const email = contactEmail();
+import { addonUrl } from "../config";
 ---
 <Prose title="Terms" changed="9 November 2026">
   <section>
@@ -27,6 +25,6 @@ const email = contactEmail();
 
   <section>
     <h2>Contact</h2>
-    <p>Email <a href={`mailto:${email}`}>{email}</a>. What is kept about you, and how to have it removed, is on the <a href="/privacy">Privacy</a> page.</p>
+    <p>Message Hotdoghands on <a href={addonUrl()}>CurseForge</a>. What is kept about you, and how to have it removed, is on the <a href="/privacy">Privacy</a> page.</p>
   </section>
 </Prose>
