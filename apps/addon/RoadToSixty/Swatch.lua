@@ -230,6 +230,24 @@ local PORTAL_SAMPLES = {
 -- doubles the lines); curve: a Catmull-Rom curve through the points, steps
 -- lines per stretch; joins: a round dot where two lines meet.
 local PATH_SPAN = 2
+
+-- Map markers drawn from game icon art, in the gathering nodes' item button
+-- frame or bare as now (#110). Each sample is the profession, recipe,
+-- reputation and mount markers at one size, then a copper node for scale.
+local FRAME_SPAN = 2
+local FRAME_ICONS = {
+    { "Interface\\Icons\\INV_Misc_Book_11", 18 },             -- profession, at its size in Style.lua
+    { "Interface\\Icons\\INV_Scroll_03", 16 },                -- recipe
+    { "Interface\\Icons\\Achievement_Reputation_01", 18 },    -- reputation
+    { "Interface\\Icons\\Ability_Mount_RidingHorse", 20 },    -- riding and mounts
+}
+local FRAME_SAMPLES = {
+    { label = "A: bare, as now (16 to 20)" },
+    { label = "B: framed at 12, as nodes", size = 12 },
+    { label = "C: framed at 14", size = 14 },
+    { label = "D: framed at 16", size = 16 },
+    { label = "E: framed, each at today's size", own = true },
+}
 local PATH_WIDTH = 2
 local PATH_COLOR = { 0.12, 1, 0, 0.95 }
 local PATH_POINTS = {    -- in a cell two wide, y down from its top
@@ -1017,6 +1035,32 @@ local function AddTimelineCell(index, sample)
     end
 end
 
+-- One sample of FRAME_SAMPLES: the markers made as the map makes them,
+-- framed by Gathering:Frame.
+local function AddFrameCell(index, sample)
+    local cell = CreateCell(index, sample.label, FRAME_SPAN)
+    local x = 18
+    local function Marker(file, s, framed)
+        local m = CreateFrame("Frame", nil, cell)
+        m.icon = m:CreateTexture(nil, "ARTWORK")
+        m.icon:SetAllPoints()
+        m.text = m:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        m:SetSize(s, s)
+        m:SetPoint("CENTER", cell, "TOPLEFT", x, -ICON / 2 - 6)
+        if framed then
+            ns.Gathering:Frame(m, file, s)
+        else
+            m.icon:SetTexture(file)
+            m.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        x = x + 33
+    end
+    for _, icon in ipairs(FRAME_ICONS) do
+        Marker(icon[1], sample.size or icon[2], sample.size or sample.own)
+    end
+    Marker("Interface\\Icons\\INV_Ore_Copper_01", 12, true)
+end
+
 local function AddSectionLabel(row, text)
     local label = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", 4, -row * CELL_H - 18)
@@ -1090,6 +1134,7 @@ local function CreateWindow()
     rows = rows + math.ceil(#MAGIC_SAMPLES * MAGIC_SPAN / COLUMNS)
     rows = rows + math.ceil(#JUMP_SAMPLES * MAGIC_SPAN / COLUMNS)
     rows = rows + math.ceil(#LANE_SAMPLES * LANE_SPAN / COLUMNS)
+    rows = rows + math.ceil(#FRAME_SAMPLES * FRAME_SPAN / COLUMNS)
     local w, h = LABEL_W + COLUMNS * CELL_W, rows * CELL_H
 
     frame = CreateFrame("Frame", "RoadToSixtySwatchFrame", UIParent, "BasicFrameTemplateWithInset")
@@ -1142,6 +1187,11 @@ local function CreateWindow()
         end
         row = row + math.ceil(#section[2] / COLUMNS)
     end
+    AddSectionLabel(row, "Marker frame (#110)")
+    for i, sample in ipairs(FRAME_SAMPLES) do
+        AddFrameCell(row * COLUMNS + (i - 1) * FRAME_SPAN + 1, sample)
+    end
+    row = row + math.ceil(#FRAME_SAMPLES * FRAME_SPAN / COLUMNS)
     if not iconsOnly then AddSectionLabel(row, "Lines") end
     for i, sample in ipairs(LINE_SAMPLES) do
         AddLineCell(row * COLUMNS + i, sample)

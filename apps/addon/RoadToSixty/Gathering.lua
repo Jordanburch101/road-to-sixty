@@ -393,17 +393,19 @@ local function Art(m)
     return g
 end
 
--- Shows marker m as icon in the item button frame, without a count.
-local function Framed(m, icon)
+-- Shows marker m as icon in the item button frame, without a count: the
+-- icon iconSize pixels, or a node's size.
+local function Framed(m, icon, iconSize)
+    local s = iconSize or size
     local g = Art(m)
     m.icon:Hide()
     m.text:SetText("")
-    m:SetSize(size + 2, size + 2)
+    m:SetSize(s + 2, s + 2)
     g.icon:SetTexture(icon)
-    g.icon:SetSize(size, size)
-    g.frame:SetSize(size * FRAME_SCALE, size * FRAME_SCALE)
+    g.icon:SetSize(s, s)
+    g.frame:SetSize(s * FRAME_SCALE, s * FRAME_SCALE)
     g.frame:ClearAllPoints()
-    g.frame:SetPoint("CENTER", 0, -size / 37)
+    g.frame:SetPoint("CENTER", 0, -s / 37)
     g.count:Hide()
     g:Show()
     return g
@@ -419,9 +421,9 @@ local function Dress(m, node)
 end
 
 -- Marker m of another kind dressed as a node is, its icon in the same
--- frame and size: duels (#88).
-function Gathering:Frame(m, icon)
-    Framed(m, icon)
+-- frame: duels (#88). iconSize is the icon's, a node's if nil.
+function Gathering:Frame(m, icon, iconSize)
+    Framed(m, icon, iconSize)
 end
 
 -- Shows or hides a node marker's count: a pile's number replaces it (MarkerPiles.lua).
