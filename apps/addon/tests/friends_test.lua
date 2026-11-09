@@ -950,5 +950,95 @@ for _, result in ipairs({ 11, 12 }) do
 end
 check(#cy.errors == 0 and #di.errors == 0, "errors: " .. tostring(cy.errors[1] or di.errors[1]))
 
+-- Who is online (#92): a sync, a hello and a goodbye say so, the game's
+-- offline line answers a hello to someone offline, a hello without one says
+-- online, and the game's friends lists know better than any of them.
+local ev = Client("Eve", "Fay", "Player-1-E0E0", Journey(5, 2))
+local fa = Client("Fay", "Eve", "Player-1-F0F0", Journey(5, 2))
+clients.Eve, clients.Fay = ev, fa
+Run()
+local EF, FF = ev.ns.Friends, fa.ns.Friends
+EF:Add("Fay")
+FF:Add("Eve")
+Run()
+local fay, eve = ev.ns.db.friends.fay, fa.ns.db.friends.eve
+check(EF:Online(fay) == true and FF:Online(eve) == true, "a sync didn't mark them online")
+fa.fire("PLAYER_LOGOUT")
+Run()
+check(EF:Online(fay) == false, "a goodbye didn't mark them offline")
+fa.offline = true
+At(400, function() fa.offline = false end)
+Run()
+fa.fire("PLAYER_LOGIN")
+Run()
+check(EF:Online(fay) == true, "a hello at login didn't mark them online")
+
+local friendsE = ev.ns.db.friends
+friendsE.gone = { name = "Gone", realm = "Era" }
+friendsE.quiet = { name = "Quiet", realm = "Era" }
+local hellos, goneHidden, asked = {}, nil, {}
+ev.onSend = function(_, text, _, target)
+    if text:sub(1, 1) == "H" then hellos[#hellos + 1] = target end
+    if text:sub(1, 1) == "Q" then asked[#asked + 1] = target end
+    if target == "Gone" then
+        At(0.05, function() goneHidden = ev.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Gone")) end)
+    end
+    if target == "Gone" or target == "Quiet" then return true end
+end
+EF:CheckOnline()
+Run()
+check(goneHidden == true, "the offline line for a hello not hidden")
+check(EF:Online(friendsE.gone) == false, "a hello answered by the offline line didn't mark them offline")
+check(EF:Online(friendsE.quiet) == true, "a hello without the offline line didn't mark them online")
+check(#hellos == 2 and not table.concat(hellos, ","):find("Fay"), "the tab asked about a friend just heard from: "
+    .. table.concat(hellos, ","))
+
+-- A sync with someone offline says so at once, with the line hidden.
+goneHidden = nil
+EF:Sync("Gone")
+Run()
+check(goneHidden == true, "the offline line for a manual sync not hidden")
+check(EF:Status(friendsE.gone):find("^Offline"), "a manual sync didn't say offline: " .. EF:Status(friendsE.gone))
+
+-- An automatic round passes over a friend just seen offline.
+asked = {}
+check(EF:ParseAutoSync("5"), "choice not taken")
+At(330, function() EF:ParseAutoSync("off") end)
+Run()
+local round = table.concat(asked, ",")
+check(not round:find("Gone") and round:find("Quiet") and round:find("Fay"), "automatic round asked: " .. round)
+ev.onSend = nil
+
+-- The game's friends lists win: the WoW list by GUID or by name (a realm
+-- after it dropped), and Battle.net by BattleTag.
+local info = { name = "Gone-Otherrealm", guid = "Player-9-0001", connected = true }
+ev.env.C_FriendList = {
+    GetNumFriends = function() return 1 end,
+    GetFriendInfoByIndex = function() return info end,
+}
+check(EF:Online(friendsE.gone) == true, "the WoW friends list not taken over what was seen")
+info.connected = false
+check(EF:Online(friendsE.gone) == false, "the WoW friends list's offline not taken")
+info.name, info.guid, info.connected = "Someone", fay.guid, false
+check(fay.guid == "Player-1-F0F0" and EF:Online(fay) == false, "the WoW friends list not matched by GUID")
+ev.env.C_FriendList = { GetNumFriends = function() error("not now") end }
+check(EF:Online(fay) == true, "a failing friends list call not passed over")
+ev.env.C_FriendList = nil
+local game = { isOnline = true, clientProgram = "WoW", playerGuid = "Player-1-0A17", characterName = "Alt" }
+ev.env.BNGetNumFriends = function() return 2 end
+ev.env.C_BattleNet = {
+    GetFriendAccountInfo = function(i) return { battleTag = i == 2 and "Fay#1234" or "Other#1" } end,
+    GetFriendNumGameAccounts = function() return 1 end,
+    GetFriendGameAccountInfo = function() return game end,
+}
+check(fay.battleTag == "Fay#1234" and EF:Online(fay) == false, "their account on another character not taken as offline")
+game.playerGuid = fay.guid
+check(EF:Online(fay) == true, "their account on this character not taken as online")
+game.playerGuid, game.characterName = nil, "Fay"
+check(EF:Online(fay) == true, "Battle.net not matched by name")
+check(EF:Online(friendsE.quiet) == true, "a friend without a BattleTag taken from Battle.net")
+ev.env.C_BattleNet, ev.env.BNGetNumFriends = nil, nil
+check(#ev.errors == 0 and #fa.errors == 0, "errors: " .. tostring(ev.errors[1] or fa.errors[1]))
+
 if failures > 0 then os.exit(1) end
 print("friends_test: all passed")

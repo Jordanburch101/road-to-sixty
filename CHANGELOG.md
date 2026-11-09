@@ -6,6 +6,20 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.4
+
+### New
+- The Friends tab offers Sync only to friends who are online. A friend
+  who is offline shows "Offline" in its place, and Sync comes back when
+  they log in. Friends on your WoW or Battle.net friends list show as soon
+  as the game knows; others are checked when you log in and when you
+  open the tab. Hovering a friend says whether they are online.
+- Automatic sync passes over friends it knows are offline.
+
+### Fixed
+- Syncing with a friend who is offline says so at once, instead of
+  waiting on "Asking..." and printing "No player named" in chat.
+
 ## 1.20.3
 
 ### Fixed

@@ -4,7 +4,8 @@ local _, ns = ...
 -- often that happens by itself, and show a friend's journey or path. The
 -- syncing itself is in Friends.lua. Rows look like the Characters tab's:
 -- the class icon, the name and BattleTag over the sync status, and Sync and
--- the path box on the right. Removing is on the right-click menu, behind a
+-- the path box on the right. Sync shows only for a friend who may be online:
+-- one known to be offline has grey "Offline" in its place (#92). Removing is on the right-click menu, behind a
 -- question, as it deletes the friend's journey.
 
 local FriendsPanel = {}
@@ -105,6 +106,10 @@ local function CreateRow(parent)
     end)
     row.sync:SetScript("OnLeave", GameTooltip_Hide)
 
+    row.offline = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.offline:SetPoint("CENTER", row.sync)
+    row.offline:SetText("Offline")
+
     row.title = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     row.title:SetPoint("TOPLEFT", 30, -3)
     row.title:SetPoint("RIGHT", row.sync, "LEFT", -4, 0)
@@ -128,6 +133,11 @@ local function CreateRow(parent)
         local rec = self.rec
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine(rec.name)
+        local online = ns.Friends:Online(rec)
+        if online ~= nil then
+            GameTooltip:AddLine(online and "Online" or "Offline", online and 0.25 or 0.6, online and 0.88 or 0.6,
+                online and 0.25 or 0.6)
+        end
         GameTooltip:AddLine(ns.Friends:Status(rec), 1, 1, 1, true)
         if rec.journey then GameTooltip:AddLine("Click to show their journey.", 0.6, 0.8, 1) end
         GameTooltip:AddLine("Right-click to sync or remove.", 0.6, 0.8, 1)
@@ -146,6 +156,9 @@ local function UpdateRow(row, rec)
     row.title:SetText(rec.name .. level .. tag)
     row.title:SetTextColor(r, g, b)
     row.detail:SetText(ns.Friends:Status(rec))
+    local offline = ns.Friends:Online(rec) == false
+    row.sync:SetShown(not offline)
+    row.offline:SetShown(offline)
     row.sync:SetEnabled(not ns.Friends:Busy())
     -- The shown friend's path is the main one on the map already.
     local shown = rec.key ~= nil and ns.Roster:ViewEntry() == rec
@@ -256,5 +269,7 @@ function FriendsPanel:Create(parent)
     empty:SetText(TIP)
 
     ns.Friends.OnChange = function() FriendsPanel:Refresh() end
+    -- Friends not heard from for a while are asked again as the tab opens.
+    pane:HookScript("OnShow", function() ns.Friends:CheckOnline() end)
     self:Refresh()
 end
