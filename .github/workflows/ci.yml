@@ -69,7 +69,6 @@ jobs:
         env:
           PUBLIC_SITE_URL: https://example.test
           PUBLIC_ADDON_URL: https://example.test/addon
-          PUBLIC_CONTACT_EMAIL: test@example.test
         run: bun run build
 
   # The sync server: its tests against Postgres and an S3 store, then the
