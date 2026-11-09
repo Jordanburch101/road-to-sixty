@@ -18,7 +18,6 @@ export const DOWNLOADS: string = link("PUBLIC_DOWNLOADS", env.PUBLIC_DOWNLOADS |
 
 // Read when a page uses them, so the tests can load this file without them.
 export const addonUrl = () => link("PUBLIC_ADDON_URL", env.PUBLIC_ADDON_URL);
-export const contactEmail = () => need("PUBLIC_CONTACT_EMAIL", env.PUBLIC_CONTACT_EMAIL);
 
 // The fixed names the app's release workflow uploads (desktop-release.yml).
 const FILES = { mac: "Road-to-Sixty.dmg", windows: "Road-to-Sixty-Setup.exe", linux: "Road-to-Sixty.AppImage" };

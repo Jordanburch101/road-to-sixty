@@ -1,10 +1,8 @@
 ---
 import Prose from "../layouts/Prose.astro";
-import { contactEmail } from "../config";
-
-const email = contactEmail();
+import { addonUrl } from "../config";
 ---
-<Prose title="Privacy" changed="20 October 2026">
+<Prose title="Privacy" changed="9 November 2026">
   <p class="mt-4">
     This page explains what Road to Sixty keeps about you, where it's stored, who can see it, and how to have it removed. We keep only what syncing
     your journeys needs. Nothing is public, and nothing is sold.
@@ -83,7 +81,7 @@ const email = contactEmail();
   <section>
     <h2>Contact</h2>
     <p>
-      For a copy of your data, a correction, deletion, or any question about this page, email <a href={`mailto:${email}`}>{email}</a>. If this page
+      For a copy of your data, a correction, deletion, or any question about this page, message Hotdoghands on <a href={addonUrl()}>CurseForge</a>. If this page
       changes, the date at the top changes with it.
     </p>
   </section>
