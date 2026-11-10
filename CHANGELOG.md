@@ -19,6 +19,8 @@ broken and now works. Leave out internal changes. Sections are
   riding and mounts) sit in the same item button frame as gathering nodes
   and duels, so they stand out from the map. Duels' icons are now the
   same size as the rest.
+- Groups on the map show as one party or raid icon instead of a row of
+  portraits. Hover it to see who was in the group.
 
 ### Fixed
 - Syncing with a friend who is offline says so at once, instead of

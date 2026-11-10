@@ -5,8 +5,8 @@ local _, ns = ...
 -- so zooming in splits piles again:
 -- 1. Markers of one category close together show as one, the newest, with
 --    a count: a guild joined and left three times by the bank, two groups
---    formed at a dungeon's door. A pile of groups shows everyone met there
---    once. Hovering a pile fans it out, so each can be hovered (Fan).
+--    formed at a dungeon's door. Hovering a pile fans it out, so each can
+--    be hovered (Fan).
 -- 2. Markers of different categories that still overlap are pushed apart,
 --    a little way from where they belong.
 -- Markers come in time order, so a pile's newest is its last.
@@ -55,40 +55,20 @@ local function Badge(m)
         badge.text:SetPoint("CENTER", 0.5, 0)
         m.pileBadge = badge
     end
-    -- Above a group's portraits and a guild's banner.
+    -- Above a guild's banner.
     badge:SetFrameLevel(m:GetFrameLevel() + 20)
     return badge
-end
-
--- A pile of groups shows everyone in any of them, once each, in the order
--- they were first met; a raid if any of them was.
-local function GroupsInfo(members)
-    local info, seen = { kind = "party", members = {} }, {}
-    for _, m in ipairs(members) do
-        local one = ns.Parties:Info(m.group)
-        if one.kind == "raid" then info.kind = "raid" end
-        for _, entry in ipairs(one.members) do
-            if not seen[entry.m[1]] then
-                seen[entry.m[1]] = true
-                info.members[#info.members + 1] = entry
-            end
-        end
-    end
-    return info
 end
 
 -- Shows marker m as the face of its pile (members, in time order, it being
 -- the last), or of just itself when members is nil.
 local function SetPile(m, members)
     local first = members and members[1]
-    -- Redone only when the pile changes: the portraits are rebuilt for it.
+    -- Redone only when the pile changes.
     if m.pileFirst == first and m.pileCount == (members and #members) then return end
     m.pileFirst, m.pileCount = first, members and #members
     -- Its own copy: Place reuses its tables.
     m.pile = members and { unpack(members) }
-    if m.group and m.stack then
-        ns.Parties:SetStack(m.stack, members and GroupsInfo(members) or ns.Parties:Info(m.group))
-    end
     -- A gathering node's own count gives way to the pile's.
     ns.Gathering:ShowCount(m, not members)
     if members then
@@ -123,7 +103,7 @@ end
 -- Fans -----------------------------------------------------------------------------
 -- Hovering a pile opens it: its face stays where it is, the others glide
 -- out from behind it to places round it (in a column above it when they
--- are wide, like a group's portraits), each with a line back to the spot,
+-- are wide), each with a line back to the spot,
 -- and each shows its own tooltip. Once the mouse has been away from it for
 -- a moment the fan glides shut, and the pile closes up again.
 

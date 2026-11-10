@@ -126,6 +126,8 @@ check(size == 16 and art == nil, "an atlas is not")
 icon.SetAtlas = function() return false end
 size, art = ns.SetEventIcon(icon, text, "rare")
 check(art == icons.rare.fallback, "an atlas the client lacks falls back to art")
+-- A group shows one icon on the map: a party's, or a raid's (Map.lua).
+check(icons.grp.atlas == "socialqueuing-icon-group" and icons.grpRaid.atlas == "Raid", "the party and raid icons")
 -- Other art isn't framed: the quest turn-in's fallback is a gossip glyph.
 size, art = ns.SetEventIcon(icon, text, "qd")
 check(icons.qd.fallback and art == nil, "a fallback that isn't icon art taken as art")

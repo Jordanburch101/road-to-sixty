@@ -100,6 +100,9 @@ local EVENT_ICONS = {
     mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
+    -- Not a kind: a group that was, or became, a raid shows this on the map
+    -- instead of grp's (Jordan's picks from a swatch, both).
+    grpRaid = { atlas = "Raid", classic = "socialqueuing-icon-group", size = 20 },
     ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
     gath = { file = "Interface\\Icons\\INV_Ore_Copper_01", size = 18 },    -- a node shows its resource's icon instead
     duel = { file = "Interface\\Icons\\Ability_DualWield", size = 18 },
