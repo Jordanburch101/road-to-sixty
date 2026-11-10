@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.4
+
+### New
+- Map markers drawn from game icons (professions, recipes, reputation,
+  riding and mounts, duels) sit in the same item button frame as
+  gathering nodes, so they stand out from the map.
+
 ## 1.20.3
 
 ### Fixed

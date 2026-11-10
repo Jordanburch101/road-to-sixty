@@ -370,66 +370,21 @@ function Gathering:Describe(e)
 end
 
 -- A node's marker is a classic item button, as in the bags (Jordan picked
--- it from a screenshot): the icon under the button frame, the count at the
--- bottom right. The frame is drawn at 64 for a 37 button, a pixel low.
--- 12 pixels, picked by Jordan from 10 to 16.
-local size = 12
-local FRAME, FRAME_SCALE = "Interface\\Buttons\\UI-Quickslot2", 64 / 37
-local COUNT_FONT = _G["NumberFontNormalSmall"] and "NumberFontNormalSmall" or "GameFontHighlightSmall"
-
--- The node's own art on marker m, made once: icon, frame and count.
-local function Art(m)
-    if m.gather then return m.gather end
-    local g = CreateFrame("Frame", nil, m)
-    g:SetAllPoints()
-    g.icon = g:CreateTexture(nil, "ARTWORK")
-    g.icon:SetPoint("CENTER")
-    g.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    g.frame = g:CreateTexture(nil, "OVERLAY")
-    g.frame:SetTexture(FRAME)
-    g.count = g:CreateFontString(nil, "OVERLAY", COUNT_FONT)
-    g.count:SetDrawLayer("OVERLAY", 7)
-    m.gather = g
-    return g
-end
-
--- Shows marker m as icon in the item button frame, without a count: the
--- icon iconSize pixels, or a node's size.
-local function Framed(m, icon, iconSize)
-    local s = iconSize or size
-    local g = Art(m)
-    m.icon:Hide()
-    m.text:SetText("")
-    m:SetSize(s + 2, s + 2)
-    g.icon:SetTexture(icon)
-    g.icon:SetSize(s, s)
-    g.frame:SetSize(s * FRAME_SCALE, s * FRAME_SCALE)
-    g.frame:ClearAllPoints()
-    g.frame:SetPoint("CENTER", 0, -s / 37)
-    g.count:Hide()
-    g:Show()
-    return g
-end
-
--- Shows marker m as node.
+-- it from a screenshot): its resource's icon in the item button frame every
+-- icon marker shares (Style.Frame), at a node's size, the count at the
+-- bottom right.
 local function Dress(m, node)
-    local g = Framed(m, ItemIcon(node.item))
+    local g = ns.Style.Frame(m, ItemIcon(node.item), ns.Style.NODE_ICON)
     g.count:ClearAllPoints()
     g.count:SetPoint("BOTTOMRIGHT", g.icon, "BOTTOMRIGHT", 3, -2)
     g.count:SetText(node.count)
     g.count:SetShown(node.count > 1)
 end
 
--- Marker m of another kind dressed as a node is, its icon in the same
--- frame: duels (#88). iconSize is the icon's, a node's if nil.
-function Gathering:Frame(m, icon, iconSize)
-    Framed(m, icon, iconSize)
-end
-
 -- Shows or hides a node marker's count: a pile's number replaces it (MarkerPiles.lua).
 function Gathering:ShowCount(m, shown)
-    if m.gather and m.node then
-        m.gather.count:SetShown(shown and m.node.count > 1)
+    if m.framed and m.node then
+        m.framed.count:SetShown(shown and m.node.count > 1)
     end
 end
 
