@@ -78,31 +78,25 @@ end
 
 -- The window ---------------------------------------------------------------------
 
-local ART = "Interface\\AddOns\\" .. addonName .. "\\"
--- The website's and the CurseForge header's look: white on dark, its blue.
+-- The website's and the CurseForge header's look (Jordan's pick from three,
+-- #132): that header across the top, white on dark, its blue. banner.tga is
+-- the last frame of branding/curseforge-header-classes.gif at 512 x 171, at
+-- the top of a 512 x 256 image, made a TGA by branding/make-tga.ps1.
+local BANNER = "Interface\\AddOns\\" .. addonName .. "\\banner"
+local BANNER_W, BANNER_H, BANNER_FILE_H = 512, 171, 256     -- the art, in its 512 x 256 file
 local ACCENT = { 0.23, 0.63, 1 }
 local SECTION_COLOURS = { New = ACCENT, Fixed = { 0.45, 0.85, 0.6 } }
 
--- Three looks for Jordan to pick from (#132): "a" Blizzard's window with the
--- compass logo in its round portrait, "b" a header with the logo and the
--- name, "c" the CurseForge header across the top. /rts changes test a, b or c.
-local LOOKS = { a = true, b = true, c = true }
-local look = "b"
+local frame
 
-local frames = {}           -- look -> its window, made once
-
-local function Title(f, text)
-    if f.SetTitle then f:SetTitle(text) elseif f.TitleText then f.TitleText:SetText(text) end
-end
-
--- Font strings and lines from f's pools, reused each fill.
-local function Text(f, font, used)
-    local pool = f.pools[font] or {}
-    f.pools[font] = pool
+-- Font strings and lines from the window's pools, reused each fill.
+local function Text(font, used)
+    local pool = frame.pools[font] or {}
+    frame.pools[font] = pool
     used[font] = (used[font] or 0) + 1
     local fs = pool[used[font]]
     if not fs then
-        fs = f.child:CreateFontString(nil, "OVERLAY", font)
+        fs = frame.child:CreateFontString(nil, "OVERLAY", font)
         fs:SetJustifyH("LEFT")
         pool[used[font]] = fs
     end
@@ -112,110 +106,80 @@ local function Text(f, font, used)
     return fs
 end
 
-local function Rule(f, used)
+local function Rule(used)
     used.rules = (used.rules or 0) + 1
-    local line = f.rules[used.rules]
+    local line = frame.rules[used.rules]
     if not line then
-        line = f.child:CreateTexture(nil, "ARTWORK")
+        line = frame.child:CreateTexture(nil, "ARTWORK")
         line:SetHeight(1)
-        f.rules[used.rules] = line
+        frame.rules[used.rules] = line
     end
     line:ClearAllPoints()
     line:Show()
     return line
 end
 
-local function Create(which)
-    local f
-    if which == "a" then
-        f = CreateFrame("Frame", "RoadToSixtyWhatsNewA", UIParent, "ButtonFrameTemplate")
-        f:SetSize(WIDTH + 20, HEIGHT + 40)
-        if f.SetPortraitToAsset then
-            f:SetPortraitToAsset(ART .. "logo")
-        elseif f.portrait then
-            SetPortraitToTexture(f.portrait, ART .. "logo")
-        end
-        f.top = -64
-    else
-        f = CreateFrame("Frame", "RoadToSixtyWhatsNew" .. which:upper(), UIParent, "BasicFrameTemplateWithInset")
-        f:SetSize(WIDTH + 20, HEIGHT + (which == "c" and 120 or 70))
-        if which == "b" then
-            local logo = f:CreateTexture(nil, "ARTWORK")
-            logo:SetTexture(ART .. "logo")
-            logo:SetSize(64, 64)
-            logo:SetPoint("TOPLEFT", 16, -32)
-            local name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
-            name:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -8)
-            name:SetText("Road to Sixty")
-            f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            f.subtitle:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -6)
-            f.subtitle:SetTextColor(0.7, 0.7, 0.75)
-            local rule = f:CreateTexture(nil, "ARTWORK")
-            rule:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.6)
-            rule:SetHeight(1)
-            rule:SetPoint("TOPLEFT", 16, -104)
-            rule:SetPoint("TOPRIGHT", -16, -104)
-            f.top = -112
-        else
-            local w = WIDTH + 12
-            local banner = f:CreateTexture(nil, "ARTWORK")
-            banner:SetTexture(ART .. "banner")
-            banner:SetTexCoord(0, 1, 0, 171 / 256)
-            banner:SetSize(w, w * 171 / 512)
-            banner:SetPoint("TOP", 0, -26)
-            f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-            f.subtitle:SetPoint("TOP", banner, "BOTTOM", 0, -8)
-            f.top = -26 - w * 171 / 512 - 34
-        end
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        f.title:SetPoint("TOP", 0, -5)
-    end
-    f:SetPoint("CENTER", 0, 40)
-    f:SetFrameStrata("DIALOG")
-    f:SetClampedToScreen(true)
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    tinsert(UISpecialFrames, f:GetName())
+local function Create()
+    local w = WIDTH + 12
+    local bannerH = w * BANNER_H / BANNER_W
+    frame = CreateFrame("Frame", "RoadToSixtyWhatsNew", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(WIDTH + 20, HEIGHT + 120)
+    frame:SetPoint("CENTER", 0, 40)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "RoadToSixtyWhatsNew")
 
-    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", PAD + 4, f.top)
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    frame.title:SetPoint("TOP", 0, -5)
+    frame.title:SetText("What's new")
+
+    local banner = frame:CreateTexture(nil, "ARTWORK")
+    banner:SetTexture(BANNER)
+    banner:SetTexCoord(0, 1, 0, BANNER_H / BANNER_FILE_H)
+    banner:SetSize(w, bannerH)
+    banner:SetPoint("TOP", 0, -26)
+    frame.subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    frame.subtitle:SetPoint("TOP", banner, "BOTTOM", 0, -8)
+
+    local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", PAD + 4, -26 - bannerH - 34)
     scroll:SetPoint("BOTTOMRIGHT", -32, 44)
-    f.child = CreateFrame("Frame", nil, scroll)
-    f.child:SetSize(WIDTH + 20 - PAD - 4 - 32, 1)
-    scroll:SetScrollChild(f.child)
-    f.scroll = scroll
-    f.pools, f.rules = {}, {}
+    frame.child = CreateFrame("Frame", nil, scroll)
+    frame.child:SetSize(WIDTH + 20 - PAD - 4 - 32, 1)
+    scroll:SetScrollChild(frame.child)
+    frame.scroll = scroll
+    frame.pools, frame.rules = {}, {}
 
-    local close = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local close = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     close:SetSize(96, 22)
-    close:SetPoint("BOTTOMRIGHT", -PAD, which == "a" and 4 or 12)
+    close:SetPoint("BOTTOMRIGHT", -PAD, 12)
     close:SetText("Close")
-    close:SetScript("OnClick", function() f:Hide() end)
+    close:SetScript("OnClick", function() frame:Hide() end)
 
-    local map = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local map = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     map:SetSize(120, 22)
     map:SetPoint("RIGHT", close, "LEFT", -8, 0)
     map:SetText("Open the map")
     map:SetScript("OnClick", function()
-        f:Hide()
+        frame:Hide()
         ns.Map:Open()
     end)
-    frames[which] = f
-    return f
 end
 
--- Fills window f with list's versions: each version's number over a blue
+-- Fills the window with list's versions: each version's number over a blue
 -- rule, its sections in their colours, each note a blue bullet with its
 -- lines hanging after it.
-local function Fill(f, list)
-    for _, pool in pairs(f.pools) do
+local function Fill(list)
+    for _, pool in pairs(frame.pools) do
         for _, fs in ipairs(pool) do fs:Hide() end
     end
-    for _, line in ipairs(f.rules) do line:Hide() end
-    local used, y, width = {}, 0, f.child:GetWidth()
+    for _, line in ipairs(frame.rules) do line:Hide() end
+    local used, y, width = {}, 0, frame.child:GetWidth()
     local function Place(fs, x, gap)
         y = y + gap
         fs:SetPoint("TOPLEFT", x, -y)
@@ -223,27 +187,27 @@ local function Fill(f, list)
         y = y + fs:GetStringHeight()
     end
     for i, v in ipairs(list) do
-        local head = Text(f, "GameFontHighlightLarge", used)
+        local head = Text("GameFontHighlightLarge", used)
         head:SetText(v.version)
         Place(head, 0, i == 1 and 2 or 20)
-        local rule = Rule(f, used)
+        local rule = Rule(used)
         rule:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.45)
         rule:SetPoint("TOPLEFT", 0, -(y + 4))
         rule:SetPoint("TOPRIGHT", -4, -(y + 4))
         y = y + 6
         for _, section in ipairs(v.sections) do
-            local title = Text(f, "GameFontNormal", used)
+            local title = Text("GameFontNormal", used)
             title:SetText(section[1]:upper())
             local c = SECTION_COLOURS[section[1]] or ACCENT
             title:SetTextColor(c[1], c[2], c[3])
             Place(title, 0, 8)
             for _, note in ipairs(section[2]) do
-                local dot = Text(f, "GameFontNormal", used)
+                local dot = Text("GameFontNormal", used)
                 dot:SetText("\226\128\162")     -- a bullet
                 dot:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
                 dot:SetWidth(10)
                 dot:SetPoint("TOPLEFT", 4, -(y + 5))
-                local line = Text(f, "GameFontHighlight", used)
+                local line = Text("GameFontHighlight", used)
                 line:SetText(note)
                 line:SetTextColor(0.92, 0.92, 0.9)
                 Place(line, 16, 5)
@@ -251,31 +215,21 @@ local function Fill(f, list)
         end
     end
     if list.cut then
-        local rest = Text(f, "GameFontDisable", used)
+        local rest = Text("GameFontDisable", used)
         rest:SetText("Older versions' notes are in the release notes on CurseForge.")
         Place(rest, 0, 18)
     end
-    f.child:SetHeight(math.max(y + 4, 1))
-    f.scroll:SetVerticalScroll(0)
+    frame.child:SetHeight(math.max(y + 4, 1))
+    frame.scroll:SetVerticalScroll(0)
 end
 
 -- Shows list's versions (newest first), with a line for older ones when
--- list.cut. which picks the look, for the test command.
-function WhatsNew:Show(list, which)
-    which = LOOKS[which] and which or look
-    for key, f in pairs(frames) do
-        if key ~= which then f:Hide() end
-    end
-    local f = frames[which] or Create(which)
-    local newest = list[1].version
-    if which == "a" then
-        Title(f, ("Road to Sixty %s: what's new"):format(newest))
-    else
-        f.title:SetText("What's new")
-        f.subtitle:SetText(("Version %s"):format(newest))
-    end
-    Fill(f, list)
-    f:Show()
+-- list.cut. The subtitle names the newest.
+function WhatsNew:Show(list)
+    if not frame then Create() end
+    frame.subtitle:SetText(("Version %s"):format(list[1].version))
+    Fill(list)
+    frame:Show()
 end
 
 -- At login -----------------------------------------------------------------------
@@ -315,9 +269,8 @@ ns.Command("changes", "what's new in the latest versions", function(arg)
     local data = ns.WhatsNewData or {}
     --@debug@
     -- As a login would show it after updating from the third version listed.
-    -- test a, b or c picks the look.
-    if arg and arg:match("^test") and data[3] then
-        WhatsNew:Show(WhatsNew.Unseen(data, data[1].version, data[3].version), arg:match("^test%s+(%a)$"))
+    if arg == "test" and data[3] then
+        WhatsNew:Show(WhatsNew.Unseen(data, data[1].version, data[3].version))
         return
     end
     --@end-debug@
