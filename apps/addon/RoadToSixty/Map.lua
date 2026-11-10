@@ -569,11 +569,8 @@ local function GetMarker(i)
         m.icon:Show()
     end
     if m then m.rare, m.node, m.duel = nil, nil, nil end
-    if m and m.gather then
-        m.gather:Hide()
-        m.icon:Show()
-    end
     if m then
+        Style.Unframe(m)
         ns.MarkerPiles:Reset(m)
         return m
     end
@@ -716,10 +713,10 @@ local function BuildMarkers()
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
                     or kind == "duel" and MARKER_ZOOM.duel
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
-                local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
+                local size, art = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
-                -- Duels sit in the gathering nodes' item button frame.
-                if kind == "duel" then ns.Gathering:Frame(m, icon) end
+                -- Game icon art sits in the item button frame (#110).
+                if art and not guild then Style.Frame(m, art, Style.MARKER_ICON) end
                 -- Rares show a card with their portrait when hovered.
                 m.rare = kind == "rare" and { e, Where(inside, zone) } or nil
                 m.duel = kind == "duel" and { e, Where(inside, zone) } or nil
