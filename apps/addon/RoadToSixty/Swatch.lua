@@ -19,6 +19,38 @@ local WORLD_MAP = 947
 -- "atlas", "file" or "none" (just the number). Empty while no icon choice
 -- is open (level ups now use the player frame's level badge).
 local SECTIONS = {
+    -- One icon for a group on the map, instead of its members' portraits:
+    -- a party's, and a raid's for a party that became one. Atlases first,
+    -- then spell and item icons, which the map would show in the item button
+    -- frame as other icon markers (#110).
+    { "Party", {
+        { "atlas", "socialqueuing-icon-group", label = "P1 sq group" },
+        { "atlas", "UI-LFG-RoleIcon-Generic", label = "P2 lfg role" },
+        { "atlas", "quickjoin-button-group-up", label = "P3 quick join" },
+        { "atlas", "groupfinder-icon-friend", label = "P4 gf friend" },
+        { "atlas", "socialqueuing-icon-eye", label = "P5 sq eye" },
+        { "atlas", "communities-icon-addgroupplus", label = "P6 add group" },
+        { "file", "Interface\\Icons\\INV_Misc_GroupNeedMore", crop = true, label = "P7 need more" },
+        { "file", "Interface\\Icons\\INV_Misc_GroupLooking", crop = true, label = "P8 looking" },
+        { "file", "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend", crop = true, label = "P9 everybody" },
+        { "file", "Interface\\Icons\\Spell_Holy_PrayerOfFortitude", crop = true, label = "P10 fortitude" },
+        { "file", "Interface\\Icons\\Spell_Holy_PrayerofSpirit", crop = true, label = "P11 spirit" },
+        { "file", "Interface\\Icons\\Ability_Warrior_BattleShout", crop = true, label = "P12 shout" },
+    } },
+    { "Raid", {
+        { "atlas", "Raid", label = "R1 raid pin" },
+        { "atlas", "worldquest-icon-raid", label = "R2 wq raid" },
+        { "atlas", "Dungeon", label = "R3 dungeon pin" },
+        { "atlas", "groupfinder-icon-role-large-tank", label = "R4 gf tank" },
+        { "file", "Interface\\Icons\\Ability_Warrior_RallyingCry", crop = true, label = "R5 rallying" },
+        { "file", "Interface\\Icons\\INV_Banner_03", crop = true, label = "R6 banner" },
+        { "file", "Interface\\Icons\\INV_Misc_Head_Dragon_Black", crop = true, label = "R7 onyxia" },
+        { "file", "Interface\\Icons\\Achievement_Boss_Ragnaros", crop = true, label = "R8 ragnaros" },
+        { "file", "Interface\\Icons\\Achievement_Dungeon_ClassicRaider", crop = true, label = "R9 raider" },
+        { "file", "Interface\\Icons\\Achievement_GuildPerk_MassResurrection", crop = true, label = "R10 mass res" },
+        { "file", "Interface\\Icons\\INV_Misc_Head_Dragon_01", crop = true, label = "R11 dragon" },
+        { "file", "Interface\\Icons\\Spell_Holy_PrayerOfHealing", crop = true, label = "R12 prayer" },
+    } },
     -- Stand-ins on Era and Anniversary for atlases only Forever has (#72):
     -- the zone discovered icon (Waypoint-MapPin-Untracked), the boat icon
     -- (poi-islands-table) and the level marker (UI-HUD-UnitFrame-SmallCircle).
