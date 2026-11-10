@@ -2,8 +2,9 @@ local addonName, ns = ...
 
 -- How the journey looks, shared by the map, the side panel and the replay
 -- effects: path colours by level band, jump styles, event and class icons,
--- History filter categories and small formatting helpers. No state lives
--- here. Map.lua reaches the tables and helpers it needs through ns.Style.
+-- History filter categories, the item button frame map markers drawn from
+-- game icon art sit in, and small formatting helpers. No state lives here.
+-- Map.lua reaches the tables and helpers it needs through ns.Style.
 
 local Style = {}
 ns.Style = Style
@@ -99,6 +100,9 @@ local EVENT_ICONS = {
     mount = { file = "Interface\\Icons\\Ability_Mount_RidingHorse", size = 20 },
     rare = { atlas = "nameplates-icon-elite-silver", fallback = "Interface\\Icons\\INV_Misc_Head_Dragon_01", size = 20 },
     grp = { atlas = "socialqueuing-icon-group", size = 20 },
+    -- Not a kind: a group that was, or became, a raid shows this on the map
+    -- instead of grp's (Jordan's picks from a swatch, both).
+    grpRaid = { atlas = "Raid", classic = "socialqueuing-icon-group", size = 20 },
     ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
     gath = { file = "Interface\\Icons\\INV_Ore_Copper_01", size = 18 },    -- a node shows its resource's icon instead
     duel = { file = "Interface\\Icons\\Ability_DualWield", size = 18 },
@@ -195,15 +199,19 @@ end
 -- Sets icon (a texture) and text (a font string on top of it) for an event
 -- kind. file, if given, replaces the kind's own icon (an item's icon for
 -- loot). Level icons are the player frame's level badge with the level
--- number in white on top. Returns the icon size.
+-- number in white on top. Returns the icon size, and the file when the
+-- icon is game icon art (a file ID, or a file under Interface\Icons) rather
+-- than an atlas or other art, for Style.Frame.
 function ns.SetEventIcon(icon, text, kind, level, file)
     local style = EVENT_ICONS[kind] or UNKNOWN_ICON
-    if file or style.file then
-        icon:SetTexture(file or style.file)
+    local art = file or style.file
+    if art then
+        icon:SetTexture(art)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     elseif not icon:SetAtlas(style.atlas) and not (style.classic and icon:SetAtlas(style.classic))
         and style.fallback then
-        icon:SetTexture(style.fallback)
+        art = style.fallback
+        icon:SetTexture(art)
         icon:SetTexCoord(0, 1, 0, 1)
     end
     icon:SetVertexColor(1, 1, 1)
@@ -213,7 +221,62 @@ function ns.SetEventIcon(icon, text, kind, level, file)
         text:SetTextColor(1, 1, 1)
         text:SetShadowOffset(1, -1)
     end
-    return style.size
+    local icon = type(art) == "number"
+        or type(art) == "string" and art:lower():find("interface\\icons\\", 1, true) == 1
+    return style.size, icon and art or nil
+end
+
+-- Icons in the item button frame ---------------------------------------------------
+
+-- Map markers drawn from game icon art (spell and item icons) sit in the
+-- classic item button frame, as the bags have it, so they don't blend into
+-- the terrain: gathering nodes (#78) and every other such marker (#110).
+-- They are all made here, so they all look alike. Atlas markers (level,
+-- death, dungeon, quest, travel, groups) keep their own shapes, and guild
+-- events show their banner.
+Style.NODE_ICON = 12        -- a gathering node's icon, picked by Jordan from 10 to 16
+Style.MARKER_ICON = 16      -- every other framed marker's icon, picked by Jordan from a swatch (#110)
+local ITEM_FRAME = "Interface\\Buttons\\UI-Quickslot2"
+local ITEM_FRAME_SCALE = 64 / 37    -- the frame art is drawn at 64 for a 37 button, a pixel low
+local COUNT_FONT = _G["NumberFontNormalSmall"] and "NumberFontNormalSmall" or "GameFontHighlightSmall"
+
+-- Shows marker m (a frame with an icon texture and a text, as the map makes
+-- them) as icon in the item button frame, the icon size pixels: m's own icon
+-- and text are hidden. The art is made once per marker, as m.framed: icon,
+-- frame, and count, hidden here, for a node's (Gathering.lua). Returns it.
+function Style.Frame(m, icon, size)
+    local g = m.framed
+    if not g then
+        g = CreateFrame("Frame", nil, m)
+        g:SetAllPoints()
+        g.icon = g:CreateTexture(nil, "ARTWORK")
+        g.icon:SetPoint("CENTER")
+        g.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        g.frame = g:CreateTexture(nil, "OVERLAY")
+        g.frame:SetTexture(ITEM_FRAME)
+        g.count = g:CreateFontString(nil, "OVERLAY", COUNT_FONT)
+        g.count:SetDrawLayer("OVERLAY", 7)
+        m.framed = g
+    end
+    m.icon:Hide()
+    m.text:SetText("")
+    m:SetSize(size + 2, size + 2)
+    g.icon:SetTexture(icon)
+    g.icon:SetSize(size, size)
+    g.frame:SetSize(size * ITEM_FRAME_SCALE, size * ITEM_FRAME_SCALE)
+    g.frame:ClearAllPoints()
+    g.frame:SetPoint("CENTER", 0, -size / 37)
+    g.count:Hide()
+    g:Show()
+    return g
+end
+
+-- Takes the frame off a marker reused for something drawn otherwise.
+function Style.Unframe(m)
+    if m.framed then
+        m.framed:Hide()
+        m.icon:Show()
+    end
 end
 
 -- Colour of a line for movement mode and level band: r, g, b, a.

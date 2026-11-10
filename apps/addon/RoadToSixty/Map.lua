@@ -557,23 +557,15 @@ end
 
 local function GetMarker(i)
     local m = markers[i]
-    -- A marker reused for another kind of event loses a guild banner or a
-    -- group's portraits it had.
+    -- A marker reused for another kind of event loses a guild banner it had,
+    -- and what a group, rare, node or duel left on it.
     if m and m.badge then
         m.badge:Hide()
         m.icon:Show()
     end
-    if m and m.stack then
-        m.stack:Hide()
-        m.group = nil
-        m.icon:Show()
-    end
-    if m then m.rare, m.node, m.duel = nil, nil, nil end
-    if m and m.gather then
-        m.gather:Hide()
-        m.icon:Show()
-    end
+    if m then m.rare, m.node, m.duel, m.group = nil, nil, nil, nil end
     if m then
+        Style.Unframe(m)
         ns.MarkerPiles:Reset(m)
         return m
     end
@@ -591,9 +583,8 @@ local function GetMarker(i)
             ns.MarkerPiles:Fan(self)
             return
         end
-        -- A group spreads its portraits out and shows its card.
+        -- A group shows its card, with everyone in it.
         if self.group then
-            ns.Parties:Spread(self.stack, true)
             ns.Parties:ShowCard(self, self.group)
             return
         end
@@ -620,10 +611,7 @@ local function GetMarker(i)
         GameTooltip_Hide()
         ns.GearCard:Hide()
         ns.Rares:HideCard()
-        if self.group then
-            ns.Parties:Spread(self.stack, false)
-            ns.Parties:HideCard()
-        end
+        if self.group then ns.Parties:HideCard() end
     end)
     markers[i] = m
     return m
@@ -716,10 +704,10 @@ local function BuildMarkers()
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
                     or kind == "duel" and MARKER_ZOOM.duel
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
-                local size = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
+                local size, art = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
-                -- Duels sit in the gathering nodes' item button frame.
-                if kind == "duel" then ns.Gathering:Frame(m, icon) end
+                -- Game icon art sits in the item button frame (#110).
+                if art and not guild then Style.Frame(m, art, Style.MARKER_ICON) end
                 -- Rares show a card with their portrait when hovered.
                 m.rare = kind == "rare" and { e, Where(inside, zone) } or nil
                 m.duel = kind == "duel" and { e, Where(inside, zone) } or nil
@@ -727,7 +715,8 @@ local function BuildMarkers()
                 m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end
         elseif toContent and kind == "grp" then
-            -- The group's portraits, overlapping; the marker grows with them.
+            -- One icon for the group, a party's or a raid's (a party can become
+            -- one); its card, with everyone in it, shows on hover.
             count = count + 1
             local m = GetMarker(count)
             m.t, m.popping, m.level, m.group = t, nil, nil, e
@@ -736,16 +725,8 @@ local function BuildMarkers()
             m.category = Style.CATEGORY[kind]
             m.minZoom = MARKER_ZOOM.group
             m.title, m.detail = ns.Parties:Describe(e)
-            if not m.stack then
-                m.stack = ns.Parties:CreateStack(m, 24)
-                m.stack:SetPoint("CENTER")
-                m.stack.onResize = function(stack)
-                    m:SetSize(stack:GetWidth(), stack:GetHeight())
-                end
-            end
-            m.icon:Hide()
-            m.stack:Show()
-            ns.Parties:SetStack(m.stack, ns.Parties:Info(e))
+            local size = ns.SetEventIcon(m.icon, m.text, ns.Parties:Info(e).kind == "raid" and "grpRaid" or kind)
+            m:SetSize(size, size)
         elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then
             count = count + 1
             local m = GetMarker(count)

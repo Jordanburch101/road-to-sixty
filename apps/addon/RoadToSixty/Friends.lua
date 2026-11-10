@@ -28,7 +28,8 @@ local _, ns = ...
 -- the sync server never see it.
 --
 -- An automatic sync simply asks each friend in turn. The game answers with a
--- chat line when one is offline, which is hidden and taken as a no.
+-- chat line when one is offline, which is hidden and taken as a no. Who is
+-- online, for the tab's Sync button, is under "Who is online" below.
 --
 -- Messages, split by colons, are all whispers:
 --   Q:id:version:layout:segments:offset:events:sum:journeyId   what the asker
@@ -36,6 +37,8 @@ local _, ns = ...
 --                                    sum its MetaSum
 --   N:id:reason                      not sent, and why
 --   B:id:n:total:data                part n of a batch
+--   H:id:                            hello: logged in, or asking who is online
+--   G:id:                            goodbye, at logout
 --
 -- A batch that carries on from what the asker has holds p and pe, prints of
 -- that path and those events (PathPrint, EventsPrint). A session from a late second PC lands in
@@ -94,6 +97,7 @@ local REASONS = {
 local BUSY = "Another sync is running. Try again when it ends."
 local TOO_BIG = "Their journey is too big to keep any more of it."
 local LOCKED = "Can't sync from inside a dungeon, raid or battleground."
+local OFFLINE_NOW = "Offline. Sync comes back when they log in."
 
 -- Shapes ----------------------------------------------------------------------------
 -- A friend's journey is read by the same code as the account's own, which
@@ -683,6 +687,193 @@ local function Apply(rec, b)
     return true
 end
 
+-- Who is online -------------------------------------------------------------------
+
+-- The tab offers Sync only to a friend who is online (#92). Addons can't ask
+-- the game whether a character on another account is online, so the first
+-- of these that knows wins:
+--  1. The game's friends lists: the WoW friends list, by GUID or name, and
+--     Battle.net by the BattleTag a sync brought, where the account playing
+--     another character says this one is offline.
+--  2. What was seen last: any message from them says online, the game's
+--     offline line for them says offline. A hello (H) goes to every friend
+--     at login, and when the tab opens to those the lists don't know and
+--     nothing was heard from for a while. The game answers a whisper to
+--     someone offline with its line within a moment, so a hello without
+--     one says online, whatever version they run. A friend's hello says
+--     they logged in, and their goodbye (G) that they logged out.
+-- A message from the friend in the last SEEN_FOR wins over the lists, as it
+-- is them. Battle.net only says offline when their account plays another
+-- character, by GUID: a name in another form, or an account appearing
+-- offline, is left to the hello. An offline mark older than SEEN_FOR is
+-- forgotten, as they may have logged in since without a word.
+
+local HELLO_WAIT = 4        -- seconds the offline line may take to answer a hello
+local HELLO_KEEP = 15       -- seconds a late line is still taken as its answer, and hidden
+local HELLO_GAP = 0.5       -- seconds between hellos
+local HELLO_DELAY = 10      -- seconds after login before the hellos
+local SEEN_FOR = 600        -- seconds before a friend not heard from is asked again
+
+local seen = {}             -- key -> { online = true or false, at = GetTime(), heard = from them }
+local pinged = {}           -- key -> { name, sent }: hellos whose offline line may still come
+local helloQueue = {}
+local helloRunning = false
+local redrawing = false
+
+-- Notes what was seen of a friend, and redraws the tab if that changed.
+-- heard: a message from the friend themselves.
+local function Mark(key, online, heard)
+    if not key or not ns.db.friends[key] then return end
+    local was = seen[key]
+    seen[key] = { online = online, at = GetTime(), heard = heard }
+    if not was or was.online ~= online then Changed() end
+end
+
+-- A name from the game's friends lists, as the friends keys have it.
+local function ListedKey(name)
+    name = Clean(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    if Surnames() then
+        -- "First Last-Realm" loses its realm; "First-Last" is the full name.
+        if name:find("%s") then name = name:gsub("%-.*$", "") end
+        return Key((name:gsub("%-", " ")))
+    end
+    return Key((name:gsub("%-.*$", "")))
+end
+
+-- A game call that may be missing or fail: its first two results, or nil.
+local function Call(fn, ...)
+    if not fn then return nil end
+    local ok, a, b = pcall(fn, ...)
+    if ok then return Clean(a), Clean(b) end
+    return nil
+end
+
+-- What the game's friends lists say of a friend: true or false when one of
+-- them knows, nil when neither does.
+local function Listed(rec, key)
+    local guid = rec.guid
+    local lists = C_FriendList or {}
+    for i = 1, tonumber(Call(lists.GetNumFriends)) or 0 do
+        local info = Call(lists.GetFriendInfoByIndex, i)
+        if type(info) == "table" and ((guid and Clean(info.guid) == guid) or ListedKey(info.name) == key) then
+            return Clean(info.connected) == true
+        end
+    end
+    local bnet = C_BattleNet or {}
+    if not rec.battleTag or not bnet.GetFriendAccountInfo then return nil end
+    for i = 1, tonumber(Call(BNGetNumFriends)) or 0 do
+        local account = Call(bnet.GetFriendAccountInfo, i)
+        if type(account) == "table" and Clean(account.battleTag) == rec.battleTag then
+            local other = false
+            for j = 1, tonumber(Call(bnet.GetFriendNumGameAccounts, i)) or 0 do
+                local game = Call(bnet.GetFriendGameAccountInfo, i, j)
+                if type(game) == "table" and Clean(game.isOnline) == true and Clean(game.clientProgram) == "WoW" then
+                    local id = Clean(game.playerGuid)
+                    if (guid and id == guid) or ListedKey(game.characterName) == key then return true end
+                    other = other or (guid ~= nil and type(id) == "string")
+                end
+            end
+            -- Playing another character, by GUID, says this one is offline;
+            -- anything less sure is left to the hello.
+            if other then return false end
+            return nil
+        end
+    end
+    return nil
+end
+
+-- What is known of a friend: true, false, or nil when nothing says.
+local function Known(rec, key)
+    local mark = seen[key]
+    local fresh = mark ~= nil and GetTime() - mark.at < SEEN_FOR
+    if fresh and mark.online and mark.heard then return true end
+    local listed = Listed(rec, key)
+    if listed ~= nil then return listed end
+    if not mark then return nil end
+    if mark.online then return true end
+    if fresh then return false end
+    return nil
+end
+
+-- Whether a friend is online: true, false, or nil when nothing says.
+function Friends:Online(rec)
+    return Known(rec, Key(rec.name))
+end
+
+-- Whether an automatic sync passes a friend over: known to be offline.
+local function Away(rec, key)
+    return Known(rec, key) == false
+end
+
+-- Sends the waiting hellos, one at a time.
+local function NextHello()
+    local key = table.remove(helloQueue, 1)
+    if not key then
+        helloRunning = false
+        return
+    end
+    -- The next one first, so an error here can't stop them all.
+    Later(HELLO_GAP, NextHello)
+    local rec = ns.db.friends[key]
+    if rec and not pinged[key] then
+        serial = serial + 1
+        local sent, result = Send(("H:%x:"):format(serial), rec.name)
+        if sent then
+            local ping = { name = rec.name, sent = GetTime() }
+            pinged[key] = ping
+            Later(HELLO_WAIT, function()
+                if pinged[key] ~= ping then return end
+                -- No line came: the whisper reached them, unless something newer said otherwise.
+                -- A line later still is taken as the answer until HELLO_KEEP, and hidden.
+                local mark = seen[key]
+                if not mark or mark.at <= ping.sent then Mark(key, true) end
+            end)
+            Later(HELLO_KEEP, function()
+                if pinged[key] == ping then pinged[key] = nil end
+            end)
+        elseif result == RESULT_OFFLINE then
+            ExpectOffline(rec.name)
+            Mark(key, false)
+        end
+    end
+end
+
+-- Says hello to every friend, or with stale only to those the lists don't
+-- know and nothing was heard from for a while.
+local function Hello(stale)
+    local now = GetTime()
+    for key, rec in pairs(ns.db.friends) do
+        local mark = seen[key]
+        local skip = stale and (Listed(rec, key) ~= nil or (mark and now - mark.at < SEEN_FOR))
+        for _, waiting in ipairs(helloQueue) do
+            if waiting == key then skip = true end
+        end
+        if not skip and not pinged[key] then
+            helloQueue[#helloQueue + 1] = key
+        end
+    end
+    if not helloRunning and helloQueue[1] then
+        helloRunning = true
+        NextHello()
+    end
+end
+
+-- Asks again about friends not heard from for a while, as the tab opens.
+function Friends:CheckOnline()
+    Hello(true)
+end
+
+-- The game's lists changed: the tab redraws once they settle.
+local function ListsChanged()
+    if redrawing then return end
+    redrawing = true
+    Later(1, function()
+        redrawing = false
+        Changed()
+    end)
+end
+
 -- Asking ----------------------------------------------------------------------------
 
 -- Drops the sync being asked for, and with it the lines saying to wait for it.
@@ -741,7 +932,10 @@ local function Ask(rec, key, bytes, auto, rewind)
         last and #last.d or 0, events, journey and rec.metaSum or 0,
         Escape(journey and journey.journeyId or "")), rec.name)
     if not sent then
-        if result == RESULT_OFFLINE then ExpectOffline(rec.name) end
+        if result == RESULT_OFFLINE then
+            ExpectOffline(rec.name)
+            Mark(key, false)
+        end
         Finish(key, result == RESULT_LOCKDOWN and LOCKED or "Could not send. Are they online?")
         return
     end
@@ -941,6 +1135,7 @@ local function OnMessage(prefix, text, channel, sender)
     local rec = ns.db.friends[key]
     if rec and name and rec.name ~= name then rec.name = name end
     local kind, id, rest = text:match("^(%u):(%x+):(.*)$")
+    if kind then Mark(key, kind ~= "G", true) end
     if kind == "Q" then
         OnAsked(sender, key, id, rest)
     elseif kind == "N" then
@@ -1046,7 +1241,9 @@ local function Schedule()
         if run ~= autoRun then return end
         -- A round still going carries on rather than starting over.
         if not autoQueue[1] then
-            for key in pairs(ns.db.friends) do autoQueue[#autoQueue + 1] = key end
+            for key, rec in pairs(ns.db.friends) do
+                if not Away(rec, key) then autoQueue[#autoQueue + 1] = key end
+            end
             NextAuto()
         end
         Schedule()
@@ -1082,36 +1279,54 @@ function Friends:ParseAutoSync(text)
 end
 
 -- Chat filter: true for the game's line that a player is offline, when it
--- answers one of ours. An automatic sync moves on, and a send stops.
+-- answers one of ours, and the friend is marked offline. A hello is
+-- answered, an ask ends (an automatic one without a word, as being offline
+-- is not worth a line), and a send stops.
 local function HideOffline(_, _, message)
     message = Clean(message)
     local line = ERR_CHAT_PLAYER_NOT_FOUND_S
     if type(message) ~= "string" or not line then return false end
     local now = GetTime()
-    if message == hiddenText and now < hiddenUntil then return true end
-    local rec = request and request.auto and ns.db.friends[request.key]
-    local function Hide()
-        hiddenText, hiddenUntil = message, now + HIDE_FOR
-        return true
+    local rec = request and ns.db.friends[request.key]
+    -- Without case, as the game may name them as it writes them or as we did.
+    local function Says(name) return Key(message) == Key(line:format(name)) end
+    -- A chat filter runs outside ns.On, so an error here would reach the chat frame.
+    local function Offline(key) ns.SafeCall(Mark, key, false) end
+    -- One line settles every send waiting on that name: a hello and an ask
+    -- can go out together, and their two lines read the same.
+    local hit = false
+    for key, ping in pairs(pinged) do
+        if Says(ping.name) then
+            pinged[key] = nil
+            Offline(key)
+            hit = true
+        end
     end
     for name, stop in pairs(expected) do
         if now >= stop then
             expected[name] = nil
-        elseif Key(message) == Key(line:format(name)) then
-            return Hide()
+        elseif Says(name) then
+            Offline((SenderKey(name)))
+            hit = true
         end
     end
-    -- Without case, as the game may name them as it writes them or as we did.
-    if rec and Key(message) == Key(line:format(rec.name)) then
-        -- A chat filter runs outside ns.On, so an error here would reach the chat frame.
-        ns.SafeCall(Finish, request.key, nil)
-        return Hide()
+    if rec and Says(rec.name) then
+        local key = request.key
+        Offline(key)
+        ns.SafeCall(Finish, key, not request.auto and OFFLINE_NOW or nil)
+        hit = true
     end
-    if outgoing and Key(message) == Key(line:format(outgoing.to)) then
+    if outgoing and Says(outgoing.to) then
+        Offline((SenderKey(outgoing.to)))
         outgoing = nil
-        return Hide()
+        hit = true
     end
-    return false
+    if hit then
+        hiddenText, hiddenUntil = message, now + HIDE_FOR
+        return true
+    end
+    -- The same line in another chat window, or for a second send.
+    return message == hiddenText and now < hiddenUntil
 end
 
 ns.On("PLAYER_LOGIN", function()
@@ -1120,7 +1335,24 @@ ns.On("PLAYER_LOGIN", function()
     local filter = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
     if filter then filter("CHAT_MSG_SYSTEM", HideOffline) end
     Schedule()
+    Later(HELLO_DELAY, function() Hello(false) end)
 end)
+
+-- Goodbyes, to friends known to be online, so their tabs drop the Sync
+-- button. A /reload sends them too; the hello 10 s later puts it back.
+ns.On("PLAYER_LOGOUT", function()
+    for _, rec in pairs(ns.db.friends) do
+        if Friends:Online(rec) == true then
+            serial = serial + 1
+            Send(("G:%x:"):format(serial), rec.name)
+        end
+    end
+end)
+
+for _, event in ipairs({ "FRIENDLIST_UPDATE", "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE",
+    "BN_FRIEND_INFO_CHANGED" }) do
+    ns.On(event, ListsChanged)
+end
 
 ns.On("CHAT_MSG_ADDON", OnMessage)
 

@@ -69,6 +69,71 @@ local boat = FakeIcon({ flightmaster = true })
 ns.SetEventIcon(boat, text, "boat")
 check(boat.atlas == "flightmaster", "a boat trip shows the flight master without Forever's boat")
 
+-- Map markers drawn from game icon art sit in the item button frame, one
+-- look made in one place (#110): made once per marker, the icon at the size
+-- asked and the frame around it, and taken off when the marker is reused.
+local function Region()
+    local r = { shown = true }
+    function r:Hide() self.shown = false end
+    function r:Show() self.shown = true end
+    function r:SetSize(w, h) self.w, self.h = w, h end
+    function r:SetTexture(t) self.texture = t return true end
+    function r:SetAtlas(a) self.atlas = a return true end
+    function r:SetText(t) self.text = t end
+    function r:SetTexCoord() end
+    function r:SetPoint() end
+    function r:ClearAllPoints() end
+    function r:SetAllPoints() end
+    function r:SetDrawLayer() end
+    function r:SetVertexColor() end
+    function r:CreateTexture() return Region() end
+    function r:CreateFontString() return Region() end
+    return r
+end
+local made = 0
+CreateFrame = function() made = made + 1 return Region() end
+local Style = ns.Style
+local marker = Region()
+marker.icon, marker.text = Region(), Region()
+marker.text.text = "14"
+local framed = Style.Frame(marker, "Interface\\Icons\\INV_Scroll_03", Style.MARKER_ICON)
+check(Style.MARKER_ICON == 16 and Style.NODE_ICON == 12, "the picked sizes")
+check(marker.framed == framed and framed.shown and not marker.icon.shown and marker.text.text == "",
+    "the marker's own icon and text give way to the frame")
+check(framed.icon.w == 16 and framed.icon.texture == "Interface\\Icons\\INV_Scroll_03" and marker.w == 18,
+    "icon at the size asked, the marker a little larger")
+check(math.abs(framed.frame.w - 16 * 64 / 37) < 1e-9 and framed.frame.texture == "Interface\\Buttons\\UI-Quickslot2",
+    "the item button frame around it")
+check(not framed.count.shown, "no count but a node's")
+Style.Frame(marker, "Interface\\Icons\\INV_Ore_Copper_01", Style.NODE_ICON)
+check(made == 1 and framed.icon.w == 12 and marker.w == 14, "made once per marker, resized for a node")
+framed.count:Show()
+Style.Frame(marker, "Interface\\Icons\\INV_Scroll_03", Style.MARKER_ICON)
+check(not framed.count.shown, "a node's count left on a marker framed again")
+Style.Unframe(marker)
+check(not framed.shown and marker.icon.shown, "taken off for a marker drawn otherwise")
+Style.Unframe(Region())
+
+-- SetEventIcon says which icons are game icon art, to be framed: a file
+-- given or the kind's own, and an atlas the client lacks falling back to one.
+local icon, text = Region(), Region()
+local size, art = ns.SetEventIcon(icon, text, "prof", nil, "Interface\\Icons\\Trade_Mining")
+check(size == 18 and art == "Interface\\Icons\\Trade_Mining", "a file given is art")
+size, art = ns.SetEventIcon(icon, text, "rep")
+check(art == icons.rep.file, "a kind's own file is art")
+size, art = ns.SetEventIcon(icon, text, "die")
+check(size == 16 and art == nil, "an atlas is not")
+icon.SetAtlas = function() return false end
+size, art = ns.SetEventIcon(icon, text, "rare")
+check(art == icons.rare.fallback, "an atlas the client lacks falls back to art")
+-- A group shows one icon on the map: a party's, or a raid's (Map.lua).
+check(icons.grp.atlas == "socialqueuing-icon-group" and icons.grpRaid.atlas == "Raid", "the party and raid icons")
+-- Other art isn't framed: the quest turn-in's fallback is a gossip glyph.
+size, art = ns.SetEventIcon(icon, text, "qd")
+check(icons.qd.fallback and art == nil, "a fallback that isn't icon art taken as art")
+size, art = ns.SetEventIcon(icon, text, "prof", nil, 136240)
+check(art == 136240, "an icon by file ID not taken as art")
+
 if failures == 0 then
     print("Style tests passed.")
 else

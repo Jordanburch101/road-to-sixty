@@ -72,6 +72,11 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   `SetItemButtonTexture` (and `SetItemButtonQuality` for items), never a
   bare texture or a border drawn from colour squares. Jordan's call on the
   Stats screen's records (#83).
+- A map marker drawn from game icon art (a spell or item icon, not an
+  atlas) goes in the item button frame through `Style.Frame(m, icon,
+  size)`, at `Style.MARKER_ICON` (16), or `Style.NODE_ICON` (12) for a
+  gathering node; `Style.Unframe` takes it off a reused marker. Never a
+  frame of its own. Jordan's call (#110).
 - Friends' journeys (Friends.lua) arrive by addon whisper from other
   players, so treat them as untrusted. `Apply` checks the shape of every
   field, nested ones too, before it keeps anything. A new journey field or

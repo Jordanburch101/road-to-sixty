@@ -44,7 +44,7 @@ for data, its exact format; read that before changing a module.
 | Range.lua | the journey map's date range (all time, today, yesterday, last 7 or 30 days): what the map, History and the gear screen show (#66) |
 | Health.lua | `/rts check` |
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
-| Style.lua | the journey's look: path colours, jump styles, event and class icons, History categories (`ns.Style`) |
+| Style.lua | the journey's look: path colours, jump styles, event and class icons, the item button frame for icon markers (`Style.Frame`), History categories (`ns.Style`) |
 | Map.lua | journey map window, layers, replay, markers; the `Together` table is replaying several journeys at once |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Gaps.lua | land and sea no zone map covers, painted as zone maps paint theirs (`Gaps/`, Era's set in `Gaps/Era/`, the Anniversary realms' in `Gaps/Anniversary/`), and the soft feather and rim masks (#73) |
