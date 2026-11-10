@@ -79,12 +79,13 @@ end
 -- The window ---------------------------------------------------------------------
 
 local ART = "Interface\\AddOns\\" .. addonName .. "\\"
-local GOLD = { 1, 0.82, 0 }
-local SECTION_COLOURS = { New = { 0.45, 0.9, 0.45 }, Fixed = { 0.5, 0.78, 1 } }
+-- The website's and the CurseForge header's look: white on dark, its blue.
+local ACCENT = { 0.23, 0.63, 1 }
+local SECTION_COLOURS = { New = ACCENT, Fixed = { 0.45, 0.85, 0.6 } }
 
 -- Three looks for Jordan to pick from (#132): "a" Blizzard's window with the
--- logo in its round portrait, "b" a header with the logo and the name, "c"
--- the CurseForge banner across the top. /rts changes test a, b or c.
+-- compass logo in its round portrait, "b" a header with the logo and the
+-- name, "c" the CurseForge header across the top. /rts changes test a, b or c.
 local LOOKS = { a = true, b = true, c = true }
 local look = "b"
 
@@ -143,13 +144,14 @@ local function Create(which)
             logo:SetTexture(ART .. "logo")
             logo:SetSize(64, 64)
             logo:SetPoint("TOPLEFT", 16, -32)
-            local name = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+            local name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
             name:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -8)
             name:SetText("Road to Sixty")
             f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             f.subtitle:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -6)
+            f.subtitle:SetTextColor(0.7, 0.7, 0.75)
             local rule = f:CreateTexture(nil, "ARTWORK")
-            rule:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.5)
+            rule:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.6)
             rule:SetHeight(1)
             rule:SetPoint("TOPLEFT", 16, -104)
             rule:SetPoint("TOPRIGHT", -16, -104)
@@ -161,7 +163,7 @@ local function Create(which)
             banner:SetTexCoord(0, 1, 0, 171 / 256)
             banner:SetSize(w, w * 171 / 512)
             banner:SetPoint("TOP", 0, -26)
-            f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
             f.subtitle:SetPoint("TOP", banner, "BOTTOM", 0, -8)
             f.top = -26 - w * 171 / 512 - 34
         end
@@ -205,8 +207,8 @@ local function Create(which)
     return f
 end
 
--- Fills window f with list's versions: each version's number over a gold
--- rule, its sections in their colours, each note a gold bullet with its
+-- Fills window f with list's versions: each version's number over a blue
+-- rule, its sections in their colours, each note a blue bullet with its
 -- lines hanging after it.
 local function Fill(f, list)
     for _, pool in pairs(f.pools) do
@@ -221,25 +223,24 @@ local function Fill(f, list)
         y = y + fs:GetStringHeight()
     end
     for i, v in ipairs(list) do
-        local head = Text(f, "GameFontNormalLarge", used)
+        local head = Text(f, "GameFontHighlightLarge", used)
         head:SetText(v.version)
-        head:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         Place(head, 0, i == 1 and 2 or 20)
         local rule = Rule(f, used)
-        rule:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+        rule:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.45)
         rule:SetPoint("TOPLEFT", 0, -(y + 4))
         rule:SetPoint("TOPRIGHT", -4, -(y + 4))
         y = y + 6
         for _, section in ipairs(v.sections) do
             local title = Text(f, "GameFontNormal", used)
             title:SetText(section[1]:upper())
-            local c = SECTION_COLOURS[section[1]] or GOLD
+            local c = SECTION_COLOURS[section[1]] or ACCENT
             title:SetTextColor(c[1], c[2], c[3])
             Place(title, 0, 8)
             for _, note in ipairs(section[2]) do
                 local dot = Text(f, "GameFontNormal", used)
                 dot:SetText("\226\128\162")     -- a bullet
-                dot:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+                dot:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
                 dot:SetWidth(10)
                 dot:SetPoint("TOPLEFT", 4, -(y + 5))
                 local line = Text(f, "GameFontHighlight", used)

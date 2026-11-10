@@ -65,7 +65,7 @@ The repo is a Bun and Turborepo workspace. Each app and package has an
 | `apps/web/` | The website (Astro, on Vercel): [roadtosixty.online](https://roadtosixty.online) |
 | `packages/api/` | Request and response types shared by the server, app and website |
 | `packages/ui/` | The look the app and website share: theme, fog of war, class icons |
-| `branding/` | Icon and header art (`build-header.ps1` rebuilds the header), and the CurseForge screenshots |
+| `branding/` | The animated CurseForge headers (`curseforge-header.ts` draws them), the settings cog, and the CurseForge screenshots |
 
 ```sh
 bun install          # once

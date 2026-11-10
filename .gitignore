@@ -17,8 +17,6 @@ apps/desktop/src-tauri/gen/
 # Local settings with secrets (apps/server/.env.example lists them)
 .env
 
-# Generated from branding/header.src.html by branding/build-header.ps1
-branding/header.html
 
 # Throwaway HTML mock-ups drawn on game screenshots
 branding/mock/

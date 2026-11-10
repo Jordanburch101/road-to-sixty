@@ -1,12 +1,11 @@
 # Converts a PNG to an uncompressed 32-bit TGA with alpha, which WoW can load
-# as an addon texture (the addon list icon, ## IconTexture in the toc).
+# as an addon texture (the settings cog, the changelog window's logo).
 #
-#   ./branding/make-tga.ps1                       64 px icon into the addon
 #   ./branding/make-tga.ps1 -Source x.png -Target y.tga
 
 param(
-    [string]$Source = (Join-Path $PSScriptRoot "road-to-sixty-64.png"),
-    [string]$Target = (Join-Path (Split-Path $PSScriptRoot -Parent) "apps/addon/RoadToSixty/icon.tga")
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Target
 )
 
 Add-Type -AssemblyName System.Drawing
