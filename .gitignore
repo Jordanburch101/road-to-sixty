@@ -1,6 +1,8 @@
 # Release builds (apps/addon/scripts/package.ps1)
 build/
 dist/
+# The in-game changelog's notes, written from CHANGELOG.md by the release build
+apps/addon/RoadToSixty/WhatsNewData.lua
 
 # Bun and Turborepo
 node_modules/

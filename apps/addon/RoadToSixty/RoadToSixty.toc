@@ -70,6 +70,8 @@ KillMarks.lua
 MarkerPiles.lua
 MinimapButton.lua
 Options.lua
+WhatsNewData.lua
+WhatsNew.lua
 #@debug@
 Probe.lua
 SeedGear.lua

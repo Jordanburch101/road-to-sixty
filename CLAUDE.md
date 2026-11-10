@@ -58,7 +58,9 @@ for data, its exact format; read that before changing a module.
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
 | Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
+| WhatsNew.lua | the in-game changelog: once per account for each release, a window with the notes of every version not seen yet; `/rts changes` (#132) |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
+| WhatsNewData.lua | the changelog's notes for WhatsNew.lua, written from CHANGELOG.md by the release build (`scripts/whatsnew-data.lua`); not committed |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
@@ -125,6 +127,7 @@ python scripts/gap-textures.py [build]    # redraw the gap tiles, then: python s
 python scripts/seed-gear.py [build]       # regenerate SeedGear.lua, the stress seed's gear, from the client's item tables
 python scripts/gear-bar-textures.py       # redraw Gear/, the gear screen's bar art (needs Pillow)
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
+luajit scripts/whatsnew-data.lua ../../CHANGELOG.md RoadToSixty/WhatsNewData.lua   # the in-game changelog's notes, to try the window in a dev install (/rts changes test)
 
 # From apps/server (Docker running)
 docker compose up -d                # Postgres and an S3 store, for the tests and a local server
@@ -148,6 +151,8 @@ to fix.
 
 1. Add the version's section to CHANGELOG.md as features land: `## X.Y.Z`
    with `### New` and `### Fixed`, non-technical, written for players.
+   Players also read it in game: the release build turns it into
+   WhatsNewData.lua, and the window shows it once per account.
    `bash apps/addon/scripts/changelog.sh X.Y.Z` prints what the release will use.
 2. Run `check.ps1` and `scripts/package.ps1` in `apps/addon/`, commit, and push `main`.
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "Road to Sixty X.Y.Z"`, then

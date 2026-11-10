@@ -92,3 +92,8 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   over, deletes or uploads an entry must skip them.
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.
+- `RoadToSixty/WhatsNewData.lua` is generated and not committed: the
+  release build writes it from CHANGELOG.md (`scripts/whatsnew-data.lua`),
+  and fails when the version's section is missing. The toc lists it, so
+  a test that reads every toc file must allow it to be absent
+  (`tests/clock_test.lua`).
