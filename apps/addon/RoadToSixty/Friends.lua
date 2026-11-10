@@ -702,23 +702,30 @@ end
 --     someone offline with its line within a moment, so a hello without
 --     one says online, whatever version they run. A friend's hello says
 --     they logged in, and their goodbye (G) that they logged out.
+-- A message from the friend in the last SEEN_FOR wins over the lists, as it
+-- is them. Battle.net only says offline when their account plays another
+-- character, by GUID: a name in another form, or an account appearing
+-- offline, is left to the hello. An offline mark older than SEEN_FOR is
+-- forgotten, as they may have logged in since without a word.
 
 local HELLO_WAIT = 4        -- seconds the offline line may take to answer a hello
+local HELLO_KEEP = 15       -- seconds a late line is still taken as its answer, and hidden
 local HELLO_GAP = 0.5       -- seconds between hellos
 local HELLO_DELAY = 10      -- seconds after login before the hellos
 local SEEN_FOR = 600        -- seconds before a friend not heard from is asked again
 
-local seen = {}             -- key -> { online = true or false, at = GetTime() }
+local seen = {}             -- key -> { online = true or false, at = GetTime(), heard = from them }
 local pinged = {}           -- key -> { name, sent }: hellos whose offline line may still come
 local helloQueue = {}
 local helloRunning = false
 local redrawing = false
 
 -- Notes what was seen of a friend, and redraws the tab if that changed.
-local function Mark(key, online)
+-- heard: a message from the friend themselves.
+local function Mark(key, online, heard)
     if not key or not ns.db.friends[key] then return end
     local was = seen[key]
-    seen[key] = { online = online, at = GetTime() }
+    seen[key] = { online = online, at = GetTime(), heard = heard }
     if not was or was.online ~= online then Changed() end
 end
 
@@ -726,7 +733,11 @@ end
 local function ListedKey(name)
     name = Clean(name)
     if type(name) ~= "string" or name == "" then return nil end
-    if Surnames() then return Key((name:gsub("%-", " "))) end
+    if Surnames() then
+        -- "First Last-Realm" loses its realm; "First-Last" is the full name.
+        if name:find("%s") then name = name:gsub("%-.*$", "") end
+        return Key((name:gsub("%-", " ")))
+    end
     return Key((name:gsub("%-.*$", "")))
 end
 
@@ -754,36 +765,45 @@ local function Listed(rec, key)
     for i = 1, tonumber(Call(BNGetNumFriends)) or 0 do
         local account = Call(bnet.GetFriendAccountInfo, i)
         if type(account) == "table" and Clean(account.battleTag) == rec.battleTag then
+            local other = false
             for j = 1, tonumber(Call(bnet.GetFriendNumGameAccounts, i)) or 0 do
                 local game = Call(bnet.GetFriendGameAccountInfo, i, j)
-                if type(game) == "table" and Clean(game.isOnline) == true and Clean(game.clientProgram) == "WoW"
-                    and ((guid and Clean(game.playerGuid) == guid) or ListedKey(game.characterName) == key) then
-                    return true
+                if type(game) == "table" and Clean(game.isOnline) == true and Clean(game.clientProgram) == "WoW" then
+                    local id = Clean(game.playerGuid)
+                    if (guid and id == guid) or ListedKey(game.characterName) == key then return true end
+                    other = other or (guid ~= nil and type(id) == "string")
                 end
             end
-            -- Their account is known, and this character isn't the one playing.
-            return false
+            -- Playing another character, by GUID, says this one is offline;
+            -- anything less sure is left to the hello.
+            if other then return false end
+            return nil
         end
     end
     return nil
 end
 
--- Whether a friend is online: true, false, or nil when nothing says.
-function Friends:Online(rec)
-    local key = Key(rec.name)
+-- What is known of a friend: true, false, or nil when nothing says.
+local function Known(rec, key)
+    local mark = seen[key]
+    local fresh = mark ~= nil and GetTime() - mark.at < SEEN_FOR
+    if fresh and mark.online and mark.heard then return true end
     local listed = Listed(rec, key)
     if listed ~= nil then return listed end
-    local mark = seen[key]
-    return mark and mark.online
+    if not mark then return nil end
+    if mark.online then return true end
+    if fresh then return false end
+    return nil
 end
 
--- Whether an automatic sync passes a friend over: offline, and recently
--- enough seen so to trust it.
+-- Whether a friend is online: true, false, or nil when nothing says.
+function Friends:Online(rec)
+    return Known(rec, Key(rec.name))
+end
+
+-- Whether an automatic sync passes a friend over: known to be offline.
 local function Away(rec, key)
-    local listed = Listed(rec, key)
-    if listed ~= nil then return not listed end
-    local mark = seen[key]
-    return mark ~= nil and not mark.online and GetTime() - mark.at < SEEN_FOR
+    return Known(rec, key) == false
 end
 
 -- Sends the waiting hellos, one at a time.
@@ -793,6 +813,8 @@ local function NextHello()
         helloRunning = false
         return
     end
+    -- The next one first, so an error here can't stop them all.
+    Later(HELLO_GAP, NextHello)
     local rec = ns.db.friends[key]
     if rec and not pinged[key] then
         serial = serial + 1
@@ -802,17 +824,19 @@ local function NextHello()
             pinged[key] = ping
             Later(HELLO_WAIT, function()
                 if pinged[key] ~= ping then return end
-                pinged[key] = nil
                 -- No line came: the whisper reached them, unless something newer said otherwise.
+                -- A line later still is taken as the answer until HELLO_KEEP, and hidden.
                 local mark = seen[key]
                 if not mark or mark.at <= ping.sent then Mark(key, true) end
+            end)
+            Later(HELLO_KEEP, function()
+                if pinged[key] == ping then pinged[key] = nil end
             end)
         elseif result == RESULT_OFFLINE then
             ExpectOffline(rec.name)
             Mark(key, false)
         end
     end
-    Later(HELLO_GAP, NextHello)
 end
 
 -- Says hello to every friend, or with stale only to those the lists don't
@@ -1111,7 +1135,7 @@ local function OnMessage(prefix, text, channel, sender)
     local rec = ns.db.friends[key]
     if rec and name and rec.name ~= name then rec.name = name end
     local kind, id, rest = text:match("^(%u):(%x+):(.*)$")
-    if kind then Mark(key, kind ~= "G") end
+    if kind then Mark(key, kind ~= "G", true) end
     if kind == "Q" then
         OnAsked(sender, key, id, rest)
     elseif kind == "N" then
@@ -1263,21 +1287,19 @@ local function HideOffline(_, _, message)
     local line = ERR_CHAT_PLAYER_NOT_FOUND_S
     if type(message) ~= "string" or not line then return false end
     local now = GetTime()
-    if message == hiddenText and now < hiddenUntil then return true end
     local rec = request and ns.db.friends[request.key]
-    local function Hide()
-        hiddenText, hiddenUntil = message, now + HIDE_FOR
-        return true
-    end
     -- Without case, as the game may name them as it writes them or as we did.
     local function Says(name) return Key(message) == Key(line:format(name)) end
     -- A chat filter runs outside ns.On, so an error here would reach the chat frame.
     local function Offline(key) ns.SafeCall(Mark, key, false) end
+    -- One line settles every send waiting on that name: a hello and an ask
+    -- can go out together, and their two lines read the same.
+    local hit = false
     for key, ping in pairs(pinged) do
         if Says(ping.name) then
             pinged[key] = nil
             Offline(key)
-            return Hide()
+            hit = true
         end
     end
     for name, stop in pairs(expected) do
@@ -1285,21 +1307,26 @@ local function HideOffline(_, _, message)
             expected[name] = nil
         elseif Says(name) then
             Offline((SenderKey(name)))
-            return Hide()
+            hit = true
         end
     end
     if rec and Says(rec.name) then
         local key = request.key
         Offline(key)
         ns.SafeCall(Finish, key, not request.auto and OFFLINE_NOW or nil)
-        return Hide()
+        hit = true
     end
     if outgoing and Says(outgoing.to) then
         Offline((SenderKey(outgoing.to)))
         outgoing = nil
-        return Hide()
+        hit = true
     end
-    return false
+    if hit then
+        hiddenText, hiddenUntil = message, now + HIDE_FOR
+        return true
+    end
+    -- The same line in another chat window, or for a second send.
+    return message == hiddenText and now < hiddenUntil
 end
 
 ns.On("PLAYER_LOGIN", function()
@@ -1311,10 +1338,11 @@ ns.On("PLAYER_LOGIN", function()
     Later(HELLO_DELAY, function() Hello(false) end)
 end)
 
--- Goodbyes, to friends who may be online, so their tabs drop the Sync button.
+-- Goodbyes, to friends known to be online, so their tabs drop the Sync
+-- button. A /reload sends them too; the hello 10 s later puts it back.
 ns.On("PLAYER_LOGOUT", function()
-    for key, rec in pairs(ns.db.friends) do
-        if Friends:Online(rec) ~= false then
+    for _, rec in pairs(ns.db.friends) do
+        if Friends:Online(rec) == true then
             serial = serial + 1
             Send(("G:%x:"):format(serial), rec.name)
         end

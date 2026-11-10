@@ -107,6 +107,9 @@ check(math.abs(framed.frame.w - 16 * 64 / 37) < 1e-9 and framed.frame.texture ==
 check(not framed.count.shown, "no count but a node's")
 Style.Frame(marker, "Interface\\Icons\\INV_Ore_Copper_01", Style.NODE_ICON)
 check(made == 1 and framed.icon.w == 12 and marker.w == 14, "made once per marker, resized for a node")
+framed.count:Show()
+Style.Frame(marker, "Interface\\Icons\\INV_Scroll_03", Style.MARKER_ICON)
+check(not framed.count.shown, "a node's count left on a marker framed again")
 Style.Unframe(marker)
 check(not framed.shown and marker.icon.shown, "taken off for a marker drawn otherwise")
 Style.Unframe(Region())
@@ -123,6 +126,11 @@ check(size == 16 and art == nil, "an atlas is not")
 icon.SetAtlas = function() return false end
 size, art = ns.SetEventIcon(icon, text, "rare")
 check(art == icons.rare.fallback, "an atlas the client lacks falls back to art")
+-- Other art isn't framed: the quest turn-in's fallback is a gossip glyph.
+size, art = ns.SetEventIcon(icon, text, "qd")
+check(icons.qd.fallback and art == nil, "a fallback that isn't icon art taken as art")
+size, art = ns.SetEventIcon(icon, text, "prof", nil, 136240)
+check(art == 136240, "an icon by file ID not taken as art")
 
 if failures == 0 then
     print("Style tests passed.")

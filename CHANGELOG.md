@@ -16,8 +16,9 @@ broken and now works. Leave out internal changes. Sections are
   open the tab. Hovering a friend says whether they are online.
 - Automatic sync passes over friends it knows are offline.
 - Map markers drawn from game icons (professions, recipes, reputation,
-  riding and mounts, duels) sit in the same item button frame as
-  gathering nodes, so they stand out from the map.
+  riding and mounts) sit in the same item button frame as gathering nodes
+  and duels, so they stand out from the map. Duels' icons are now the
+  same size as the rest.
 
 ### Fixed
 - Syncing with a friend who is offline says so at once, instead of

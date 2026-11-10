@@ -741,6 +741,7 @@ local function BuildMarkers()
                 end
             end
             m.icon:Hide()
+            m.text:SetText("")
             m.stack:Show()
             ns.Parties:SetStack(m.stack, ns.Parties:Info(e))
         elseif toContent and (kind == "die" or kind == "lvl" or kind == "in") then

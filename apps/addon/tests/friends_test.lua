@@ -1009,26 +1009,130 @@ local round = table.concat(asked, ",")
 check(not round:find("Gone") and round:find("Quiet") and round:find("Fay"), "automatic round asked: " .. round)
 ev.onSend = nil
 
--- The game's friends lists win: the WoW list by GUID or by name (a realm
--- after it dropped), and Battle.net by BattleTag.
+-- Runs what is due in the next seconds only, as Run goes on to the last
+-- timer and a mark can age past SEEN_FOR (600) on the way.
+local function Step(seconds)
+    local stop = clock + seconds
+    while true do
+        table.sort(queue, function(a, b)
+            if a.t ~= b.t then return a.t < b.t end
+            return a.n < b.n
+        end)
+        if not queue[1] or queue[1].t > stop then break end
+        local e = table.remove(queue, 1)
+        clock = e.t
+        e.f()
+    end
+    clock = stop
+end
+
+-- An offline mark is forgotten after ten minutes, as they may have logged
+-- in since without a word; an online one stands until something says not.
+Step(700)
+check(EF:Online(friendsE.gone) == nil and EF:Online(friendsE.quiet) == true, "an old offline mark not forgotten")
+
+-- A hello and a sync to someone offline at once: the two lines read the
+-- same, and either one settles both (#129 review).
+friendsE.clash = { name = "Clash", realm = "Era" }
+local clashLines = {}
+ev.onSend = function(_, _, _, target)
+    if target == "Clash" then
+        At(0.05, function() clashLines[#clashLines + 1] = ev.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Clash")) end)
+        return true
+    end
+end
+EF:CheckOnline()
+EF:Sync("Clash")
+Step(30)
+check(#clashLines == 2 and clashLines[1] == true and clashLines[2] == true, "a line for a hello and a sync not both hidden")
+check(EF:Status(friendsE.clash):find("^Offline") and EF:Online(friendsE.clash) == false,
+    "a sync meeting a hello's line not ended as offline: " .. EF:Status(friendsE.clash))
+
+-- An ask's line hidden just before a hello's, which reads the same: the
+-- hello is still answered, and never taken as online.
+-- The login hello goes to every friend; Clash alone here, so it goes first.
+Step(700)
+local others = {}
+for key, rec in pairs(friendsE) do
+    if key ~= "clash" then others[key], friendsE[key] = rec, nil end
+end
+ev.fire("PLAYER_LOGIN")
+At(9.9, function() EF:Sync("Clash") end)
+Step(30)
+check(EF:Online(friendsE.clash) == false, "a hello's line just after an ask's not taken as offline")
+for key, rec in pairs(others) do friendsE[key] = rec end
+
+-- A line that comes after the hello's four seconds is still its answer:
+-- hidden, and the friend offline after all.
+-- Slow alone, so its hello goes at once.
+Step(700)
+others = {}
+for key, rec in pairs(friendsE) do others[key], friendsE[key] = rec, nil end
+friendsE.slow = { name = "Slow", realm = "Era" }
+local slowHidden
+ev.onSend = function(_, _, _, target)
+    if target == "Slow" then
+        At(6, function() slowHidden = ev.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Slow")) end)
+        return true
+    end
+end
+EF:CheckOnline()
+Step(5)
+check(EF:Online(friendsE.slow) == true, "a quiet hello not taken as online at four seconds")
+Step(30)
+check(slowHidden == true and EF:Online(friendsE.slow) == false, "a late offline line not hidden and taken")
+ev.onSend = nil
+friendsE.slow = nil
+for key, rec in pairs(others) do friendsE[key] = rec end
+friendsE.clash = nil
+
+-- Goodbyes go only to friends known to be online, as a /reload sends them too.
+local goodbyes = {}
+friendsE.dark = { name = "Dark", realm = "Era" }
+ev.onSend = function(_, text, _, target)
+    if text:sub(1, 1) == "G" then goodbyes[#goodbyes + 1] = target end
+    if target == "Dark" then
+        At(0.05, function() ev.filter(nil, "CHAT_MSG_SYSTEM", OFFLINE:format("Dark")) end)
+    end
+    if target ~= "Fay" then return true end
+end
+EF:CheckOnline()
+Step(30)
+friendsE.unknown = { name = "Unknown", realm = "Era" }
+check(EF:Online(friendsE.dark) == false and EF:Online(fay) == true, "not ready for the goodbyes")
+ev.fire("PLAYER_LOGOUT")
+Step(1)
+local said = table.concat(goodbyes, ",")
+check(said:find("Fay") and not said:find("Dark") and not said:find("Unknown"), "goodbyes went to: " .. said)
+ev.onSend = nil
+friendsE.unknown, friendsE.dark = nil, nil
+fa.fire("PLAYER_LOGIN")
+Step(30)
+
+-- The game's friends lists: the WoW list by GUID or by name (a realm after
+-- it dropped), and Battle.net by BattleTag. A message from the friend in
+-- the last ten minutes wins over them, as it is the friend themselves.
 local info = { name = "Gone-Otherrealm", guid = "Player-9-0001", connected = true }
 ev.env.C_FriendList = {
     GetNumFriends = function() return 1 end,
     GetFriendInfoByIndex = function() return info end,
 }
-check(EF:Online(friendsE.gone) == true, "the WoW friends list not taken over what was seen")
+check(EF:Online(friendsE.gone) == true, "the WoW friends list not taken")
 info.connected = false
 check(EF:Online(friendsE.gone) == false, "the WoW friends list's offline not taken")
 info.name, info.guid, info.connected = "Someone", fay.guid, false
-check(fay.guid == "Player-1-F0F0" and EF:Online(fay) == false, "the WoW friends list not matched by GUID")
+check(fay.guid == "Player-1-F0F0" and EF:Online(fay) == true, "the WoW list taken over a message just heard")
+Step(700)
+check(EF:Online(fay) == false, "the WoW friends list not matched by GUID")
 ev.env.C_FriendList = { GetNumFriends = function() error("not now") end }
 check(EF:Online(fay) == true, "a failing friends list call not passed over")
 ev.env.C_FriendList = nil
 local game = { isOnline = true, clientProgram = "WoW", playerGuid = "Player-1-0A17", characterName = "Alt" }
+local games = 1
 ev.env.BNGetNumFriends = function() return 2 end
 ev.env.C_BattleNet = {
     GetFriendAccountInfo = function(i) return { battleTag = i == 2 and "Fay#1234" or "Other#1" } end,
-    GetFriendNumGameAccounts = function() return 1 end,
+    GetFriendNumGameAccounts = function() return games end,
     GetFriendGameAccountInfo = function() return game end,
 }
 check(fay.battleTag == "Fay#1234" and EF:Online(fay) == false, "their account on another character not taken as offline")
@@ -1036,8 +1140,28 @@ game.playerGuid = fay.guid
 check(EF:Online(fay) == true, "their account on this character not taken as online")
 game.playerGuid, game.characterName = nil, "Fay"
 check(EF:Online(fay) == true, "Battle.net not matched by name")
+-- Less sure than a GUID, Battle.net leaves it to what was seen: a name in
+-- another form, or an account that shows no game, maybe appearing offline.
+local before = EF:Online(fay)
+game.characterName = "Fay Surname"
+check(EF:Online(fay) == before, "a name Battle.net gives in another form taken as offline")
+games = 0
+check(EF:Online(fay) == before, "an account showing no game taken as offline")
 check(EF:Online(friendsE.quiet) == true, "a friend without a BattleTag taken from Battle.net")
 ev.env.C_BattleNet, ev.env.BNGetNumFriends = nil, nil
+
+-- With surnames, the WoW list may name a friend "First Last-Realm".
+do
+    local an = Client("Ann Bell", "Cy Dee", "Player-1-A00A", Journey(5, 2), true)
+    clients["Ann Bell"] = an
+    an.ns.db.friends["cy dee"] = { name = "Cy Dee", realm = "Era" }
+    an.env.C_FriendList = {
+        GetNumFriends = function() return 1 end,
+        GetFriendInfoByIndex = function() return { name = "Cy Dee-Otherrealm", guid = "Player-2-0002", connected = true } end,
+    }
+    check(an.ns.Friends:Online(an.ns.db.friends["cy dee"]) == true, "a surname friend on the WoW list with a realm not matched")
+end
+
 check(#ev.errors == 0 and #fa.errors == 0, "errors: " .. tostring(ev.errors[1] or fa.errors[1]))
 
 if failures > 0 then os.exit(1) end

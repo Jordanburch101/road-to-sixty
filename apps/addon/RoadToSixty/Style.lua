@@ -197,7 +197,8 @@ end
 -- kind. file, if given, replaces the kind's own icon (an item's icon for
 -- loot). Level icons are the player frame's level badge with the level
 -- number in white on top. Returns the icon size, and the file when the
--- icon is game icon art rather than an atlas, for Style.Frame.
+-- icon is game icon art (a file ID, or a file under Interface\Icons) rather
+-- than an atlas or other art, for Style.Frame.
 function ns.SetEventIcon(icon, text, kind, level, file)
     local style = EVENT_ICONS[kind] or UNKNOWN_ICON
     local art = file or style.file
@@ -217,7 +218,9 @@ function ns.SetEventIcon(icon, text, kind, level, file)
         text:SetTextColor(1, 1, 1)
         text:SetShadowOffset(1, -1)
     end
-    return style.size, art
+    local icon = type(art) == "number"
+        or type(art) == "string" and art:lower():find("interface\\icons\\", 1, true) == 1
+    return style.size, icon and art or nil
 end
 
 -- Icons in the item button frame ---------------------------------------------------
