@@ -151,15 +151,22 @@ to fix.
 
 1. Add the version's section to CHANGELOG.md as features land: `## X.Y.Z`
    with `### New` and `### Fixed`, non-technical, written for players.
-   Players also read it in game: the release build turns it into
-   WhatsNewData.lua, and the window shows it once per account.
    `bash apps/addon/scripts/changelog.sh X.Y.Z` prints what the release will use.
-2. Run `check.ps1` and `scripts/package.ps1` in `apps/addon/`, commit, and push `main`.
+   The same section is the in-game changelog (WhatsNew.lua, #132): every
+   player sees it in a window after updating, so every release needs one,
+   and each note must read well on its own. Nothing else is updated by
+   hand: the release build writes `RoadToSixty/WhatsNewData.lua` from
+   CHANGELOG.md (`scripts/whatsnew-data.lua`, run by `package.ps1`), and
+   that file is not committed.
+2. Run `check.ps1` and `scripts/package.ps1 -Version X.Y.Z` in `apps/addon/`,
+   commit, and push `main`. `package.ps1` prints "WhatsNewData.lua: N
+   versions, newest X.Y.Z": the newest must be this version, and the build
+   fails if CHANGELOG.md has no section for it.
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "Road to Sixty X.Y.Z"`, then
    `git push origin vX.Y.Z`. The version comes from the tag; tags containing
    `beta` or `alpha` become pre-releases.
 4. The Release workflow fails at once if the changelog section is missing,
-   then checks, builds, makes the GitHub release with the zip and the notes,
+   then checks, builds (with the in-game changelog's notes), makes the GitHub release with the zip and the notes,
    puts the zip in the downloads bucket for the app (`apps/addon/scripts/publish.sh`; a full release moves `addon/latest.json`), and uploads to CurseForge. Watch it to the end (`gh run watch <id>
    --exit-status`): the GitHub release can succeed while the upload fails.
 5. If only the CurseForge upload failed, fix the cause on `main`, then run
