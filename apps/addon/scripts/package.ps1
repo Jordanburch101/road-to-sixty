@@ -53,6 +53,12 @@ Write-Host "Packaging $addonName $Version"
 if (Test-Path $buildRoot) { Remove-Item $buildRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $build -Force | Out-Null
 Copy-Item -Path (Join-Path $source "*") -Destination $build -Recurse
+# The in-game changelog's notes (WhatsNew.lua), from CHANGELOG.md; a release
+# version must have its own section there, as the newest.
+if (-not (Get-Command luajit -ErrorAction SilentlyContinue)) { Fail "luajit is needed to write WhatsNewData.lua" }
+$changelog = Join-Path (Split-Path (Split-Path $root -Parent) -Parent) "CHANGELOG.md"
+& luajit (Join-Path $root "scripts/whatsnew-data.lua") $changelog (Join-Path $build "WhatsNewData.lua") $Version
+if ($LASTEXITCODE -ne 0) { Fail "could not write WhatsNewData.lua from CHANGELOG.md" }
 # Local test images for /rts shots never ship.
 $shots = Join-Path $build "shots"
 if (Test-Path $shots) { Remove-Item $shots -Recurse -Force }

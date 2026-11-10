@@ -1,6 +1,8 @@
 # Release builds (apps/addon/scripts/package.ps1)
 build/
 dist/
+# The in-game changelog's notes, written from CHANGELOG.md by the release build
+apps/addon/RoadToSixty/WhatsNewData.lua
 
 # Bun and Turborepo
 node_modules/
@@ -15,8 +17,6 @@ apps/desktop/src-tauri/gen/
 # Local settings with secrets (apps/server/.env.example lists them)
 .env
 
-# Generated from branding/header.src.html by branding/build-header.ps1
-branding/header.html
 
 # Throwaway HTML mock-ups drawn on game screenshots
 branding/mock/

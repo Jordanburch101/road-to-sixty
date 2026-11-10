@@ -92,3 +92,13 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   over, deletes or uploads an entry must skip them.
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.
+- CHANGELOG.md is also the in-game changelog (WhatsNew.lua, #132): after
+  an update, every player sees the new versions' sections in a window. So
+  every release needs its `## X.Y.Z` section, written for players, and
+  nothing else is updated by hand for it.
+  `RoadToSixty/WhatsNewData.lua`, the notes the addon carries, is
+  generated and not committed: the release build writes it from
+  CHANGELOG.md (`scripts/whatsnew-data.lua`, run by `package.ps1`), and
+  fails when the version's section is missing. The toc lists it, so a
+  test that reads every toc file must allow it to be absent
+  (`tests/clock_test.lua`).

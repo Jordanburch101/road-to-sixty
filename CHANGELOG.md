@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.5
+
+### New
+- After each update, a window shows what's new, once per account, with
+  the notes of every version you haven't seen yet. Type `/rts changes`
+  to open it again.
+
 ## 1.20.4
 
 ### New

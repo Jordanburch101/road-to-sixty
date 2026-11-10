@@ -25,9 +25,15 @@ end
 local files = ShippedFiles()
 assert(#files > 20, "found only " .. #files .. " shipped files in the toc")
 
+-- WhatsNewData.lua is written by the release build (scripts/whatsnew-data.lua),
+-- so a dev copy may not have it; it holds only the changelog's notes.
+local generated = { ["WhatsNewData.lua"] = true }
+
 for _, name in ipairs(files) do
     local n, inNow = 0, false
-    for line in io.lines("RoadToSixty/" .. name) do
+    local lines = (generated[name] and not io.open("RoadToSixty/" .. name)) and function() return nil end
+        or io.lines("RoadToSixty/" .. name)
+    for line in lines do
         n = n + 1
         if name == "Core.lua" and (line:find("^function ns%.Now%(") or line:find("^function ns%.PCTime%(")) then
             inNow = true

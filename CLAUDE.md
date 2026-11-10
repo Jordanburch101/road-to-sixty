@@ -58,7 +58,9 @@ for data, its exact format; read that before changing a module.
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
 | Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
+| WhatsNew.lua | the in-game changelog: once per account for each release, a window with the notes of every version not seen yet; `/rts changes` (#132) |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
+| WhatsNewData.lua | the changelog's notes for WhatsNew.lua, written from CHANGELOG.md by the release build (`scripts/whatsnew-data.lua`); not committed |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
@@ -125,6 +127,7 @@ python scripts/gap-textures.py [build]    # redraw the gap tiles, then: python s
 python scripts/seed-gear.py [build]       # regenerate SeedGear.lua, the stress seed's gear, from the client's item tables
 python scripts/gear-bar-textures.py       # redraw Gear/, the gear screen's bar art (needs Pillow)
 luajit scripts/sync-folder.lua <saved file> <sync folder> <Name-Realm> [replace]   # a sync folder by hand, to try the login merge
+luajit scripts/whatsnew-data.lua ../../CHANGELOG.md RoadToSixty/WhatsNewData.lua   # the in-game changelog's notes, to try the window in a dev install (/rts changes test)
 
 # From apps/server (Docker running)
 docker compose up -d                # Postgres and an S3 store, for the tests and a local server
@@ -149,12 +152,21 @@ to fix.
 1. Add the version's section to CHANGELOG.md as features land: `## X.Y.Z`
    with `### New` and `### Fixed`, non-technical, written for players.
    `bash apps/addon/scripts/changelog.sh X.Y.Z` prints what the release will use.
-2. Run `check.ps1` and `scripts/package.ps1` in `apps/addon/`, commit, and push `main`.
+   The same section is the in-game changelog (WhatsNew.lua, #132): every
+   player sees it in a window after updating, so every release needs one,
+   and each note must read well on its own. Nothing else is updated by
+   hand: the release build writes `RoadToSixty/WhatsNewData.lua` from
+   CHANGELOG.md (`scripts/whatsnew-data.lua`, run by `package.ps1`), and
+   that file is not committed.
+2. Run `check.ps1` and `scripts/package.ps1 -Version X.Y.Z` in `apps/addon/`,
+   commit, and push `main`. `package.ps1` prints "WhatsNewData.lua: N
+   versions, newest X.Y.Z": the newest must be this version, and the build
+   fails if CHANGELOG.md has no section for it.
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "Road to Sixty X.Y.Z"`, then
    `git push origin vX.Y.Z`. The version comes from the tag; tags containing
    `beta` or `alpha` become pre-releases.
 4. The Release workflow fails at once if the changelog section is missing,
-   then checks, builds, makes the GitHub release with the zip and the notes,
+   then checks, builds (with the in-game changelog's notes), makes the GitHub release with the zip and the notes,
    puts the zip in the downloads bucket for the app (`apps/addon/scripts/publish.sh`; a full release moves `addon/latest.json`), and uploads to CurseForge. Watch it to the end (`gh run watch <id>
    --exit-status`): the GitHub release can succeed while the upload fails.
 5. If only the CurseForge upload failed, fix the cause on `main`, then run
