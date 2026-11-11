@@ -329,25 +329,16 @@ local function UpdateHistoryRow(row, item)
         row.icon:SetShown(members[1] == nil)
     end
     -- Entries drawn from game icon art (loot, recipes, mounts, enchants,
-    -- duels, ...) show it in the game's item button art, as the bags have
-    -- it, with loot's quality border kept over the icon: Jordan's pick from
-    -- a swatch (#131). Atlas icons (levels, quests, travel) keep their own
-    -- shapes. The row keeps the mouse. The button's border art keeps its
-    -- size whatever the button's, so the button keeps the game's 37 and is
-    -- scaled down to fit the row.
+    -- duels, ...) show it in the item button, loot with its quality border:
+    -- Jordan's pick from a swatch (#131). Atlas icons (levels, quests,
+    -- travel) keep their own shapes.
     local framed = art and not item.guild and not item.group
     if framed then
         if not row.framed then
-            row.framed = ns.Screens.ItemButton(row, 37)
-            row.framed:SetScale((HISTORY_ROW - 10) / 37)
+            row.framed = ns.Screens.IconButton(row, HISTORY_ROW - 10)
             row.framed:SetPoint("CENTER", row.icon)
-            row.framed:EnableMouse(false)
-            local icon = row.framed.icon or row.framed.Icon
-            row.framed.quality = row.framed:CreateTexture(nil, "OVERLAY", nil, 7)
-            row.framed.quality:SetAllPoints(icon or row.framed)
         end
-        SetItemButtonTexture(row.framed, art)
-        ns.SetQualityOverlay(row.framed.quality, quality)
+        ns.Screens.SetIcon(row.framed, art, quality)
         row.framed:Show()
         row.icon:Hide()
     end

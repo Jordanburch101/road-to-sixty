@@ -63,6 +63,29 @@ function Screens.ItemButton(parent, size)
     return button
 end
 
+-- An icon in the item button at any size, for rows and lists smaller than
+-- the bags' 37: the button's border art keeps its size whatever the
+-- button's, so it is made at 37 and scaled. The row under it keeps the
+-- mouse. Set it with Screens.SetIcon. One look for every list (#131).
+local BUTTON = 37
+function Screens.IconButton(parent, size)
+    local button = Screens.ItemButton(parent, BUTTON)
+    button:SetScale(size / BUTTON)
+    button:EnableMouse(false)
+    local icon = button.icon or button.Icon     ---@type Texture?
+    button.lootBorder = button:CreateTexture(nil, "OVERLAY", nil, 7)
+    button.lootBorder:SetAllPoints(icon)        -- the button itself without one
+    return button
+end
+
+-- Shows icon (game icon art: a file ID or a file under Interface\Icons) in
+-- an IconButton, with an item's quality border (green and up) over it when
+-- quality is given, as the loot toasts have it: Jordan's pick (#131).
+function Screens.SetIcon(button, icon, quality)
+    SetItemButtonTexture(button, icon)
+    ns.SetQualityOverlay(button.lootBorder, quality)
+end
+
 function Screens:Add(key, label, screen)
     list[#list + 1] = { key = key, label = label, screen = screen }
 end

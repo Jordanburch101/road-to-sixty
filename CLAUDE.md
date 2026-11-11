@@ -53,7 +53,7 @@ for data, its exact format; read that before changing a module.
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
 | PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
-| Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`) |
+| Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`); the item button every window's icons sit in (`Screens.ItemButton`, and `Screens.IconButton` for rows) |
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
 | Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
