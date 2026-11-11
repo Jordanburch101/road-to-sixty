@@ -54,7 +54,7 @@ local function GetLod(track, k)
         end
         chunks[#chunks + 1] = { first, last, x1, y1, x2, y2 }
     end
-    lod = { idx = idx, chunks = chunks }
+    lod = { idx = idx, chunks = chunks, fromBelow = source ~= nil }
     track.lods[k] = lod
     return lod
 end
@@ -81,8 +81,10 @@ local function Walk(count, x, y, t, m)
     return path
 end
 
--- The levels' kept points: exactly those of a fresh build.
-local function SameLevels(grown, fresh, label)
+-- The levels' kept points: exactly those of a fresh build, its levels made
+-- in order, the order the grown track's were made in.
+local function SameLevels(grown, fresh, label, order)
+    for _, k in ipairs(order) do GetLod(fresh, k) end
     for k, lod in pairs(grown.lods) do
         local want = GetLod(fresh, k).idx
         local extra, missing = {}, 0
@@ -129,7 +131,8 @@ local function Build(list)
     return track
 end
 local grown = Build(paths)
-for _, k in ipairs({ 0, 5, 6, 7, 9 }) do GetLod(grown, k) end
+local ORDER = { 0, 5, 6, 7, 9 }
+for _, k in ipairs(ORDER) do GetLod(grown, k) end
 
 -- The open segment grows, then a new one starts where it ended (landing).
 local more = Walk(500, paths[3].x[150], paths[3].y[150], paths[3].t[150])
@@ -173,7 +176,7 @@ for i = 1, grown.n do
 end
 local b = grown.bounds
 check(b[1] == x1 and b[2] == y1 and b[3] == x2 and b[4] == y2, "bounds grown to the new points")
-SameLevels(grown, fresh, "grown live")
+SameLevels(grown, fresh, "grown live", ORDER)
 
 -- The old end dropped from a level is dropped from the one made from it,
 -- even where that level alone would keep it. Level 5 keeps points 1 unit
@@ -192,7 +195,30 @@ LiveMap.ExtendLods(small, LiveMap.Append(small, line, 4, ToContent, 1, nil, fals
 local smallFresh = NewTrack()
 LiveMap.Append(smallFresh, line, 1, ToContent, 1, nil, false)
 GetLod(smallFresh, 5)
-SameLevels(small, smallFresh, "the old end and the level below")
+SameLevels(small, smallFresh, "the old end and the level below", { 5, 6 })
+
+-- A level made before the one below it (zoomed out first) was made from
+-- every point, and carries on from every new point, not from the level
+-- below's new ones.
+local outOfOrder = Build({ paths[1], paths[2] })
+GetLod(outOfOrder, 7)
+GetLod(outOfOrder, 6)
+check(outOfOrder.lods[7].fromBelow == false and outOfOrder.lods[6].fromBelow == false, "levels made from every point say so")
+local tail = Walk(200, paths[2].x[200], paths[2].y[200], paths[2].t[200] + 3)
+LiveMap.ExtendLods(outOfOrder, LiveMap.Append(outOfOrder, tail, 1, ToContent, 2, paths[2], false), LodDistance, CHUNK)
+SameLevels(outOfOrder, Build({ paths[1], paths[2], tail }), "a level made before the one below it", { 7, 6 })
+
+-- The band can come from the point's time (a level up while points waited).
+local banded = NewTrack()
+local timed = { m = "w", c = 0, t = { 10, 20, 30 }, x = { 0, 10, 20 }, y = { 0, 0, 0 } }
+LiveMap.Append(banded, timed, 1, ToContent, function(t) return t < 25 and 2 or 3 end, nil, false)
+check(banded.pb[1] == 2 and banded.pb[2] == 2 and banded.pb[3] == 3, "each point in the band of its time")
+
+-- The track's first point starts a segment, even partway through a path
+-- (the map was empty, as Today is just after midnight).
+local partway = NewTrack()
+LiveMap.Append(partway, timed, 2, ToContent, 1, nil, false)
+check(partway.brk[1] == true and partway.brk[2] == false, "an empty map's first point starts it")
 
 -- A flight carried on after a reload is one line: no break, its first step measured.
 local carried = Walk(10, landing.x[80] + 30, landing.y[80], landing.t[80] + 20, "t")

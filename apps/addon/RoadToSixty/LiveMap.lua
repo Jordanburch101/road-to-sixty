@@ -12,8 +12,10 @@ local _, ns = ...
 -- (Map.lua's state, see its header) as they come: those of the segment
 -- being recorded, and of new segments that start where the last one ended
 -- (a flight taking off or landing). A segment that jumps (a hearthstone, a
--- death, a boat, another continent) builds the map again, as do new events
--- (markers, kills, History) at most every MARKER_SECONDS; never in combat.
+-- death, a boat, another continent) builds the map again; new events
+-- (markers, kills, History, the gear card, the pops) are put on it at most
+-- every MARKER_SECONDS. Neither happens in combat. Points on a continent the
+-- map doesn't draw are passed over, as BuildPoints passes over them.
 --
 -- Map.lua hands over what it needs through Map.inner (end of Map.lua).
 -- LiveMap.Append and LiveMap.ExtendLods make no game calls, for the tests
@@ -22,16 +24,17 @@ local _, ns = ...
 local LiveMap = {}
 ns.LiveMap = LiveMap
 
-local MARKER_SECONDS = 10       -- new events are put on the map at most this often
+local MARKER_SECONDS = 30       -- new events are put on the map at most this often; each time goes through them all
 local CHECK_SECONDS = 0.25      -- how often to look for points stored, as the recorder samples
 
 -- Adds the points of decoded path (Recorder.lua's format) from its index
 -- first on to track (Map.lua's state: n, px, py, pt, pm, pb, brk, pj, pd,
--- bounds), placed by toContent, in level band band. first == 1 starts a new
--- segment, after previous (the path before it) unless it carries on from
--- it (Recorder:Continues). pj stays nil: a segment with a jump reason is
--- built again instead. Returns the index of the first point added, or nil
--- if none was.
+-- bounds), placed by toContent, in level band band (or band(t), a function
+-- of the point's time). first == 1 starts a new segment, after previous
+-- (the path before it) unless it carries on from it (Recorder:Continues),
+-- as does the track's first point. pj stays nil: a segment with a jump
+-- reason is built again instead. Returns the index of the first point
+-- added, or nil if none was.
 function LiveMap.Append(track, path, first, toContent, band, previous, continues)
     local n, from = track.n, nil
     local b = track.bounds
@@ -39,8 +42,9 @@ function LiveMap.Append(track, path, first, toContent, band, previous, continues
         n = n + 1
         from = from or n
         local x, y = toContent(path.x[i], path.y[i])
-        track.px[n], track.py[n], track.pt[n], track.pm[n], track.pb[n] = x, y, path.t[i], path.m, band
-        track.brk[n] = i == 1 and not continues
+        track.px[n], track.py[n], track.pt[n], track.pm[n] = x, y, path.t[i], path.m
+        track.pb[n] = type(band) == "function" and band(path.t[i]) or band
+        track.brk[n] = i == 1 and not continues or n == 1
         track.pj[n] = nil
         local bx, by = path.x[i - 1], path.y[i - 1]
         if i == 1 then
@@ -64,9 +68,8 @@ end
 -- Carries the detail levels already made (Map.lua's GetLod) on to points
 -- from to track.n, so they hold what GetLod would make for the whole path:
 -- a point is kept if it starts or ends a segment, is the last, or is at
--- least lodDistance(k) from the last kept. Level k is made from level
--- k - 1 when that level is made, so it carries on from that level's new
--- points. The old last point, kept only for being the end, is dropped
+-- least lodDistance(k) from the last kept. A level GetLod made from the
+-- level below (lod.fromBelow) carries on from that level's new points. The old last point, kept only for being the end, is dropped
 -- again where GetLod would not keep it, as everything after it follows
 -- from the last kept. Chunks of chunk kept points are extended or added,
 -- each box taking in the point before its run.
@@ -82,7 +85,9 @@ function LiveMap.ExtendLods(track, from, lodDistance, chunk)
         local lod = track.lods[k]
         local idx, chunks = lod.idx, lod.chunks
         local minSq = lodDistance(k) ^ 2
-        local fromBelow = track.lods[k - 1] ~= nil
+        local fromBelow = lod.fromBelow
+        if fromBelow == nil then fromBelow = track.lods[k - 1] ~= nil end
+        fromBelow = fromBelow and track.lods[k - 1] ~= nil
         if idx[#idx] == oldEnd and not brk[oldEnd] and not brk[oldEnd + 1] then
             local before = idx[#idx - 1]
             local bx, by = before and px[before] or 0, before and py[before] or 0
@@ -135,7 +140,7 @@ end
 -- In game ---------------------------------------------------------------------------
 
 local inner             -- Map.inner
-local live              -- { seg = segment index, have = its points on the map } while live
+local live              -- { seg = segment index, have = its points handled, stored, segments } while live
 local checkElapsed, markersAt, rebuildWanted, markersWanted = 0, 0, false, false
 local seen = {}         -- the counts new events change, as last put on the map
 
@@ -144,10 +149,12 @@ local function Counts()
     return #view.events, view.kills and #view.kills.d or 0, ns.Gathering.changes
 end
 
--- Whether the map shows this character's journey up to now, at the replay's end.
+-- Whether the map shows this character's journey up to now, at the replay's
+-- end: a range ending now, or none (All time, and the endgame with it).
 local function Live(state)
-    return ns.view == ns.char and not state.playing and not state.clock and state.n > 0
-        and state.cur >= state.n and (ns.Range:IsAll() or ns.Range.toNow)
+    local range = ns.Range
+    return ns.view == ns.char and not state.playing and not state.clock
+        and state.cur >= state.n and (range:IsAll() or range.toNow or range.to == math.huge)
         and ns.Screens:Mode() == "map"
 end
 
@@ -159,16 +166,43 @@ function LiveMap:Built(state)
     if ns.view ~= ns.char then return end
     local segments = #ns.char.segments
     local path = segments > 0 and ns.Recorder:GetPath(segments)
-    live = { seg = segments, have = path and #path.x or 0 }
+    -- With nothing recorded yet, the first segment is the one to watch.
+    live = { seg = math.max(1, segments), have = path and #path.x or 0,
+        stored = ns.Recorder.stored, segments = segments }
     seen[1], seen[2], seen[3] = Counts()
     markersAt = GetTime()
 end
 
--- Adds what the recorder stored since. Returns true if the points changed,
--- or nil and wants a rebuild for a segment that can't just be added.
+-- The level band at a time from the level ups in the events (as
+-- BuildPoints colours its points), for points from time t0 on: they may
+-- have waited while the map wasn't live, across a level up.
+local function Bands(t0)
+    local events, changes, base = ns.view.events, {}, nil
+    for i = #events, 1, -1 do
+        local e = events[i]
+        if e[2] == "lvl" or e[2] == "on" then
+            if e[1] <= t0 then base = e[6] break end
+            changes[#changes + 1] = e
+        end
+    end
+    return function(t)
+        local level = base
+        for j = #changes, 1, -1 do
+            if changes[j][1] <= t then level = changes[j][6] else break end
+        end
+        return ns.Style.LevelBand(level or UnitLevel("player"))
+    end
+end
+
+-- Adds what the recorder stored since. Returns the box around the points
+-- added ({ x1, y1, x2, y2 }), or nil if none were; sets rebuildWanted for a
+-- segment that can't just be added.
 local function Catch(state)
     local segments = ns.char.segments
-    local changed = false
+    -- Nothing stored and no new segment: nothing to decode.
+    if ns.Recorder.stored == live.stored and #segments == live.segments then return end
+    live.stored, live.segments = ns.Recorder.stored, #segments
+    local box
     for s = live.seg, #segments do
         local path = ns.Recorder:GetPath(s)
         local first = s == live.seg and live.have + 1 or 1
@@ -177,22 +211,29 @@ local function Catch(state)
             local continues = first == 1 and ns.Recorder:Continues(previous, path)
             local toContent = state.toContent[path.c]
             local last = state.n
-            -- A new segment that jumps, or one on a map not drawn, is built again.
-            if not toContent or first == 1 and not continues
+            -- A new segment that jumps, or one after a continent change, is
+            -- built again. One on a map not drawn is passed over.
+            if toContent and first == 1 and not continues
                 and (ns.Recorder:JumpReason(previous, path) ~= nil or (last > 0 and previous and previous.c ~= path.c)) then
                 rebuildWanted = true
-                return nil
+                return box
             end
-            local level = UnitLevel("player")
-            local from = LiveMap.Append(state, path, first, toContent, ns.Style.LevelBand(level), previous, continues)
+            local from = toContent and LiveMap.Append(state, path, first, toContent, Bands(path.t[first]), previous, continues)
             if from then
                 LiveMap.ExtendLods(state, from, inner.LodDistance, inner.CHUNK)
-                changed = true
+                box = box or { math.huge, math.huge, -math.huge, -math.huge }
+                for i = from, state.n do
+                    local x, y = state.px[i], state.py[i]
+                    if x < box[1] then box[1] = x end
+                    if y < box[2] then box[2] = y end
+                    if x > box[3] then box[3] = x end
+                    if y > box[4] then box[4] = y end
+                end
             end
         end
         live.seg, live.have = s, #path.x
     end
-    return changed
+    return box
 end
 
 -- The player's world position now, not rounded to yards as the recorder
@@ -222,7 +263,9 @@ local shown                 -- { x, y, at }: where the arrow was put last
 -- that point, which a yard or two after a point is stored swung with every
 -- small step (Jordan, 2026-11-11). Nil when not live or nowhere to put it.
 function LiveMap:Head(state)
-    if not (live and inner and Live(state)) then return end
+    -- Waiting to build again (in combat), the arrow stays on the last point
+    -- rather than draw the line from it across a jump.
+    if not (live and inner and Live(state)) or rebuildWanted then return end
     local c, x, y = WorldPosition()
     local toContent = c and state.toContent[c]
     if not toContent then return end
@@ -256,8 +299,8 @@ function LiveMap:Update(elapsed)
         ns.Range:Refresh()
         if ns.Range:CacheKey() ~= key then rebuildWanted = true end
         if not rebuildWanted then
-            local changed = Catch(state)
-            if changed then inner.PointsAdded() end
+            local box = Catch(state)
+            if box then inner.PointsAdded(box) end
         end
         local events, kills, gathers = Counts()
         if events ~= seen[1] or kills ~= seen[2] or gathers ~= seen[3] then markersWanted = true end

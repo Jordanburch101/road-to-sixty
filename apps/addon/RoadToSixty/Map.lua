@@ -873,7 +873,8 @@ local function GetLod(track, k, background)
         chunks[#chunks + 1] = { first, last, x1, y1, x2, y2 }
     end
 
-    lod = { idx = idx, chunks = chunks }
+    -- fromBelow: made from level k - 1, which LiveMap.ExtendLods follows.
+    lod = { idx = idx, chunks = chunks, fromBelow = source ~= nil }
     track.lods[k] = lod
     if not background then
         state.perf.lod = state.perf.lod + debugprofilestop() - started
@@ -1470,6 +1471,7 @@ local function BuildPath()
     lod, list, state.lodLevel = PickLod(state, x1, y1, x2, y2, z, MAX_LINES)
     -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
     local drawn = ns.CurveLines(LinesIn(state, lod, list, x1, y1, x2, y2, true), z, MAX_LINES)
+    local old = state.drawn
     state.drawn = drawn
     BuildOtherLines(x1, y1, x2, y2, z)
 
@@ -1512,9 +1514,14 @@ local function BuildPath()
     state.lineCount, state.shown, state.lineZoom = #drawn, shown, z
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
     state.built = { x1, y1, x2, y2, zoom = z }
-    -- Mote line indexes point into the old list, so respawn them all.
+    -- Mote line indexes point into the old list: a mote keeps going where
+    -- its line is the same in the new one (most of them, when the live map
+    -- adds points at the end), and is spawned again elsewhere.
     for _, m in ipairs(motes) do
-        m.line = nil
+        local was, now = m.line and old[m.line], m.line and drawn[m.line]
+        if not (was and now and was[1] == now[1] and was[2] == now[2] and was[3] == now[3] and was[4] == now[4]) then
+            m.line = nil
+        end
     end
     state.perf.place = debugprofilestop() - placeStarted
     state.perf.build = debugprofilestop() - started
@@ -3649,40 +3656,66 @@ Map.inner = {
     CHUNK = CHUNK,
     -- Points were added at the end: the replay stays at the end, the path
     -- is drawn again where it is, and the replay bar's last band reaches them.
-    PointsAdded = function()
+    -- box: around the new points; the path is drawn again only when they
+    -- fall where it was built (the view and its margin), as a pan out to
+    -- them builds it anyway. Together's played times are worked out again,
+    -- and the levels the warm-up was building start over, as it counted the
+    -- points when it began.
+    PointsAdded = function(box)
         state.cur = state.n
-        state.built = nil
+        state.pg = nil
+        local built = state.built
+        if not built or box[3] >= built[1] and box[1] <= built[3] and box[4] >= built[2] and box[2] <= built[4] then
+            state.built = nil
+        end
+        if state.warm then StartWarmUp() end
         local runs = scrub.runs
-        if runs and runs[#runs] then runs[#runs].last = state.n end
-        LayoutScrub()
+        if runs and runs[#runs] then
+            runs[#runs].last = state.n
+            LayoutScrub()
+        else
+            BuildScrub()
+        end
         ApplyView()
         ApplyCursor()
     end,
-    -- New events: their markers, kill marks, the replay bar's ticks and History.
+    -- New events: their markers, kill marks, the replay bar's ticks and
+    -- History (where it was scrolled to), the gear card, the screens and the
+    -- pops, as an open builds them.
     MarkersChanged = function()
         local _, tl = Map.Timelines(ns.view.events)
         state.timelines = tl
         BuildMarkers()
         ns.KillMarks:Rebuild()
+        ns.GearCard:Rebuild()
+        ns.Screens:Rebuild()
+        ns.QuestPop:Rebuild()
+        ns.GuildPop:Rebuild()
+        ns.LevelPop:Rebuild()
+        ns.KillPop:Rebuild()
         BuildScrub()
         ApplyCursor()
-        ns.Panel:Refresh()
+        ns.Panel:Refresh(true)
     end,
     -- Everything built again, the view kept where it is.
     Rebuild = function()
         state.journey = nil
         Map:OpenNow(true)
     end,
-    -- The arrow moved with the player: placed again, and the view moves with
-    -- it as a replay's does while it is on screen; a view panned away from it
-    -- stays where it was put.
+    -- The arrow moved with the player: placed again. The view moves with it,
+    -- as a replay's does, only when the arrow walked out of the middle of
+    -- the view by itself: never while the map is dragged or zooming, and not
+    -- when the view was moved away from it (it was already outside then).
     HeadMoved = function()
         local x, y = state.headX, state.headY
         PlaceHead()
-        if not x or state.zoom <= state.minZoom or not state.headX then return end
-        local fx = (x - state.ox) * state.zoom / state.W
-        local fy = (y - state.oy) * state.zoom / state.H
-        if fx >= 0 and fx <= 1 and fy >= 0 and fy <= 1 then
+        if drag or state.zoom ~= state.targetZoom or not x or not state.headX then return end
+        local function Inside(hx, hy)
+            local fx = (hx - state.ox) * state.zoom / state.W
+            local fy = (hy - state.oy) * state.zoom / state.H
+            return fx >= 0.1 and fx <= 0.9 and fy >= 0.1 and fy <= 0.9
+        end
+        if Inside(x, y) and not Inside(state.headX, state.headY) then
             FollowHead()
         end
     end,
