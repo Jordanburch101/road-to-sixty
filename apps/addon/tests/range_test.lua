@@ -120,6 +120,29 @@ check(Range.from == today and Range.to == midnight - DAY and not Range:Has(clock
 Range:SetPhase("end", clock)
 check(Range.from == today and Range.to == clock, "the endgame today is today")
 check(Range:Key() == "today|end" and Range:PhaseLabel() == "Endgame", "the key and the label")
+-- The map's open cache: a range ending now keeps its key as the clock
+-- runs; one with a fixed end, or a start moved by midnight, does not.
+Range:SetPhase("all", clock)
+local tonight = Range.Bounds("today", clock) + DAY     -- the clock's next midnight
+for _, key in ipairs({ "today", "week", "month" }) do
+    Range:Set(key, clock)
+    local first = Range:CacheKey()
+    Range:Refresh(clock + 600)
+    check(Range:CacheKey() == first, key .. " keeps its cache key ten minutes on")
+    Range:Refresh(tonight + 60)
+    check(Range:CacheKey() ~= first, key .. " has a new cache key after midnight")
+end
+Range:Set("yesterday", clock)
+local yesterdayKey = Range:CacheKey()
+check(yesterdayKey:find("|" .. (tonight - DAY - 1), 1, true) ~= nil, "yesterday's end is in its key")
+Range:Set("week", clock)
+check(Range:CacheKey() ~= yesterdayKey, "another range, another key")
+Range:SetCap(midnight - DAY)
+Range:SetPhase("lvl", clock)
+check(Range:CacheKey():find("|" .. (midnight - DAY), 1, true) ~= nil, "levelling ends at the cap, not now")
+Range:SetPhase("all", clock)
+Range:Set("all", clock)
+check(Range:CacheKey() == "all|all|0|0", "all time")
 Range:SetCap(nil)
 Range:Set("all", clock)
 check(Range:IsAll() and Range:Key() == "all|all" and Range:PhaseLabel() == "Whole journey",
