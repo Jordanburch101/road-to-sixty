@@ -1072,7 +1072,8 @@ function GearScreen:Redraw()
 
     -- Average item level across the window: a gold line over an area fading
     -- down, a few guide lines with their values, and a diamond in the
-    -- item's colour where a blue or epic went on.
+    -- item's colour where a blue or epic first went on: once for each item,
+    -- not again each time it was swapped back in (#137).
     local h = ui.curve:GetHeight() - 16
     local points, lowest, highest = {}, math.huge, 0
     for k = 0, CURVE_STEPS do
@@ -1136,9 +1137,19 @@ function GearScreen:Redraw()
         line:SetShown(a ~= nil and b ~= nil)
         fill:SetShown(a ~= nil and b ~= nil)
     end
-    local diamonds = 0
+    local diamonds, first = 0, {}
     for _, slot in ipairs(LANES) do
         for _, span in ipairs(timeline.kept[slot] or {}) do
+            local key = span.id .. "|" .. tostring(G.Plain(span.item))
+            local earlier = first[key]
+            if not earlier or span.t < earlier.t then first[key] = span end
+        end
+    end
+    local firsts = {}
+    for _, span in pairs(first) do firsts[#firsts + 1] = span end
+    table.sort(firsts, function(a, b) return a.t < b.t end)
+    do
+        for _, span in ipairs(firsts) do
             local x = w * X(U(span.t))
             local quality = Info(span).quality
             local f = x / w * CURVE_STEPS
