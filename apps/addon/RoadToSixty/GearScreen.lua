@@ -52,7 +52,8 @@ local WHITE = "Interface\\Buttons\\WHITE8X8"
 local GOLD = { 1, 0.82, 0 }
 -- The badge where weapons start being swapped back and forth, or the one
 -- held most changes (GearTimeline.Swaps, #137): an atlas or a file, tried
--- in order until one draws; its size is a share of the bar's height.
+-- in order until one draws; its size is a share of the bar's height. Seen
+-- and kept by Jordan in Forever (2026-11-12).
 local SWAP_BADGE = { { atlas = "transmog-icon-revert" }, { file = "Interface\\Buttons\\UI-RefreshButton" } }
 local SWAP_BADGE_SIZE = 0.8
 

@@ -18,20 +18,7 @@ local WORLD_MAP = 947
 -- overlay = { kind, name, tint, blend, scale } drawn on top }. kind is
 -- "atlas", "file" or "none" (just the number). Empty while no icon choice
 -- is open (level ups now use the player frame's level badge).
-local SECTIONS = {
-    -- The gear screen's badge where weapons start being swapped (#137).
-    { "Swap badge", {
-        { "atlas", "transmog-icon-revert", label = "transmog revert" },
-        { "atlas", "common-icon-undo", label = "common undo" },
-        { "atlas", "common-icon-redo", label = "common redo" },
-        { "file", "Interface\\Buttons\\UI-RefreshButton", label = "refresh" },
-        { "file", "Interface\\Buttons\\UI-RotationRight-Button-Up", label = "rotate right" },
-        { "file", "Interface\\Buttons\\UI-RotationLeft-Button-Up", label = "rotate left" },
-        { "file", "Interface\\Icons\\Ability_Warrior_DefensiveStance", label = "stance", crop = true },
-        { "file", "Interface\\Icons\\INV_Sword_04", label = "sword", crop = true,
-            overlay = { "file", "Interface\\Buttons\\UI-RefreshButton", scale = 0.6 } },
-    } },
-}
+local SECTIONS = {}
 
 -- Replay timeline candidates, four cells wide, each a still bar 60% played
 -- with level bands and ticks. fill: texture for the bands (flat colour if
