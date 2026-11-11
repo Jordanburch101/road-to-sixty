@@ -165,7 +165,7 @@ check(not button.lootBorder.shown, "no border for a white item")
 -- would drift from the one look. GearCard.lua's slots draw their own frame
 -- round bigger icons, from before (#131 leaves it).
 local OWN = {      -- { pattern, what, files allowed }
-    { 'CreateFrame%(%s*"ItemButton"', "item button", { ["Screens.lua"] = true } },
+    { "CreateFrame%(%s*[\"']ItemButton[\"']", "item button", { ["Screens.lua"] = true } },
     { "ItemButtonTemplate", "item button", { ["Screens.lua"] = true } },
     { "UI%-Quickslot2", "item button frame", { ["Style.lua"] = true, ["GearCard.lua"] = true } },
     { "loottoast%-itemborder", "quality border", { ["Style.lua"] = true } },

@@ -14,7 +14,8 @@ broken and now works. Leave out internal changes. Sections are
   to open it again.
 - Loot, recipes, professions, mounts, enchants and other entries with an
   item or spell icon in the History list sit in an item button frame, as
-  in your bags and on the map. Loot keeps its quality colour around it.
+  in your bags and on the map. Uncommon and better loot keeps its quality
+  colour around it.
 
 ## 1.20.4
 

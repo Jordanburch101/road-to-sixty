@@ -147,8 +147,6 @@ local function CreateHistoryRow(parent)
     local row = CreateFrame("Button", nil, parent)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetPoint("CENTER", row, "LEFT", 14, 0)
-    row.quality = row:CreateTexture(nil, "OVERLAY")
-    row.quality:SetAllPoints(row.icon)
     row.number = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.number:SetPoint("CENTER", row.icon, 0.5, 0)
 
@@ -306,7 +304,6 @@ local function UpdateHistoryRow(row, item)
     row.icon:SetPoint("CENTER", row, "LEFT", 14 + indent, 0)
     row.title:SetPoint("TOPLEFT", 30 + indent, -3)
     if header then
-        row.quality:Hide()
         row.header:SetText(item.header)
         return
     end
@@ -349,7 +346,6 @@ local function UpdateHistoryRow(row, item)
         row.framed:Show()
         row.icon:Hide()
     end
-    ns.SetQualityOverlay(row.quality, not framed and quality or nil)
     row.title:SetText(item.title)
     row.title:SetTextColor(unpack(item.color or TITLE_COLORS[item.kind] or { 1, 1, 1 }))
     row.detail:SetText(item.detail)
