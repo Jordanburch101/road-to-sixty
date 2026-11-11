@@ -76,6 +76,7 @@ local function Region()
     local r = { shown = true }
     function r:Hide() self.shown = false end
     function r:Show() self.shown = true end
+    function r:SetShown(on) self.shown = on end
     function r:SetSize(w, h) self.w, self.h = w, h end
     function r:SetTexture(t) self.texture = t return true end
     function r:SetAtlas(a) self.atlas = a return true end
@@ -133,6 +134,64 @@ size, art = ns.SetEventIcon(icon, text, "qd")
 check(icons.qd.fallback and art == nil, "a fallback that isn't icon art taken as art")
 size, art = ns.SetEventIcon(icon, text, "prof", nil, 136240)
 check(art == 136240, "an icon by file ID not taken as art")
+
+-- Lists in our windows show game icon art in one small item button
+-- (Screens.lua, #131): made at the bags' 37 and scaled, so its border art
+-- fits; the row keeps the mouse; an item's quality border over the icon.
+assert(loadfile("RoadToSixty/Screens.lua"))("RoadToSixty", ns)
+CreateFrame = function(kind)
+    local b = Region()
+    b.kind = kind
+    b.icon = Region()
+    function b:SetScale(s) self.scale = s end
+    function b:EnableMouse(on) self.mouse = on end
+    return b
+end
+SetItemButtonTexture = function(button, file) button.icon.texture = file end
+local button = ns.Screens.IconButton(Region(), 22)
+check(button.kind == "ItemButton" and button.w == 37 and math.abs(button.scale - 22 / 37) < 1e-9,
+    "an item button at 37, scaled to the size asked")
+check(button.mouse == false, "the row under it keeps the mouse")
+ns.Screens.SetIcon(button, "Interface\\Icons\\INV_Sword_04", 3)
+check(button.icon.texture == "Interface\\Icons\\INV_Sword_04", "the icon set")
+check(button.lootBorder.shown and button.lootBorder.atlas == "loottoast-itemborder-blue", "a blue item's border")
+ns.Screens.SetIcon(button, "Interface\\Icons\\INV_Scroll_03")
+check(not button.lootBorder.shown, "no border without a quality")
+ns.Screens.SetIcon(button, "Interface\\Icons\\INV_Misc_Pelt_Wolf_01", 1)
+check(not button.lootBorder.shown, "no border for a white item")
+
+-- And they are made only there: a file the release ships that makes an
+-- item button, draws the item button frame, or a quality border of its own
+-- would drift from the one look. GearCard.lua's slots draw their own frame
+-- round bigger icons, from before (#131 leaves it).
+local OWN = {      -- { pattern, what, files allowed }
+    { "CreateFrame%(%s*[\"']ItemButton[\"']", "item button", { ["Screens.lua"] = true } },
+    { "ItemButtonTemplate", "item button", { ["Screens.lua"] = true } },
+    { "UI%-Quickslot2", "item button frame", { ["Style.lua"] = true, ["GearCard.lua"] = true } },
+    { "loottoast%-itemborder", "quality border", { ["Style.lua"] = true } },
+}
+local shipped, debug = {}, false
+for line in io.lines("RoadToSixty/RoadToSixty.toc") do
+    if line:find("#@debug@", 1, true) then
+        debug = true
+    elseif line:find("#@end-debug@", 1, true) then
+        debug = false
+    elseif not debug and line:match("^[%w_/]+%.lua%s*$") then
+        shipped[#shipped + 1] = line:match("^(%S+)")
+    end
+end
+check(#shipped > 20, "read the shipped files from the toc, found " .. #shipped)
+for _, file in ipairs(shipped) do
+    local f = io.open("RoadToSixty/" .. file)
+    if f then
+        local code = f:read("*a")
+        f:close()
+        for _, own in ipairs(OWN) do
+            check(own[3][file] or not code:find(own[1]), file .. " makes its own " .. own[2]
+                .. "; use Screens.IconButton, Screens.ItemButton or Style.Frame")
+        end
+    end
+end
 
 if failures == 0 then
     print("Style tests passed.")
