@@ -304,8 +304,9 @@ local function UpdateHistoryRow(row, item)
         return
     end
 
-    local size = ns.SetEventIcon(row.icon, row.number, item.kind, item.level, item.iconFile)
+    local size, art = ns.SetEventIcon(row.icon, row.number, item.kind, item.level, item.iconFile)
     row.icon:SetSize(size, size)
+    local quality = item.kind == "loot" and item.quality or nil
     -- Guild entries show the guild's banner instead.
     if item.guild then
         if not row.badge then
@@ -327,22 +328,30 @@ local function UpdateHistoryRow(row, item)
         row.stack:SetShown(members[1] ~= nil)
         row.icon:SetShown(members[1] == nil)
     end
-    -- Framed entries (duels) show their icon in the game's item button art,
-    -- as the character sheet's slots have it; the row keeps the mouse. Its
-    -- border art keeps its size whatever the button's, so the button keeps
-    -- the game's 37 and is scaled down to fit the row.
-    if item.framed then
+    -- Entries drawn from game icon art (loot, recipes, mounts, enchants,
+    -- duels, ...) show it in the game's item button art, as the bags have
+    -- it, with loot's quality border kept over the icon: Jordan's pick from
+    -- a swatch (#131). Atlas icons (levels, quests, travel) keep their own
+    -- shapes. The row keeps the mouse. The button's border art keeps its
+    -- size whatever the button's, so the button keeps the game's 37 and is
+    -- scaled down to fit the row.
+    local framed = art and not item.guild and not item.group
+    if framed then
         if not row.framed then
             row.framed = ns.Screens.ItemButton(row, 37)
             row.framed:SetScale((HISTORY_ROW - 10) / 37)
             row.framed:SetPoint("CENTER", row.icon)
             row.framed:EnableMouse(false)
+            local icon = row.framed.icon or row.framed.Icon
+            row.framed.quality = row.framed:CreateTexture(nil, "OVERLAY", nil, 7)
+            row.framed.quality:SetAllPoints(icon or row.framed)
         end
-        SetItemButtonTexture(row.framed, item.iconFile)
+        SetItemButtonTexture(row.framed, art)
+        ns.SetQualityOverlay(row.framed.quality, quality)
         row.framed:Show()
         row.icon:Hide()
     end
-    ns.SetQualityOverlay(row.quality, item.kind == "loot" and item.quality or nil)
+    ns.SetQualityOverlay(row.quality, not framed and quality or nil)
     row.title:SetText(item.title)
     row.title:SetTextColor(unpack(item.color or TITLE_COLORS[item.kind] or { 1, 1, 1 }))
     row.detail:SetText(item.detail)
@@ -644,7 +653,7 @@ local function BuildHistory()
         elseif kind == "duel" then
             -- In green for a win, red for a loss, as the result reads.
             local title, detail, icon = ns.Duels:Describe(e)
-            Add({ kind = kind, title = title, iconFile = icon, framed = true, color = { ns.Duels:Color(e) },
+            Add({ kind = kind, title = title, iconFile = icon, color = { ns.Duels:Color(e) },
                 duel = e, where = where }, t, c, x, y, detail .. " - " .. where)
         elseif kind == "gath" and ns.Range:Has(t) then
             -- (checked before Add does: describing asks for each item, and there can be thousands)

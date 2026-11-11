@@ -71,7 +71,9 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   the bags have it: `ns.Screens.ItemButton(parent, size)` with
   `SetItemButtonTexture` (and `SetItemButtonQuality` for items), never a
   bare texture or a border drawn from colour squares. Jordan's call on the
-  Stats screen's records (#83).
+  Stats screen's records (#83). The History list's rows do the same for
+  every entry with game icon art, loot keeping its loot-toast quality
+  border over the icon (#131).
 - A map marker drawn from game icon art (a spell or item icon, not an
   atlas) goes in the item button frame through `Style.Frame(m, icon,
   size)`, at `Style.MARKER_ICON` (16), or `Style.NODE_ICON` (12) for a
