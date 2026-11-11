@@ -880,8 +880,10 @@ end
 local function Milestones()
     if derived.milestones then return derived.milestones end
     local list, firstOf = {}, {}
+    -- When each was first in hand (held), not kept gear's swaps shown as the
+    -- one held most, which can start a level early or leave an item out.
     for _, slot in ipairs(LANES) do
-        for _, span in ipairs(timeline.kept[slot] or {}) do
+        for _, span in ipairs((timeline.held or timeline.kept)[slot] or {}) do
             local q = Info(span).quality
             for _, want in ipairs({ 2, 3, 4 }) do
                 if q == want and (not firstOf[want] or span.t < firstOf[want]) then firstOf[want] = span.t end
@@ -1139,8 +1141,8 @@ function GearScreen:Redraw()
     end
     local diamonds, first = 0, {}
     for _, slot in ipairs(LANES) do
-        for _, span in ipairs(timeline.kept[slot] or {}) do
-            local key = span.id .. "|" .. tostring(G.Plain(span.item))
+        for _, span in ipairs((timeline.held or timeline.kept)[slot] or {}) do
+            local key = slot .. "|" .. span.id .. "|" .. tostring(G.Plain(span.item))
             local earlier = first[key]
             if not earlier or span.t < earlier.t then first[key] = span end
         end

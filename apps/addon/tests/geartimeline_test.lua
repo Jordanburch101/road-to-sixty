@@ -180,6 +180,9 @@ check(seventy.capAt == 1000, "the cap is reached at 70 when the cap is 70, got "
 check(G.LevelAt(seventy, 1500) == 70, "past the cap the level stays 70")
 G.CAP = 60
 
+-- 7b. Build keeps what was in hand (held) beside kept gear.
+check(tl.held and tl.held[9] and #tl.held[9] >= 1, "held: kept gear before swaps, for time worn")
+
 -- 8. Weapons swapped back and forth (#137), the mock's warrior: an hour a
 -- level, played without a break. The Thornblade alone at level 20, then
 -- swapping with the Iron Star two-hander: mostly the Iron Star to 25, mostly
@@ -204,11 +207,18 @@ do
         On(mainHand, sword, t + two, t + two + one); On(offHand, 4, t + two, t + two + one)
         t = t + two + one
     end
-    On(mainHand, 2, t, 20 * H); On(mainHand, 3, 20 * H, 20 * H + 300); On(mainHand, 2, 20 * H + 300, 22 * H)
-    On(offHand, 4, t, 20 * H); On(offHand, nil, 20 * H, 20 * H + 300); On(offHand, 4, 20 * H + 300, 22 * H)
-    -- The empty off hand while the two-hander is on is no span, as Build leaves it.
+    -- The outing at 40 is 700 seconds, long enough to pass Kept's noise filter.
+    On(mainHand, 2, t, 20 * H); On(mainHand, 3, 20 * H, 20 * H + 700); On(mainHand, 2, 20 * H + 700, 22 * H)
+    On(offHand, 4, t, 20 * H); On(offHand, nil, 20 * H, 20 * H + 700); On(offHand, 4, 20 * H + 700, 22 * H)
+    -- The empty off hand while the two-hander is on is no span, and the axe
+    -- before it was closed, as Build leaves them.
     local off = {}
-    for _, s in ipairs(offHand) do if s.id then off[#off + 1] = s end end
+    for k, s in ipairs(offHand) do
+        if s.id then
+            s.closed = offHand[k + 1] ~= nil and offHand[k + 1].id == nil or nil
+            off[#off + 1] = s
+        end
+    end
     local out = G.Swaps(mainHand, played, bounds)
     local function Ids(list)
         local ids = {}
@@ -230,6 +240,39 @@ do
     local axe = G.Swaps(off, played, bounds)
     check(#axe == 1 and axe[1].t == 0 and axe[1].endT == 22 * H and not axe[1].swap and not axe[1].badges,
         "the off hand is one bar through the Iron Star's turns")
+    check(not axe[1].closed, "the off hand is still worn at the end, though the axe was put away mid-way")
+end
+
+-- 10. Cases from the review of #139, an hour a level from 0.
+do
+    local played = { { 0, 100 * H, 0 } }
+    local bounds = {}
+    for level = 0, 20 do bounds[#bounds + 1] = level * H end
+    local function S(id, t, endT, extra)
+        local span = { id = id, item = id and "item:" .. id, t = t, endT = endT }
+        for k, v in pairs(extra or {}) do span[k] = v end
+        return span
+    end
+    -- An upgrade, the old sword back for 3 minutes: a replacement, no badge.
+    local out = G.Swaps({ S(1, 0, H), S(2, H, H + 600), S(1, H + 600, H + 780), S(2, H + 780, 3 * H) }, played, bounds)
+    check(#out == 2 and out[2].id == 2 and not out[2].badges and not out[1].badges,
+        "an upgrade the old item came back to for a moment has no badge")
+    -- An item looted partway through a level shows from then, not the level's start.
+    out = G.Swaps({ S(1, 0, 1.3 * H), S(2, 1.3 * H, 1.4 * H), S(1, 1.4 * H, 1.5 * H), S(2, 1.5 * H, 3 * H) }, played, bounds)
+    check(#out == 2 and out[1].id == 1 and out[2].id == 2 and out[2].t == 1.3 * H,
+        "a blue looted at 1.3 shows from 1.3, the green before it")
+    -- A gap longer than SWAP_GAP inside one long cell isn't covered, and
+    -- what came after it shows.
+    local long = { 0, 10 * H }
+    out = G.Swaps({ S(1, 0, 0.5 * H), S(2, 0.5 * H, H), S(1, H, 1.5 * H, { closed = true }), S(3, 5 * H, 6 * H) }, played, long)
+    check(#out == 2 and out[1].endT == 1.5 * H and out[1].closed and out[2].id == 3 and out[2].t == 5 * H,
+        "the slot left empty for hours stays empty, and the next item shows; got " .. #out)
+    -- A shield put away for a two-hander held to the end: closed at its end.
+    out = G.Swaps({ S(7, 0, H), S(8, H, 2 * H), S(7, 2 * H, 3 * H, { closed = true }) }, played, bounds)
+    check(out[#out].id == 7 and out[#out].closed, "a slot left empty at the end stays closed")
+    -- An old snapshot's span with no item string joins the same item's.
+    out = G.Swaps({ S(9, 0, H, { item = false, closed = true }), S(9, 1.5 * H, 4 * H) }, played, bounds)
+    check(#out == 1 and out[1].endT == 4 * H, "a span with no item string joins the same item's")
 end
 
 -- 9. Without swapping, kept gear is as before: an upgrade, and an item put
@@ -254,7 +297,7 @@ do
     local sessions = { { 0, 5 * H, 0 }, { 5 * H + 7 * 86400, 200 * H, 5 * H } }
     local apart = { { id = 1, t = 0, endT = 5 * H, closed = true }, { id = 1, t = 5 * H + 7 * 86400 + 600, endT = 10 * H + 7 * 86400 } }
     out = G.Swaps(apart, sessions, bounds)
-    check(#out == 1, "logged out between two uses: still in use")
+    check(#out == 1 and not out[1].closed, "logged out between two uses: still in use, and still worn at the end")
 end
 
 if failures == 0 then
