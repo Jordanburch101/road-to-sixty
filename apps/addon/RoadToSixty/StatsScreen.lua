@@ -105,14 +105,26 @@ local function XPPerHour(row)
     return row.xp and row.time and row.time > 0 and row.xp / row.time * 3600 or nil
 end
 
+-- Whether the screen is busy with a moment or a bar: a replay before the
+-- journey's end, or a bar or the chart hovered. The bars' chart counts while
+-- the cursor is anywhere on it, as moving from one bar to the next leaves
+-- the first before entering the second.
+local function Busy()
+    return followT ~= math.huge or hoverRow ~= nil
+        or (ui.chart ~= nil and ui.chart:IsVisible() and ui.chart:IsMouseOver())
+        or (ui.windowChart and ui.windowChart.hover) ~= nil or (ui.paneChart and ui.paneChart.hover) ~= nil
+end
+
 -- The index for the journey shown, and its level rows: built when the
 -- journey or the range changed, and again while the character plays, at
 -- most every REBUILD_SECONDS, as building one takes a moment on a long
--- journey.
+-- journey. Not while busy: a replay shows a moment before what was just
+-- recorded, and a rebuild while it ran or a bar was hovered was a hitch
+-- every REBUILD_SECONDS, and dropped the bar hovered (#103).
 local function Index()
     local journey = ns.view
     local fresh = index and builtFor == journey and not dirty
-    if fresh and (not Stats.Changed(index, journey) or GetTime() - builtAt < REBUILD_SECONDS) then
+    if fresh and (Busy() or not Stats.Changed(index, journey) or GetTime() - builtAt < REBUILD_SECONDS) then
         return index
     end
     local isMe = journey == ns.char
@@ -148,11 +160,11 @@ end
 
 -- A row per week since the cap, as the level rows are per level: its
 -- numbers are the week's window. Built once for an index and cap.
-local weekRows, weekKey
+local weekRows, weekIndex, weekCap
 local function WeekRows()
-    local key = tostring(index) .. "|" .. tostring(ns.Range.capAt)
-    if key == weekKey then return weekRows end
-    weekKey, weekRows = key, {}
+    -- Keyed by the index itself: a new index can take a collected one's address.
+    if index == weekIndex and ns.Range.capAt == weekCap then return weekRows end
+    weekIndex, weekCap, weekRows = index, ns.Range.capAt, {}
     for _, week in ipairs(Stats.Weeks(index, ns.Range.capAt)) do
         local w = Stats.Window(index, week.from, week.to)
         weekRows[#weekRows + 1] = {
@@ -1190,7 +1202,11 @@ local function CreateWindow()
     dark:SetColorTexture(0, 0, 0, 0.65)
     shade:SetScript("OnClick", function() win:Hide() end)
     shade:Hide()
-    win:SetScript("OnHide", function() shade:Hide() end)
+    win:SetScript("OnHide", function()
+        shade:Hide()
+        -- Its chart's hover is cleared only while it is shown (Busy, #103).
+        if ui.windowChart then ui.windowChart.hover = nil end
+    end)
     -- Not one of UISpecialFrames: Escape closes every one of those at once,
     -- so it would close the map window too. Escape closes the map window,
     -- and this one with it; its close button closes just this one.
@@ -1794,6 +1810,12 @@ local function CreateView(frames)
     view:SetFrameLevel(frames.canvas:GetFrameLevel() + 60)
     view:EnableMouse(true)
     view:Hide()
+    -- The chart's hover is cleared only while it is shown; hidden with the
+    -- cursor on it, it would keep the screen busy (Busy, #103).
+    view:SetScript("OnHide", function()
+        if ui.paneChart then ui.paneChart.hover = nil end
+        hoverRow = nil
+    end)
     -- The map's frame style around the whole screen.
     viewEdges = CreateFrame("Frame", nil, frames.window, "BackdropTemplate")
     viewEdges:SetPoint("TOPLEFT", view, -4, 4)

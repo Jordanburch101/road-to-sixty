@@ -462,6 +462,8 @@ end
 
 local function BuildPoints(paths)
     local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
+    -- The jump the arrow was on was the old points' (#103).
+    state.headJump = nil
 
     -- Level changes in time order, walked alongside the points. The same
     -- pass builds the level and zone timelines.
@@ -3282,11 +3284,12 @@ function Map:OpenNow()
     frame.phaseButton:SetShown(ns.Range.capAt ~= nil)
     frame.phaseButton:SetText(ns.Range:PhaseLabel())
     local view = ns.view
-    -- The range's start moves only at midnight (Range.lua), so the cache holds through the day.
-    local journey = table.concat({ tostring(view), ns.Range:Key(), ns.Range.from or 0, ns.Range.to or 0, #view.segments,
+    -- The range's start moves only at midnight (Range.lua), and an end at
+    -- now is left out, so the cache holds through the day.
+    local journey = table.concat({ tostring(view), ns.Range:CacheKey(), #view.segments,
         ns.Recorder.stored,
         #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0,
-        ns.Gathering.changes }, ":")
+        ns.Gathering.changes, ns.Friends.changes }, ":")
     if journey == state.journey then
         state.perf.decode, state.perf.setup = 0, 0
         ns.QuestPop:Clear()
@@ -3455,7 +3458,10 @@ function Map:JumpTo(t, continentID, x, y)
     SetPlaying(false)
     drag = nil
 
-    state.cur = SeqAt(t)
+    -- A moment before the first point shown (a zone row on the Stats screen
+    -- for a zone entered before the date range) goes to that first point,
+    -- not to "Start of journey" (#103).
+    state.cur = math.max(SeqAt(t), math.min(1, state.n))
 
     local toContent = state.toContent[continentID]
     if toContent then

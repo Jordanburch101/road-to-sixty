@@ -25,6 +25,9 @@ local _, ns = ...
 --   Range:Label()           the preset's name, for the map's button
 --   Range:PhaseLabel()      the phase's name, for its button
 --   Range:Key()             the preset and the phase in force, for caches
+--   Range:CacheKey()        those and the bounds, an end at now named so
+--                           rather than the second, for a cache of what was
+--                           built from the range
 --   Range:TrimPaths(paths)  the paths cut to the range (Recorder.lua's format)
 --
 -- Days start at the player's own midnight (times are Unix seconds, ns.Now),
@@ -81,7 +84,8 @@ end
 
 function Range:Set(key, now)
     self.key = key
-    local from, to = Range.Bounds(key, now or ns.Now())
+    now = now or ns.Now()
+    local from, to = Range.Bounds(key, now)
     local phase = Phase(self)
     -- The second the cap was reached (the kill that gave it, the level up)
     -- is the levelling's; the endgame starts the second after.
@@ -93,6 +97,7 @@ function Range:Set(key, now)
     -- Code reading the bounds takes both or neither.
     if from or to then from, to = from or 0, to or math.huge end
     self.from, self.to = from, to
+    self.toNow = to == now
 end
 
 function Range:SetCap(t)
@@ -114,6 +119,14 @@ end
 
 function Range:Key()
     return self.key .. "|" .. Phase(self)
+end
+
+-- A range ending now (today, the last 7 or 30 days) ends a second later
+-- each time it is worked out, though nothing in it changed: its end is
+-- left out, so a cache holds until something is recorded or midnight
+-- moves its start (#103).
+function Range:CacheKey()
+    return table.concat({ self:Key(), self.from or 0, self.toNow and "now" or self.to or 0 }, "|")
 end
 
 -- Works the bounds out again from now, for "today" after midnight.

@@ -40,6 +40,36 @@ Parties.RaceName = RaceName
 -- raid subgroup at the end }, mySub = the player's, and instances = the
 -- dungeons and raids entered while in it: { name, type }, each once.
 local cache = setmetatable({}, { __mode = "k" })
+
+-- Where each event sits in the journey shown, so Info reads on from its
+-- group's start instead of searching the journey from its start for every
+-- group, which took seconds on a long journey (#103). Made once per events
+-- list, carried on as the live journey grows, and made again if the list
+-- changed in place.
+local positions, indexed, indexedCount = {}, nil, 0
+
+local function Index(events, from)
+    if from == 1 then positions = {} end     -- plain: indexed keeps the events anyway
+    for i = from, #events do
+        local e = events[i]
+        if e then positions[e] = i end     -- (a list with a hole: none is known to have one)
+    end
+    indexed, indexedCount = events, #events
+end
+
+local function Position(events, e)
+    if indexed ~= events then Index(events, 1) end
+    local i = positions[e]
+    if not i and #events > indexedCount then
+        Index(events, indexedCount + 1)
+        i = positions[e]
+    end
+    if i and events[i] == e then return i end
+    Index(events, 1)
+    return positions[e]
+end
+Parties.Position = Position     -- for the tests
+
 function Parties:Info(e)
     local info = cache[e]
     if info then return info end
@@ -58,45 +88,43 @@ function Parties:Info(e)
     for _, m in ipairs(e[7] or {}) do
         Add(m, nil)
     end
-    local found = false
-    for _, other in ipairs(ns.view.events) do
+    local events = ns.view.events
+    for i = (Position(events, e) or #events) + 1, #events do
+        local other = events[i]
+        if not other then break end         -- a hole ends it, as ipairs did
         local kind = other[2]
-        if other == e then
-            found = true
-        elseif found then
-            if kind == "grpa" then
-                -- In its first seconds the client was still loading who was
-                -- in it (see Groups.lua); those were there from the start.
-                Add(other[6], other[1] - e[1] > FORMING and other[1] or nil)
-            elseif kind == "grpl" then
-                local entry = byGuid[other[6]]
-                if entry then
-                    entry.left, entry.endLevel = other[1], other[7] or entry.endLevel
-                end
-            elseif kind == "grpk" then
-                info.kind = other[6]
-            elseif kind == "grps" then
-                if other[6] == false then
-                    info.mySub = other[7]
-                elseif byGuid[other[6]] then
-                    byGuid[other[6]].sub = other[7]
-                end
-            elseif kind == "in" then
-                -- Instances entered while grouped, by name, each once.
-                local name = other[7] or "an instance"
-                if not info.instances[name] then
-                    info.instances[name] = true
-                    info.instances[#info.instances + 1] = { name, other[8] }
-                end
-            elseif kind == "grpx" then
-                info.summary, info.finish = other[6], other[1]
-                for guid, level in pairs(other[6].levels or {}) do
-                    if byGuid[guid] then byGuid[guid].endLevel = level end
-                end
-                break
-            elseif kind == "grp" then
-                break
+        if kind == "grpa" then
+            -- In its first seconds the client was still loading who was
+            -- in it (see Groups.lua); those were there from the start.
+            Add(other[6], other[1] - e[1] > FORMING and other[1] or nil)
+        elseif kind == "grpl" then
+            local entry = byGuid[other[6]]
+            if entry then
+                entry.left, entry.endLevel = other[1], other[7] or entry.endLevel
             end
+        elseif kind == "grpk" then
+            info.kind = other[6]
+        elseif kind == "grps" then
+            if other[6] == false then
+                info.mySub = other[7]
+            elseif byGuid[other[6]] then
+                byGuid[other[6]].sub = other[7]
+            end
+        elseif kind == "in" then
+            -- Instances entered while grouped, by name, each once.
+            local name = other[7] or "an instance"
+            if not info.instances[name] then
+                info.instances[name] = true
+                info.instances[#info.instances + 1] = { name, other[8] }
+            end
+        elseif kind == "grpx" then
+            info.summary, info.finish = other[6], other[1]
+            for guid, level in pairs(other[6].levels or {}) do
+                if byGuid[guid] then byGuid[guid].endLevel = level end
+            end
+            break
+        elseif kind == "grp" then
+            break
         end
     end
     cache[e] = info

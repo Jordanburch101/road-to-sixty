@@ -172,8 +172,11 @@ check(status(rec) == "Waiting for them to add you.", "refusal not shown: " .. st
 -- The first sync brings the whole journey, batch by batch.
 b.ns.Friends:Add("Zed")
 Run()
+local changesBefore = F.changes
 F:Sync("Bromm")
 Run()
+-- The map builds again after a friend's copy changed, even in place (#103).
+check(F.changes > changesBefore, "a batch kept didn't count as a change for the map")
 local sent = b.ns.char
 local got = rec.journey
 check(rec.synced and status(rec):find("^Last synced"), "sync did not finish: " .. status(rec))
@@ -271,7 +274,7 @@ Run()
 local friends = z.ns.db.friends
 friends.gone = { name = "Gone", realm = "Era" }
 fresh.events[#fresh.events + 1] = { 1786000000, "level", 0, 2, 2 }
-local total, wasSynced = #fresh.events, rec.synced
+local total, wasSynced, changesThen = #fresh.events, rec.synced, F.changes
 check(not F:ParseAutoSync("7") and F:AutoSync() == 0, "took a choice that isn't one")
 check(F:ParseAutoSync("5") and F:AutoSync() == 5, "choice not taken")
 local line, hidden = OFFLINE:format("Gone"), {}
@@ -288,6 +291,7 @@ At(330, function() check(F:ParseAutoSync("off") and F:AutoSync() == 0, "not turn
 Run()
 z.onSend = nil
 check(#rec.journey.events == total and rec.synced > wasSynced, "automatic sync did not fetch new data")
+check(F.changes > changesThen, "an automatic sync kept didn't count as a change for the map")
 check(#hidden == 2 and hidden[1] == true and hidden[2] == true, "offline line not hidden")
 check(status(friends.gone) == "Not synced yet.", "offline friend reported: " .. status(friends.gone))
 check(z.filter(nil, "CHAT_MSG_SYSTEM", "Someone has come online.") == false, "hid another line")
