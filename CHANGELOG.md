@@ -17,6 +17,17 @@ broken and now works. Leave out internal changes. Sections are
   in your bags and on the map. Uncommon and better loot keeps its quality
   colour around it.
 
+### Fixed
+- The map opens faster on long journeys with many groups, and opening it
+  again on Today, Last 7 days or Last 30 days is quick when nothing new
+  was recorded.
+- The Stats screen no longer stutters every few seconds while you play
+  with a replay running or a bar hovered, and the bar you hover stays
+  picked.
+- Clicking a zone on the Stats screen that you entered before the date
+  range takes the replay to the range's start instead of the start of
+  the journey.
+
 ## 1.20.4
 
 ### New
