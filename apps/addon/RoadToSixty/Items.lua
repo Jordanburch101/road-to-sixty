@@ -4,6 +4,7 @@ local _, ns = ...
 --   ns.ItemString(link, withoutEnchant)  an item link as a stable item string
 --   ns.Equippable(itemID)                whether it can be worn
 --   ns.CountItems(key)                   items in the gear and bags, counted by key
+--   ns.DressModel(model, gear)           a DressUpModel dressed in gear, both hands shown
 
 -- An item link as its item string, keeping what tells this item apart (the
 -- random suffix such as "of the Monkey", the enchant, the item context that
@@ -23,6 +24,31 @@ function ns.ItemString(link, withoutEnchant)
     local last = #fields
     while last > 1 and fields[last] == "" do last = last - 1 end
     return "item:" .. table.concat(fields, ":", 1, last)
+end
+
+-- Dresses model (a DressUpModel) in gear: inventory slot ID -> item string
+-- or ID. Each weapon is tried on in its own hand: tried on without one, a
+-- second one-hander took the main hand's place and the off hand never
+-- showed (Jordan, 2026-11-12), and a ranged weapon takes the main hand's
+-- place too. So the ranged weapon goes on first, and shows only with no
+-- main hand weapon, unless the player is a hunter, whose ranged weapon goes
+-- on last. Necks, rings and trinkets don't show on a model.
+local MAIN_HAND, OFF_HAND, RANGED = 16, 17, 18
+local NOT_SHOWN = { [2] = true, [11] = true, [12] = true, [13] = true, [14] = true }
+function ns.DressModel(model, gear)
+    model:Undress()
+    local function On(item, hand)
+        pcall(model.TryOn, model, type(item) == "number" and "item:" .. item or item, hand)
+    end
+    local hunter = select(2, UnitClass("player")) == "HUNTER"
+    if gear[RANGED] and not hunter and not gear[MAIN_HAND] then On(gear[RANGED]) end
+    for slot, item in pairs(gear) do
+        if slot ~= MAIN_HAND and slot ~= OFF_HAND and slot ~= RANGED and not NOT_SHOWN[slot] then On(item) end
+    end
+    -- The hand names Blizzard's own dressing room passes (DressUpModelFrameMixin).
+    if gear[MAIN_HAND] then On(gear[MAIN_HAND], "MAINHANDSLOT") end
+    if gear[OFF_HAND] then On(gear[OFF_HAND], "SECONDARYHANDSLOT") end
+    if gear[RANGED] and hunter then On(gear[RANGED]) end
 end
 
 -- Whether an item can be worn (bags can, but are not gear).

@@ -31,6 +31,8 @@ broken and now works. Leave out internal changes. Sections are
 - Clicking a zone on the Stats screen that you entered before the date
   range takes the replay to the range's start instead of the start of
   the journey.
+- The gear screen's character and the gear card show both weapons when
+  you hold two one-handers. The off hand weapon was missing.
 
 ## 1.20.4
 
