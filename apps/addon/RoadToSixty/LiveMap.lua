@@ -195,22 +195,51 @@ local function Catch(state)
     return changed
 end
 
--- The arrow's place while live: the player's position now, facing the way
--- from the last point stored, with its mode and band for the line from that
--- point. Nil when not live or nowhere to put it.
+-- The player's world position now, not rounded to yards as the recorder
+-- stores it, so the arrow moves smoothly; the recorder's outdoors, where
+-- the client hides it.
+local function WorldPosition()
+    if not IsInInstance() then
+        local mapID = C_Map.GetBestMapForUnit("player")
+        local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+        if pos then
+            local c, world = C_Map.GetWorldPosFromMapPos(mapID, pos)
+            if c and world then return c, world.x, world.y end
+        end
+    end
+    return ns.Recorder:Position()
+end
+
+local SMOOTH = 20           -- higher follows the position faster; it eases out the client's small steps
+local SNAP = 50             -- content units: further than this (a teleport) the arrow jumps there
+local shown                 -- { x, y, at }: where the arrow was put last
+
+-- The arrow's place while live: at the player's position now, eased so it
+-- doesn't shake, facing the way the character faces (GetPlayerFacing, in
+-- radians anticlockwise from north as the arrow turns; nil where the
+-- client hides it, and then the last way it faced), with the mode and band
+-- for the line from the last point stored. Facing rather than the way from
+-- that point, which a yard or two after a point is stored swung with every
+-- small step (Jordan, 2026-11-11). Nil when not live or nowhere to put it.
 function LiveMap:Head(state)
     if not (live and inner and Live(state)) then return end
-    local c, x, y = ns.Recorder:Position()
+    local c, x, y = WorldPosition()
     local toContent = c and state.toContent[c]
     if not toContent then return end
     local hx, hy = toContent(x, y)
-    local n = state.n
-    local dx, dy = hx - state.px[n], hy - state.py[n]
-    local rotation
-    if dx * dx + dy * dy > 1e-6 then
-        rotation = math.atan2(-dy, dx) - math.pi / 2
+    local now = GetTime()
+    if shown and shown.c == c then
+        local dx, dy = hx - shown.x, hy - shown.y
+        if dx * dx + dy * dy < SNAP * SNAP then
+            local f = 1 - math.exp(-SMOOTH * math.max(0, now - shown.at))
+            hx, hy = shown.x + dx * f, shown.y + dy * f
+        end
     end
-    return hx, hy, rotation, ns.Recorder:Mode(), ns.Style.LevelBand(UnitLevel("player"))
+    local facing = GetPlayerFacing and GetPlayerFacing()
+    if type(facing) ~= "number" then facing = shown and shown.facing end
+    shown = shown or {}
+    shown.x, shown.y, shown.c, shown.at, shown.facing = hx, hy, c, now, facing
+    return hx, hy, facing, ns.Recorder:Mode(), ns.Style.LevelBand(UnitLevel("player"))
 end
 
 -- Each frame while the map is open.
