@@ -447,7 +447,7 @@ function GearTimeline.Swaps(spans, sessions, bounds)
                 end
             end
         end
-        if not multi then
+        if not multi or not best then
             for k = i, j do Single(k) end
             return
         end
@@ -488,17 +488,17 @@ function GearTimeline.Swaps(spans, sessions, bounds)
         local last = out[#out]
         local badge = false
         if sh.swap then
-            local next = before and before.b == sh.a
+            local next = before ~= nil and before.b == sh.a
             local total = 0
             for _, seconds in pairs(sh.worn) do total = total + seconds end
             local function Share(st) return total > 0 and (sh.worn[st] or 0) / total or 0 end
-            if next and before.st ~= sh.st then
+            if next and before and before.st ~= sh.st then
                 -- The item shown changes: to one in use just before (the player
                 -- came to favour it), or while the one before is still in hand
                 -- for a fair share. Not for a replacement the old item came
                 -- back to for a moment.
                 badge = before.inUse[sh.st] or (sh.inUse[before.st] and Share(before.st) >= GearTimeline.SWAP_SHARE) or false
-            elseif not (next and before.swap) then
+            elseif not (next and before and before.swap) then
                 -- Swapping starts under the same item, the others in hand for a fair share.
                 badge = 1 - Share(sh.st) >= GearTimeline.SWAP_START
             end
