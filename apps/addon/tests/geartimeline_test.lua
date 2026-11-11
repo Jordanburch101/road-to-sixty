@@ -180,6 +180,83 @@ check(seventy.capAt == 1000, "the cap is reached at 70 when the cap is 70, got "
 check(G.LevelAt(seventy, 1500) == 70, "past the cap the level stays 70")
 G.CAP = 60
 
+-- 8. Weapons swapped back and forth (#137), the mock's warrior: an hour a
+-- level, played without a break. The Thornblade alone at level 20, then
+-- swapping with the Iron Star two-hander: mostly the Iron Star to 25, mostly
+-- the Thornblade after. The Thornblade is replaced by the Sunforged Blade at
+-- 27, the Iron Star put away at 30 and taken out once, briefly, at 40. A
+-- Keen Axe in the off hand, off whenever the Iron Star is on.
+do
+    local played = { { 0, 22 * H, 0 } }
+    local bounds = {}
+    for level = 0, 22 do bounds[#bounds + 1] = level * H end      -- level 20 + i starts at i hours
+    local mainHand, offHand = {}, {}
+    local function On(list, id, t, endT)
+        list[#list + 1] = { id = id, item = id and "item:" .. id, t = t, endT = endT }
+    end
+    On(mainHand, 1, 0, H); On(offHand, 4, 0, H)
+    local t = H
+    while t < 10 * H - 1 do
+        local two = t < 5 * H and 0.3 * H or 0.1 * H
+        local one = t < 5 * H and 0.1 * H or 0.3 * H
+        On(mainHand, 3, t, t + two); On(offHand, nil, t, t + two)
+        local sword = t + two < 7 * H and 1 or 2
+        On(mainHand, sword, t + two, t + two + one); On(offHand, 4, t + two, t + two + one)
+        t = t + two + one
+    end
+    On(mainHand, 2, t, 20 * H); On(mainHand, 3, 20 * H, 20 * H + 300); On(mainHand, 2, 20 * H + 300, 22 * H)
+    On(offHand, 4, t, 20 * H); On(offHand, nil, 20 * H, 20 * H + 300); On(offHand, 4, 20 * H + 300, 22 * H)
+    -- The empty off hand while the two-hander is on is no span, as Build leaves it.
+    local off = {}
+    for _, s in ipairs(offHand) do if s.id then off[#off + 1] = s end end
+    local out = G.Swaps(mainHand, played, bounds)
+    local function Ids(list)
+        local ids = {}
+        for _, s in ipairs(list) do ids[#ids + 1] = s.id .. "@" .. (s.t / H) end
+        return table.concat(ids, " ")
+    end
+    check(#out == 4 and out[1].id == 1 and out[2].id == 3 and out[3].id == 1 and out[4].id == 2,
+        "main hand: the Thornblade, the Iron Star while it was held most, the Thornblade, the Sunforged Blade; got " .. Ids(out))
+    check(out[2].t == H and out[2].endT == 5 * H and out[3].t == 5 * H, "the Iron Star from the swapping's start to level 25")
+    check(out[2].swap and out[2].badges and out[2].badges[1] == H and #out[2].badges == 1, "a badge where swapping starts")
+    check(out[3].badges and out[3].badges[1] == 5 * H, "a badge where the Thornblade comes to be held most")
+    check(out[4].t <= 7.5 * H and not out[4].badges, "no badge for the upgrade: the Thornblade stopped being in use")
+    check(out[4].endT == 22 * H and out[4].swap, "the Sunforged Blade to the end, the brief outing at 40 inside it")
+    check(out[2].shares and out[2].shares[1].id == 3 and math.abs(out[2].shares[1].seconds / (4 * H) - 0.75) < 0.01,
+        "the Iron Star's share where it was shown: three quarters")
+    check(out[1].next == out[2] and out[2].prev == out[1] and not out[1].closed and out[4].next == nil and not out[4].closed,
+        "neighbours and the end")
+    -- The off hand: the Keen Axe alone, one bar, its gaps included.
+    local axe = G.Swaps(off, played, bounds)
+    check(#axe == 1 and axe[1].t == 0 and axe[1].endT == 22 * H and not axe[1].swap and not axe[1].badges,
+        "the off hand is one bar through the Iron Star's turns")
+end
+
+-- 9. Without swapping, kept gear is as before: an upgrade, and an item put
+-- away for longer than the gap starts again rather than joining.
+do
+    local played = { { 0, 100 * H, 0 } }
+    local bounds = { 0, 10 * H, 20 * H }
+    local list = {
+        { id = 1, t = 0, endT = 5 * H, closed = true },
+        { id = 1, t = 8 * H, endT = 9 * H },
+        { id = 2, t = 9 * H, endT = 30 * H },
+    }
+    local out = G.Swaps(list, played, bounds)
+    check(#out == 3 and out[1].closed and out[1].endT == 5 * H and out[2].t == 8 * H and out[2].next == out[3]
+        and not out[3].closed and not out[1].badges and not out[3].swap,
+        "an item away longer than the gap, then an upgrade: as before")
+    -- Away for less than the gap (an hour), with nothing else in the slot: one bar.
+    list[2].t = 6 * H
+    out = G.Swaps(list, played, bounds)
+    check(#out == 2 and out[1].endT == 9 * H and not out[1].closed and out[1].next == out[2], "away for less than the gap: one bar")
+    -- Played time, not the clock: a week logged out between two uses is no time away.
+    local sessions = { { 0, 5 * H, 0 }, { 5 * H + 7 * 86400, 200 * H, 5 * H } }
+    local apart = { { id = 1, t = 0, endT = 5 * H, closed = true }, { id = 1, t = 5 * H + 7 * 86400 + 600, endT = 10 * H + 7 * 86400 } }
+    out = G.Swaps(apart, sessions, bounds)
+    check(#out == 1, "logged out between two uses: still in use")
+end
+
 if failures == 0 then
     print("GearTimeline tests passed.")
 else
