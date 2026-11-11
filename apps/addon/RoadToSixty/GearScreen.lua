@@ -596,7 +596,7 @@ local function UpdateDoll(t)
     shownAt = { cut, every }
     local worn = G.WornAt(timeline, t, every)
     local epics, rares, enchanted = 0, 0, 0
-    local dressed = {}
+    local dressed, gear = {}, {}
     for slot, button in pairs(ui.doll) do
         local span = worn[slot]
         button.span = span
@@ -608,7 +608,8 @@ local function UpdateDoll(t)
             if button.rim:IsShown() then KeepPlaying(button.rim.anims) end
             if item.quality >= 4 then epics = epics + 1 elseif item.quality == 3 then rares = rares + 1 end
             if EnchantOf(span) then enchanted = enchanted + 1 end
-            dressed[#dressed + 1] = ItemKey(span)
+            dressed[#dressed + 1] = slot .. "=" .. ItemKey(span)
+            gear[slot] = ItemKey(span)
         else
             SetItemButtonTexture(button, button.empty)
             SetItemButtonQuality(button, nil)
@@ -631,8 +632,7 @@ local function UpdateDoll(t)
     local signature = table.concat(dressed, ",")
     if ui.model:IsShown() and signature ~= lastDressed then
         lastDressed = signature
-        ui.model:Undress()
-        for _, item in ipairs(dressed) do pcall(ui.model.TryOn, ui.model, item) end
+        ns.DressModel(ui.model, gear)
     end
 end
 
