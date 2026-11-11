@@ -460,16 +460,12 @@ end
 
 -- Journey data -------------------------------------------------------------------
 
-local function BuildPoints(paths)
-    local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
-    -- The jump the arrow was on was the old points' (#103).
-    state.headJump = nil
-
-    -- Level changes in time order, walked alongside the points. The same
-    -- pass builds the level and zone timelines.
+-- Level changes in events, in time order, and the level and zone
+-- timelines (state.timelines) from the same pass.
+function Map.Timelines(events)
     local changes = {}
     local tl = { levelTimes = {}, levels = {}, zoneTimes = {}, zones = {} }
-    for _, e in ipairs(ns.view.events) do
+    for _, e in ipairs(events) do
         if e[2] == "on" or e[2] == "lvl" then
             changes[#changes + 1] = e
             tl.levelTimes[#tl.levelTimes + 1], tl.levels[#tl.levels + 1] = e[1], e[6]
@@ -477,6 +473,16 @@ local function BuildPoints(paths)
             tl.zoneTimes[#tl.zoneTimes + 1], tl.zones[#tl.zones + 1] = e[1], e[6]
         end
     end
+    return changes, tl
+end
+
+local function BuildPoints(paths)
+    local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
+    -- The jump the arrow was on was the old points' (#103).
+    state.headJump = nil
+
+    -- Level changes, walked alongside the points.
+    local changes, tl = Map.Timelines(ns.view.events)
     state.timelines = tl
     local nextChange = 1
     local band = Style.LevelBand(changes[1] and changes[1][6] or 1)
@@ -555,6 +561,7 @@ local function BuildPoints(paths)
     state.pj, state.pd, state.pg, state.events = pj, pd, nil, ns.view.events
     state.bounds = { x1, y1, x2, y2 }
     state.lods = {}
+    ns.LiveMap:Built(state)
 end
 
 local function GetMarker(i)
@@ -1731,13 +1738,20 @@ local function PlaceHead()
         ns.Portals:Cross()
     end
     -- The trail is drawn a whole line at a time; a short line in the path's
-    -- own colour joins its end to the gliding arrow.
-    local spec = gliding and state.shown > 0 and state.drawn[state.shown]
-    local mode = state.pm[seq]
+    -- own colour joins its end to the gliding arrow. Live (LiveMap.lua, #136),
+    -- the arrow is where the player is now, the line from the last point
+    -- stored in the mode and band they are in now.
+    local spec = gliding and state.shown > 0 and state.drawn[state.shown] or nil
+    local mode, band = state.pm[seq], state.pb[seq]
+    local lx, ly, lrot, lmode, lband = ns.LiveMap:Head(state)
+    if lx and not portal then
+        x, y, rotation, mode, band = lx, ly, lrot or rotation, lmode, lband
+        spec = { nil, nil, px[seq], py[seq] }
+    end
     if spec and spec[5] ~= "j" and not spec.hidden and (mode ~= "t" or ns.FilterShown("flights")) then
         lead:SetStartPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
         lead:SetEndPoint("TOPLEFT", pathLayer, x, -y)
-        lead:SetColorTexture(Style.LineColor(mode, state.pb[seq]))
+        lead:SetColorTexture(Style.LineColor(mode, band))
         lead:SetThickness(LINE_WIDTH / state.zoom)
         lead:Show()
     else
@@ -2721,6 +2735,7 @@ local function OnUpdate(_, elapsed)
     ns.GuildPop:Update(elapsed)
     ns.LevelPop:Update(elapsed)
     ns.KillPop:Update(elapsed)
+    ns.LiveMap:Update(elapsed)
 end
 
 -- Window ---------------------------------------------------------------------------
@@ -3255,7 +3270,8 @@ function Map:Open()
     ns.SafeShow(Map.OpenNow, Map)
 end
 
-function Map:OpenNow()
+-- keep: built again where it is (LiveMap.lua), not fitted to the path.
+function Map:OpenNow(keep)
     if not frame then
         local worldLayer = CreateWindow()
         local started = debugprofilestop()
@@ -3333,7 +3349,10 @@ function Map:OpenNow()
     BuildOtherTracks()
     -- Where it was when closed, if it shows the same journey and range;
     -- else the whole path.
-    if last and last.view == ns.view and last.range == ns.Range:Key() then
+    if keep then
+        ClampView()
+        ApplyView()
+    elseif last and last.view == ns.view and last.range == ns.Range:Key() then
         SetZoomNow(math.max(state.minZoom, math.min(MAX_ZOOM, last.zoom)))
         state.ox, state.oy = last.ox, last.oy
         ClampView()
@@ -3621,3 +3640,50 @@ ns.Command("motes", "toggle sparkles drifting along the journey map path", funct
     ns.Options:Refresh()
     ns.Print("Path sparkles " .. (ns.db.motes and "on" or "off") .. ".")
 end)
+
+-- What LiveMap.lua needs to keep the map up to date while it is open (#136),
+-- in a table rather than more top-level locals (see the note on the limit).
+Map.inner = {
+    state = state,
+    LodDistance = LodDistance,
+    CHUNK = CHUNK,
+    -- Points were added at the end: the replay stays at the end, the path
+    -- is drawn again where it is, and the replay bar's last band reaches them.
+    PointsAdded = function()
+        state.cur = state.n
+        state.built = nil
+        local runs = scrub.runs
+        if runs and runs[#runs] then runs[#runs].last = state.n end
+        LayoutScrub()
+        ApplyView()
+        ApplyCursor()
+    end,
+    -- New events: their markers, kill marks, the replay bar's ticks and History.
+    MarkersChanged = function()
+        local _, tl = Map.Timelines(ns.view.events)
+        state.timelines = tl
+        BuildMarkers()
+        ns.KillMarks:Rebuild()
+        BuildScrub()
+        ApplyCursor()
+        ns.Panel:Refresh()
+    end,
+    -- Everything built again, the view kept where it is.
+    Rebuild = function()
+        state.journey = nil
+        Map:OpenNow(true)
+    end,
+    -- The arrow moved with the player: placed again, and the view moves with
+    -- it as a replay's does while it is on screen; a view panned away from it
+    -- stays where it was put.
+    HeadMoved = function()
+        local x, y = state.headX, state.headY
+        PlaceHead()
+        if not x or state.zoom <= state.minZoom or not state.headX then return end
+        local fx = (x - state.ox) * state.zoom / state.W
+        local fy = (y - state.oy) * state.zoom / state.H
+        if fx >= 0 and fx <= 1 and fy >= 0 and fy <= 1 then
+            FollowHead()
+        end
+    end,
+}

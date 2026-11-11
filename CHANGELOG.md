@@ -16,6 +16,10 @@ broken and now works. Leave out internal changes. Sections are
   item or spell icon in the History list sit in an item button frame, as
   in your bags and on the map. Uncommon and better loot keeps its quality
   colour around it.
+- The map follows you live while it's open on your own journey: the arrow
+  moves with you and the line grows as you go, so you can watch a flight
+  across the map. Zoomed in, the map moves along with you, unless you've
+  moved it away to look elsewhere.
 
 ### Fixed
 - The map opens faster on long journeys with many groups, and opening it
