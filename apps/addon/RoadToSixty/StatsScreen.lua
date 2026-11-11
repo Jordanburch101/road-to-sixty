@@ -157,11 +157,11 @@ end
 
 -- A row per week since the cap, as the level rows are per level: its
 -- numbers are the week's window. Built once for an index and cap.
-local weekRows, weekKey
+local weekRows, weekIndex, weekCap
 local function WeekRows()
-    local key = tostring(index) .. "|" .. tostring(ns.Range.capAt)
-    if key == weekKey then return weekRows end
-    weekKey, weekRows = key, {}
+    -- Keyed by the index itself: a new index can take a collected one's address.
+    if index == weekIndex and ns.Range.capAt == weekCap then return weekRows end
+    weekIndex, weekCap, weekRows = index, ns.Range.capAt, {}
     for _, week in ipairs(Stats.Weeks(index, ns.Range.capAt)) do
         local w = Stats.Window(index, week.from, week.to)
         weekRows[#weekRows + 1] = {
@@ -1199,7 +1199,11 @@ local function CreateWindow()
     dark:SetColorTexture(0, 0, 0, 0.65)
     shade:SetScript("OnClick", function() win:Hide() end)
     shade:Hide()
-    win:SetScript("OnHide", function() shade:Hide() end)
+    win:SetScript("OnHide", function()
+        shade:Hide()
+        -- Its chart's hover is cleared only while it is shown (Busy, #103).
+        if ui.windowChart then ui.windowChart.hover = nil end
+    end)
     -- Not one of UISpecialFrames: Escape closes every one of those at once,
     -- so it would close the map window too. Escape closes the map window,
     -- and this one with it; its close button closes just this one.
@@ -1803,6 +1807,12 @@ local function CreateView(frames)
     view:SetFrameLevel(frames.canvas:GetFrameLevel() + 60)
     view:EnableMouse(true)
     view:Hide()
+    -- The chart's hover is cleared only while it is shown; hidden with the
+    -- cursor on it, it would keep the screen busy (Busy, #103).
+    view:SetScript("OnHide", function()
+        if ui.paneChart then ui.paneChart.hover = nil end
+        hoverRow = nil
+    end)
     -- The map's frame style around the whole screen.
     viewEdges = CreateFrame("Frame", nil, frames.window, "BackdropTemplate")
     viewEdges:SetPoint("TOPLEFT", view, -4, 4)

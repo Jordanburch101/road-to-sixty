@@ -166,6 +166,24 @@ for _, entry in ipairs(Parties:Info(last).members) do
 end
 check(found or Parties:Info(last).finish, "the last group, if still going, has the member who came later")
 
+-- The live journey grows by a new group, after its events were indexed:
+-- the index carries on to it rather than being made again.
+local newGroup = { events[#events][1] + 60, "grp", 0, 0, 0, "party", { { "Player-late", "Late" } }, false, 1 }
+events[#events + 1] = newGroup
+events[#events + 1] = { newGroup[1] + 30, "grpa", 0, 0, 0, { "Player-later", "Later", "Orc", "Male", "ROGUE", 14 } }
+events[#events + 1] = { newGroup[1] + 90, "grpx", 0, 0, 0, { levels = {} } }
+check(Parties.Position(events, newGroup) == #events - 2, "a group added to the live journey is found where it is")
+local late = Parties:Info(newGroup)
+check(#late.members == 2 and late.members[2].m[1] == "Player-later" and late.finish == newGroup[1] + 90,
+    "a group added to the live journey has its own members and end")
+AllMatch(events, "after a group was added")
+
+-- Shrunk and grown again in place (an event taken out, others added).
+table.remove(events, 5)
+events[#events + 1] = { events[#events][1] + 10, "kill", 0, 0, 0 }
+Parties:Reset()
+AllMatch(events, "after the journey shrank and grew again")
+
 -- A journey changed in place (an event put in near the start).
 table.insert(events, 3, { events[2][1], "kill", 0, 0, 0 })
 Parties:Reset()

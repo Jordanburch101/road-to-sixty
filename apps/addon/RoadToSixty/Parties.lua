@@ -49,7 +49,7 @@ local cache = setmetatable({}, { __mode = "k" })
 local positions, indexed, indexedCount = {}, nil, 0
 
 local function Index(events, from)
-    if from == 1 then positions = setmetatable({}, { __mode = "k" }) end
+    if from == 1 then positions = {} end     -- plain: indexed keeps the events anyway
     for i = from, #events do
         positions[events[i]] = i
     end
