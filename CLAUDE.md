@@ -46,6 +46,7 @@ for data, its exact format; read that before changing a module.
 | Routes.lua | boat and zeppelin docks (`ns.Dock`, `ns.BoatRoute`) and boat sea courses (`ns.SeaCourse`, `ns.CourseCurve`) |
 | Style.lua | the journey's look: path colours, jump styles, event and class icons, the item button frame for icon markers (`Style.Frame`), History categories (`ns.Style`) |
 | Map.lua | journey map window, layers, replay, markers; the `Together` table is replaying several journeys at once |
+| LiveMap.lua | the map kept up to date while open on this character's journey: the arrow at the player, points added as they are stored (#136); Map.lua hands it what it needs in `Map.inner` |
 | ZoneArt.lua | zone map art: overlays, outline and edge masks, `ZoneView` |
 | Gaps.lua | land and sea no zone map covers, painted as zone maps paint theirs (`Gaps/`, Era's set in `Gaps/Era/`, the Anniversary realms' in `Gaps/Anniversary/`), and the soft feather and rim masks (#73) |
 | Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |

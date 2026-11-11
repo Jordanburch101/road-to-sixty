@@ -460,16 +460,12 @@ end
 
 -- Journey data -------------------------------------------------------------------
 
-local function BuildPoints(paths)
-    local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
-    -- The jump the arrow was on was the old points' (#103).
-    state.headJump = nil
-
-    -- Level changes in time order, walked alongside the points. The same
-    -- pass builds the level and zone timelines.
+-- Level changes in events, in time order, and the level and zone
+-- timelines (state.timelines) from the same pass.
+function Map.Timelines(events)
     local changes = {}
     local tl = { levelTimes = {}, levels = {}, zoneTimes = {}, zones = {} }
-    for _, e in ipairs(ns.view.events) do
+    for _, e in ipairs(events) do
         if e[2] == "on" or e[2] == "lvl" then
             changes[#changes + 1] = e
             tl.levelTimes[#tl.levelTimes + 1], tl.levels[#tl.levels + 1] = e[1], e[6]
@@ -477,6 +473,16 @@ local function BuildPoints(paths)
             tl.zoneTimes[#tl.zoneTimes + 1], tl.zones[#tl.zones + 1] = e[1], e[6]
         end
     end
+    return changes, tl
+end
+
+local function BuildPoints(paths)
+    local px, py, pt, pm, pb, brk, pj, pd = {}, {}, {}, {}, {}, {}, {}, {}
+    -- The jump the arrow was on was the old points' (#103).
+    state.headJump = nil
+
+    -- Level changes, walked alongside the points.
+    local changes, tl = Map.Timelines(ns.view.events)
     state.timelines = tl
     local nextChange = 1
     local band = Style.LevelBand(changes[1] and changes[1][6] or 1)
@@ -555,6 +561,7 @@ local function BuildPoints(paths)
     state.pj, state.pd, state.pg, state.events = pj, pd, nil, ns.view.events
     state.bounds = { x1, y1, x2, y2 }
     state.lods = {}
+    ns.LiveMap:Built(state)
 end
 
 local function GetMarker(i)
@@ -866,7 +873,8 @@ local function GetLod(track, k, background)
         chunks[#chunks + 1] = { first, last, x1, y1, x2, y2 }
     end
 
-    lod = { idx = idx, chunks = chunks }
+    -- fromBelow: made from level k - 1, which LiveMap.ExtendLods follows.
+    lod = { idx = idx, chunks = chunks, fromBelow = source ~= nil }
     track.lods[k] = lod
     if not background then
         state.perf.lod = state.perf.lod + debugprofilestop() - started
@@ -1463,6 +1471,7 @@ local function BuildPath()
     lod, list, state.lodLevel = PickLod(state, x1, y1, x2, y2, z, MAX_LINES)
     -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
     local drawn = ns.CurveLines(LinesIn(state, lod, list, x1, y1, x2, y2, true), z, MAX_LINES)
+    local old = state.drawn
     state.drawn = drawn
     BuildOtherLines(x1, y1, x2, y2, z)
 
@@ -1505,9 +1514,14 @@ local function BuildPath()
     state.lineCount, state.shown, state.lineZoom = #drawn, shown, z
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
     state.built = { x1, y1, x2, y2, zoom = z }
-    -- Mote line indexes point into the old list, so respawn them all.
+    -- Mote line indexes point into the old list: a mote keeps going where
+    -- its line is the same in the new one (most of them, when the live map
+    -- adds points at the end), and is spawned again elsewhere.
     for _, m in ipairs(motes) do
-        m.line = nil
+        local was, now = m.line and old[m.line], m.line and drawn[m.line]
+        if not (was and now and was[1] == now[1] and was[2] == now[2] and was[3] == now[3] and was[4] == now[4]) then
+            m.line = nil
+        end
     end
     state.perf.place = debugprofilestop() - placeStarted
     state.perf.build = debugprofilestop() - started
@@ -1731,13 +1745,20 @@ local function PlaceHead()
         ns.Portals:Cross()
     end
     -- The trail is drawn a whole line at a time; a short line in the path's
-    -- own colour joins its end to the gliding arrow.
-    local spec = gliding and state.shown > 0 and state.drawn[state.shown]
-    local mode = state.pm[seq]
+    -- own colour joins its end to the gliding arrow. Live (LiveMap.lua, #136),
+    -- the arrow is where the player is now, the line from the last point
+    -- stored in the mode and band they are in now.
+    local spec = gliding and state.shown > 0 and state.drawn[state.shown] or nil
+    local mode, band = state.pm[seq], state.pb[seq]
+    local lx, ly, lrot, lmode, lband = ns.LiveMap:Head(state)
+    if lx and not portal then
+        x, y, rotation, mode, band = lx, ly, lrot or rotation, lmode, lband
+        spec = { nil, nil, px[seq], py[seq] }
+    end
     if spec and spec[5] ~= "j" and not spec.hidden and (mode ~= "t" or ns.FilterShown("flights")) then
         lead:SetStartPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
         lead:SetEndPoint("TOPLEFT", pathLayer, x, -y)
-        lead:SetColorTexture(Style.LineColor(mode, state.pb[seq]))
+        lead:SetColorTexture(Style.LineColor(mode, band))
         lead:SetThickness(LINE_WIDTH / state.zoom)
         lead:Show()
     else
@@ -2721,6 +2742,7 @@ local function OnUpdate(_, elapsed)
     ns.GuildPop:Update(elapsed)
     ns.LevelPop:Update(elapsed)
     ns.KillPop:Update(elapsed)
+    ns.LiveMap:Update(elapsed)
 end
 
 -- Window ---------------------------------------------------------------------------
@@ -3255,7 +3277,8 @@ function Map:Open()
     ns.SafeShow(Map.OpenNow, Map)
 end
 
-function Map:OpenNow()
+-- keep: built again where it is (LiveMap.lua), not fitted to the path.
+function Map:OpenNow(keep)
     if not frame then
         local worldLayer = CreateWindow()
         local started = debugprofilestop()
@@ -3333,7 +3356,10 @@ function Map:OpenNow()
     BuildOtherTracks()
     -- Where it was when closed, if it shows the same journey and range;
     -- else the whole path.
-    if last and last.view == ns.view and last.range == ns.Range:Key() then
+    if keep then
+        ClampView()
+        ApplyView()
+    elseif last and last.view == ns.view and last.range == ns.Range:Key() then
         SetZoomNow(math.max(state.minZoom, math.min(MAX_ZOOM, last.zoom)))
         state.ox, state.oy = last.ox, last.oy
         ClampView()
@@ -3621,3 +3647,76 @@ ns.Command("motes", "toggle sparkles drifting along the journey map path", funct
     ns.Options:Refresh()
     ns.Print("Path sparkles " .. (ns.db.motes and "on" or "off") .. ".")
 end)
+
+-- What LiveMap.lua needs to keep the map up to date while it is open (#136),
+-- in a table rather than more top-level locals (see the note on the limit).
+Map.inner = {
+    state = state,
+    LodDistance = LodDistance,
+    CHUNK = CHUNK,
+    -- Points were added at the end: the replay stays at the end, the path
+    -- is drawn again where it is, and the replay bar's last band reaches them.
+    -- box: around the new points; the path is drawn again only when they
+    -- fall where it was built (the view and its margin), as a pan out to
+    -- them builds it anyway. Together's played times are worked out again,
+    -- and the levels the warm-up was building start over, as it counted the
+    -- points when it began.
+    PointsAdded = function(box)
+        state.cur = state.n
+        state.pg = nil
+        local built = state.built
+        if not built or box[3] >= built[1] and box[1] <= built[3] and box[4] >= built[2] and box[2] <= built[4] then
+            state.built = nil
+        end
+        if state.warm then StartWarmUp() end
+        local runs = scrub.runs
+        if runs and runs[#runs] then
+            runs[#runs].last = state.n
+            LayoutScrub()
+        else
+            BuildScrub()
+        end
+        ApplyView()
+        ApplyCursor()
+    end,
+    -- New events: their markers, kill marks, the replay bar's ticks and
+    -- History (where it was scrolled to), the gear card, the screens and the
+    -- pops, as an open builds them.
+    MarkersChanged = function()
+        local _, tl = Map.Timelines(ns.view.events)
+        state.timelines = tl
+        BuildMarkers()
+        ns.KillMarks:Rebuild()
+        ns.GearCard:Rebuild()
+        ns.Screens:Rebuild()
+        ns.QuestPop:Rebuild()
+        ns.GuildPop:Rebuild()
+        ns.LevelPop:Rebuild()
+        ns.KillPop:Rebuild()
+        BuildScrub()
+        ApplyCursor()
+        ns.Panel:Refresh(true)
+    end,
+    -- Everything built again, the view kept where it is.
+    Rebuild = function()
+        state.journey = nil
+        Map:OpenNow(true)
+    end,
+    -- The arrow moved with the player: placed again. The view moves with it,
+    -- as a replay's does, only when the arrow walked out of the middle of
+    -- the view by itself: never while the map is dragged or zooming, and not
+    -- when the view was moved away from it (it was already outside then).
+    HeadMoved = function()
+        local x, y = state.headX, state.headY
+        PlaceHead()
+        if drag or state.zoom ~= state.targetZoom or not x or not state.headX then return end
+        local function Inside(hx, hy)
+            local fx = (hx - state.ox) * state.zoom / state.W
+            local fy = (hy - state.oy) * state.zoom / state.H
+            return fx >= 0.1 and fx <= 0.9 and fy >= 0.1 and fy <= 0.9
+        end
+        if Inside(x, y) and not Inside(state.headX, state.headY) then
+            FollowHead()
+        end
+    end,
+}

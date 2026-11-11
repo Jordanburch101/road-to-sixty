@@ -54,6 +54,7 @@ Portals.lua
 PathCurve.lua
 Style.lua
 Map.lua
+LiveMap.lua
 Panel.lua
 FriendsPanel.lua
 GearCard.lua

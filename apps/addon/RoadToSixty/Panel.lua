@@ -1159,10 +1159,12 @@ function Panel:SetTime(t, force)
     historyList:Refresh()
 end
 
-function Panel:Refresh()
+-- keepScroll: the list stays where it was scrolled to (the live map's
+-- refresh), rather than going back to the top.
+function Panel:Refresh(keepScroll)
     historyItems = BuildHistory()
     FilterHistory()
-    historyList:ScrollToTop()
+    if not keepScroll then historyList:ScrollToTop() end
     RefreshCharacterList()
     ns.FriendsPanel:Refresh()
 end
