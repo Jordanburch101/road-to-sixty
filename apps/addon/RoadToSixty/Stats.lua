@@ -448,7 +448,8 @@ end
 
 local function Worn(index, timeline, from, to)
     local best
-    for slot, spans in pairs(timeline and timeline.kept or {}) do
+    -- What was in hand, not kept gear's swaps shown as the one held most.
+    for slot, spans in pairs(timeline and (timeline.held or timeline.kept) or {}) do
         if slot ~= 4 and slot ~= 19 then
             for _, span in ipairs(spans) do
                 local a, b = math.max(span.t, from), math.min(span.endT or to, to)

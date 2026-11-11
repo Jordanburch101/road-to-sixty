@@ -50,6 +50,12 @@ local ZOOM_STEP = 1.25
 local STATUS_BAR = "Interface\\TargetingFrame\\UI-StatusBar"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local GOLD = { 1, 0.82, 0 }
+-- The badge where weapons start being swapped back and forth, or the one
+-- held most changes (GearTimeline.Swaps, #137): an atlas or a file, tried
+-- in order until one draws; its size is a share of the bar's height. Seen
+-- and kept by Jordan in Forever (2026-11-12).
+local SWAP_BADGE = { { atlas = "transmog-icon-revert" }, { file = "Interface\\Buttons\\UI-RefreshButton" } }
+local SWAP_BADGE_SIZE = 0.8
 
 -- Lanes, top to bottom (shirt and tabard are left out: cosmetic).
 local LANES = { 1, 2, 3, 15, 5, 9, 10, 6, 7, 8, 11, 12, 13, 14, 16, 17, 18 }
@@ -331,6 +337,41 @@ local function SourceText(span)
     return "Where it came from was not seen"
 end
 
+-- The swap badges on a bar (span.badges, times), at their places across
+-- the track; the bar's left edge is at barLeft, as PlaceBar put it.
+local function PlaceBadges(bar, span, barLeft, barH, w)
+    local count = 0
+    for _, t in ipairs(span.badges or {}) do
+        local x = w * X(U(t)) - barLeft
+        if x >= -barH / 2 and x <= bar:GetWidth() + barH / 2 then
+            count = count + 1
+            local badge = bar.badges[count]
+            if not badge then
+                badge = bar.top:CreateTexture(nil, "OVERLAY", nil, 7)
+                -- An atlas the client has, else the file (SetTexture says yes even
+                -- to a file that isn't there).
+                for _, art in ipairs(SWAP_BADGE) do
+                    if art.atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(art.atlas) then
+                        badge:SetAtlas(art.atlas)
+                        break
+                    elseif art.file then
+                        badge:SetTexture(art.file)
+                        break
+                    end
+                end
+                bar.badges[count] = badge
+            end
+            local size = barH * SWAP_BADGE_SIZE
+            badge:SetSize(size, size)
+            badge:ClearAllPoints()
+            -- At the bar's start it sits just past the item's icon, else where swapping starts.
+            badge:SetPoint("CENTER", bar, "TOPLEFT", x < barH and barH + size / 2 or x, 0)
+            badge:Show()
+        end
+    end
+    for k = count + 1, #bar.badges do bar.badges[k]:Hide() end
+end
+
 local function ShowTip(owner, span, again)
     -- An item not cached yet: the game redraws the tooltip from the link
     -- when it arrives, dropping the lines below, so it is shown again then,
@@ -359,6 +400,17 @@ local function ShowTip(owner, span, again)
     if e then
         local by = e[10] == "self" and "Enchanted it yourself" or e[10] and ("Enchanted by " .. e[10]) or "Enchanted"
         GameTooltip:AddLine(("%s, %s"):format(by, When(e[1])), 0.12, 1, 0.12)
+    end
+    -- Swapped back and forth with others (GearTimeline.Swaps): the bar
+    -- shows the one held most; the shares of the time in hand say the rest.
+    if span.shares and #span.shares > 1 then
+        local total = 0
+        for _, share in ipairs(span.shares) do total = total + share.seconds end
+        GameTooltip:AddLine("Swapped back and forth; in hand:", unpack(GOLD))
+        for _, share in ipairs(span.shares) do
+            GameTooltip:AddDoubleLine(Info(share).name, ("%d%%"):format(total > 0 and share.seconds / total * 100 + 0.5 or 0),
+                1, 1, 1, 1, 1, 1)
+        end
     end
     local worn = span.next and ("Worn until %s, replaced by %s"):format(When(span.endT), Info(span.next).name)
         or span.closed and ("Worn until %s"):format(When(span.endT)) or "Still worn"
@@ -678,6 +730,7 @@ local function NewBar()
     bar.text:SetJustifyH("LEFT")
     bar.text:SetWordWrap(false)
     bar.text:SetShadowOffset(1, -1)
+    bar.badges = {}
     bar.outline = bar:CreateTexture(nil, "BACKGROUND", nil, -2)
     bar.outline:SetPoint("TOPLEFT", -1, 1)
     bar.outline:SetPoint("BOTTOMRIGHT", 1, -1)
@@ -827,8 +880,10 @@ end
 local function Milestones()
     if derived.milestones then return derived.milestones end
     local list, firstOf = {}, {}
+    -- When each was first in hand (held), not kept gear's swaps shown as the
+    -- one held most, which can start a level early or leave an item out.
     for _, slot in ipairs(LANES) do
-        for _, span in ipairs(timeline.kept[slot] or {}) do
+        for _, span in ipairs((timeline.held or timeline.kept)[slot] or {}) do
             local q = Info(span).quality
             for _, want in ipairs({ 2, 3, 4 }) do
                 if q == want and (not firstOf[want] or span.t < firstOf[want]) then firstOf[want] = span.t end
@@ -933,6 +988,7 @@ function GearScreen:Redraw()
                 local bar = bars[count] or NewBar()
                 bars[count] = bar
                 PlaceBar(bar, span, left, right, y, barH, w)
+                PlaceBadges(bar, span, math.max(left, 0) + 1, barH, w)
                 bar:SetAlpha(span.brief and 0.4 or 1)
             end
         end
@@ -1018,7 +1074,8 @@ function GearScreen:Redraw()
 
     -- Average item level across the window: a gold line over an area fading
     -- down, a few guide lines with their values, and a diamond in the
-    -- item's colour where a blue or epic went on.
+    -- item's colour where a blue or epic first went on: once for each item,
+    -- not again each time it was swapped back in (#137).
     local h = ui.curve:GetHeight() - 16
     local points, lowest, highest = {}, math.huge, 0
     for k = 0, CURVE_STEPS do
@@ -1082,9 +1139,19 @@ function GearScreen:Redraw()
         line:SetShown(a ~= nil and b ~= nil)
         fill:SetShown(a ~= nil and b ~= nil)
     end
-    local diamonds = 0
+    local diamonds, first = 0, {}
     for _, slot in ipairs(LANES) do
-        for _, span in ipairs(timeline.kept[slot] or {}) do
+        for _, span in ipairs((timeline.held or timeline.kept)[slot] or {}) do
+            local key = slot .. "|" .. span.id .. "|" .. tostring(G.Plain(span.item))
+            local earlier = first[key]
+            if not earlier or span.t < earlier.t then first[key] = span end
+        end
+    end
+    local firsts = {}
+    for _, span in pairs(first) do firsts[#firsts + 1] = span end
+    table.sort(firsts, function(a, b) return a.t < b.t end)
+    do
+        for _, span in ipairs(firsts) do
             local x = w * X(U(span.t))
             local quality = Info(span).quality
             local f = x / w * CURVE_STEPS

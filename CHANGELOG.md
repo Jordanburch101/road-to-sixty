@@ -20,6 +20,11 @@ broken and now works. Leave out internal changes. Sections are
   moves with you and the line grows as you go, so you can watch a flight
   across the map. Zoomed in, the map moves along with you, unless you've
   moved it away to look elsewhere.
+- On the gear screen's Kept gear, weapons you swap back and forth (a sword
+  and shield and a two-hander, say) show as the one you held most at each
+  level, with a swap badge where you start swapping or switch which one
+  you favour. Hover a bar for how long each was in hand. The off hand
+  stays one bar instead of emptying every time the two-hander goes on.
 
 ### Fixed
 - The map opens faster on long journeys with many groups, and opening it
