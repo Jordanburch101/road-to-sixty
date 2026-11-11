@@ -58,6 +58,11 @@ local _, ns = ...
 
 local Friends = {}
 ns.Friends = Friends
+-- How many times a friend's copy was changed: a batch kept, or its events
+-- dropped to be asked for again. A batch can change a copy in place,
+-- leaving its counts as they were, so the map builds again when this
+-- changes (#103).
+Friends.changes = 0
 
 local PREFIX = "RTSFriends"
 local VERSION = 1
@@ -943,6 +948,7 @@ local function Ask(rec, key, bytes, auto, rewind)
         -- Dropped once asked for again, so the counts asked for from here on say what has come.
         for _, e in ipairs(journey.events) do rec.size = (rec.size or 0) - #Serialize(e) end
         wipe(journey.events)
+        Friends.changes = Friends.changes + 1
     end
     -- The copy is part of one until this sync ends, and the tab says so if it stops.
     if rewind == "path" or rewind == "events" then rec.synced = nil end
@@ -979,6 +985,7 @@ local function OnPart(key, id, n, total, data)
     local batch = rec and Parse(table.concat(asked.parts, "", 1, total))
     local fits, why = false, nil
     if rec then fits, why = Apply(rec, batch) end
+    if fits then Friends.changes = Friends.changes + 1 end
     if (why == "path" or why == "events") and not asked.rewound then
         Ask(rec, key, asked.bytes, asked.auto, why)
     elseif why == "path" or why == "events" then

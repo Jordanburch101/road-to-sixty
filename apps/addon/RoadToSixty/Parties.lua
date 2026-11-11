@@ -51,7 +51,8 @@ local positions, indexed, indexedCount = {}, nil, 0
 local function Index(events, from)
     if from == 1 then positions = {} end     -- plain: indexed keeps the events anyway
     for i = from, #events do
-        positions[events[i]] = i
+        local e = events[i]
+        if e then positions[e] = i end     -- (a list with a hole: none is known to have one)
     end
     indexed, indexedCount = events, #events
 end
@@ -90,6 +91,7 @@ function Parties:Info(e)
     local events = ns.view.events
     for i = (Position(events, e) or #events) + 1, #events do
         local other = events[i]
+        if not other then break end         -- a hole ends it, as ipairs did
         local kind = other[2]
         if kind == "grpa" then
             -- In its first seconds the client was still loading who was

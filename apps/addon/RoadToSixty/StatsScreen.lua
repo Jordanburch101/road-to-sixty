@@ -106,9 +106,12 @@ local function XPPerHour(row)
 end
 
 -- Whether the screen is busy with a moment or a bar: a replay before the
--- journey's end, or a bar or the chart hovered.
+-- journey's end, or a bar or the chart hovered. The bars' chart counts while
+-- the cursor is anywhere on it, as moving from one bar to the next leaves
+-- the first before entering the second.
 local function Busy()
     return followT ~= math.huge or hoverRow ~= nil
+        or (ui.chart ~= nil and ui.chart:IsVisible() and ui.chart:IsMouseOver())
         or (ui.windowChart and ui.windowChart.hover) ~= nil or (ui.paneChart and ui.paneChart.hover) ~= nil
 end
 

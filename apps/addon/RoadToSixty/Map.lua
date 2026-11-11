@@ -3289,7 +3289,7 @@ function Map:OpenNow()
     local journey = table.concat({ tostring(view), ns.Range:CacheKey(), #view.segments,
         ns.Recorder.stored,
         #view.events, view.kills and #view.kills.d or 0, view.totals and view.totals.kills or 0,
-        ns.Gathering.changes }, ":")
+        ns.Gathering.changes, ns.Friends.changes }, ":")
     if journey == state.journey then
         state.perf.decode, state.perf.setup = 0, 0
         ns.QuestPop:Clear()
