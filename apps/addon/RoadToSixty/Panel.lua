@@ -192,7 +192,13 @@ local function CreateHistoryRow(parent)
 
     -- A run with rows folded under it: a plus or minus over its icon, as the
     -- classic quest log has; the rows under it are moved in, by a thin line.
-    row.expand = row:CreateTexture(nil, "OVERLAY", nil, 2)
+    -- It sits on a layer of its own above the row's icon frames (the item
+    -- button, a guild's banner, a group's portrait), which are frames and
+    -- would cover a texture of the row's (#131).
+    local over = CreateFrame("Frame", nil, row)
+    over:SetAllPoints()
+    row.over = over
+    row.expand = over:CreateTexture(nil, "OVERLAY", nil, 2)
     row.expand:SetSize(12, 12)
     row.expand:SetPoint("CENTER", row.icon, "BOTTOMRIGHT", -1, 2)
     row.nest = row:CreateTexture(nil, "ARTWORK")
@@ -291,6 +297,7 @@ local function UpdateHistoryRow(row, item)
     local folds = not header and (item.children or 0) > 0 and item.key
     row.expand:SetShown(folds and true or false)
     if folds then
+        row.over:SetFrameLevel(row:GetFrameLevel() + 10)
         row.expand:SetTexture(expanded[item.key] and "Interface\\Buttons\\UI-MinusButton-Up"
             or "Interface\\Buttons\\UI-PlusButton-Up")
     end
