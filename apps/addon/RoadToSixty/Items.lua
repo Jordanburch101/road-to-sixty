@@ -45,7 +45,8 @@ function ns.DressModel(model, gear)
     for slot, item in pairs(gear) do
         if slot ~= MAIN_HAND and slot ~= OFF_HAND and slot ~= RANGED and not NOT_SHOWN[slot] then On(item) end
     end
-    -- The hand names Blizzard's own dressing room passes (DressUpModelFrameMixin).
+    -- The hand names Blizzard's Classic dressing room passes to its
+    -- DressUpModel (DressUpFrames.lua, DressUpSources).
     if gear[MAIN_HAND] then On(gear[MAIN_HAND], "MAINHANDSLOT") end
     if gear[OFF_HAND] then On(gear[OFF_HAND], "SECONDARYHANDSLOT") end
     if gear[RANGED] and hunter then On(gear[RANGED]) end
