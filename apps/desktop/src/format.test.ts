@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
 import type { Folder } from "./api";
-import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, levelClass, played, realmName, removeWords, updateWords, versionLine, when } from "./format";
+import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, played, realmName, removeWords, titleLine, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -31,9 +31,9 @@ const ann: CharacterInfo = {
   played: 3600, lastPlayedAt: null, syncedAt: at(2026, 9, 14, 20, 0), syncedFrom: "Laptop", earlier: false,
 };
 
-test("a character's lines: level and class, then realm, PC and when", () => {
-  expect(levelClass(ann)).toBe("Level 42 Warrior");
-  expect(levelClass({ level: null, class: null })).toBe("");
+test("a character's lines: realm, PC and when; on its page class, realm and time played", () => {
+  expect(titleLine({ ...ann, realm: "CAMWOW AU1 Realm 1 PvE", played: 37 * 3600 })).toBe("Warrior · Normal · 1d 13h played");
+  expect(titleLine({ class: null, realm: "Nightslayer", played: null })).toBe("Nightslayer");
   expect(characterLine(ann, now)).toBe("Classic Beta PvE 2 · Laptop, yesterday");
   expect(characterLine({ ...ann, syncedFrom: null }, now)).toBe("Classic Beta PvE 2 · restored yesterday");
   expect(characterLine({ ...ann, realm: "CAMWOW AU1 Realm 1 PvE" }, now)).toBe("Normal · Laptop, yesterday");

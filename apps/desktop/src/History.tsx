@@ -2,8 +2,8 @@ import type { CharacterInfo } from "@road-to-sixty/api";
 import { Button } from "@road-to-sixty/ui/Button";
 import { useState } from "react";
 import { characters, removeCharacter, restore, useLoad, versions, type Status } from "./api";
-import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
-import { CLASSES, earlierLine, earlierOf, levelClass, played, realmName, removeWords, versionLine, when } from "./format";
+import { CLASSES, earlierLine, earlierOf, removeWords, titleLine, versionLine, when } from "./format";
+import { Portrait } from "./Portrait";
 
 // A character's merged and restored versions, newest first, after the
 // A-History mockup. Restoring asks first, in the row itself.
@@ -12,7 +12,6 @@ export function History({ status, character, onBack }: { status: Status; charact
   const [asking, setAsking] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const now = new Date();
-  const icon = CLASS_ICONS[character.class ?? ""];
   const all = useLoad(characters, [status.lastSynced]);
   const earlier = earlierOf(all.data ?? [], character);
   const [removing, setRemoving] = useState<number | null>(null);
@@ -60,17 +59,12 @@ export function History({ status, character, onBack }: { status: Status; charact
           ‹ Characters
         </button>
         <div className="flex items-center gap-3">
-          {icon && <img src={icon} alt="" className="size-11 rounded-full" />}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-xl font-medium tracking-tight" style={{ color: CLASSES[character.class ?? ""]?.colour }}>
-                {character.name}
-              </h1>
-              <span className="text-[13px] text-muted">{levelClass(character)}</span>
-            </div>
-            <div className="text-xs text-faint">
-              {[realmName(character.realm), character.played !== null ? `${played(character.played)} played` : ""].filter(Boolean).join(" · ")}
-            </div>
+          <Portrait c={character} big />
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="text-xl font-medium tracking-tight" style={{ color: CLASSES[character.class ?? ""]?.colour }}>
+              {character.name}
+            </h1>
+            <div className="text-xs text-faint">{titleLine(character)}</div>
           </div>
         </div>
       </div>
