@@ -148,6 +148,13 @@ bun run dev               # port 3000, with .env copied from .env.example
   `runner.lua`'s `same` mode says it continues it; otherwise the worker
   moves it to its own row. An upload without a stamp never goes to a newer
   journey than the oldest.
+- On Forever only a character's full name is unique, and addons up to
+  1.20.5 sent the first name alone, so characters sharing one were one name
+  (#141). A stamped upload whose name has no row for its stamp finds the
+  same journey under its first name (and renames that row to the full
+  name it sent) or under its full name (an older addon on another PC):
+  `fullNameRow`, that pair only. A rename to another name still gets its
+  own row (#124).
 - Removing a character locks its jobs and answers 409 while one runs, and
   while it is a name's current journey with earlier ones left (removed
   first, an earlier one would become current again); its files go only
