@@ -56,7 +56,8 @@ end
 -- key when the client gives no GUID, and the sync folder's name for a
 -- journey whose server row hasn't taken the full name yet (Sync.lua).
 local function FirstName()
-    return UnitName("player") .. "-" .. GetRealmName()
+    -- The undisguised name, as FullName takes it.
+    return ((UnitNameUnmodified or UnitName)("player")) .. "-" .. GetRealmName()
 end
 function Roster:FirstName()
     return FirstName()
@@ -175,11 +176,13 @@ ns.On("TIME_PLAYED_MSG", function(total)
 end)
 
 ns.On("PLAYER_LOGOUT", function()
-    Roster:Sync()
     -- Again here, in case the surname wasn't there yet at login: the app
-    -- uploads the file this writes.
+    -- uploads the file this writes, and the roster's copy is made from it.
+    -- Never back to the first name, should the surname be missing now.
+    local name = Roster:Name()
+    if name ~= FirstName() or not ns.char.rosterKey then ns.char.rosterKey = name end
+    Roster:Sync()
     entry.name = Roster:FullName()
-    ns.char.rosterKey = Roster:Name()
     entry.seen = ns.Now()
 end)
 

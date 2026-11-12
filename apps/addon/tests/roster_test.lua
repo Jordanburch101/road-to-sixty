@@ -208,6 +208,9 @@ check(e.name == "Eagin", "without regional names the surname is left out, got " 
 RegionalUniqueNamesEnabled = function() return true end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin Stormbrew" and Roster:FullName() == "Eagin Stormbrew", "on Forever the full name, got " .. tostring(e.name))
+UnitGUID = function() return nil end
+check(Roster:Key() == "Eagin-Test", "without a GUID the roster's key is still the first name")
+UnitGUID = function() return GUID end
 check(ns.char.rosterKey == "Eagin Stormbrew-Test" and Roster:Name() == "Eagin Stormbrew-Test",
     "the roster key is the full name, got " .. tostring(ns.char.rosterKey))
 check(Roster:Key() == GUID, "the roster's own key is still the GUID")
@@ -227,6 +230,10 @@ UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGOUT")
 check(e.name == "Eagin Stormbrew", "logout saves the surname that came late, got " .. tostring(e.name))
 check(ns.char.rosterKey == "Eagin Stormbrew-Test", "and the roster key with it, for the upload")
+UnitName = function() return "Eagin" end
+Fire("PLAYER_LOGOUT")
+check(ns.char.rosterKey == "Eagin Stormbrew-Test", "a surname missing at logout doesn't take the full name away")
+UnitName = function() return "Eagin", "Stormbrew" end
 UnitName = function() return "Eagin", "" end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin", "an empty surname adds nothing, got " .. tostring(e.name))

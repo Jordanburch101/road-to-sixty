@@ -211,6 +211,14 @@ do
     } })
     Login()
     check(ns.Sync.status and ns.Sync.status.version == 6, "the full name's entry before the first name's")
+    -- Another character sharing the first name (another GUID in its stamp)
+    -- whose journey the server still keeps under it: left out, this copy kept.
+    local mine = Journey({ events = Session(1000), journeyId = "Player-1-0000000A:100" })
+    local theirs = Journey({ events = Session(7000), journeyId = "Player-1-0000000B:100" })
+    ns = Load(mine, Folder({ version = 8, journey = Write(theirs) }))
+    Login()
+    check(ns.Sync.status and ns.Sync.status.what == "same" and #mine.events == #Session(1000),
+        "a namesake's journey under the first name is left out, got " .. tostring(ns.Sync.status and ns.Sync.status.what))
     forever.surname = nil
 end
 
