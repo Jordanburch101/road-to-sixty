@@ -659,10 +659,15 @@ Run()
 b.onSend = nil
 check(table.concat(sentData):find("sm~{~", 1, true) and rec.journey.reps[72][1] == 6, "changed fields not sent")
 
--- Removing a friend deletes their journey.
+-- Removing a friend deletes their journey, and their path and hidden marks
+-- (#147), so one added again starts shown.
+local brommKey = friends.bromm.key
+z.ns.db.hidden = { [brommKey] = true }
+z.ns.db.showPaths[brommKey] = true
 F:Remove("Bromm")
 check(friends.bromm == nil, "remove left the friend")
 check(#z.ns.Roster:Entries() == 1, "remove left the friend listed")
+check(z.ns.db.hidden[brommKey] == nil and z.ns.db.showPaths[brommKey] == nil, "remove left the friend's marks")
 
 check(#z.errors == 0 and #b.errors == 0, "errors: " .. tostring(z.errors[1] or b.errors[1]))
 

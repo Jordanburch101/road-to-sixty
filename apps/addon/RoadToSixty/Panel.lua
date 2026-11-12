@@ -849,7 +849,8 @@ end
 -- Hiding and deleting a character (#147). Deleting asks for the name to be
 -- typed, so it can't be done by a slip: the journey copy goes for good.
 local function Confirmed(editBox, data)
-    return strtrim(editBox:GetText() or ""):lower() == (data and data.name or ""):lower()
+    local name = data and data.name or ""
+    return name ~= "" and strtrim(editBox:GetText() or ""):lower() == name:lower()
 end
 
 local function Button1(dialog)
@@ -859,6 +860,7 @@ end
 local function CharactersChanged()
     ns.Map:RefreshCharacters()
     Panel:RefreshCharacters()
+    if ns.FriendsPanel then ns.FriendsPanel:Refresh() end
     if ns.StatsScreen then ns.StatsScreen:Rebuild() end
 end
 
@@ -868,8 +870,9 @@ local function LeaveView(e)
 end
 
 StaticPopupDialogs.ROADTOSIXTY_DELETE_CHARACTER = {
-    text = "Delete %s for good?\n\nIts journey is deleted from this PC's character list and map. "
-        .. "If the character still exists, it comes back the next time you log in on it.\n\n"
+    text = "Delete %s for good?\n\nIts journey is deleted from this PC. If the character still exists "
+        .. "under this name, it comes back the next time you log in on it. If it was renamed or moved "
+        .. "to another realm, it doesn't: only the Road to Sixty app's backup still has it.\n\n"
         .. "Type the character's name to delete it.",
     button1 = "Delete",
     button2 = CANCEL or "Cancel",
@@ -926,10 +929,12 @@ local function OpenCharacterMenu(row)
         else
             root:CreateButton("Hide from the list and map", function() SetHidden(e, true) end)
         end
-        if not e.friend then
+        -- A journey kept aside from a file with no name can't be confirmed by
+        -- typing one, so it can only be hidden.
+        if not e.friend and (e.name or "") ~= "" then
             root:CreateDivider()
             root:CreateButton("|cffff6060Delete...|r", function()
-                StaticPopup_Show("ROADTOSIXTY_DELETE_CHARACTER", e.name or "?", nil, { entry = e, name = e.name or "" })
+                StaticPopup_Show("ROADTOSIXTY_DELETE_CHARACTER", e.name, nil, { entry = e, name = e.name })
             end)
         end
     end)
@@ -999,7 +1004,7 @@ local function CreateCharacterRow(parent)
         end
         if not ns.Roster:IsMe(e) then
             GameTooltip:AddLine(ns.Roster:IsHidden(e) and "Right-click to show it again"
-                or "Right-click to hide it" .. (e.friend and "" or " or delete it"), 0.6, 0.6, 0.6)
+                or "Right-click to hide it" .. ((e.friend or (e.name or "") == "") and "" or " or delete it"), 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
     end)
@@ -1124,7 +1129,10 @@ end
 -- Turns the path of every character listed on or off, for replaying together.
 local function SetListedPaths(on)
     for _, e in ipairs(characterList.data) do
-        ns.db.showPaths[e.key] = on or nil
+        -- Hidden ones (the Hidden group) have no path box to tick.
+        if not ns.Roster:IsHidden(e) then
+            ns.db.showPaths[e.key] = on or nil
+        end
     end
     ns.Map:RefreshCharacters()
     characterList:Refresh()

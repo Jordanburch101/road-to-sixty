@@ -153,6 +153,7 @@ ns.On("PLAYER_LOGIN", function()
     if key ~= old and roster[old] and not roster[old].guid then
         roster[old] = nil
         ns.db.showPaths[key], ns.db.showPaths[old] = ns.db.showPaths[old], nil
+        if ns.db.hidden then ns.db.hidden[old] = nil end   -- this character is never hidden
     end
     entry = roster[key] or {}
     roster[key] = entry

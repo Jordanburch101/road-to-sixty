@@ -196,6 +196,13 @@ for _, typed in ipairs({ "Testy", "Testy McTes", "Testy McTestx" }) do
     popup.OnAccept(dialog, data)
 end
 check(#deleted == 0 and not dialog.hidden, "nothing deleted without the name")
+-- A nameless entry is never confirmed by an empty box.
+local nameless = { entry = { name = nil }, name = "" }
+box.text = ""
+popup.EditBoxOnTextChanged(box, nameless)
+popup.EditBoxOnEnterPressed(box, nameless)
+popup.OnAccept(dialog, nameless)
+check(not accept.enabled and #deleted == 0, "an empty box never deletes a nameless entry")
 box.text = "  testy mctest "
 popup.EditBoxOnTextChanged(box, data)
 check(accept.enabled, "the name in any case turns Delete on")

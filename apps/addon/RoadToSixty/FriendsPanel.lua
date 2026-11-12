@@ -163,7 +163,8 @@ local function UpdateRow(row, rec)
     -- The shown friend's path is the main one on the map already.
     local shown = rec.key ~= nil and ns.Roster:ViewEntry() == rec
     row.selected:SetShown(shown)
-    row.path:SetShown(rec.key ~= nil and not shown)
+    -- A hidden friend's path isn't drawn (#147), so it has no box.
+    row.path:SetShown(rec.key ~= nil and not shown and not ns.Roster:IsHidden(rec))
     row.path:SetChecked(rec.key ~= nil and ns.db.showPaths[rec.key] == true)
 end
 

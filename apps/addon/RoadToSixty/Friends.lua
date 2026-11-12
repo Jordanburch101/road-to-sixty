@@ -1227,6 +1227,11 @@ function Friends:Remove(name)
     if request and request.key == key then Stop() end
     if outgoing and SenderKey(outgoing.to) == key then outgoing = nil end
     ns.db.friends[key], status[key] = nil, nil
+    -- Their settings go too, so one added again starts shown (#147).
+    if rec.key then
+        ns.db.showPaths[rec.key] = nil
+        if ns.db.hidden then ns.db.hidden[rec.key] = nil end
+    end
     Changed()
     NextAuto()
 end
