@@ -42,14 +42,21 @@ print = function(text) said[#said + 1] = text end
 
 local FILES = { "Core.lua", "Packed.lua", "Tidy.lua", "Parse.lua", "Tally.lua", "Merge.lua", "Sync.lua" }
 
+-- A surname, as Forever's characters have, when a test sets one.
+local forever = {}   ---@type { surname: string? }
+
 -- Loads the addon's files with these saved variables and sync folder, as
 -- the game does up to ADDON_LOADED.
 local function Load(saved, sync)
     RoadToSixtyDB, RoadToSixtyCharDB, RoadToSixtySync = { greet = false }, saved, sync
     local ns = {}
     for _, name in ipairs(FILES) do assert(loadfile("RoadToSixty/" .. name))("RoadToSixty", ns) end
-    -- Roster.lua needs much more of the game to load; this is its Name.
-    ns.Roster = { Name = function() return UnitName("player") .. "-" .. GetRealmName() end }
+    -- Roster.lua needs much more of the game to load; these are its Name
+    -- and FirstName (a surname, when the test gives one, as on Forever).
+    ns.Roster = {
+        Name = function() return (forever.surname and UnitName() .. " " .. forever.surname or UnitName()) .. "-" .. GetRealmName() end,
+        FirstName = function() return UnitName() .. "-" .. GetRealmName() end,
+    }
     script(nil, "ADDON_LOADED", "RoadToSixty")
     return ns
 end
@@ -184,6 +191,36 @@ check(what == "merged" and out.people.g.groups[ns.pc] == 2, "a layout 2 journey 
 -- table, so everything holding ns.char keeps seeing it.
 local function Login() script(nil, "PLAYER_LOGIN") end
 local function Folder(entry, key) return { chars = { [key or "Ann-Test Realm"] = entry } } end
+
+-- On Forever the folder names a journey by the full name (#141); one the
+-- server still keeps under the first name is found by that.
+do
+    forever.surname = "Smith"
+    local full = Journey({ events = Session(1000) })
+    ns = Load(full, Folder({ version = 3, journey = Write(Journey({ events = Session(1000) })) }, "Ann Smith-Test Realm"))
+    Login()
+    check(ns.Sync.status and ns.Sync.status.version == 3, "the full name's entry is brought in")
+    local first = Journey({ events = Session(1000) })
+    ns = Load(first, Folder({ version = 4, journey = Write(Journey({ events = Session(1000) })) }))
+    Login()
+    check(ns.Sync.status and ns.Sync.status.version == 4, "the first name's entry, while the server keeps it so")
+    local both = Journey({ events = Session(1000) })
+    ns = Load(both, { chars = {
+        ["Ann Smith-Test Realm"] = { version = 6, journey = Write(Journey({ events = Session(1000) })) },
+        ["Ann-Test Realm"] = { version = 2, journey = Write(Journey({ events = Session(1000) })) },
+    } })
+    Login()
+    check(ns.Sync.status and ns.Sync.status.version == 6, "the full name's entry before the first name's")
+    -- Another character sharing the first name (another GUID in its stamp)
+    -- whose journey the server still keeps under it: left out, this copy kept.
+    local mine = Journey({ events = Session(1000), journeyId = "Player-1-0000000A:100" })
+    local theirs = Journey({ events = Session(7000), journeyId = "Player-1-0000000B:100" })
+    ns = Load(mine, Folder({ version = 8, journey = Write(theirs) }))
+    Login()
+    check(ns.Sync.status and ns.Sync.status.what == "same" and #mine.events == #Session(1000),
+        "a namesake's journey under the first name is left out, got " .. tostring(ns.Sync.status and ns.Sync.status.what))
+    forever.surname = nil
+end
 
 local saved = Journey({ events = Session(1000), totals = { deaths = 1 }, rosterBuilt = 3 })
 local folder = Folder({ version = 5, journey = Write(Journey({ events = Session(5000), totals = { deaths = 1 }, addon = "1.0.0" })) })

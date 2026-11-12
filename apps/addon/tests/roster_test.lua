@@ -200,15 +200,20 @@ Fire("PLAYER_LOGIN")
 
 -- On Forever, characters have surnames (UnitName's second value) and full
 -- names are unique across the region: the list shows "First Last", as an
--- account's characters can share a first name (#125). The app and the sync
--- folder still know it by Name-Realm.
+-- account's characters can share a first name (#125), and the app, the sync
+-- server and the sync folder know it by "First Last-Realm" (#141).
 UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin", "without regional names the surname is left out, got " .. tostring(e.name))
 RegionalUniqueNamesEnabled = function() return true end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin Stormbrew" and Roster:FullName() == "Eagin Stormbrew", "on Forever the full name, got " .. tostring(e.name))
-check(ns.char.rosterKey == "Eagin-Test" and Roster:Name() == "Eagin-Test", "the roster key keeps the first name")
+UnitGUID = function() return nil end
+check(Roster:Key() == "Eagin-Test", "without a GUID the roster's key is still the first name")
+UnitGUID = function() return GUID end
+check(ns.char.rosterKey == "Eagin Stormbrew-Test" and Roster:Name() == "Eagin Stormbrew-Test",
+    "the roster key is the full name, got " .. tostring(ns.char.rosterKey))
+check(Roster:Key() == GUID, "the roster's own key is still the GUID")
 -- A disguise changes UnitName but not UnitNameUnmodified, Blizzard's source.
 UnitNameUnmodified = function() return "Eagin", "Stormbrew" end
 UnitName = function() return "Disguised", "Stranger" end
@@ -220,16 +225,22 @@ UnitNameUnmodified = nil
 UnitName = function() return "Eagin" end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin", "no surname yet at login, got " .. tostring(e.name))
+check(ns.char.rosterKey == "Eagin-Test", "no surname yet: the first name for now")
 UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGOUT")
 check(e.name == "Eagin Stormbrew", "logout saves the surname that came late, got " .. tostring(e.name))
+check(ns.char.rosterKey == "Eagin Stormbrew-Test", "and the roster key with it, for the upload")
+UnitName = function() return "Eagin" end
+Fire("PLAYER_LOGOUT")
+check(ns.char.rosterKey == "Eagin Stormbrew-Test", "a surname missing at logout doesn't take the full name away")
+UnitName = function() return "Eagin", "Stormbrew" end
 UnitName = function() return "Eagin", "" end
 Fire("PLAYER_LOGIN")
 check(e.name == "Eagin", "an empty surname adds nothing, got " .. tostring(e.name))
 RegionalUniqueNamesEnabled = function() return false end
 UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGIN")
-check(e.name == "Eagin", "regional names off keeps the name, got " .. tostring(e.name))
+check(e.name == "Eagin" and ns.char.rosterKey == "Eagin-Test", "regional names off keeps the name, got " .. tostring(e.name))
 RegionalUniqueNamesEnabled = function() error("not on this client") end
 UnitName = function() return "Eagin", "Stormbrew" end
 Fire("PLAYER_LOGIN")
