@@ -30,9 +30,10 @@ export function stampOf(raw: Uint8Array): string | null | undefined {
 type Character = typeof characters.$inferSelect;
 
 // The row an upload goes to (spec 2026-10-15 journeys, "Characters"): its
-// journey's own row; else the name's row from before stamps, for the
-// worker to check; else the same journey kept under the first name or the
-// full name (fullNameRow); else a new one, within the cap. An upload
+// journey's own row; else the same journey kept under the first name or
+// the full name (fullNameRow), the stamp being surer than a row from
+// before stamps; else the name's row from before stamps, for the worker to
+// check; else a new one, within the cap. An upload
 // without a stamp goes to the row from before stamps or the oldest, never
 // a newer journey. Null when the cap is reached.
 async function rowFor(userId: string, game: string, realm: string, name: string, stamp: string | null): Promise<Character | null> {
@@ -42,7 +43,9 @@ async function rowFor(userId: string, game: string, realm: string, name: string,
     .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)))
     .orderBy(characters.id);
   const bare = rows.find((r) => r.journey === null);
-  const found = stamp ? (rows.find((r) => r.journey === stamp) ?? bare ?? (await fullNameRow(userId, game, realm, name, stamp))) : (bare ?? rows[0]);
+  const found = stamp
+    ? (rows.find((r) => r.journey === stamp) ?? (await fullNameRow(userId, game, realm, name, stamp)) ?? bare)
+    : (bare ?? rows[0]);
   if (found) return found;
   const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
   if (held!.n >= MAX_CHARACTERS) return null;
@@ -73,9 +76,10 @@ async function fullNameRow(userId: string, game: string, realm: string, name: st
     const how = fullNameOf(row.name, name);
     if (how === "keep") return row;
     if (how === "rename") {
-      // Two uploads renaming it at once both write the same name.
+      // Two uploads renaming it at once both write the same name. A row
+      // removed meanwhile is gone: the upload makes a new one.
       const [renamed] = await db.update(characters).set({ name, updatedAt: new Date() }).where(eq(characters.id, row.id)).returning();
-      return renamed ?? row;
+      return renamed ?? null;
     }
   }
   return null;

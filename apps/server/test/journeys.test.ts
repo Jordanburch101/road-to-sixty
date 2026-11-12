@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { characters, jobs, versions } from "../src/schema";
 import { unpack } from "../src/storage";
-import { stampOf } from "../src/sync";
+import { fullNameOf, stampOf } from "../src/sync";
 import { CHAR, addUser, call, check, journey, newDevice, reset, savedFile, session, sessions, stored, upload, workAll } from "./helpers";
 
 beforeEach(reset);
@@ -122,10 +122,20 @@ test("a new journey of a name counts toward the 100", async () => {
 
 // Forever (#141): characters sharing a first name were one name, all but the
 // newest earlier journeys of it. With the full name each is its own.
+test("a full name is the first name and a surname", () => {
+  expect(fullNameOf("Ann", "Ann Smith")).toBe("rename");
+  expect(fullNameOf("Ann Smith", "Ann")).toBe("keep");
+  expect(fullNameOf("Ann", "Annie Smith")).toBeNull();
+  expect(fullNameOf("Ann", "Ann")).toBeNull();
+  expect(fullNameOf("Ann Smith", "Ann Jones")).toBeNull();
+  expect(fullNameOf("Ann Smith", "Ann Smith Jones")).toBeNull();
+});
+
 test("a journey under its first name takes the full name, and the others sharing the first name stay apart", async () => {
   const { token } = await newDevice("user-1", "Desk");
   const first = { name: "Ann" };
-  await upload(token, stamped(`${A}:0`), first);
+  // Play the full-name upload doesn't have, so the merge shows it was built on.
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(9000)]), first);
   await workAll();
   await upload(token, stamped(`${B}:0`), first);
   await workAll();
@@ -141,19 +151,37 @@ test("a journey under its first name takes the full name, and the others sharing
   expect((await check(token)).characters.map((c) => c.name).sort()).toEqual(["Ann", "Ann Smith"]);
   const list = (await (await call(token, "/v1/characters")).json()) as CharacterInfo[];
   expect(list.every((c) => !c.earlier)).toBe(true);
-  expect(sessions(await download(token, a!.headVersionId!))).toBe(2);
+  expect(sessions(await download(token, a!.headVersionId!))).toBe(3);
 });
 
 test("an addon still sending the first name finds the row its full name took", async () => {
   const { token } = await newDevice("user-1", "Desk");
-  await upload(token, stamped(`${A}:0`), { name: "Ann Smith" });
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(9000)]), { name: "Ann Smith" });
   await workAll();
   await upload(token, stamped(`${A}:0`, [...session(1000), ...session(5000)]), { name: "Ann" });
   await workAll();
   const [only, ...more] = await rows();
   expect(more).toEqual([]);
   expect(only!.name).toBe("Ann Smith");
-  expect(sessions(await download(token, only!.headVersionId!))).toBe(2);
+  expect(sessions(await download(token, only!.headVersionId!))).toBe(3);
+});
+
+test("the stamp under the full name wins over a row of the first name from before stamps", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  // A namesake from before stamps under the first name, and this journey under the full name.
+  await upload(token, savedFile(journey({ events: session(500) })), { name: "Ann" });
+  await workAll();
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(9000)]), { name: "Ann Smith" });
+  await workAll();
+  // An older addon sends the first name: the stamp finds its own journey.
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(5000)]), { name: "Ann" });
+  await workAll();
+  const all = await rows();
+  expect(all.map((r) => [r.name, r.journey])).toEqual([
+    ["Ann", null],
+    ["Ann Smith", `${A}:0`],
+  ]);
+  expect(sessions(await download(token, all[1]!.headVersionId!))).toBe(3);
 });
 
 test("another name with the same stamp, and another player's row, are not taken", async () => {
