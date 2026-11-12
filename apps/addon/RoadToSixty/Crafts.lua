@@ -15,16 +15,20 @@ local _, ns = ...
 --   rec   name, spellID, profession, source   a recipe learned; spellID and
 --                                         profession when the client says;
 --                                         source "t" when a trainer was open
---   craft link, count, quality, profession, spellID   something made, from
---                                         "You create: ..." (#85); the same
---                                         item again within CRAFT_BUNDLE
---                                         seconds adds to the last one's
---                                         count, so "Create All" is one
---                                         event. spellID is the player's cast
---                                         just before (the recipe, or a spell
---                                         such as a mage's conjured food),
---                                         profession when known; things made
---                                         outside a profession have none
+--   craft link, count, quality, profession, spellID   something made with a
+--                                         profession, from "You create: ..."
+--                                         (#85); the same item again within
+--                                         CRAFT_BUNDLE seconds adds to the
+--                                         last one's count, so "Create All"
+--                                         is one event. spellID is the
+--                                         recipe, the player's cast just
+--                                         before. "You create" without a
+--                                         profession is not crafting (a
+--                                         battleground's mark, a mage's
+--                                         conjured food) and is not logged
+--                                         from 1.20.7 on (#142); crafts saved
+--                                         before then without a profession
+--                                         are those, so leave them out
 --
 -- ns.char.skills is the last skill seen per profession: name -> { rank, max,
 -- icon }, icon a file ID when the client gives one.
@@ -294,7 +298,9 @@ local function CraftProfession(spellID)
 end
 
 -- Logs count of the item in link made, or adds them to the last craft when
--- it was the same item a moment ago.
+-- it was the same item a moment ago. Something made without a profession
+-- is not logged: classic gives battleground marks with "You create", and
+-- a mage's conjured food is a spell of no profession (#142).
 function Crafts:Crafted(link, count)
     local now = GetTime()
     count = tonumber(count) or 1
@@ -306,8 +312,10 @@ function Crafts:Crafted(link, count)
         return last.event
     end
     local spellID = lastCast and now - lastCast.at <= CAST_SECONDS and lastCast.spellID or nil
+    local profession = CraftProfession(spellID)
+    if not profession then return end
     local e = Log("craft", link, count, ns.Journal.ItemQuality and ns.Journal.ItemQuality(link) or nil,
-        CraftProfession(spellID), spellID)
+        profession, spellID)
     lastCraft = { key = key, event = e, at = now }
     return e
 end
