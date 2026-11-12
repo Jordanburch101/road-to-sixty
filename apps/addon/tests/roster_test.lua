@@ -271,6 +271,43 @@ check(#Roster:Entries() == 8, "on other clients every character is listed, got "
 ns.db.friends = nil
 for i = 1, 4 do ns.db.roster["Player-2-0000000" .. i] = nil end
 
+-- Hiding and deleting (#147): a hidden character or friend leaves Entries
+-- but not Entries(true); this character can be neither hidden nor deleted;
+-- a friend can be hidden but not deleted; deleting takes the roster entry
+-- and its settings; either puts the map back on this character's journey.
+local me = Roster:ViewEntry()
+local testy = { name = "Testy", seen = 500, journey = { events = {}, segments = {} } }
+ns.db.roster["Player-2-00000005"] = testy
+local pal = { name = "Pal", key = "Player-3-00000001", friend = true, journey = {}, seen = 100 }
+ns.db.friends = { [pal.key] = pal }
+local function Listed(withHidden)
+    local list = {}
+    for _, entry in ipairs(Roster:Entries(withHidden)) do list[entry.name] = true end
+    return list
+end
+check(Listed().Testy and Listed().Pal and not Roster:IsHidden(testy), "listed before hiding")
+check(Roster:SetView(testy) and ns.view == testy.journey, "Testy's journey shown")
+check(Roster:SetHidden(testy, true) and Roster:IsHidden(testy), "Testy hidden")
+check(not Listed().Testy and Listed(true).Testy, "a hidden character leaves the list but not the Hidden group")
+check(ns.view == ns.char and ns.viewEntry == nil, "hiding the character shown goes back to this one's journey")
+check(not Roster:SetHidden(me, true) and not Roster:IsHidden(me) and Listed()[me.name], "this character can't be hidden")
+ns.db.hidden[me.key] = true
+check(Listed()[me.name] and not Roster:IsHidden(me), "this character is listed even if saved as hidden")
+ns.db.hidden[me.key] = nil
+check(Roster:SetHidden(pal, true) and not Listed().Pal and Listed(true).Pal, "a friend can be hidden")
+check(Roster:SetHidden(pal, false) and Listed().Pal and ns.db.hidden[pal.key] == nil, "and shown again")
+check(not Roster:Delete(pal) and ns.db.friends[pal.key] == pal, "a friend is never deleted here")
+check(not Roster:Delete(me) and ns.db.roster[me.key] == me, "this character is never deleted")
+ns.db.showPaths["Player-2-00000005"], ns.db.compare = true, { ["Player-2-00000005"] = true }
+Roster:SetView(testy)
+check(Roster:Delete(testy), "Testy deleted")
+check(ns.db.roster["Player-2-00000005"] == nil and not Listed(true).Testy, "the entry and its copy are gone")
+check(ns.db.hidden["Player-2-00000005"] == nil and ns.db.showPaths["Player-2-00000005"] == nil
+    and ns.db.compare["Player-2-00000005"] == nil, "and its settings with it")
+check(ns.view == ns.char, "deleting the character shown goes back to this one's journey")
+check(not Roster:Delete(testy), "deleting twice does nothing")
+ns.db.friends, ns.db.compare = nil, nil
+
 -- A reset journey empties the copy.
 Record({})
 Roster:Rebuild()

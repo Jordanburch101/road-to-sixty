@@ -19,6 +19,10 @@ local _, ns = ...
 -- entry may hold the other character's journey. ns.db.showPaths uses the
 -- same keys.
 --
+-- ns.db.hidden[key] = true hides a character or synced friend from the
+-- lists and the map until shown again (#147): saved on this PC only, as the
+-- account file is never uploaded.
+--
 -- The copy shares every table with the character's own data except
 -- segments: those are copies of the recorder's segments (same format and
 -- index, see Recorder.lua) with every point, so another character's path
@@ -198,21 +202,26 @@ function Roster:Gone(e)
     return ns.Forever and (e.seen or 0) < FOREVER_LAUNCH
 end
 
--- Every character and synced friend, this one first, then the most recently seen.
--- Each entry gets its key as entry.key.
-function Roster:Entries()
+-- Every character and synced friend, this one first, then the most recently
+-- seen, leaving out hidden ones unless withHidden (the Characters list's
+-- Hidden group). Each entry gets its key as entry.key.
+function Roster:Entries(withHidden)
     local list, me = {}, self:Key()
     local roster = ns.db.roster or {}
+    local hidden = ns.db.hidden or {}
+    local function Listed(key)
+        return key == me or withHidden or not hidden[key]
+    end
     for key, e in pairs(roster) do
         e.key = key
-        if key == me or not self:Gone(e) then
+        if (key == me or not self:Gone(e)) and Listed(key) then
             list[#list + 1] = e
         end
     end
     -- Synced friends (Friends.lua) list like characters, but stay out of
     -- the roster, which only holds this account's own.
     for _, e in pairs(ns.db.friends or {}) do
-        if e.journey and e.key and not roster[e.key] then
+        if e.journey and e.key and not roster[e.key] and Listed(e.key) then
             list[#list + 1] = e
         end
     end
@@ -227,6 +236,36 @@ end
 
 function Roster:IsMe(e)
     return e == entry
+end
+
+-- Hiding and deleting (#147). A hidden character is left out of Entries, so
+-- out of the Characters list, the map and the Stats screen, until shown
+-- again; nothing about it changes. This character is never hidden.
+function Roster:IsHidden(e)
+    return e ~= nil and e.key ~= nil and not self:IsMe(e) and (ns.db.hidden or {})[e.key] == true
+end
+
+function Roster:SetHidden(e, on)
+    if not (e and e.key) or self:IsMe(e) then return false end
+    ns.db.hidden = ns.db.hidden or {}
+    ns.db.hidden[e.key] = on and true or nil
+    if on and ns.viewEntry == e then self:SetView(nil) end
+    return true
+end
+
+-- Deletes another of this account's characters from the roster, with its
+-- journey copy, for good: one deleted in game, which can never log in to
+-- bring it back. One that still exists comes back at its next login, from
+-- its own file. Friends are removed on the Friends tab instead.
+function Roster:Delete(e)
+    local roster = ns.db.roster or {}
+    if not (e and e.key) or e.friend or self:IsMe(e) or roster[e.key] ~= e then return false end
+    roster[e.key] = nil
+    if ns.db.hidden then ns.db.hidden[e.key] = nil end
+    ns.db.showPaths[e.key] = nil
+    if ns.db.compare then ns.db.compare[e.key] = nil end
+    if ns.viewEntry == e then self:SetView(nil) end
+    return true
 end
 
 -- A character's path as saved at its last logout, decoded like

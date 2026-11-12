@@ -66,6 +66,7 @@ local defaults = {
     cityArt = true,     -- with terrain off, capitals show their own street plans
     motes = true,
     showPaths = {},     -- roster key -> true to draw that character's path on the map
+    hidden = {},        -- roster key -> true to leave that character out of the lists and map (#147)
     historyFilter = {   -- history category -> false when hidden
         quests = false, -- hundreds of turn-ins would crowd the list; opt in
         recipes = false,    -- crafters learn hundreds too
