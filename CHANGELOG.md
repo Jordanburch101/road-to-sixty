@@ -6,6 +6,14 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.6
+
+### Fixed
+- Characters on one account that share a first name are kept apart by the
+  Road to Sixty app and sync: each is backed up as itself and reaches your
+  other PCs. Before, only the newest of them did. Each one is sorted out
+  the next time you play it.
+
 ## 1.20.5
 
 ### New

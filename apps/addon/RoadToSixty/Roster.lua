@@ -41,15 +41,31 @@ local VERSION = 5           -- of the copy's layout; ns.char.rosterBuilt holds t
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
 
--- Name-Realm, the name the app and the sync folder know the character by.
+-- The name the app, the sync server and the sync folder know the character
+-- by: its full name (FullName) and realm, "First Last-Realm" on Forever,
+-- "Name-Realm" elsewhere. Up to 1.20.5 it was the first name alone, so on
+-- Forever an account's characters sharing one were one character to the
+-- server, all but the newest listed as earlier journeys and never synced to
+-- another PC (#141). The server finds a journey's row under either name by
+-- its stamp, and renames it to the full one.
 function Roster:Name()
+    return self:FullName() .. "-" .. GetRealmName()
+end
+
+-- Name-Realm by the first name alone: the roster's keys before GUIDs, the
+-- key when the client gives no GUID, and the sync folder's name for a
+-- journey whose server row hasn't taken the full name yet (Sync.lua).
+local function FirstName()
     return UnitName("player") .. "-" .. GetRealmName()
+end
+function Roster:FirstName()
+    return FirstName()
 end
 
 -- This character's name as players see it: on Forever, where characters have
 -- surnames and full names are unique across the region, "First Last", as
 -- several of an account's characters can share a first name. Elsewhere the
--- name alone. Only for showing and whispering: Name stays the first name.
+-- name alone.
 -- UnitNameUnmodified is Blizzard's own source for it (UnitPopupShared): an
 -- effect that disguises the player changes UnitName, not it.
 function Roster:FullName()
@@ -63,7 +79,7 @@ end
 
 -- This character's roster key: its GUID, or Name-Realm if the client gives none.
 function Roster:Key()
-    return ns.PlayerGUID() or self:Name()
+    return ns.PlayerGUID() or FirstName()
 end
 
 -- A copy of a recorder segment, from its decoded path: the open segment's
@@ -127,14 +143,15 @@ end
 ns.On("PLAYER_LOGIN", function()
     local roster = ns.db.roster or {}
     ns.db.roster = roster
-    local key, name = Roster:Key(), Roster:Name()
-    if key ~= name and roster[name] and not roster[name].guid then
-        roster[name] = nil
-        ns.db.showPaths[key], ns.db.showPaths[name] = ns.db.showPaths[name], nil
+    -- An entry from before GUIDs, keyed by the first name, moves to the GUID.
+    local key, old = Roster:Key(), FirstName()
+    if key ~= old and roster[old] and not roster[old].guid then
+        roster[old] = nil
+        ns.db.showPaths[key], ns.db.showPaths[old] = ns.db.showPaths[old], nil
     end
     entry = roster[key] or {}
     roster[key] = entry
-    ns.char.rosterKey = name
+    ns.char.rosterKey = Roster:Name()
     entry.name, entry.realm, entry.guid = Roster:FullName(), GetRealmName(), ns.PlayerGUID()
     entry.class = select(2, UnitClass("player"))
     ns.char.class = entry.class
@@ -159,8 +176,10 @@ end)
 
 ns.On("PLAYER_LOGOUT", function()
     Roster:Sync()
-    -- Again here, in case the surname wasn't there yet at login.
+    -- Again here, in case the surname wasn't there yet at login: the app
+    -- uploads the file this writes.
     entry.name = Roster:FullName()
+    ns.char.rosterKey = Roster:Name()
     entry.seen = ns.Now()
 end)
 

@@ -35,9 +35,12 @@ local addonName, ns = ...
 --   clockFrom  when a journey begun before layout 2 moved to the realm's
 --              clock (see DATA_VERSION)
 --   syncedVersion  the sync folder version last brought in (Sync.lua)
---   rosterKey  Name-Realm, set at each login after the sync (Roster.lua): the
---              app reads it, since the game's folder names don't give the
---              realm the addon uses
+--   rosterKey  Name-Realm, set at each login after the sync and again at
+--              logout (Roster:Name): the app reads it, since the game's
+--              folder names don't give the realm the addon uses. On
+--              Forever the full name, "First Last-Realm", from 1.20.6
+--              (#141); the first name alone before. It names the character
+--              only, so no layout change
 --   journeyId  the journey's stamp, "<GUID>:<start>" (see DATA_VERSION 4),
 --              so a namesake made after a character is deleted, or an
 --              erased journey, is never merged with the old one (#51)
