@@ -120,6 +120,55 @@ test("a new journey of a name counts toward the 100", async () => {
   expect(await refused.text()).toBe("This account has reached 100 characters");
 });
 
+// Forever (#141): characters sharing a first name were one name, all but the
+// newest earlier journeys of it. With the full name each is its own.
+test("a journey under its first name takes the full name, and the others sharing the first name stay apart", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const first = { name: "Ann" };
+  await upload(token, stamped(`${A}:0`), first);
+  await workAll();
+  await upload(token, stamped(`${B}:0`), first);
+  await workAll();
+  // As before: one name, the older journey listed as earlier.
+  expect((await check(token)).characters.map((c) => c.name)).toEqual(["Ann"]);
+  // A's addon now sends its full name: its row is found by the stamp and renamed.
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(5000)]), { name: "Ann Smith" });
+  await workAll();
+  const [a, b, ...more] = await rows();
+  expect(more).toEqual([]);
+  expect([a!.name, a!.journey, b!.name, b!.journey]).toEqual(["Ann Smith", `${A}:0`, "Ann", `${B}:0`]);
+  // Two names now, each current: both are handed to a PC.
+  expect((await check(token)).characters.map((c) => c.name).sort()).toEqual(["Ann", "Ann Smith"]);
+  const list = (await (await call(token, "/v1/characters")).json()) as CharacterInfo[];
+  expect(list.every((c) => !c.earlier)).toBe(true);
+  expect(sessions(await download(token, a!.headVersionId!))).toBe(2);
+});
+
+test("an addon still sending the first name finds the row its full name took", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  await upload(token, stamped(`${A}:0`), { name: "Ann Smith" });
+  await workAll();
+  await upload(token, stamped(`${A}:0`, [...session(1000), ...session(5000)]), { name: "Ann" });
+  await workAll();
+  const [only, ...more] = await rows();
+  expect(more).toEqual([]);
+  expect(only!.name).toBe("Ann Smith");
+  expect(sessions(await download(token, only!.headVersionId!))).toBe(2);
+});
+
+test("another name with the same stamp, and another player's row, are not taken", async () => {
+  const { token } = await newDevice("user-1", "Desk");
+  const other = await newDevice("user-2", "Other");
+  await upload(other.token, stamped(`${A}:0`), { name: "Ann" });
+  await upload(token, stamped(`${A}:0`), { name: "Bea" });
+  await workAll();
+  // A rename to another name keeps its own row (#124), and user-2's is theirs.
+  await upload(token, stamped(`${A}:0`), { name: "Ann Smith" });
+  await workAll();
+  const names = (await rows()).map((r) => r.name);
+  expect(names).toEqual(["Ann", "Bea", "Ann Smith"]);
+});
+
 test("check offers only a name's current journey, and the list marks the earlier one", async () => {
   const { token } = await newDevice("user-1", "Desk");
   await upload(token, savedFile(journey({ events: session(1000) })));

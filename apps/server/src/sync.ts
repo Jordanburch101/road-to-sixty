@@ -31,9 +31,10 @@ type Character = typeof characters.$inferSelect;
 
 // The row an upload goes to (spec 2026-10-15 journeys, "Characters"): its
 // journey's own row; else the name's row from before stamps, for the
-// worker to check; else a new one, within the cap. An upload without a
-// stamp goes to the row from before stamps or the oldest, never a newer
-// journey. Null when the cap is reached.
+// worker to check; else the same journey kept under the first name or the
+// full name (fullNameRow); else a new one, within the cap. An upload
+// without a stamp goes to the row from before stamps or the oldest, never
+// a newer journey. Null when the cap is reached.
 async function rowFor(userId: string, game: string, realm: string, name: string, stamp: string | null): Promise<Character | null> {
   const rows = await db
     .select()
@@ -41,11 +42,43 @@ async function rowFor(userId: string, game: string, realm: string, name: string,
     .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.name, name)))
     .orderBy(characters.id);
   const bare = rows.find((r) => r.journey === null);
-  const found = stamp ? (rows.find((r) => r.journey === stamp) ?? bare) : (bare ?? rows[0]);
+  const found = stamp ? (rows.find((r) => r.journey === stamp) ?? bare ?? (await fullNameRow(userId, game, realm, name, stamp))) : (bare ?? rows[0]);
   if (found) return found;
   const [held] = await db.select({ n: count() }).from(characters).where(eq(characters.userId, userId));
   if (held!.n >= MAX_CHARACTERS) return null;
   return journeyRow(userId, game, realm, name, stamp);
+}
+
+// Forever's characters have surnames, and only the full name is unique: up
+// to 1.20.5 the addon named them by the first name alone, so an account's
+// characters sharing one were one name here, all but the newest listed as
+// earlier journeys and never handed to another PC (#141). The addon now
+// sends "First Last". A journey's row under the first name is found by its
+// stamp and takes the full name; an addon still sending the first name
+// finds the row its full name took. Only that pair: a rename to another
+// name keeps its own row (#124).
+export function fullNameOf(stored: string, sent: string): "rename" | "keep" | null {
+  if (sent.startsWith(`${stored} `) && !stored.includes(" ")) return "rename";
+  if (stored.startsWith(`${sent} `) && !sent.includes(" ")) return "keep";
+  return null;
+}
+
+async function fullNameRow(userId: string, game: string, realm: string, name: string, stamp: string): Promise<Character | null> {
+  const same = await db
+    .select()
+    .from(characters)
+    .where(and(eq(characters.userId, userId), eq(characters.game, game), eq(characters.realm, realm), eq(characters.journey, stamp)))
+    .orderBy(characters.id);
+  for (const row of same) {
+    const how = fullNameOf(row.name, name);
+    if (how === "keep") return row;
+    if (how === "rename") {
+      // Two uploads renaming it at once both write the same name.
+      const [renamed] = await db.update(characters).set({ name, updatedAt: new Date() }).where(eq(characters.id, row.id)).returning();
+      return renamed ?? row;
+    }
+  }
+  return null;
 }
 
 // The id of each name's current journey: its newest row (spec 2026-10-15
