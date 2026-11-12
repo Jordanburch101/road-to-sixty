@@ -37,8 +37,10 @@ export function when(iso: string, now: Date): string {
   return `${t.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...year })}, ${time}`;
 }
 
-export function levelClass(c: { level: number | null; class: string | null }): string {
-  return [c.level !== null ? `Level ${c.level}` : "", c.class ? (CLASSES[c.class]?.name ?? "") : ""].filter(Boolean).join(" ");
+// Under the name on a character's page: class, realm and time played. The
+// level is on the portrait (Portrait.tsx).
+export function titleLine(c: { class: string | null; realm: string; played: number | null }): string {
+  return [CLASSES[c.class ?? ""]?.name ?? "", realmName(c.realm), c.played !== null ? `${played(c.played)} played` : ""].filter(Boolean).join(" · ");
 }
 
 // Forever's realms reach the addon by their server names, such as

@@ -3,8 +3,8 @@ import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import { useState, type ReactNode } from "react";
 import { characters, removeCharacter, setPaused, useLoad, type Status } from "./api";
-import { CLASS_ICONS } from "@road-to-sixty/ui/classes";
-import { BETA, CLASSES, byGame, characterLine, isTest, levelClass, played, realmName, testJourneys, testWords } from "./format";
+import { BETA, CLASSES, byGame, characterLine, isTest, played, realmName, testJourneys, testWords } from "./format";
+import { Portrait } from "./Portrait";
 
 export type Tab = "characters" | "account";
 
@@ -34,25 +34,20 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
     const [name, ...realm] = c.key.split("-");
     const warn = c.updateAddon || c.problem !== null;
     const look = CLASSES[i?.class ?? ""];
-    const icon = CLASS_ICONS[i?.class ?? ""];
     const box = `flex w-full items-center gap-2.5 rounded-[10px] border px-3.5 py-3 text-left ${warn ? "border-warn-line bg-[#0f0d0a]" : "border-line bg-panel"}`;
     const body = (
       <>
-        {icon ? (
-          <img src={icon} alt="" className="size-[34px] shrink-0 self-start rounded-full" />
-        ) : (
-          <span aria-hidden="true" className="size-[34px] shrink-0 self-start rounded-full border border-dashed border-[#3a3746]" />
-        )}
+        <Portrait c={i} />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-medium" style={{ color: look?.colour }}>
+            <span className="min-w-0 truncate text-[15px] font-medium" style={{ color: look?.colour }}>
               {name}
             </span>
             {i && isTest(i) && (
               <span className="rounded-full border border-outline px-1.5 text-[10px] text-muted">{i.game === BETA || i.realm.includes("Beta") ? "Beta" : "Test"}</span>
             )}
-            <span className="truncate text-[13px] text-muted">{(i && levelClass(i)) || realmName(realm.join("-"))}</span>
-            {i?.played != null && <span className="ml-auto font-mono text-xs text-muted">{played(i.played)}</span>}
+            {!i && <span className="truncate text-[13px] text-muted">{realmName(realm.join("-"))}</span>}
+            {i?.played != null && <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs text-muted">{played(i.played)}</span>}
           </div>
           <div className={`text-xs leading-[1.45] ${warn ? "text-warn" : "text-faint"}`}>{warn || !i ? c.note : characterLine(i, now)}</div>
         </div>
