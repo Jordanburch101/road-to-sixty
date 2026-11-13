@@ -15,16 +15,27 @@ local _, ns = ...
 --   rec   name, spellID, profession, source   a recipe learned; spellID and
 --                                         profession when the client says;
 --                                         source "t" when a trainer was open
---   craft link, count, quality, profession, spellID   something made, from
---                                         "You create: ..." (#85); the same
---                                         item again within CRAFT_BUNDLE
---                                         seconds adds to the last one's
---                                         count, so "Create All" is one
---                                         event. spellID is the player's cast
---                                         just before (the recipe, or a spell
---                                         such as a mage's conjured food),
---                                         profession when known; things made
---                                         outside a profession have none
+--   craft link, count, quality, profession, spellID   something made with a
+--                                         profession, from "You create: ..."
+--                                         (#85); the same item again within
+--                                         CRAFT_BUNDLE seconds adds to the
+--                                         last one's count, so "Create All"
+--                                         is one event. spellID is the
+--                                         recipe, the player's cast just
+--                                         before. "You create" without a
+--                                         profession's cast is not crafting
+--                                         (a battleground's mark, a mage's
+--                                         conjured food) and is not logged
+--                                         from 1.20.7 on (#142); on classic
+--                                         clients, which can only tell by
+--                                         the profession window, a spell
+--                                         cast with one open still counts.
+--                                         Crafts saved
+--                                         before then are those when they
+--                                         have no profession, or one not in
+--                                         ns.char.skills (on Forever a class
+--                                         spell's skill line, such as
+--                                         Arcane), so leave them out
 --
 -- ns.char.skills is the last skill seen per profession: name -> { rank, max,
 -- icon }, icon a file ID when the client gives one.
@@ -279,25 +290,47 @@ end
 
 local CRAFT_BUNDLE = 10     -- seconds: the same item made again within this joins the last craft
 local CAST_SECONDS = 5      -- a cast this recent is the craft's recipe
-local lastCast              -- { spellID, at } the player's last cast
+local lastCast              -- { spellID, at, window } the player's last cast not yet matched to something made
 local lastCraft             -- { key, event, at } the craft logged last
 
--- The profession something was made with: the recipe's own on modern
--- clients, else the classic profession window open, as classic crafting
--- needs it. Modern clients' window state is not known, so they never guess.
-local function CraftProfession(spellID)
-    local profession = Crafts:RecipeProfession(spellID)
-    if profession then return profession end
+-- Whether the character has this profession: last seen, or now.
+local function HasProfession(name)
+    if ns.char.skills and ns.char.skills[name] then return true end
+    local now = Crafts:ReadSkills()
+    return now ~= nil and now[name] ~= nil
+end
+
+-- Classic clients: the profession window open, which classic crafting
+-- needs. Modern clients' window state is not known, so they never guess.
+local function ClassicWindowProfession()
     if classicWindow and not (C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo) then
         return OpenProfession()
     end
 end
 
+-- The profession a cast made something with: the recipe's own on modern
+-- clients, else the classic profession window open when it was cast, so a
+-- Create All goes on after the window closes. Forever's recipe lookup
+-- answers for class spells too, with their skill line (a mage's Conjure
+-- Water is "Arcane"), so only one of the character's professions counts
+-- (#142).
+local function CraftProfession(cast)
+    local profession = Crafts:RecipeProfession(cast.spellID)
+    if profession and HasProfession(profession) then return profession end
+    return cast.window
+end
+
 -- Logs count of the item in link made, or adds them to the last craft when
--- it was the same item a moment ago.
+-- it was the same item a moment ago. Only what a profession's cast made is
+-- logged (#142): classic gives battleground marks with "You create" and no
+-- cast, and a mage's conjured food is a spell of no profession. Each cast
+-- makes one thing, so it is used once: a mark arriving just after a craft
+-- can't take its cast.
 function Crafts:Crafted(link, count)
     local now = GetTime()
     count = tonumber(count) or 1
+    local cast = lastCast and now - lastCast.at <= CAST_SECONDS and lastCast or nil
+    lastCast = nil
     local key = ns.ItemString(link, true) or link
     local last = lastCraft
     if last and last.key == key and now - last.at <= CRAFT_BUNDLE then
@@ -305,9 +338,12 @@ function Crafts:Crafted(link, count)
         last.at = now
         return last.event
     end
-    local spellID = lastCast and now - lastCast.at <= CAST_SECONDS and lastCast.spellID or nil
+    if not cast then return end
+    local profession = CraftProfession(cast)
+    if not profession then return end
+    local spellID = cast.spellID
     local e = Log("craft", link, count, ns.Journal.ItemQuality and ns.Journal.ItemQuality(link) or nil,
-        CraftProfession(spellID), spellID)
+        profession, spellID)
     lastCraft = { key = key, event = e, at = now }
     return e
 end
@@ -475,7 +511,7 @@ end)
 
 ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" or (issecretvalue and issecretvalue(spellID)) then return end
-    lastCast = { spellID = spellID, at = GetTime() }
+    lastCast = { spellID = spellID, at = GetTime(), window = ClassicWindowProfession() }
 end)
 
 ns.On("CHAT_MSG_LOOT", function(msg)

@@ -176,7 +176,7 @@ check(count == 2, "pet training is not a profession, got " .. count .. " profess
 
 -- 6. Things made (#85): with the recipe cast just before and the profession
 -- window open; Create All is one event; something made with no profession
--- window open (conjured food) has no profession.
+-- (conjured food, a battleground's mark) is not logged.
 local function Made(name, id, count)
     local link = ("|cffffffff|Hitem:%d::::::::20:::::|h[%s]|h|r"):format(id, name)
     Fire("CHAT_MSG_LOOT", count and ("You create: %sx%d."):format(link, count) or ("You create: %s."):format(link))
@@ -195,18 +195,47 @@ for _ = 1, 3 do
 end
 check(#ns.char.events == before + 1 and made[7] == 4, "the same item made again a moment later adds to its count")
 clock = clock + 3
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2963)
 Made("Linen Bolt", 2996, 2)
 check(#ns.char.events == before + 2 and ns.char.events[#ns.char.events][7] == 2, "a stack made counts its size")
+clock = clock + 30
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2963)
+Made("Linen Bolt", 2996, 2)
+check(#ns.char.events == before + 3, "the same item made long after is a new craft")
+-- Each cast makes one thing (#142): a mark a moment after a craft, with
+-- the window still open, can't take that craft's cast.
+clock = clock + 1
+Made("Warsong Gulch Mark of Honor", 20558)
+check(#ns.char.events == before + 3, "a mark just after a craft is not a craft")
+-- A Create All goes on after the window closes: the window open at the
+-- first cast is the profession, and the rest join it.
+clock = clock + 30
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3275)
 Fire("TRADE_SKILL_CLOSE")
+Made("Linen Bandage", 1251)
+for _ = 1, 2 do
+    clock = clock + 3
+    Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3275)
+    Made("Linen Bandage", 1251)
+end
+local all = ns.char.events[#ns.char.events]
+check(#ns.char.events == before + 4 and all[9] == "Tailoring" and all[7] == 3,
+    "a Create All whose window closed after the first cast is still one craft")
+-- Not crafting (#142): conjured food is a spell of no profession, and a
+-- battleground's mark comes with "You create" and no cast at all, even
+-- with a profession window open.
 clock = clock + 60
 Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 587)
 Made("Conjured Muffin", 5349, 20)
-local conjured = ns.char.events[#ns.char.events]
-check(#ns.char.events == before + 3 and conjured[7] == 20 and conjured[9] == nil and conjured[10] == 587,
-    "something made with no profession window open has no profession")
-clock = clock + 30
-Made("Conjured Muffin", 5349, 20)
-check(#ns.char.events == before + 4, "the same item made long after is a new craft")
+check(#ns.char.events == before + 4, "conjured food with no profession window open is not a craft")
+clock = clock + 60
+Made("Warsong Gulch Mark of Honor", 20558)
+check(#ns.char.events == before + 4, "a battleground's mark is not a craft")
+Fire("TRADE_SKILL_SHOW")
+clock = clock + 60
+Made("Warsong Gulch Mark of Honor", 20558)
+check(#ns.char.events == before + 4, "nor with a profession window open")
+Fire("TRADE_SKILL_CLOSE")
 Fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:2589::::::::20:::::|h[Linen Cloth]|h|r.")
 check(#ns.char.events == before + 4, "loot is not a craft")
 
@@ -243,6 +272,37 @@ slots = { 1, nil, 3, 4, 5 }
 Crafts:CheckSkills()
 local aid = ns.char.events[#ns.char.events]
 check(aid[2] == "prof" and aid[6] == "First Aid" and aid[9] == nil, "a profession learned after that is learned")
+
+-- Forever's crafts: the profession is the recipe's, from the cast before.
+-- The lookup answers for class spells too, with their skill line (seen in
+-- game: Conjure Water gave "Arcane"), so only the character's professions
+-- count. Conjured water, and a battleground's mark (no cast), are not
+-- crafts (#142).
+local RECIPES = { [3275] = "First Aid", [5504] = "Arcane" }
+C_TradeSkillUI = {
+    GetBaseProfessionInfo = function() return {} end,
+    GetTradeSkillLineForRecipe = function(id) return nil, RECIPES[id] end,
+}
+ns.char.events = {}
+clock = 1000
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3275)
+Made("Linen Bandage", 1251)
+made = ns.char.events[1]
+check(#ns.char.events == 1 and made[9] == "First Aid" and made[10] == 3275, "Forever: a craft takes its recipe's profession")
+clock = clock + 60
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5504)
+Made("Conjured Water", 2288, 20)
+clock = clock + 60
+Made("Warsong Gulch Mark of Honor", 20558)
+check(#ns.char.events == 1, "Forever: conjured water and a battleground's mark are not crafts, got " .. #ns.char.events)
+-- A profession not saved yet (a new character's first craft) is read live.
+local saved = ns.char.skills
+ns.char.skills = nil
+clock = clock + 60
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3275)
+Made("Linen Bandage", 1251)
+check(#ns.char.events == 2 and ns.char.events[2][9] == "First Aid", "Forever: a profession not saved yet is read live")
+ns.char.skills = saved
 
 if failures > 0 then
     print(failures .. " failure(s)")
