@@ -248,9 +248,11 @@ local aid = ns.char.events[#ns.char.events]
 check(aid[2] == "prof" and aid[6] == "First Aid" and aid[9] == nil, "a profession learned after that is learned")
 
 -- Forever's crafts: the profession is the recipe's, from the cast before.
--- A spell that is no recipe (conjured water), or no cast (a battleground's
--- mark), is not a craft (#142).
-local RECIPES = { [3275] = "First Aid" }
+-- The lookup answers for class spells too, with their skill line (seen in
+-- game: Conjure Water gave "Arcane"), so only the character's professions
+-- count. Conjured water, and a battleground's mark (no cast), are not
+-- crafts (#142).
+local RECIPES = { [3275] = "First Aid", [5504] = "Arcane" }
 C_TradeSkillUI = {
     GetBaseProfessionInfo = function() return {} end,
     GetTradeSkillLineForRecipe = function(id) return nil, RECIPES[id] end,

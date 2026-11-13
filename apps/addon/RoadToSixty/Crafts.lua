@@ -26,9 +26,12 @@ local _, ns = ...
 --                                         profession is not crafting (a
 --                                         battleground's mark, a mage's
 --                                         conjured food) and is not logged
---                                         from 1.20.7 on (#142); crafts saved
---                                         before then without a profession
---                                         are those, so leave them out
+--                                         from 1.20.7 on (#142). Crafts saved
+--                                         before then are those when they
+--                                         have no profession, or one not in
+--                                         ns.char.skills (on Forever a class
+--                                         spell's skill line, such as
+--                                         Arcane), so leave them out
 --
 -- ns.char.skills is the last skill seen per profession: name -> { rank, max,
 -- icon }, icon a file ID when the client gives one.
@@ -286,12 +289,22 @@ local CAST_SECONDS = 5      -- a cast this recent is the craft's recipe
 local lastCast              -- { spellID, at } the player's last cast
 local lastCraft             -- { key, event, at } the craft logged last
 
+-- Whether the character has this profession: last seen, or now.
+local function HasProfession(name)
+    if ns.char.skills and ns.char.skills[name] then return true end
+    local now = Crafts:ReadSkills()
+    return now ~= nil and now[name] ~= nil
+end
+
 -- The profession something was made with: the recipe's own on modern
 -- clients, else the classic profession window open, as classic crafting
 -- needs it. Modern clients' window state is not known, so they never guess.
+-- Forever's recipe lookup answers for class spells too, with their skill
+-- line (a mage's Conjure Water is "Arcane"), so only one of the
+-- character's professions counts (#142).
 local function CraftProfession(spellID)
     local profession = Crafts:RecipeProfession(spellID)
-    if profession then return profession end
+    if profession and HasProfession(profession) then return profession end
     if classicWindow and not (C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo) then
         return OpenProfession()
     end
