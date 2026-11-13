@@ -6,6 +6,15 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.7
+
+### New
+- Hide characters you don't want on the map: right-click one in the
+  Characters list. Hidden ones leave the list, the map and the Stats
+  screen, and the list's filter has a Hidden group to bring them back.
+  A character you've deleted in game can be deleted from the list too,
+  once you type its name.
+
 ## 1.20.6
 
 ### Fixed

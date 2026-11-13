@@ -143,7 +143,8 @@ check(s.clock == nil and s.togetherMode == nil, "end left the clock")
 check(T.togetherButton.text == "Solo" and T.speedButton.text == "1x", "end left the buttons")
 
 -- The Characters tab's filter.
-local ns = {}
+local ns = { Roster = { IsHidden = function(_, e) return e.hidden == true end } }
+StaticPopupDialogs = StaticPopupDialogs or {}
 assert(loadfile("RoadToSixty/Panel.lua"))("RoadToSixty", ns)
 local entries = {
     { name = "Zed" }, { name = "Alt" },
@@ -160,6 +161,53 @@ check(#mine == 2 and mine[2].name == "Alt", "mine")
 local theirs = ns.Panel:FilterCharacters(entries, "Bromm#1234")
 check(#theirs == 2 and theirs[2].name == "Brommalt", "a friend's characters")
 check(#ns.Panel:FilterCharacters(entries, "Ann") == 1, "a friend with no tag")
+-- Hidden ones (#147) go in a group of their own, last, and nowhere else; a
+-- friend whose every character is hidden has no group.
+entries[2].hidden, entries[5].hidden = true, true
+groups = ns.Panel:CharacterGroups(entries)
+check(#groups == 4 and groups[3].label == "Bromm#1234" and groups[4].key == "hidden" and groups[4].label == "Hidden (2)",
+    "the Hidden group, last")
+check(#ns.Panel:FilterCharacters(entries, "all") == 3, "hidden ones left out of everyone")
+check(#ns.Panel:FilterCharacters(entries, "mine") == 1, "and out of mine")
+local hiddenOnes = ns.Panel:FilterCharacters(entries, "hidden")
+check(#hiddenOnes == 2 and hiddenOnes[1].name == "Alt" and hiddenOnes[2].name == "Ann", "the Hidden group lists them")
+
+-- Deleting asks for the name typed (#147): Delete stays off until it
+-- matches (any case, spaces around ignored), and nothing is deleted
+-- without it, even by Enter.
+strtrim = strtrim or function(text) return (text:gsub("^%s+", ""):gsub("%s+$", "")) end
+local deleted = {}
+ns.Roster.Delete = function(_, e) deleted[#deleted + 1] = e; return true end
+ns.Map = { RefreshCharacters = function() end, ShowJourney = function() end }
+ns.Print = function() end
+local popup = StaticPopupDialogs.ROADTOSIXTY_DELETE_CHARACTER
+local accept = { enabled = true, Disable = function(b) b.enabled = false end, SetEnabled = function(b, on) b.enabled = on end }
+local dialog = { GetButton1 = function() return accept end, Hide = function(d) d.hidden = true end }
+local box = { text = "", GetText = function(b) return b.text end, GetParent = function() return dialog end }
+dialog.GetEditBox = function() return box end
+local data = { entry = { name = "Testy McTest" }, name = "Testy McTest" }
+popup.OnShow(dialog)
+check(not accept.enabled, "Delete is off when the box opens")
+for _, typed in ipairs({ "Testy", "Testy McTes", "Testy McTestx" }) do
+    box.text = typed
+    popup.EditBoxOnTextChanged(box, data)
+    check(not accept.enabled, "Delete stays off for " .. typed)
+    popup.EditBoxOnEnterPressed(box, data)
+    popup.OnAccept(dialog, data)
+end
+check(#deleted == 0 and not dialog.hidden, "nothing deleted without the name")
+-- A nameless entry is never confirmed by an empty box.
+local nameless = { entry = { name = nil }, name = "" }
+box.text = ""
+popup.EditBoxOnTextChanged(box, nameless)
+popup.EditBoxOnEnterPressed(box, nameless)
+popup.OnAccept(dialog, nameless)
+check(not accept.enabled and #deleted == 0, "an empty box never deletes a nameless entry")
+box.text = "  testy mctest "
+popup.EditBoxOnTextChanged(box, data)
+check(accept.enabled, "the name in any case turns Delete on")
+popup.EditBoxOnEnterPressed(box, data)
+check(#deleted == 1 and deleted[1] == data.entry and dialog.hidden, "Enter deletes once the name is typed")
 
 if failures > 0 then os.exit(1) end
 print("together_test: all passed")

@@ -3,7 +3,9 @@ local _, ns = ...
 -- Side panel of the journey map. History lists the journey's milestones,
 -- travel, loot and dungeon runs, newest first, with a filter; clicking one
 -- jumps the map and replay to that moment. Characters lists the account's
--- characters from the roster and any synced friends, with a filter by friend.
+-- characters from the roster and any synced friends, with a filter by friend;
+-- a right click hides one, or deletes one of this account's after its name
+-- is typed, and the filter's Hidden group brings hidden ones back (#147).
 -- Friends is FriendsPanel.lua. The numbers are on the Stats screen
 -- (StatsScreen.lua), a mode of the map window.
 
@@ -844,8 +846,103 @@ end
 
 -- Characters ---------------------------------------------------------------------
 
+-- Hiding and deleting a character (#147). Deleting asks for the name to be
+-- typed, so it can't be done by a slip: the journey copy goes for good.
+local function Confirmed(editBox, data)
+    local name = data and data.name or ""
+    return name ~= "" and strtrim(editBox:GetText() or ""):lower() == name:lower()
+end
+
+local function Button1(dialog)
+    return dialog.GetButton1 and dialog:GetButton1() or dialog.button1
+end
+
+local function CharactersChanged()
+    ns.Map:RefreshCharacters()
+    Panel:RefreshCharacters()
+    if ns.FriendsPanel then ns.FriendsPanel:Refresh() end
+    if ns.StatsScreen then ns.StatsScreen:Rebuild() end
+end
+
+-- Puts the map back on this character's journey before e goes from it.
+local function LeaveView(e)
+    if ns.viewEntry == e then ns.Map:ShowJourney(nil) end
+end
+
+StaticPopupDialogs.ROADTOSIXTY_DELETE_CHARACTER = {
+    text = "Delete %s for good?\n\nIts journey is deleted from this PC. If the character still exists "
+        .. "under this name, it comes back the next time you log in on it. If it was renamed or moved "
+        .. "to another realm, it doesn't: only the Road to Sixty app's backup still has it.\n\n"
+        .. "Type the character's name to delete it.",
+    button1 = "Delete",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    maxLetters = 64,
+    OnShow = function(dialog)
+        local button = Button1(dialog)
+        if button then button:Disable() end
+    end,
+    EditBoxOnTextChanged = function(editBox, data)
+        local button = Button1(editBox:GetParent())
+        if button then button:SetEnabled(Confirmed(editBox, data)) end
+    end,
+    EditBoxOnEnterPressed = function(editBox, data)
+        if not Confirmed(editBox, data) then return end
+        local dialog = editBox:GetParent()
+        StaticPopupDialogs.ROADTOSIXTY_DELETE_CHARACTER.OnAccept(dialog, data)
+        dialog:Hide()
+    end,
+    EditBoxOnEscapePressed = function(editBox) editBox:GetParent():Hide() end,
+    OnAccept = function(dialog, data)
+        local box = dialog.GetEditBox and dialog:GetEditBox() or dialog.editBox
+        if not (data and box and Confirmed(box, data)) then return end
+        LeaveView(data.entry)
+        if ns.Roster:Delete(data.entry) then
+            ns.Print(("%s deleted from the character list."):format(data.name))
+        end
+        CharactersChanged()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
+local function SetHidden(e, on)
+    if on then LeaveView(e) end
+    if ns.Roster:SetHidden(e, on) then CharactersChanged() end
+end
+
+-- The right-click menu: hide or show again, and delete for one of this
+-- account's characters. Without the menu, a right click hides or shows.
+local function OpenCharacterMenu(row)
+    local e = row.entry
+    if not e or ns.Roster:IsMe(e) then return end
+    local hidden = ns.Roster:IsHidden(e)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        SetHidden(e, not hidden)
+        return
+    end
+    MenuUtil.CreateContextMenu(row, function(_, root)
+        root:CreateTitle(e.name or "?")
+        if hidden then
+            root:CreateButton("Show again", function() SetHidden(e, false) end)
+        else
+            root:CreateButton("Hide from the list and map", function() SetHidden(e, true) end)
+        end
+        -- A journey kept aside from a file with no name can't be confirmed by
+        -- typing one, so it can only be hidden.
+        if not e.friend and (e.name or "") ~= "" then
+            root:CreateDivider()
+            root:CreateButton("|cffff6060Delete...|r", function()
+                StaticPopup_Show("ROADTOSIXTY_DELETE_CHARACTER", e.name, nil, { entry = e, name = e.name })
+            end)
+        end
+    end)
+end
+
 local function CreateCharacterRow(parent)
     local row = CreateFrame("Button", nil, parent)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(22, 22)
     row.icon:SetPoint("LEFT", 3, 0)
@@ -885,19 +982,29 @@ local function CreateCharacterRow(parent)
     row.selected:SetAllPoints()
     row.selected:SetColorTexture(1, 0.82, 0, 0.12)
 
-    row:SetScript("OnClick", function(self)
-        ns.Map:ShowJourney(self.entry)
+    row:SetScript("OnClick", function(self, mouse)
+        if mouse == "RightButton" then
+            OpenCharacterMenu(self)
+        else
+            ns.Map:ShowJourney(self.entry)
+        end
     end)
     row:SetScript("OnEnter", function(self)
         local e = self.entry
-        if ns.Roster:ViewEntry() == e then return end
+        if ns.Roster:IsMe(e) and ns.Roster:ViewEntry() == e then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         if ns.Roster:IsMe(e) then
             GameTooltip:AddLine("Click to show your own journey again")
+        elseif ns.Roster:ViewEntry() == e then
+            GameTooltip:AddLine((e.name or "?") .. "'s journey is shown")
         elseif e.journey then
             GameTooltip:AddLine("Click to show " .. (e.name or "?") .. "'s journey")
         else
             GameTooltip:AddLine("Log in on " .. (e.name or "?") .. " once to share its journey")
+        end
+        if not ns.Roster:IsMe(e) then
+            GameTooltip:AddLine(ns.Roster:IsHidden(e) and "Right-click to show it again"
+                or "Right-click to hide it" .. ((e.friend or (e.name or "") == "") and "" or " or delete it"), 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
     end)
@@ -913,6 +1020,10 @@ local function UpdateCharacterRow(row, e)
     local tag = e.friend and ("  |cff82c5ff%s|r"):format(e.battleTag or "Synced friend") or ""
     row.title:SetText(("%s  |cffffffff%d|r%s"):format(e.name or "?", me and UnitLevel("player") or e.level or 0, tag))
     row.title:SetTextColor(r, g, b)
+    -- Hidden ones, in the Hidden group, are dimmed.
+    local alpha = ns.Roster:IsHidden(e) and 0.45 or 1
+    row.icon:SetAlpha(alpha)
+    row.title:SetAlpha(alpha)
 
     local parts = {}
     local guild = (me and ns.char or e.journey or {}).guild
@@ -931,17 +1042,23 @@ local function UpdateCharacterRow(row, e)
     -- The shown character's path is the main one on the map already.
     local shown = ns.Roster:ViewEntry() == e
     row.selected:SetShown(shown)
-    row.pathToggle:SetShown(not shown)
+    -- A hidden character's path isn't drawn, so it has no box.
+    row.pathToggle:SetShown(not shown and alpha == 1)
     row.pathToggle:SetChecked(ns.db.showPaths[e.key] == true)
 end
 
 -- The filter's groups, in the order it goes through them: everyone, this
 -- account's characters, then each synced friend with all their characters,
--- known by BattleTag, or by name until a sync brings one.
+-- known by BattleTag, or by name until a sync brings one, then the hidden
+-- ones (#147) when there are any. entries may include hidden ones.
+local HIDDEN = "hidden"
 function Panel:CharacterGroups(entries)
     local groups, seen = { { key = "all", label = "Everyone" }, { key = "mine", label = "My characters" } }, {}
+    local hidden = 0
     for _, e in ipairs(entries) do
-        if e.friend then
+        if ns.Roster:IsHidden(e) then
+            hidden = hidden + 1
+        elseif e.friend then
             local key = e.battleTag or e.name or "?"
             if not seen[key] then
                 seen[key] = true
@@ -949,16 +1066,20 @@ function Panel:CharacterGroups(entries)
             end
         end
     end
+    if hidden > 0 then
+        groups[#groups + 1] = { key = HIDDEN, label = ("Hidden (%d)"):format(hidden) }
+    end
     return groups
 end
 
--- The entries in the group with this key.
+-- The entries in the group with this key: hidden ones only in their own.
 function Panel:FilterCharacters(entries, key)
-    if key == "all" then return entries end
     local list = {}
     for _, e in ipairs(entries) do
         local friend = e.friend and (e.battleTag or e.name or "?")
-        if (key == "mine" and not friend) or friend == key then
+        if ns.Roster:IsHidden(e) then
+            if key == HIDDEN then list[#list + 1] = e end
+        elseif key == "all" or (key == "mine" and not friend) or friend == key then
             list[#list + 1] = e
         end
     end
@@ -966,7 +1087,7 @@ function Panel:FilterCharacters(entries, key)
 end
 
 local function RefreshCharacterList()
-    local entries = ns.Roster:Entries()
+    local entries = ns.Roster:Entries(true)
     local groups, current = Panel:CharacterGroups(entries), nil
     for _, group in ipairs(groups) do
         if group.key == characterFilter then current = group end
@@ -982,11 +1103,11 @@ end
 -- Who to list: a menu of the groups, friends after a divider, or on a client
 -- without the menu, each click the next group, or the last for the right button.
 local function ChooseCharacterFilter(self, mouse)
-    local groups = Panel:CharacterGroups(ns.Roster:Entries())
+    local groups = Panel:CharacterGroups(ns.Roster:Entries(true))
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(self, function(_, root)
             for i, group in ipairs(groups) do
-                if i == 3 then root:CreateDivider() end
+                if i == 3 or (group.key == HIDDEN and i > 3) then root:CreateDivider() end
                 root:CreateRadio(group.label, function() return characterFilter == group.key end, function()
                     characterFilter = group.key
                     RefreshCharacterList()
@@ -1008,7 +1129,10 @@ end
 -- Turns the path of every character listed on or off, for replaying together.
 local function SetListedPaths(on)
     for _, e in ipairs(characterList.data) do
-        ns.db.showPaths[e.key] = on or nil
+        -- Hidden ones (the Hidden group) have no path box to tick.
+        if not ns.Roster:IsHidden(e) then
+            ns.db.showPaths[e.key] = on or nil
+        end
     end
     ns.Map:RefreshCharacters()
     characterList:Refresh()
