@@ -19,8 +19,11 @@ local _, ns = ...
 --                                         profession, from "You create: ..."
 --                                         (#85); the same item again within
 --                                         CRAFT_BUNDLE seconds adds to the
---                                         last one's count, so "Create All"
---                                         is one event. spellID is the
+--                                         last one's count when it stacks,
+--                                         so "Create All" of bars or
+--                                         bandages is one event; one that
+--                                         doesn't stack (gear) is an event
+--                                         each. spellID is the
 --                                         recipe, the player's cast just
 --                                         before. "You create" without a
 --                                         profession's cast is not crafting
@@ -291,7 +294,7 @@ end
 local CRAFT_BUNDLE = 10     -- seconds: the same item made again within this joins the last craft
 local CAST_SECONDS = 5      -- a cast this recent is the craft's recipe
 local lastCast              -- { spellID, at, window } the player's last cast not yet matched to something made
-local lastCraft             -- { key, event, at } the craft logged last
+local lastCraft             -- { key, event, at, stacks } the craft logged last
 
 -- Whether the character has this profession: last seen, or now.
 local function HasProfession(name)
@@ -320,8 +323,22 @@ local function CraftProfession(cast)
     return cast.window
 end
 
+-- Whether the item in link stacks: what the client says, else true when
+-- several were made at once, or when the client doesn't know it yet (as
+-- before items were told apart).
+local function Stacks(link, count)
+    if count > 1 then return true end
+    local get = C_Item and C_Item.GetItemMaxStackSizeByID
+    local ok, size = false, nil
+    if get then ok, size = pcall(get, link) end
+    if ok and type(size) == "number" then return size > 1 end
+    return true
+end
+
 -- Logs count of the item in link made, or adds them to the last craft when
--- it was the same item a moment ago. Only what a profession's cast made is
+-- it was the same item a moment ago and stacks: bars and bandages from a
+-- Create All are one craft, each piece of gear is one of its own. Only
+-- what a profession's cast made is
 -- logged (#142): classic gives battleground marks with "You create" and no
 -- cast, and a mage's conjured food is a spell of no profession. Each cast
 -- makes one thing, so it is used once: a mark arriving just after a craft
@@ -333,7 +350,7 @@ function Crafts:Crafted(link, count)
     lastCast = nil
     local key = ns.ItemString(link, true) or link
     local last = lastCraft
-    if last and last.key == key and now - last.at <= CRAFT_BUNDLE then
+    if last and last.key == key and last.stacks and now - last.at <= CRAFT_BUNDLE then
         last.event[7] = (last.event[7] or 1) + count
         last.at = now
         return last.event
@@ -344,7 +361,7 @@ function Crafts:Crafted(link, count)
     local spellID = cast.spellID
     local e = Log("craft", link, count, ns.Journal.ItemQuality and ns.Journal.ItemQuality(link) or nil,
         profession, spellID)
-    lastCraft = { key = key, event = e, at = now }
+    lastCraft = { key = key, event = e, at = now, stacks = Stacks(link, count) }
     return e
 end
 

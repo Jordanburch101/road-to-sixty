@@ -181,6 +181,9 @@ local function Made(name, id, count)
     local link = ("|cffffffff|Hitem:%d::::::::20:::::|h[%s]|h|r"):format(id, name)
     Fire("CHAT_MSG_LOOT", count and ("You create: %sx%d."):format(link, count) or ("You create: %s."):format(link))
 end
+-- How high items stack, by item ID; gear doesn't.
+local STACK = { [1251] = 20, [2996] = 10, [2568] = 1, [5349] = 20, [20558] = 100 }
+C_Item = { GetItemMaxStackSizeByID = function(link) return STACK[tonumber(link:match("item:(%d+)"))] end }
 local before = #ns.char.events
 clock = 100
 Fire("TRADE_SKILL_SHOW")
@@ -202,6 +205,24 @@ clock = clock + 30
 Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2963)
 Made("Linen Bolt", 2996, 2)
 check(#ns.char.events == before + 3, "the same item made long after is a new craft")
+-- Gear doesn't stack, so each piece is a craft of its own however quickly
+-- it's made; a stackable item the client doesn't know yet still joins.
+clock = clock + 30
+for _ = 1, 3 do
+    clock = clock + 3
+    Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2385)
+    Made("Brown Linen Vest", 2568)
+end
+local vests = ns.char.events[#ns.char.events]
+check(#ns.char.events == before + 6 and vests[7] == 1, "each piece of gear made is its own craft, got " .. (#ns.char.events - before))
+clock = clock + 30
+for _ = 1, 3 do
+    clock = clock + 3
+    Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2963)
+    Made("Bolt of Unknown Cloth", 99999)
+end
+check(#ns.char.events == before + 7 and ns.char.events[#ns.char.events][7] == 3, "an item not known yet still joins")
+before = before + 4
 -- Each cast makes one thing (#142): a mark a moment after a craft, with
 -- the window still open, can't take that craft's cast.
 clock = clock + 1
