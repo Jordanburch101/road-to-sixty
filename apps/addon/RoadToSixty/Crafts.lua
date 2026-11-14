@@ -23,7 +23,9 @@ local _, ns = ...
 --                                         so "Create All" of bars or
 --                                         bandages is one event; one that
 --                                         doesn't stack (gear) is an event
---                                         each. spellID is the
+--                                         each, from its own cast; one the
+--                                         client doesn't know yet joins.
+--                                         spellID is the
 --                                         recipe, the player's cast just
 --                                         before. "You create" without a
 --                                         profession's cast is not crafting
@@ -294,7 +296,7 @@ end
 local CRAFT_BUNDLE = 10     -- seconds: the same item made again within this joins the last craft
 local CAST_SECONDS = 5      -- a cast this recent is the craft's recipe
 local lastCast              -- { spellID, at, window } the player's last cast not yet matched to something made
-local lastCraft             -- { key, event, at, stacks } the craft logged last
+local lastCraft             -- { key, event, at, stacks } the craft logged last; stacks nil until known
 
 -- Whether the character has this profession: last seen, or now.
 local function HasProfession(name)
@@ -323,16 +325,14 @@ local function CraftProfession(cast)
     return cast.window
 end
 
--- Whether the item in link stacks: what the client says, else true when
--- several were made at once, or when the client doesn't know it yet (as
--- before items were told apart).
+-- Whether the item in link stacks: true when several were made at once,
+-- else what the client says, or nil while it doesn't know the item yet.
 local function Stacks(link, count)
     if count > 1 then return true end
     local get = C_Item and C_Item.GetItemMaxStackSizeByID
     local ok, size = false, nil
     if get then ok, size = pcall(get, link) end
     if ok and type(size) == "number" then return size > 1 end
-    return true
 end
 
 -- Logs count of the item in link made, or adds them to the last craft when
@@ -350,7 +350,10 @@ function Crafts:Crafted(link, count)
     lastCast = nil
     local key = ns.ItemString(link, true) or link
     local last = lastCraft
-    if last and last.key == key and last.stacks and now - last.at <= CRAFT_BUNDLE then
+    -- An item the client didn't know at the last craft is asked about again;
+    -- one it still doesn't know joins, as before items were told apart.
+    if last and last.key == key and last.stacks == nil then last.stacks = Stacks(link, count) end
+    if last and last.key == key and last.stacks ~= false and now - last.at <= CRAFT_BUNDLE then
         last.event[7] = (last.event[7] or 1) + count
         last.at = now
         return last.event

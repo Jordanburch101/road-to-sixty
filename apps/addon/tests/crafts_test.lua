@@ -222,7 +222,18 @@ for _ = 1, 3 do
     Made("Bolt of Unknown Cloth", 99999)
 end
 check(#ns.char.events == before + 7 and ns.char.events[#ns.char.events][7] == 3, "an item not known yet still joins")
-before = before + 4
+-- One the client learns about after the first craft is asked again: gear
+-- not known at the first piece is still a craft each once it is.
+clock = clock + 30
+for _ = 1, 3 do
+    clock = clock + 3
+    Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2386)
+    Made("Linen Boots", 2569)
+    STACK[2569] = 1     -- not known at the first pair, known after
+end
+check(#ns.char.events == before + 10, "gear the client learns about after the first piece is a craft each, got "
+    .. (#ns.char.events - before))
+before = before + 7
 -- Each cast makes one thing (#142): a mark a moment after a craft, with
 -- the window still open, can't take that craft's cast.
 clock = clock + 1
