@@ -151,7 +151,7 @@ local zoneView  -- zone art, see ZoneArt.lua
 local charMarkers, otherLines = {}, {}
 local infoText, hintText, perfText, head
 local lines, markers, motes = {}, {}, {}
-local jumpLines, jumpDots, jumpIcons = {}, {}, {}  -- pieces of jump arcs, reused
+local jumpLines, jumpDots, jumpIcons = {}, {}, {}  -- pieces of jump arcs not in use, to reuse (BuildJumps)
 local activeTiles, freeTiles = {}, {}  -- terrain: tile index -> texture, and spares
 local drag
 local hoverLine
@@ -215,7 +215,7 @@ local state = {
     perf = { world = 0, decode = 0, setup = 0, build = 0, lod = 0, place = 0, terrain = 0, view = 0,
         fit = 0, fitMost = 0, sized = 0, sizedMost = 0, placed = 0, kept = 0 },
     charCount = 0,      -- other characters' markers in use
-    jumps = {},         -- built jump arcs: { index into drawn, parts, icon, x, y }
+    jumps = {},         -- built jump arcs: { index into drawn, parts, icon, x, y, and for keeping them (BuildJumps) build, skipped, marks, ribbons }
     boats = {},         -- point index -> "Dock to dock" for boat jumps near known docks
     seaTrips = {},      -- point index -> how a jump across the sea is drawn, see BuildPoints
     ribbons = {},       -- ribbon effect lines to scroll, see BuildJumps
@@ -1110,8 +1110,6 @@ local function PointAlong(points, d)
     return last[1], last[2]
 end
 
-local jumpLineCount, jumpDotCount, jumpIconCount = 0, 0, 0
-
 -- Shows jump icons for jumps the replay has reached, when zoomed in far
 -- enough or when their arc is hovered.
 local function ShowJumpIcons()
@@ -1148,11 +1146,10 @@ end
 -- in screen pixels and kept on the line for zoom changes. Lines are reused,
 -- so a ribbon's texture and blend are undone here.
 local function JumpLine(jump, ax, ay, bx, by, width, r, g, b, a, layer)
-    jumpLineCount = jumpLineCount + 1
-    local line = jumpLines[jumpLineCount]
+    local line = table.remove(jumpLines)
     if not line then
         line = pathLayer:CreateLine(nil, "OVERLAY")
-        jumpLines[jumpLineCount] = line
+        line.isLine = true
     end
     line:SetStartPoint("TOPLEFT", pathLayer, ax, -ay)
     line:SetEndPoint("TOPLEFT", pathLayer, bx, -by)
@@ -1177,12 +1174,7 @@ end
 -- round dot and is drawn above the dots, uncoloured (finish marks). Round
 -- dots go on sublayer 0; the caller lifts coloured ones above their outline.
 local function JumpDot(jump, x, y, size, r, g, b, a, file)
-    jumpDotCount = jumpDotCount + 1
-    local dot = jumpDots[jumpDotCount]
-    if not dot then
-        dot = pathLayer:CreateTexture(nil, "OVERLAY")
-        jumpDots[jumpDotCount] = dot
-    end
+    local dot = table.remove(jumpDots) or pathLayer:CreateTexture(nil, "OVERLAY")
     if file then
         dot:SetTexture(file)
         dot:SetDrawLayer("OVERLAY", 2)
@@ -1243,14 +1235,22 @@ local function BuildJumps(drawn, shown, z, area)
     -- the middle of a zoom does not cut the fade short.
     local fadingAlpha = {}
     if state.dotsFading then
-        for i = 1, jumpDotCount do
-            local dot = jumpDots[i]
-            if dot.key then
-                fadingAlpha[dot.key] = dot.alpha
+        for _, jump in ipairs(state.jumps) do
+            for _, dot in ipairs(jump.parts) do
+                if dot.key then
+                    fadingAlpha[dot.key] = dot.alpha
+                end
             end
         end
     end
-    jumpLineCount, jumpDotCount, jumpIconCount = 0, 0, 0
+    -- Arcs drawn last build, by what they were drawn from (cacheKey below):
+    -- one drawn from the same again keeps its pieces as they are. Placing
+    -- every dot of every arc again was most of a build, 30 to 80 ms in
+    -- game, though few arcs change when the view moves (#152).
+    local before, kept, previous = state.jumpCache or {}, {}, state.jumps
+    state.jumpBuilds = (state.jumpBuilds or 0) + 1
+    local build = state.jumpBuilds
+    local prefix = tostring(state.journey) .. ":" .. z
     ns.Portals:Begin(z)
     local jumps = {}
     -- Ribbon effect lines for OnUpdate to scroll, and the sea lanes whose
@@ -1263,28 +1263,41 @@ local function BuildJumps(drawn, shown, z, area)
     -- back near the coast), a dot that would sit beside one of the same
     -- style is left out, so the lines merge into one row of dots. Only for
     -- an earlier dot of at least the same row, which shows at every zoom
-    -- this one would.
+    -- this one would. Cells are numbered, not named: a name made of two
+    -- numbers for each of nine cells round every dot cost a build dearly.
     local placed = {}
-    local function Taken(style, x, y, row, near)
+    local function Cells(style)
         local grid = placed[style]
         if not grid then
             grid = {}
             placed[style] = grid
         end
+        return grid
+    end
+    local function Covered(style, x, y, row, near)
+        local grid = Cells(style)
         local cx, cy = math.floor(x / near), math.floor(y / near)
         for gx = cx - 1, cx + 1 do
             for gy = cy - 1, cy + 1 do
-                for _, d in ipairs(grid[gx .. ":" .. gy] or {}) do
-                    if d[3] >= row and (d[1] - x) ^ 2 + (d[2] - y) ^ 2 < near * near then
+                for _, d in ipairs(grid[gx * 4194304 + gy] or {}) do
+                    local dx, dy = d[1] - x, d[2] - y
+                    if d[3] >= row and dx * dx + dy * dy < near * near then
                         return true
                     end
                 end
             end
         end
-        local key = cx .. ":" .. cy
-        grid[key] = grid[key] or {}
-        table.insert(grid[key], { x, y, row })
         return false
+    end
+    local function Mark(style, x, y, row, near)
+        local grid = Cells(style)
+        local cell = math.floor(x / near) * 4194304 + math.floor(y / near)
+        grid[cell] = grid[cell] or {}
+        table.insert(grid[cell], { x, y, row })
+    end
+    -- Takes back the dot Mark placed last at this spot.
+    local function Unmark(style, x, y, near)
+        table.remove(Cells(style)[math.floor(x / near) * 4194304 + math.floor(y / near)])
     end
 
     -- Stretches of the curve inside the area, as { from, to } distances
@@ -1324,160 +1337,216 @@ local function BuildJumps(drawn, shown, z, area)
             local curve = ends and (ends.curve or JumpCurve(ends[1], ends[2], ends[3], ends[4]))
                 or JumpCurve(spec[1], spec[2], spec[3], spec[4], style.bend)
             local total = curve[#curve][3]
-            -- Dots are counted from anchor, so trips on one route share them:
-            -- a boat course's middle waypoint, or the middle of the arc.
-            local anchor = ends and (ends.anchor or total / 2) or 0
-            -- Marks at the curve's ends: a boat route drawn the other way
-            -- round from how it was sailed has its X at the start.
-            local head, tail = style.start, style.finish
-            if ends and ends.flip then
-                head, tail = tail, head
+            -- A lane's trunk is drawn by its first trip only: the same band
+            -- again on top would add its glowing effects up.
+            local trunk = style.style == "ribbon" and ends and ends.trunk
+            local skip = trunk and lanesDrawn[ends.lane]
+            if trunk then
+                lanesDrawn[ends.lane] = true
             end
-            -- box: around the curve, for sizing only jumps in view
-            -- (UpdateVisible); tz: the zoom its pieces are sized for.
-            local box = { math.huge, math.huge, -math.huge, -math.huge }
-            for _, c in ipairs(curve) do
-                box[1], box[2] = math.min(box[1], c[1]), math.min(box[2], c[2])
-                box[3], box[4] = math.max(box[3], c[1]), math.max(box[4], c[2])
+            -- Dashes and dots go only where the curve is inside the area.
+            local spans, length
+            if style.style ~= "portal" and style.style ~= "solid" and style.style ~= "ribbon" then
+                spans, length = Spans(curve)
             end
-            local jump = { index = i, parts = {}, spec = spec, box = box, tz = z }
-            spec.curve = curve
-
-            if style.style == "portal" then
-                -- Hovered at its ends, not along the arc (LineAt).
-                spec.portal = true
-                ns.Portals:Add(jump, style, curve[1][1], curve[1][2],
-                    curve[#curve][1], curve[#curve][2], i <= shown)
-            elseif style.style == "solid" then
-                for p = 2, #curve do
-                    JumpStroke(jump, style, curve[p - 1][1], curve[p - 1][2], curve[p][1], curve[p][2])
+            -- What the arc is drawn from. Portals are not kept, as
+            -- Portals.lua lays all of them out again at each build.
+            local cacheKey
+            if style.style ~= "portal" then
+                local p = spec[6]
+                local from = { prefix, p, state.pj[p] or "", spec[1], spec[2], spec[3], spec[4], skip and 1 or 0 }
+                for _, span in ipairs(spans or {}) do
+                    from[#from + 1], from[#from + 2] = span[1], span[2]
                 end
-            elseif style.style == "ribbon" then
-                -- A lane's trunk is drawn by its first trip only: the same band
-                -- again on top would add its glowing effects up.
-                local trunk = ends and ends.trunk
-                local skip = trunk and lanesDrawn[ends.lane]
-                if trunk then
-                    lanesDrawn[ends.lane] = true
-                end
-                local r, g, b, w = style[2], style[3], style[4], style.width
-                for p = 2, #curve do
-                    local pa, pb = curve[p - 1], curve[p]
-                    local middle = (pa[3] + pb[3]) / 2
-                    if not (skip and middle > trunk[1] and middle < trunk[2]) then
-                        JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w + 1, 0, 0, 0, 0.7, 0)
-                        JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w, r * 0.3, g * 0.3, b * 0.3, 0.95, 1)
-                        for e, effect in ipairs(style.effects) do
-                            local line = JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w - 1, 1, 1, 1, 1, 1 + e)
-                            line:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Travel\\" .. effect[1],
-                                "REPEAT", "REPEAT")
-                            line:SetVertexColor(r, g, b, 1)
-                            line:SetBlendMode("ADD")
-                            -- One texture repeat along the band keeps the texture's
-                            -- shape at this zoom; OnUpdate scrolls it.
-                            ribbons[#ribbons + 1] = {
-                                line = line, jump = jump, from = pa[3], to = pb[3],
-                                span = w * effect[2] / z, speed = effect[3],
-                            }
-                        end
+                cacheKey = table.concat(from, ":")
+            end
+            -- An arc drawn from the same last time is kept, unless a dot it
+            -- left out for one already there has lost that one (an arc
+            -- before it went). Its own dots go in first, as it leaves out
+            -- some of its own finest row for them; if it is drawn again
+            -- they come out, or it would leave out its own dots. Kept, its
+            -- dots count as placed for the arcs after it.
+            local jump = cacheKey and before[cacheKey]
+            for _, d in ipairs(jump and jump.marks or {}) do
+                Mark(style, d[1], d[2], d[3], d[4])
+            end
+            for _, d in ipairs(jump and jump.skipped or {}) do
+                if not Covered(style, d[1], d[2], d[3], d[4]) then
+                    for m = #jump.marks, 1, -1 do
+                        local mark = jump.marks[m]
+                        Unmark(style, mark[1], mark[2], mark[4])
                     end
+                    jump = nil
+                    break
                 end
-            elseif style.style == "dash" then
-                local spans, length = Spans(curve)
-                -- Steps from the start of the curve, so dashes stay put as the view moves.
-                local period = Snap((JUMP_DASH + JUMP_GAP) / z, length / JUMP_MAX_PIECES)
-                local dash = period * JUMP_DASH / (JUMP_DASH + JUMP_GAP)
-                for _, span in ipairs(spans) do
-                    for d = math.floor(span[1] / period) * period, span[2], period do
-                        local ax, ay = PointAlong(curve, d)
-                        local bx, by = PointAlong(curve, math.min(d + dash, total))
-                        JumpStroke(jump, style, ax, ay, bx, by)
-                    end
+            end
+            if jump then
+                for _, rb in ipairs(jump.ribbons) do
+                    ribbons[#ribbons + 1] = rb
                 end
+                jump.index, jump.spec, jump.build = i, spec, build
+                spec.curve = curve
             else
-                -- Dots in rows that halve the spacing: every 4th dot, every 2nd,
-                -- every one. A row shows once zooming spreads it to px apart on
-                -- screen, fading in or out over a moment (SetLineThickness and
-                -- OnUpdate), so zooming eases dots in and out rather than
-                -- refilling the line at the next build, and at rest every dot
-                -- is either fully shown or hidden. The finest row covers
-                -- zooming in 4 times before a rebuild is needed.
-                local spans, length = Spans(curve)
-                local size = style.dot or JUMP_DOT
-                local px = style.spacing or JUMP_DOT_SPACING
-                local fine = 2 ^ math.ceil(math.log(px / z) / math.log(2)) / 4
-                while length / fine > JUMP_MAX_PIECES * 2 do
-                    fine = fine * 2
+                -- Dots are counted from anchor, so trips on one route share them:
+                -- a boat course's middle waypoint, or the middle of the arc.
+                local anchor = ends and (ends.anchor or total / 2) or 0
+                -- Marks at the curve's ends: a boat route drawn the other way
+                -- round from how it was sailed has its X at the start.
+                local head, tail = style.start, style.finish
+                if ends and ends.flip then
+                    head, tail = tail, head
                 end
-                -- Dots keep clear of start and finish marks rather than run under them.
-                local first = head and (head[2] / 2 + px / 3) / z or 0
-                local last = total - (tail and (tail[2] / 2 + px / 3) / z or 0)
-                for _, span in ipairs(spans) do
-                    for k = math.ceil((math.max(span[1], first) - anchor) / fine),
-                        math.floor((math.min(span[2], last) - anchor) / fine) do
-                        -- Spacing of the sparsest row this dot is in.
-                        local row, n = k == 0 and total or fine, math.abs(k)
-                        while n > 0 and n % 2 == 0 and row < total do
-                            n, row = n / 2, row * 2
+                -- box: around the curve, for sizing only jumps in view
+                -- (UpdateVisible); tz: the zoom its pieces are sized for.
+                local box = { math.huge, math.huge, -math.huge, -math.huge }
+                for _, c in ipairs(curve) do
+                    box[1], box[2] = math.min(box[1], c[1]), math.min(box[2], c[2])
+                    box[3], box[4] = math.max(box[3], c[1]), math.max(box[4], c[2])
+                end
+                jump = { index = i, parts = {}, spec = spec, box = box, tz = z,
+                    build = build, skipped = {}, marks = {}, ribbons = {} }
+                spec.curve = curve
+
+                if style.style == "portal" then
+                    -- Hovered at its ends, not along the arc (LineAt).
+                    spec.portal = true
+                    ns.Portals:Add(jump, style, curve[1][1], curve[1][2],
+                        curve[#curve][1], curve[#curve][2], i <= shown)
+                elseif style.style == "solid" then
+                    for p = 2, #curve do
+                        JumpStroke(jump, style, curve[p - 1][1], curve[p - 1][2], curve[p][1], curve[p][2])
+                    end
+                elseif style.style == "ribbon" then
+                    local r, g, b, w = style[2], style[3], style[4], style.width
+                    for p = 2, #curve do
+                        local pa, pb = curve[p - 1], curve[p]
+                        local middle = (pa[3] + pb[3]) / 2
+                        if not (skip and middle > trunk[1] and middle < trunk[2]) then
+                            JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w + 1, 0, 0, 0, 0.7, 0)
+                            JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w, r * 0.3, g * 0.3, b * 0.3, 0.95, 1)
+                            for e, effect in ipairs(style.effects) do
+                                local line = JumpLine(jump, pa[1], pa[2], pb[1], pb[2], w - 1, 1, 1, 1, 1, 1 + e)
+                                line:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Travel\\" .. effect[1],
+                                    "REPEAT", "REPEAT")
+                                line:SetVertexColor(r, g, b, 1)
+                                line:SetBlendMode("ADD")
+                                -- One texture repeat along the band keeps the texture's
+                                -- shape at this zoom; OnUpdate scrolls it.
+                                local rb = {
+                                    line = line, jump = jump, from = pa[3], to = pb[3],
+                                    span = w * effect[2] / z, speed = effect[3],
+                                }
+                                ribbons[#ribbons + 1] = rb
+                                jump.ribbons[#jump.ribbons + 1] = rb
+                            end
                         end
-                        local target = row * z >= px and 1 or 0
-                        local x, y = PointAlong(curve, anchor + k * fine)
-                        if not Taken(style, x, y, row, 0.6 * px / z) then
-                            for layer, dot in ipairs({
-                                JumpDot(jump, x, y, size + 2, unpack(JUMP_OUTLINE_COLOR)),
-                                JumpDot(jump, x, y, size, style[2], style[3], style[4], style[5]),
-                            }) do
-                                -- The coloured dot on a sublayer above its outline: in one
-                                -- sublayer the order is not kept, and the outline can cover it.
-                                dot:SetDrawLayer("OVERLAY", layer - 1)
-                                local key = x .. ":" .. y .. ":" .. layer
-                                local alpha = fadingAlpha[key] or target
-                                dot.fade, dot.fadePx, dot.target, dot.alpha, dot.key = row, px, target, alpha, key
-                                dot:SetAlpha(alpha)
+                    end
+                elseif style.style == "dash" then
+                    -- Steps from the start of the curve, so dashes stay put as the view moves.
+                    local period = Snap((JUMP_DASH + JUMP_GAP) / z, length / JUMP_MAX_PIECES)
+                    local dash = period * JUMP_DASH / (JUMP_DASH + JUMP_GAP)
+                    for _, span in ipairs(spans) do
+                        for d = math.floor(span[1] / period) * period, span[2], period do
+                            local ax, ay = PointAlong(curve, d)
+                            local bx, by = PointAlong(curve, math.min(d + dash, total))
+                            JumpStroke(jump, style, ax, ay, bx, by)
+                        end
+                    end
+                else
+                    -- Dots in rows that halve the spacing: every 4th dot, every 2nd,
+                    -- every one. A row shows once zooming spreads it to px apart on
+                    -- screen, fading in or out over a moment (SetLineThickness and
+                    -- OnUpdate), so zooming eases dots in and out rather than
+                    -- refilling the line at the next build, and at rest every dot
+                    -- is either fully shown or hidden. The finest row covers
+                    -- zooming in 4 times before a rebuild is needed.
+                    local size = style.dot or JUMP_DOT
+                    local px = style.spacing or JUMP_DOT_SPACING
+                    local fine = 2 ^ math.ceil(math.log(px / z) / math.log(2)) / 4
+                    while length / fine > JUMP_MAX_PIECES * 2 do
+                        fine = fine * 2
+                    end
+                    -- Dots keep clear of start and finish marks rather than run under them.
+                    local first = head and (head[2] / 2 + px / 3) / z or 0
+                    local last = total - (tail and (tail[2] / 2 + px / 3) / z or 0)
+                    for _, span in ipairs(spans) do
+                        for k = math.ceil((math.max(span[1], first) - anchor) / fine),
+                            math.floor((math.min(span[2], last) - anchor) / fine) do
+                            -- Spacing of the sparsest row this dot is in.
+                            local row, n = k == 0 and total or fine, math.abs(k)
+                            while n > 0 and n % 2 == 0 and row < total do
+                                n, row = n / 2, row * 2
+                            end
+                            local target = row * z >= px and 1 or 0
+                            local x, y = PointAlong(curve, anchor + k * fine)
+                            local near = 0.6 * px / z
+                            if Covered(style, x, y, row, near) then
+                                jump.skipped[#jump.skipped + 1] = { x, y, row, near }
+                            else
+                                Mark(style, x, y, row, near)
+                                jump.marks[#jump.marks + 1] = { x, y, row, near }
+                                for layer, dot in ipairs({
+                                    JumpDot(jump, x, y, size + 2, unpack(JUMP_OUTLINE_COLOR)),
+                                    JumpDot(jump, x, y, size, style[2], style[3], style[4], style[5]),
+                                }) do
+                                    -- The coloured dot on a sublayer above its outline: in one
+                                    -- sublayer the order is not kept, and the outline can cover it.
+                                    dot:SetDrawLayer("OVERLAY", layer - 1)
+                                    local key = x .. ":" .. y .. ":" .. layer
+                                    local alpha = fadingAlpha[key] or target
+                                    dot.fade, dot.fadePx, dot.target, dot.alpha, dot.key = row, px, target, alpha, key
+                                    dot:SetAlpha(alpha)
+                                end
                             end
                         end
                     end
                 end
-            end
-            -- A trip out and back can put an X on a ring, so the X (where the
-            -- player landed) draws above.
-            if head then
-                JumpDot(jump, curve[1][1], curve[1][2], head[2], 1, 1, 1, 1, head[1])
-                    :SetDrawLayer("OVERLAY", head == style.finish and 3 or 2)
-            end
-            if tail then
-                local p = curve[#curve]
-                JumpDot(jump, p[1], p[2], tail[2], 1, 1, 1, 1, tail[1])
-                    :SetDrawLayer("OVERLAY", tail == style.finish and 3 or 2)
-            end
-
-            if style.icon then
-                jumpIconCount = jumpIconCount + 1
-                local icon = jumpIcons[jumpIconCount]
-                if not icon then
-                    icon = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
-                    icon:SetSize(JUMP_ICON, JUMP_ICON)
-                    jumpIcons[jumpIconCount] = icon
+                -- A trip out and back can put an X on a ring, so the X (where the
+                -- player landed) draws above.
+                if head then
+                    JumpDot(jump, curve[1][1], curve[1][2], head[2], 1, 1, 1, 1, head[1])
+                        :SetDrawLayer("OVERLAY", head == style.finish and 3 or 2)
                 end
-                icon:SetAtlas(style.icon)
-                jump.icon = icon
-                -- On a lane, at its middle, where every trip on it puts its icon.
-                jump.x, jump.y = PointAlong(curve, ends and ends.anchor or total / 2)
+                if tail then
+                    local p = curve[#curve]
+                    JumpDot(jump, p[1], p[2], tail[2], 1, 1, 1, 1, tail[1])
+                        :SetDrawLayer("OVERLAY", tail == style.finish and 3 or 2)
+                end
+
+                if style.icon then
+                    local icon = table.remove(jumpIcons)
+                    if not icon then
+                        icon = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
+                        icon:SetSize(JUMP_ICON, JUMP_ICON)
+                    end
+                    icon:SetAtlas(style.icon)
+                    jump.icon = icon
+                    -- On a lane, at its middle, where every trip on it puts its icon.
+                    jump.x, jump.y = PointAlong(curve, ends and ends.anchor or total / 2)
+                end
+            end
+            if cacheKey then
+                kept[cacheKey] = jump
             end
             jumps[#jumps + 1] = jump
         end
     end
-    for i = jumpLineCount + 1, #jumpLines do
-        jumpLines[i]:Hide()
-    end
-    for i = jumpDotCount + 1, #jumpDots do
-        jumpDots[i]:Hide()
-    end
-    for i = jumpIconCount + 1, #jumpIcons do
-        jumpIcons[i]:Hide()
+    -- Arcs not kept give their pieces back for later ones.
+    for _, jump in ipairs(previous) do
+        if jump.build ~= build then
+            for _, part in ipairs(jump.parts) do
+                part:Hide()
+                local pool = part.isLine and jumpLines or jumpDots
+                pool[#pool + 1] = part
+            end
+            if jump.icon then
+                jump.icon:Hide()
+                jumpIcons[#jumpIcons + 1] = jump.icon
+            end
+        end
     end
     ns.Portals:Finish()
-    state.jumps = jumps
+    state.jumps, state.jumpCache = jumps, kept
     ShowJumps(shown)
 end
 
@@ -2861,14 +2930,15 @@ local function OnUpdate(_, elapsed)
     -- Jump dots the zoom has shown or hidden fade over a quarter second.
     if state.dotsFading then
         local step, fading = elapsed * 4, false
-        for i = 1, jumpDotCount do
-            local dot = jumpDots[i]
-            local alpha = dot.alpha
-            if alpha and alpha ~= dot.target then
-                alpha = dot.target > alpha and math.min(dot.target, alpha + step) or math.max(dot.target, alpha - step)
-                dot.alpha = alpha
-                dot:SetAlpha(alpha)
-                fading = fading or alpha ~= dot.target
+        for _, jump in ipairs(state.jumps) do
+            for _, dot in ipairs(jump.parts) do
+                local alpha = dot.alpha
+                if alpha and alpha ~= dot.target then
+                    alpha = dot.target > alpha and math.min(dot.target, alpha + step) or math.max(dot.target, alpha - step)
+                    dot.alpha = alpha
+                    dot:SetAlpha(alpha)
+                    fading = fading or alpha ~= dot.target
+                end
             end
         end
         state.dotsFading = fading
