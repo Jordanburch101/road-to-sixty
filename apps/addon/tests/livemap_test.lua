@@ -20,43 +20,13 @@ local ns = {}
 assert(loadfile("RoadToSixty/LiveMap.lua"))("RoadToSixty", ns)
 local LiveMap = ns.LiveMap
 
--- Map.lua's GetLod and its constants, as the reference.
-local MIN_PIXELS, MAX_ZOOM, LOD_STEP, CHUNK = 2, 64, 2, 64
-local function LodDistance(k) return MIN_PIXELS / MAX_ZOOM * LOD_STEP ^ k end
+-- The detail levels as Map.lua's GetLod makes them (PathCurve.lua's
+-- MakeLevel), at Map.lua's tolerances (LodDistance), as the reference.
+assert(loadfile("RoadToSixty/PathCurve.lua"))("RoadToSixty", ns)
+local SHAPE_PIXELS, MAX_ZOOM, LOD_STEP, CHUNK = 1, 64, 2, 64
+local function LodDistance(k) return SHAPE_PIXELS / MAX_ZOOM * LOD_STEP ^ k end
 local function GetLod(track, k)
-    local lod = track.lods[k]
-    if lod then return lod end
-    local px, py, brk = track.px, track.py, track.brk
-    local source = track.lods[k - 1] and track.lods[k - 1].idx
-    local length = source and #source or track.n
-    local minSq = LodDistance(k) ^ 2
-    local idx, count, lx, ly = {}, 0, 0, 0
-    for j = 1, length do
-        local i = source and source[j] or j
-        local x, y = px[i], py[i]
-        local dx, dy = x - lx, y - ly
-        if brk[i] or brk[i + 1] ~= false or dx * dx + dy * dy >= minSq then
-            count = count + 1
-            idx[count] = i
-            lx, ly = x, y
-        end
-    end
-    local chunks = {}
-    for first = 1, count, CHUNK do
-        local last = math.min(count, first + CHUNK - 1)
-        local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
-        for j = math.max(1, first - 1), last do
-            local x, y = px[idx[j]], py[idx[j]]
-            if x < x1 then x1 = x end
-            if x > x2 then x2 = x end
-            if y < y1 then y1 = y end
-            if y > y2 then y2 = y end
-        end
-        chunks[#chunks + 1] = { first, last, x1, y1, x2, y2 }
-    end
-    lod = { idx = idx, chunks = chunks, fromBelow = source ~= nil }
-    track.lods[k] = lod
-    return lod
+    return track.lods[k] or ns.MakeLevel(track, k, LodDistance(k), CHUNK)
 end
 
 local function NewTrack()
@@ -82,45 +52,50 @@ local function Walk(count, x, y, t, m)
 end
 
 -- The levels' kept points: exactly those of a fresh build, its levels made
--- in order, the order the grown track's were made in.
+-- in order, the order the grown track's were made in; the same chunks, the
+-- same coarsest level for each point, and each level keeping a part of
+-- every finer one's points and all of every coarser one's.
 local function SameLevels(grown, fresh, label, order)
     for _, k in ipairs(order) do GetLod(fresh, k) end
-    for k, lod in pairs(grown.lods) do
-        local want = GetLod(fresh, k).idx
-        local extra, missing = {}, 0
-        local inGrown = {}
-        for _, i in ipairs(lod.idx) do inGrown[i] = true end
-        for _, i in ipairs(want) do
-            if not inGrown[i] then missing = missing + 1 end
+    for _, k in ipairs(order) do
+        local lod, want = grown.lods[k], fresh.lods[k]
+        local same = #lod.idx == #want.idx
+        for j = 1, #want.idx do same = same and lod.idx[j] == want.idx[j] end
+        check(same, ("%s, level %d: %d points kept, %d in a fresh build"):format(label, k, #lod.idx, #want.idx))
+        local chunks = #lod.chunks == #want.chunks
+        for c, ch in ipairs(want.chunks) do
+            for f = 1, 7 do chunks = chunks and lod.chunks[c] and lod.chunks[c][f] == ch[f] end
         end
-        local inFresh = {}
-        for _, i in ipairs(want) do inFresh[i] = true end
-        for _, i in ipairs(lod.idx) do
-            if not inFresh[i] then extra[#extra + 1] = i end
-        end
-        check(missing == 0 and #extra == 0, ("%s, level %d: %d points missing, %d extra"):format(label, k, missing, #extra))
-        -- In order, and the chunks cover them in runs of at most CHUNK,
-        -- each box around its points and the one before.
+        check(chunks, label .. ", level " .. k .. ": chunks differ from a fresh build's")
         local ordered = true
         for j = 2, #lod.idx do ordered = ordered and lod.idx[j] > lod.idx[j - 1] end
         check(ordered, label .. ", level " .. k .. ": kept points out of order")
-        local next, boxed = 1, true
-        for _, ch in ipairs(lod.chunks) do
-            boxed = boxed and ch[1] == next and ch[2] >= ch[1] and ch[2] - ch[1] + 1 <= CHUNK
-            for j = math.max(1, ch[1] - 1), ch[2] do
-                local x, y = grown.px[lod.idx[j]], grown.py[lod.idx[j]]
-                boxed = boxed and x >= ch[3] and x <= ch[5] and y >= ch[4] and y <= ch[6]
+    end
+    local top = true
+    for i = 1, fresh.n do top = top and grown.lods.top[i] == fresh.lods.top[i] end
+    check(top, label .. ": coarsest levels differ from a fresh build's")
+    for _, k in ipairs(order) do
+        local has = {}
+        for _, i in ipairs(grown.lods[k].idx) do has[i] = true end
+        for _, k2 in ipairs(order) do
+            if k2 > k then
+                local nested = true
+                for _, i in ipairs(grown.lods[k2].idx) do nested = nested and has[i] end
+                check(nested, ("%s: level %d keeps a point level %d doesn't"):format(label, k2, k))
             end
-            next = ch[2] + 1
         end
-        check(boxed and next == #lod.idx + 1, label .. ", level " .. k .. ": chunks don't cover the kept points")
+        for _, i in ipairs(grown.lods[k].idx) do
+            check(grown.lods.top[i] >= k, label .. ": a point's coarsest level is finer than one keeping it")
+        end
     end
 end
 
 -- The map opened on a journey of three segments, with levels 0, 5, 6, 7
--- and 9 made (the zooms looked at so far): 6 and 7 are made from the level
--- below, 0, 5 and 9 from every point. Steps here are 0.3 to 2.5 units, so
--- levels 5 (1 unit) and up leave points out.
+-- and 9 made (the zooms looked at so far), in the order the map might make
+-- them: 6 first, from every point (the map opened zoomed out), then 0,
+-- from every point but keeping all of 6's, 9 from 6, 5 from 0 keeping 6's,
+-- and 7 from 6 keeping 9's. Steps here are 0.3 to 2.5 units, so levels 5
+-- (0.5 units) and up leave points out.
 local paths = { Walk(300, 0, 0, 1000), Walk(200, 5000, 5000, 5000, "t") }
 paths[3] = Walk(150, paths[2].x[200], paths[2].y[200], paths[2].t[200] + 5)
 local function Build(list)
@@ -131,7 +106,7 @@ local function Build(list)
     return track
 end
 local grown = Build(paths)
-local ORDER = { 0, 5, 6, 7, 9 }
+local ORDER = { 6, 0, 9, 5, 7 }
 for _, k in ipairs(ORDER) do GetLod(grown, k) end
 
 -- The open segment grows, then a new one starts where it ended (landing).
@@ -162,6 +137,8 @@ LiveMap.Append(grown, landing, 1, ToContent, 3, flight, false)
 LiveMap.ExtendLods(grown, from, LodDistance, CHUNK)
 
 local fresh = Build({ paths[1], paths[2], open, flight, landing })
+check(grown.lods[0].keep == 6 and grown.lods[5].from == 0 and grown.lods[5].keep == 6 and grown.lods[7].from == 6
+    and grown.lods[7].keep == 9 and grown.lods[6].from == nil, "levels made from the nearest finer, keeping the nearest coarser")
 check(grown.n == fresh.n, ("as many points as a fresh build: %d and %d"):format(grown.n, fresh.n))
 local same = true
 for i = 1, fresh.n do
@@ -178,35 +155,47 @@ local b = grown.bounds
 check(b[1] == x1 and b[2] == y1 and b[3] == x2 and b[4] == y2, "bounds grown to the new points")
 SameLevels(grown, fresh, "grown live", ORDER)
 
--- The old end dropped from a level is dropped from the one made from it,
--- even where that level alone would keep it. Level 5 keeps points 1 unit
--- apart and level 6, made from it, 2: A at 0, B at 1.5 and C, the end, at
--- 2. Level 5 keeps C only as the end; level 6 keeps C, 2 from A. Then D
--- comes at 2.6: level 5 drops C (0.5 from B) and keeps D, so level 6,
--- made from A, B and D, has A and D only.
+-- A straight line keeps only its ends, and the old end is dropped as the
+-- line carries on straight, at the level and at the one made from it; a
+-- corner is kept. Level 3 keeps to 0.125 units (1.25 yards here).
 local small = NewTrack()
-local line = { m = "w", c = 0, t = { 1, 2, 3 }, x = { 0, 15, 20 }, y = { 0, 0, 0 } }
+local line = { m = "w", c = 0, t = { 1, 2, 3 }, x = { 0, 10, 20 }, y = { 0, 0, 0 } }
 LiveMap.Append(small, line, 1, ToContent, 1, nil, false)
-GetLod(small, 5)
-GetLod(small, 6)
-check(#small.lods[6].idx == 2 and small.lods[6].idx[2] == 3, "level 6 keeps the end before it grows")
-line.t[4], line.x[4], line.y[4] = 4, 26, 0
-LiveMap.ExtendLods(small, LiveMap.Append(small, line, 4, ToContent, 1, nil, false), LodDistance, CHUNK)
-local smallFresh = NewTrack()
-LiveMap.Append(smallFresh, line, 1, ToContent, 1, nil, false)
-GetLod(smallFresh, 5)
-SameLevels(small, smallFresh, "the old end and the level below", { 5, 6 })
+GetLod(small, 3)
+GetLod(small, 4)
+check(#small.lods[3].idx == 2 and small.lods[3].idx[2] == 3, "a straight line keeps its ends")
+local steps = { { 30, 0 }, { 30, 10 }, { 30, 20 }, { 31, 30 } }
+for s, step in ipairs(steps) do
+    line.t[3 + s], line.x[3 + s], line.y[3 + s] = 3 + s, step[1], step[2]
+    LiveMap.ExtendLods(small, LiveMap.Append(small, line, 3 + s, ToContent, 1, nil, false), LodDistance, CHUNK)
+    local smallFresh = NewTrack()
+    LiveMap.Append(smallFresh, line, 1, ToContent, 1, nil, false)
+    SameLevels(small, smallFresh, "a line carried on, step " .. s, { 3, 4 })
+end
+local kept = table.concat(small.lods[3].idx, " ")
+check(kept == "1 4 7", "the straight line to the corner and on keeps its ends and the corner, got " .. kept)
 
--- A level made before the one below it (zoomed out first) was made from
--- every point, and carries on from every new point, not from the level
--- below's new ones.
+-- A level made before the one below it (zoomed out first) is made from
+-- every point; the one below, made after it, keeps all its points too.
 local outOfOrder = Build({ paths[1], paths[2] })
 GetLod(outOfOrder, 7)
 GetLod(outOfOrder, 6)
-check(outOfOrder.lods[7].fromBelow == false and outOfOrder.lods[6].fromBelow == false, "levels made from every point say so")
+check(outOfOrder.lods[7].from == nil and outOfOrder.lods[6].from == nil and outOfOrder.lods[6].keep == 7,
+    "levels made from every point, keeping the coarser one's")
 local tail = Walk(200, paths[2].x[200], paths[2].y[200], paths[2].t[200] + 3)
 LiveMap.ExtendLods(outOfOrder, LiveMap.Append(outOfOrder, tail, 1, ToContent, 2, paths[2], false), LodDistance, CHUNK)
 SameLevels(outOfOrder, Build({ paths[1], paths[2], tail }), "a level made before the one below it", { 7, 6 })
+
+-- The warm-up making a level a little each frame starts it again when a
+-- build makes a level next to it meanwhile, so levels still nest.
+local warm = Build({ paths[1], paths[2] })
+GetLod(warm, 0)
+local co = coroutine.create(function() ns.MakeLevel(warm, 3, LodDistance(3), CHUNK, 50) end)
+coroutine.resume(co)
+GetLod(warm, 5)
+while coroutine.status(co) ~= "dead" do assert(coroutine.resume(co)) end
+check(warm.lods[3].from == 0 and warm.lods[3].keep == 5, "the warm-up's level made again with the new level above it")
+SameLevels(warm, Build({ paths[1], paths[2] }), "a level the warm-up made again", { 0, 5, 3 })
 
 -- The band can come from the point's time (a level up while points waited).
 local banded = NewTrack()

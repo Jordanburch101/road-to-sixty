@@ -52,7 +52,7 @@ for data, its exact format; read that before changing a module.
 | Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
-| PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
+| PathCurve.lua | the path's shape: the detail levels' points kept by shape, not distance (`ns.MakeLevel`, `ns.KeepShape`, `ns.LodChunks`), and walked and flown lines curved through them when zoomed in (`ns.CurveLines`) |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
 | Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`); the item button every window's icons sit in (`Screens.ItemButton`, and `Screens.IconButton` for rows) |
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |

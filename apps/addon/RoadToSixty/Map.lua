@@ -24,7 +24,7 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- Hearthstones, teleports and boats each take a time of their own (Style.lua,
 -- Portals.lua); jumps scales that time the same way, here to half.
 local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
-local MIN_PIXELS = 2            -- points closer than this on screen are merged
+local SHAPE_PIXELS = 0.5        -- detail levels keep the path's shape to within this on screen at the finest level a zoom allows, up to four times it (PathCurve.lua)
 local MAX_LINES = 3000          -- line budget per build, curves included; past it, points merge further
 -- The path is built for the view and a margin a view wide on every side, so
 -- panning doesn't build it again at once: nine views, most of it unseen.
@@ -32,7 +32,8 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- through again and again merged its points 100 yards apart (#ISSUE). So,
 -- unless all of it fits MAX_LINES as finely, the view and a little round
 -- it (NEAR views past each edge) get the finest level that fits
--- NEAR_LINES, the rest merges its points to fit FAR_LINES, and what is
+-- NEAR_LINES, the rest keeps only a coarser level's points to fit
+-- FAR_LINES (levels nest, PathCurve.lua's MakeLevel), and what is
 -- left of MAX_LINES curves the lines in view. The map builds again once
 -- the view leaves the near part and stays still.
 local DETAIL = { NEAR = 0.25, NEAR_LINES = 2400, FAR_LINES = 600 }
@@ -823,20 +824,23 @@ local function CountUpTo(seq)
     return ns.LastIndex(state.drawn, seq, 6)
 end
 
--- Merge distance in content units of detail level k. Level 0 is fine enough
--- for full zoom; each level up doubles it.
+-- Tolerance in content units of detail level k: its lines pass within
+-- about this of the points of the level it is made from (PathCurve.lua's
+-- KeepShape). Level 0 is fine enough for full zoom; each level up doubles it.
 local function LodDistance(k)
-    return MIN_PIXELS / MAX_ZOOM * LOD_STEP ^ k
+    return SHAPE_PIXELS / MAX_ZOOM * LOD_STEP ^ k
 end
 
 -- A track is a path to draw with detail levels: { n, px, py, brk, lods } and
--- optionally pm (movement mode per point). The player's own path is state
--- itself; other characters' paths are built from the roster.
+-- optionally pm (movement mode per point) and pb (level band). The player's
+-- own path is state itself; other characters' paths are built from the
+-- roster.
 --
--- The track simplified at detail level k, made on first use: idx lists the
--- points kept, each at least LodDistance(k) from the last one kept, plus every
--- segment's first and last point. Built from level k - 1 when that exists,
--- which is much shorter than the full path. chunks are boxes over runs of
+-- The track simplified at detail level k, made on first use (PathCurve.lua's
+-- MakeLevel): idx lists the points kept, in order, those its shape needs at
+-- LodDistance(k), every segment's first and last point among them. Levels
+-- nest, whatever order they are made in, and lods.top[i] is the coarsest
+-- level made that keeps point i (LinesIn). chunks are boxes over runs of
 -- CHUNK kept points: { first, last, x1, y1, x2, y2 }, first and last being
 -- indexes into idx; each box includes the point before its run, where its
 -- first line starts. With background set, it runs inside the warm-up
@@ -845,46 +849,7 @@ local function GetLod(track, k, background)
     local lod = track.lods[k]
     if lod then return lod end
     local started = debugprofilestop()
-
-    local px, py, brk = track.px, track.py, track.brk
-    local source = track.lods[k - 1] and track.lods[k - 1].idx
-    local length = source and #source or track.n
-    local minSq = LodDistance(k) ^ 2
-    local idx, count, lx, ly = {}, 0, 0, 0
-    for j = 1, length do
-        local i = source and source[j] or j
-        local x, y = px[i], py[i]
-        local dx, dy = x - lx, y - ly
-        -- brk[i + 1] ~= false: last point of a segment, always keep it
-        if brk[i] or brk[i + 1] ~= false or dx * dx + dy * dy >= minSq then
-            count = count + 1
-            idx[count] = i
-            lx, ly = x, y
-        end
-        if background and j % LOD_YIELD == 0 then
-            coroutine.yield()
-        end
-    end
-    -- A build that needed this level may have made it while we yielded.
-    if track.lods[k] then return track.lods[k] end
-
-    local chunks = {}
-    for first = 1, count, CHUNK do
-        local last = math.min(count, first + CHUNK - 1)
-        local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
-        for j = math.max(1, first - 1), last do
-            local x, y = px[idx[j]], py[idx[j]]
-            if x < x1 then x1 = x end
-            if x > x2 then x2 = x end
-            if y < y1 then y1 = y end
-            if y > y2 then y2 = y end
-        end
-        chunks[#chunks + 1] = { first, last, x1, y1, x2, y2 }
-    end
-
-    -- fromBelow: made from level k - 1, which LiveMap.ExtendLods follows.
-    lod = { idx = idx, chunks = chunks, fromBelow = source ~= nil }
-    track.lods[k] = lod
+    lod = ns.MakeLevel(track, k, LodDistance(k), CHUNK, background and LOD_YIELD)
     if not background then
         state.perf.lod = state.perf.lod + debugprofilestop() - started
     end
@@ -892,7 +857,8 @@ local function GetLod(track, k, background)
 end
 
 -- Pre-builds detail levels finest first, each from the one before, a little
--- each frame, so zooming in later does not stop to build them.
+-- each frame, so zooming in later does not stop to build them. A build
+-- wanting a level first makes it at once from the finest made below it.
 local function StartWarmUp()
     state.warm = coroutine.create(function()
         for k = 0, WARM_LODS do
@@ -930,20 +896,26 @@ local function ChunksIn(track, lod, x1, y1, x2, y2, budget)
     if total <= budget then return list, total end
     local idx, px, py, lines = lod.idx, track.px, track.py, 0
     for _, ch in ipairs(list) do
-        for j = math.max(2, ch[1]), ch[2] do
-            local ax, ay, bx, by = px[idx[j - 1]], py[idx[j - 1]], px[idx[j]], py[idx[j]]
-            if (ax ~= bx or ay ~= by) and math.max(ax, bx) >= x1 and math.min(ax, bx) <= x2
-                and math.max(ay, by) >= y1 and math.min(ay, by) <= y2 then
-                lines = lines + 1
-                if lines > budget then return list, lines end
+        -- A box wholly in the area draws all its lines there.
+        if ch[3] >= x1 and ch[5] <= x2 and ch[4] >= y1 and ch[6] <= y2 then
+            lines = lines + ch[7]
+            if lines > budget then return list, lines end
+        else
+            for j = math.max(2, ch[1]), ch[2] do
+                local ax, ay, bx, by = px[idx[j - 1]], py[idx[j - 1]], px[idx[j]], py[idx[j]]
+                if (ax ~= bx or ay ~= by) and math.max(ax, bx) >= x1 and math.min(ax, bx) <= x2
+                    and math.max(ay, by) >= y1 and math.min(ay, by) <= y2 then
+                    lines = lines + 1
+                    if lines > budget then return list, lines end
+                end
             end
         end
     end
     return list, lines
 end
 
--- Detail level of a track for the area at zoom z: the finest whose merge
--- distance is at least MIN_PIXELS on screen, made coarser until the lines in
+-- Detail level of a track for the area at zoom z: the finest whose
+-- tolerance is at least SHAPE_PIXELS on screen, made coarser until the lines in
 -- range fit the budget. Returns the level, its chunks in range, and k.
 local function PickLod(track, x1, y1, x2, y2, z, budget)
     local k = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
@@ -961,12 +933,13 @@ end
 -- With jumps set, the gap before each segment (hearthstone, teleport, boat,
 -- graveyard) is a line too, with mode "j". A jump drawn on a sea course or
 -- lane counts as inside wherever its curve is (track.seaTrips).
--- With near ({ x1, y1, x2, y2 }) and farSq set, only points inside near
--- keep the level's detail: outside it, a point is kept once it is
--- sqrt(farSq) from the last one kept, as GetLod merges them, and segments'
--- first and last points always are (DETAIL).
-local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, farSq)
+-- With near ({ x1, y1, x2, y2 }) and far set, only points inside near
+-- keep the level's detail: outside it, only those detail level far keeps
+-- are, a coarser one (GetLod's top), which keeps segments' first and last
+-- points too (DETAIL).
+local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, far)
     local idx, px, py, pm, brk = lod.idx, track.px, track.py, track.pm, track.brk
+    local top = track.lods.top
     local seaTrips = jumps and track.seaTrips or {}
     local drawn, count = {}, 0
     local p, upTo           -- the last point kept, and the j it was kept at or passed over
@@ -978,10 +951,8 @@ local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, farSq)
         for j = first, ch[2] do
             local i = idx[j]
             local x, y = px[i], py[i]
-            local dx, dy = x - px[p], y - py[p]
-            if not near or brk[i] or brk[i + 1] ~= false
-                or x >= near[1] and x <= near[3] and y >= near[2] and y <= near[4]
-                or dx * dx + dy * dy >= farSq then
+            if not near or top[i] >= far
+                or x >= near[1] and x <= near[3] and y >= near[2] and y <= near[4] then
                 if jumps or not brk[i] then
                     local ax, ay, bx, by = px[p], py[p], x, y
                     local box = brk[i] and seaTrips[i] and seaTrips[i].box
@@ -1012,17 +983,17 @@ end
 DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
     local lod, list, k = PickLod(track, x1, y1, x2, y2, z, MAX_LINES)
     local nearLod, _, nearK = PickLod(track, near[1], near[2], near[3], near[4], z, DETAIL.NEAR_LINES)
-    local farSq
+    local far
     -- Where the whole area fits as finely as the near part would, it is
     -- all drawn at that level; else the near part at its own.
     if nearK < k then
-        local _, _, far = PickLod(track, x1, y1, x2, y2, z, DETAIL.FAR_LINES)
-        lod, k, farSq = nearLod, nearK, LodDistance(math.max(nearK, far)) ^ 2
+        _, _, far = PickLod(track, x1, y1, x2, y2, z, DETAIL.FAR_LINES)
+        lod, k, far = nearLod, nearK, math.max(nearK, far)
         list = ChunksIn(track, lod, x1, y1, x2, y2, math.huge)
     else
         near = nil
     end
-    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, near, farSq)
+    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, near, far)
     return ns.CurveLines(lines, z, MAX_LINES, view), k
 end
 

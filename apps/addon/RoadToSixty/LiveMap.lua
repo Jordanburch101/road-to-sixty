@@ -65,74 +65,46 @@ function LiveMap.Append(track, path, first, toContent, band, previous, continues
     return from
 end
 
--- Carries the detail levels already made (Map.lua's GetLod) on to points
--- from to track.n, so they hold what GetLod would make for the whole path:
--- a point is kept if it starts or ends a segment, is the last, or is at
--- least lodDistance(k) from the last kept. A level GetLod made from the
--- level below (lod.fromBelow) carries on from that level's new points. The old last point, kept only for being the end, is dropped
--- again where GetLod would not keep it, as everything after it follows
--- from the last kept. Chunks of chunk kept points are extended or added,
--- each box taking in the point before its run.
+-- Where in list (a level's kept points) the first point after point i is:
+-- near the end, as only the last few are ever looked for.
+local function After(list, i)
+    local j = #list + 1
+    while j > 1 and list[j - 1] > i do j = j - 1 end
+    return j
+end
+
+-- Carries the detail levels already made (Map.lua's GetLod, PathCurve.lua's
+-- MakeLevel) on to points from to track.n, so they hold what MakeLevel
+-- would make for the whole path, made in the same order. What KeepShape
+-- keeps depends only on the points since the last one kept, so each level
+-- drops the old last point (kept for being the end; kept again below if it
+-- is still needed) and goes on from its last point kept before it, through
+-- what it was made from (the new points of the finer level, or every new
+-- point), keeping what the coarser level it keeps all of has newly kept.
+-- Levels are carried on in the order they were made, as each is made from
+-- ones made before it. The chunks from the first one changed are made again.
 function LiveMap.ExtendLods(track, from, lodDistance, chunk)
-    local px, py, brk, n = track.px, track.py, track.brk, track.n
-    local oldEnd = from - 1
-    local levels = {}
-    for k in pairs(track.lods) do levels[#levels + 1] = k end
-    table.sort(levels)
-    local added = {}        -- level -> its new kept indexes
-    local hasEnd = {}       -- level -> whether it still keeps the old end
-    for _, k in ipairs(levels) do
-        local lod = track.lods[k]
-        local idx, chunks = lod.idx, lod.chunks
-        local minSq = lodDistance(k) ^ 2
-        local fromBelow = lod.fromBelow
-        if fromBelow == nil then fromBelow = track.lods[k - 1] ~= nil end
-        fromBelow = fromBelow and track.lods[k - 1] ~= nil
-        if idx[#idx] == oldEnd and not brk[oldEnd] and not brk[oldEnd + 1] then
-            local before = idx[#idx - 1]
-            local bx, by = before and px[before] or 0, before and py[before] or 0
-            local dx, dy = px[oldEnd] - bx, py[oldEnd] - by
-            -- Made from the level below, it can only keep what that level kept.
-            if fromBelow and not hasEnd[k - 1] or dx * dx + dy * dy < minSq then
-                idx[#idx] = nil
-                local ch = chunks[#chunks]
-                ch[2] = ch[2] - 1
-                if ch[2] < ch[1] then chunks[#chunks] = nil end
-            end
+    local lods, n = track.lods, track.n
+    if not lods.order then return end
+    local oldEnd, top = from - 1, lods.top
+    for i = oldEnd, n do top[i] = nil end
+    for _, k in ipairs(lods.order) do
+        local lod = lods[k]
+        local idx = lod.idx
+        local count = #idx
+        while count > 0 and idx[count] >= oldEnd do
+            idx[count] = nil
+            count = count - 1
         end
-        hasEnd[k] = idx[#idx] == oldEnd
-        local candidates = fromBelow and added[k - 1] or nil
-        if not candidates then
-            candidates = {}
-            for i = from, n do candidates[#candidates + 1] = i end
-        end
-        local last = idx[#idx]
-        local lx, ly = last and px[last] or 0, last and py[last] or 0
-        local new = {}
-        for _, i in ipairs(candidates) do
-            local dx, dy = px[i] - lx, py[i] - ly
-            if brk[i] or i == n or brk[i + 1] or dx * dx + dy * dy >= minSq then
-                idx[#idx + 1] = i
-                new[#new + 1] = i
-                lx, ly = px[i], py[i]
-            end
-        end
-        added[k] = new
-        -- Chunks over the kept points.
-        local firstNew = #idx - #new + 1
-        for j = firstNew, #idx do
-            local ch = chunks[#chunks]
-            if not ch or ch[2] - ch[1] + 1 >= chunk then
-                local p = idx[math.max(1, j - 1)]
-                ch = { j, j - 1, px[p], py[p], px[p], py[p] }
-                chunks[#chunks + 1] = ch
-            end
-            ch[2] = j
-            local x, y = px[idx[j]], py[idx[j]]
-            if x < ch[3] then ch[3] = x end
-            if y < ch[4] then ch[4] = y end
-            if x > ch[5] then ch[5] = x end
-            if y > ch[6] then ch[6] = y end
+        local kept, last = count, idx[count] or 0
+        local source = lod.from and lods[lod.from].idx
+        local forced = lod.keep and lods[lod.keep].idx
+        count = ns.KeepShape(track, source, source and After(source, last) or last + 1, source and #source or n,
+            lodDistance(k), idx, count, forced, forced and After(forced, last))
+        ns.LodChunks(track, idx, count, lod.chunks, math.floor(kept / chunk) + 1, chunk)
+        for j = kept + 1, count do
+            local i = idx[j]
+            if not top[i] or top[i] < k then top[i] = k end
         end
     end
 end
