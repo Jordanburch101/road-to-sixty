@@ -184,8 +184,16 @@ local state = {
     drawn = {},         -- built lines: { x1, y1, x2, y2, mode, pointIndex }
     lineCount = 0,      -- lines placed by the last build
     shown = 0,          -- how many of those are showing
-    lineZoom = 1,       -- zoom the line thickness was last set for
+    lineZoom = 1,       -- zoom the lines in view are sized for (PathLines.lua)
     visible = {},       -- indexes into drawn of lines inside the view
+    boxes = {},         -- boxes over runs of drawn, to find those (PathLines.Boxes)
+    -- The view and a margin wide enough that a line sized for another zoom
+    -- outside it can't reach into the view: lines in it are sized for the
+    -- zoom (UpdateVisible). fitMin is the lowest zoom any line in use may
+    -- still be sized for, which gives that margin.
+    fit = { 0, 0, 0, 0 },
+    fitMin = 1,
+    builds = 0,         -- path builds so far, so hovering knows the lines changed
     built = nil,        -- area and zoom of the last path build
     terrainBuilt = nil, -- area of the last terrain build
     terrainCapped = false,
@@ -199,8 +207,12 @@ local state = {
     -- is an index in Together.SPEEDS.
     togetherSpeed = 5,
 
-    -- Timings in ms for /rts perf
-    perf = { world = 0, decode = 0, setup = 0, build = 0, lod = 0, place = 0, terrain = 0, view = 0 },
+    -- Timings in ms for /rts perf. fit is UpdateVisible's time on the last
+    -- view change and sized the lines and jump pieces it resized, with the
+    -- most of each since the zoom last started moving; placed and kept
+    -- are the last build's lines placed afresh and kept as they were.
+    perf = { world = 0, decode = 0, setup = 0, build = 0, lod = 0, place = 0, terrain = 0, view = 0,
+        fit = 0, fitMost = 0, sized = 0, sizedMost = 0, placed = 0, kept = 0 },
     charCount = 0,      -- other characters' markers in use
     jumps = {},         -- built jump arcs: { index into drawn, parts, icon, x, y }
     boats = {},         -- point index -> "Dock to dock" for boat jumps near known docks
@@ -210,9 +222,11 @@ local state = {
     otherTracks = {},   -- tracks of other characters whose path is turned on
     trackOf = {},       -- roster entry -> its track
     otherDrawn = {},    -- their built lines, like drawn, each with .track
+    otherBoxes = {},    -- boxes over them, and the ones inside the view
+    otherVisible = {},
     hover = nil,        -- line spec under the mouse, with a tooltip showing
     otherLineCount = 0, -- lines of other characters' paths in use
-    otherZoom = 1,      -- zoom their line thickness was last set for
+    otherZoom = 1,      -- zoom those in view are sized for
     lodLevel = 0,       -- detail level of the last path build
     warm = nil,         -- coroutine pre-building detail levels, while it runs
 }
@@ -1055,11 +1069,16 @@ end
 
 -- Shows the jumps the replay has reached (up to drawn line shown). An arc
 -- can be hundreds of pieces, so only arcs whose state changed are touched.
+-- One coming into sight in view is sized for the zoom first, if it isn't
+-- (UpdateVisible sizes only those already shown).
 local function ShowJumps(shown)
     for _, jump in ipairs(state.jumps) do
         local visible = jump.index <= shown
         if visible ~= jump.visible then
             jump.visible = visible
+            if visible and jump.inView and jump.tz ~= state.lineZoom then
+                ns.PathLines.FitJump(jump, state.lineZoom, true)
+            end
             for _, part in ipairs(jump.parts) do
                 part:SetShown(visible)
             end
@@ -1133,6 +1152,37 @@ end
 -- boat trip seen close up keeps its spacing instead of hitting
 -- JUMP_MAX_PIECES across the whole sea.
 local function BuildJumps(drawn, shown, z, area)
+    -- The same jumps over the same area at the same zoom as the last build
+    -- (the live map adding a point, #136) keep their arcs as drawn, as an
+    -- arc of dots is hundreds of pieces: only their places in drawn move.
+    local key, found = { z, area[1], area[2], area[3], area[4] }, {}
+    for i, spec in ipairs(drawn) do
+        if spec[5] == "j" and not spec.hidden then
+            local n, p = #key, spec[6]
+            found[#found + 1] = i
+            key[n + 1], key[n + 2], key[n + 3], key[n + 4] = spec[1], spec[2], spec[3], spec[4]
+            key[n + 5], key[n + 6], key[n + 7] = p, state.pj[p] or false, state.seaTrips[p] or false
+        end
+    end
+    local last = state.jumpKey
+    local same = last and #last == #key and #found == #state.jumps
+    for k = 1, same and #key or 0 do
+        if last[k] ~= key[k] then
+            same = false
+            break
+        end
+    end
+    state.jumpKey = key
+    if same then
+        for k, jump in ipairs(state.jumps) do
+            local spec = drawn[found[k]]
+            spec.curve, spec.portal = jump.spec.curve, jump.spec.portal
+            jump.index, jump.spec = found[k], spec
+        end
+        ShowJumps(shown)
+        return
+    end
+
     -- Dots still fading carry their alpha over, by place, so a rebuild in
     -- the middle of a zoom does not cut the fade short.
     local fadingAlpha = {}
@@ -1227,7 +1277,14 @@ local function BuildJumps(drawn, shown, z, area)
             if ends and ends.flip then
                 head, tail = tail, head
             end
-            local jump = { index = i, parts = {}, spec = spec }
+            -- box: around the curve, for sizing only jumps in view
+            -- (UpdateVisible); tz: the zoom its pieces are sized for.
+            local box = { math.huge, math.huge, -math.huge, -math.huge }
+            for _, c in ipairs(curve) do
+                box[1], box[2] = math.min(box[1], c[1]), math.min(box[2], c[2])
+                box[3], box[4] = math.max(box[3], c[1]), math.max(box[4], c[2])
+            end
+            local jump = { index = i, parts = {}, spec = spec, box = box, tz = z }
             spec.curve = curve
 
             if style.style == "portal" then
@@ -1368,29 +1425,13 @@ local function BuildJumps(drawn, shown, z, area)
     ShowJumps(shown)
 end
 
+-- Lines and jumps are sized for the zoom now from here on: UpdateVisible,
+-- which follows, resizes those in view, and the rest as they come into view
+-- (PathLines.lua). Resizing every one of them was most of a zoom frame.
 local function SetLineThickness()
     local z = state.zoom
-    local thickness = LINE_WIDTH / z
-    for i = 1, state.lineCount do
-        lines[i]:SetThickness(thickness)
-    end
-    for i = 1, jumpLineCount do
-        local line = jumpLines[i]
-        line:SetThickness(line.width / z)
-    end
-    for i = 1, jumpDotCount do
-        local dot = jumpDots[i]
-        dot:SetSize(dot.size / z, dot.size / z)
-        if dot.fade then
-            local target = dot.fade * z >= dot.fadePx and 1 or 0
-            if target ~= dot.target then
-                dot.target = target
-                state.dotsFading = true
-            end
-        end
-    end
     ns.Portals:SetZoom(z)
-    state.lineZoom = z
+    state.lineZoom, state.fitMin = z, math.min(state.fitMin, z)
 end
 
 -- Tracks for the characters whose path is turned on, from the roster's paths
@@ -1445,26 +1486,7 @@ end
 -- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
 local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
-    local count, thickness = 0, OTHER.LINE_WIDTH / z
     local otherDrawn = {}
-    local function Add(track, spec, mode)
-        count = count + 1
-        otherDrawn[count] = spec
-        local line = otherLines[count]
-        if not line then
-            line = othersLayer:CreateLine(nil, "ARTWORK")
-            otherLines[count] = line
-        end
-        line:SetStartPoint("TOPLEFT", othersLayer, spec[1], -spec[2])
-        line:SetEndPoint("TOPLEFT", othersLayer, spec[3], -spec[4])
-        local color = track.colors[mode] or track.colors.w
-        if line.color ~= color then
-            line:SetColorTexture(unpack(color))
-            line.color = color
-        end
-        line:SetThickness(thickness)
-        line:Show()
-    end
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
             for _, spec in ipairs((DETAIL.Lines(track, x1, y1, x2, y2, near, view, z))) do
@@ -1474,22 +1496,56 @@ local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
                         Style.Jump(track.pj[spec[6]]).bend)
                     for p = 2, #curve do
                         local a, b = curve[p - 1], curve[p]
-                        Add(track, { a[1], a[2], b[1], b[2], "j", spec[6], track = track, curve = curve }, "j")
+                        otherDrawn[#otherDrawn + 1] = { a[1], a[2], b[1], b[2], "j", spec[6], track = track, curve = curve }
                     end
                 else
-                    Add(track, spec, spec[5])
+                    otherDrawn[#otherDrawn + 1] = spec
                 end
             end
         end
     end
-    for i = count + 1, state.otherLineCount do
-        otherLines[i]:Hide()
+    -- Lines with the same ends as in the last build stay where they are
+    -- (PathLines.Reuse); in view, UpdateVisible sizes them for the zoom.
+    local order, spare = ns.PathLines.Reuse(state.otherDrawn, otherLines, state.otherLineCount, otherDrawn)
+    local counts = ns.PathLines.count
+    for i, spec in ipairs(otherDrawn) do
+        local line = order[i]
+        if line then
+            counts.kept = counts.kept + 1
+        else
+            line = table.remove(spare)
+            if not line then
+                line = othersLayer:CreateLine(nil, "ARTWORK")
+                line:SetThickness(OTHER.LINE_WIDTH / z)
+                line.tz = z
+            end
+            line:SetStartPoint("TOPLEFT", othersLayer, spec[1], -spec[2])
+            line:SetEndPoint("TOPLEFT", othersLayer, spec[3], -spec[4])
+            counts.place = counts.place + 1
+            order[i] = line
+        end
+        state.fitMin = math.min(state.fitMin, line.tz or z)
+        local track = spec.track
+        local color = track.colors[spec[5]] or track.colors.w
+        if line.color ~= color then
+            line:SetColorTexture(unpack(color))
+            line.color = color
+        end
+        -- Replaying together, as far as the track has reached (Together.Apply).
+        ns.PathLines.Reveal(line, spec, not (state.clock and track.cur) or spec[6] <= track.cur)
     end
+    for _, line in ipairs(spare) do
+        ns.PathLines.Reveal(line, nil, false)
+        order[#order + 1] = line
+    end
+    otherLines = order
+    local count = #otherDrawn
     -- Lines cannot be deleted, so with no path shown the whole layer is
     -- hidden, keeping leftover lines out of every zoom frame's work.
     othersLayer:SetShown(count > 0)
     state.otherLineCount, state.otherZoom = count, z
     state.otherDrawn = otherDrawn
+    state.otherBoxes = ns.PathLines.Boxes(otherDrawn)
     if state.clock then
         Together.Apply(true)
     end
@@ -1506,21 +1562,36 @@ local function BuildPath()
     local drawn
     drawn, state.lodLevel = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
     local old = state.drawn
-    state.drawn = drawn
+    local counts = ns.PathLines.count
+    counts.place, counts.kept = 0, 0
+    state.fitMin = z
     BuildOtherLines(x1, y1, x2, y2, near, view, z)
 
+    -- Lines with the same ends as in the last build stay where they are
+    -- (PathLines.Reuse), and nothing already set on a line is set again;
+    -- UpdateVisible, which follows, sizes the ones in view for the zoom.
     local placeStarted = debugprofilestop()
     local shown = CountUpTo(math.floor(state.cur))
-    local thickness = LINE_WIDTH / z
     local pb = state.pb
+    local order, spare = ns.PathLines.Reuse(old, lines, state.lineCount, drawn)
+    state.drawn = drawn
     for i, spec in ipairs(drawn) do
-        local line = lines[i]
-        if not line then
-            line = pathLayer:CreateLine(nil, "ARTWORK")
-            lines[i] = line
+        local line = order[i]
+        if line then
+            counts.kept = counts.kept + 1
+        else
+            line = table.remove(spare)
+            if not line then
+                line = pathLayer:CreateLine(nil, "ARTWORK")
+                line:SetThickness(LINE_WIDTH / z)
+                line.tz = z
+            end
+            line:SetStartPoint("TOPLEFT", pathLayer, spec[1], -spec[2])
+            line:SetEndPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
+            counts.place = counts.place + 1
+            order[i] = line
         end
-        line:SetStartPoint("TOPLEFT", pathLayer, spec[1], -spec[2])
-        line:SetEndPoint("TOPLEFT", pathLayer, spec[3], -spec[4])
+        state.fitMin = math.min(state.fitMin, line.tz or z)
         local mode, band = spec[5], pb[spec[6]]
         -- Lines the filter hides get no tooltip, motes or arc either, nor do
         -- repeats of a boat trip, which the route's first trip stands for.
@@ -1528,24 +1599,28 @@ local function BuildPath()
         spec.hidden = mode == "t" and not ns.FilterShown("flights")
             or mode == "j" and not ns.FilterShown(Style.JUMP_CATEGORY[state.pj[spec[6]]])
             or boat and boat.dupe or false
-        -- A jump's own line stays invisible; BuildJumps draws its arc.
-        local colorKey = (mode == "j" or spec.hidden) and "none"
-            or (mode == "g" or mode == "t") and mode or mode .. band
-        if line.colorKey ~= colorKey then
-            if colorKey == "none" then
-                line:SetColorTexture(0, 0, 0, 0)
-            else
+        -- A jump's own line is never shown (void), as BuildJumps draws its
+        -- arc, nor is one the filter hides: hidden rather than drawn
+        -- clear, they cost nothing on a zoom.
+        line.void = mode == "j" or spec.hidden
+        if not line.void then
+            local colorKey = (mode == "g" or mode == "t") and mode or mode .. band
+            if line.colorKey ~= colorKey then
                 line:SetColorTexture(Style.LineColor(mode, band))
+                line.colorKey = colorKey
             end
-            line.colorKey = colorKey
         end
-        line:SetThickness(thickness)
-        line:SetShown(i <= shown)
+        ns.PathLines.Reveal(line, spec, i <= shown and not line.void)
     end
-    for i = #drawn + 1, state.lineCount do
-        lines[i]:Hide()
+    for _, line in ipairs(spare) do
+        ns.PathLines.Reveal(line, nil, false)
+        order[#order + 1] = line
     end
+    lines = order
     state.lineCount, state.shown, state.lineZoom = #drawn, shown, z
+    state.boxes = ns.PathLines.Boxes(drawn)
+    state.builds = state.builds + 1
+    state.perf.placed, state.perf.kept = counts.place, counts.kept
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
     state.built = { x1, y1, x2, y2, zoom = z, near = near }
     -- Mote line indexes point into the old list: a mote keeps going where
@@ -1890,27 +1965,48 @@ local function PlaceCharacters()
     end
 end
 
+-- The same for other characters' lines.
 local function SetOtherThickness()
-    local thickness = OTHER.LINE_WIDTH / state.zoom
-    for i = 1, state.otherLineCount do
-        otherLines[i]:SetThickness(thickness)
-    end
-    state.otherZoom = state.zoom
+    state.otherZoom, state.fitMin = state.zoom, math.min(state.fitMin, state.zoom)
 end
 
--- Finds the built lines inside the view, for motes to spawn on.
+-- Finds the built lines inside the view (and a margin, state.fit), for
+-- motes and hovering, through their boxes, and sizes for the zoom those in
+-- it that are shown and sized for another (PathLines.lua): lines move into
+-- view as it pans, and a zoom step only resizes what is in view. Jumps are
+-- sized whole, by their curve's box. The margin is the widest a line still
+-- sized for fitMin could reach past its ends; jump pieces reach further.
 local function UpdateVisible()
-    local visible, drawn = {}, state.drawn
+    local started = debugprofilestop()
+    local PathLines, z = ns.PathLines, state.zoom
     local x1, y1 = state.ox, state.oy
-    local x2, y2 = x1 + state.W / state.zoom, y1 + state.H / state.zoom
-    for i = 1, state.lineCount do
-        local s = drawn[i]
-        if not (math.max(s[1], s[3]) < x1 or math.min(s[1], s[3]) > x2
-            or math.max(s[2], s[4]) < y1 or math.min(s[2], s[4]) > y2) then
-            visible[#visible + 1] = i
+    local x2, y2 = x1 + state.W / z, y1 + state.H / z
+    local pad, fit = LINE_WIDTH / state.fitMin, state.fit
+    fit[1], fit[2], fit[3], fit[4] = x1 - pad, y1 - pad, x2 + pad, y2 + pad
+    local n, m
+    state.visible, n = PathLines.InView(state.drawn, state.boxes, fit[1], fit[2], fit[3], fit[4], state.visible)
+    state.otherVisible, m = PathLines.InView(state.otherDrawn, state.otherBoxes,
+        fit[1], fit[2], fit[3], fit[4], state.otherVisible)
+    -- /rts perf all resizes every line and jump as before, for comparing.
+    local all = ns.dev and ns.db.perfAll
+    local sized = PathLines.Fit(lines, not all and state.visible or nil, all and state.lineCount or n,
+        state.lineZoom, LINE_WIDTH)
+    sized = sized + PathLines.Fit(otherLines, not all and state.otherVisible or nil,
+        all and state.otherLineCount or m, state.otherZoom, OTHER.LINE_WIDTH)
+    pad = PathLines.JUMP_PAD / state.fitMin
+    for _, jump in ipairs(state.jumps) do
+        local b = jump.box
+        local inView = all or b[3] >= x1 - pad and b[1] <= x2 + pad and b[4] >= y1 - pad and b[2] <= y2 + pad
+        if inView and (jump.visible or all) and jump.tz ~= state.lineZoom then
+            local count, fading = PathLines.FitJump(jump, state.lineZoom, not jump.inView)
+            sized = sized + count
+            state.dotsFading = state.dotsFading or fading
         end
+        jump.inView = inView
     end
-    state.visible = visible
+    local p = state.perf
+    p.fit, p.sized = debugprofilestop() - started, sized
+    p.fitMost, p.sizedMost = math.max(p.fitMost, p.fit), math.max(p.sizedMost, sized)
 end
 
 -- Tints a mote to match the line it is on.
@@ -1998,9 +2094,15 @@ local function UpdatePerf()
         return
     end
     local p = state.perf
-    perfText:SetText(("World %.0f ms, decode %.0f ms, setup %.0f ms, build %.1f ms (lod %.1f, place %.1f), terrain %.1f ms, view %.1f ms - %d points, %d lines at detail %d, %d terrain tiles (%d outside zones skipped), zoom %.1f"):format(
+    -- Second row: the last view change's sizing pass (UpdateVisible) and
+    -- the most of it in a frame since the zoom started moving, lines in
+    -- view of all built, and the last build's lines placed and kept.
+    perfText:SetText(("World %.0f ms, decode %.0f ms, setup %.0f ms, build %.1f ms (lod %.1f, place %.1f), terrain %.1f ms, view %.1f ms - %d points, %d lines at detail %d, %d terrain tiles (%d outside zones skipped), zoom %.1f"
+        .. "\nSizing %.2f ms (most %.2f), %d resized (most %d)%s - in view %d of %d lines, %d of %d others, %d jumps - build placed %d, kept %d"):format(
         p.world, p.decode, p.setup, p.build, p.lod, p.place, p.terrain, p.view, state.n, state.lineCount,
-        state.lodLevel, TerrainCount(), state.tilesSkipped, state.zoom))
+        state.lodLevel, TerrainCount(), state.tilesSkipped, state.zoom,
+        p.fit, p.fitMost, p.sized, p.sizedMost, ns.db.perfAll and " [all, as before]" or "",
+        #state.visible, state.lineCount, #state.otherVisible, state.otherLineCount, #state.jumps, p.placed, p.kept))
 end
 
 -- Moves the content to match the view, and rebuilds what has fallen out of date.
@@ -2022,14 +2124,23 @@ local function ApplyView()
         zoneView:Update(ViewArea(0))
     end
 
-    -- Resizing every line each frame is most of the cost of zooming, so
-    -- while the zoom animates it only happens after a tenth of drift, and
-    -- once more when the animation settles.
+    -- Resizing lines is most of the cost of zooming, so while the zoom
+    -- animates, the zoom lines are sized for only follows it after a tenth
+    -- of drift, and once more when the animation settles; UpdateVisible
+    -- then resizes only the lines in view.
     local settled = z == state.targetZoom
+    if not settled and not state.zooming then
+        -- A zoom starts: /rts perf's most per frame start over.
+        state.perf.fitMost, state.perf.sizedMost = 0, 0
+    end
+    state.zooming = not settled
     if NeedsPathBuild() then
         BuildPath()
     elseif z ~= state.lineZoom and (settled or math.abs(z / state.lineZoom - 1) > 0.1) then
         SetLineThickness()
+    end
+    if z ~= state.otherZoom and (settled or math.abs(z / state.otherZoom - 1) > 0.1) then
+        SetOtherThickness()
     end
     UpdateVisible()
     UpdateTerrain()
@@ -2043,9 +2154,6 @@ local function ApplyView()
         end
     end
     ShowJumpIcons()
-    if z ~= state.otherZoom and (settled or math.abs(z / state.otherZoom - 1) > 0.1) then
-        SetOtherThickness()
-    end
 
     state.perf.view = debugprofilestop() - started
     UpdatePerf()
@@ -2263,11 +2371,13 @@ local function ApplyCursor()
     local seq = math.floor(state.cur)
     -- On its way along a jump, the jump shows, so the arrow follows its line.
     local count = CountUpTo(seq >= 1 and state.brk[seq + 1] and seq + 1 or seq)
+    -- Lines coming into sight in view are sized for the zoom (PathLines.Reveal).
+    local drawn, Reveal = state.drawn, ns.PathLines.Reveal
     for i = state.shown + 1, count do
-        lines[i]:Show()
+        Reveal(lines[i], drawn[i], not lines[i].void, state.lineZoom, LINE_WIDTH, state.fit)
     end
     for i = count + 1, state.shown do
-        lines[i]:Hide()
+        Reveal(lines[i], drawn[i], false)
     end
     if count ~= state.shown then
         ShowJumps(count)
@@ -2386,10 +2496,14 @@ local function LineAt(cx, cy)
             end
         end
     end
-    for _, s in ipairs(state.otherDrawn) do
-        local d = DistSqToSegment(x, y, s[1], s[2], s[3], s[4])
-        if d < bestD then
-            best, bestD = s, d
+    -- Theirs in view and shown (replaying together hides those ahead).
+    for _, i in ipairs(state.otherVisible) do
+        local s = state.otherDrawn[i]
+        if otherLines[i].on then
+            local d = DistSqToSegment(x, y, s[1], s[2], s[3], s[4])
+            if d < bestD then
+                best, bestD = s, d
+            end
         end
     end
     return best
@@ -2440,10 +2554,23 @@ local function ShowLineTooltip(spec)
 end
 
 -- Highlights the line under the mouse and shows what it is.
+-- Nothing is looked for again while the mouse, the view, the replay and
+-- the lines are as they were at the last look, as it walks every line in view.
 local function UpdateHover()
     local spec
     if not drag and canvas:IsMouseOver() and MouseFocus() == canvas then
-        spec = LineAt(CursorOnCanvas())
+        local cx, cy = CursorOnCanvas()
+        local at = state.hoverAt or {}
+        if at[1] == cx and at[2] == cy and at[3] == state.ox and at[4] == state.oy and at[5] == state.zoom
+            and at[6] == state.shown and at[7] == state.builds and at[8] == state.clock then
+            return
+        end
+        at[1], at[2], at[3], at[4], at[5], at[6], at[7], at[8] =
+            cx, cy, state.ox, state.oy, state.zoom, state.shown, state.builds, state.clock
+        state.hoverAt = at
+        spec = LineAt(cx, cy)
+    else
+        state.hoverAt = nil
     end
     if spec == state.hover then return end
     state.hover = spec
@@ -2579,10 +2706,12 @@ function Together.Apply(all)
         track.moved = all or cur ~= track.cur
         track.cur = cur
     end
+    -- Only lines whose state changes are touched (PathLines.Reveal).
     for i = 1, state.otherLineCount do
         local spec = state.otherDrawn[i]
         if spec.track.moved then
-            otherLines[i]:SetShown(spec[6] <= spec.track.cur)
+            ns.PathLines.Reveal(otherLines[i], spec, spec[6] <= spec.track.cur,
+                state.otherZoom, OTHER.LINE_WIDTH, state.fit)
         end
     end
     local placed = all
@@ -3377,7 +3506,7 @@ function Map:OpenNow(keep)
 
     SetPlaying(false)
     drag = nil
-    state.built = nil
+    state.built, state.jumpKey = nil, nil
     state.cur = state.n
     if state.clock then
         Together.End()

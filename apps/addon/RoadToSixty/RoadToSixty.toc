@@ -52,6 +52,7 @@ Routes.lua
 Islands.lua
 Portals.lua
 PathCurve.lua
+PathLines.lua
 Style.lua
 Map.lua
 LiveMap.lua

@@ -490,7 +490,14 @@ end
 -- take effect. A release build ignores them even if they were saved.
 ns.dev = true
 
-ns.Command("perf", "toggle timing info on the journey map", function()
+-- "all" makes the map resize every line on each zoom step, as it did
+-- before it resized only those in view (PathLines.lua), to compare the two.
+ns.Command("perf", "toggle timing info on the journey map; 'all' toggles resizing every line on zoom, to compare", function(arg)
+    if arg == "all" then
+        ns.db.perfAll = not ns.db.perfAll
+        Print("Map zoom resizes " .. (ns.db.perfAll and "every line, as before." or "only the lines in view."))
+        return
+    end
     ns.db.perf = not ns.db.perf
     Print("Map timing info " .. (ns.db.perf and "shown" or "hidden") .. ".")
 end)
