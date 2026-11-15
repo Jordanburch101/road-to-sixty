@@ -1752,7 +1752,13 @@ local function BuildPath()
     state.builds = state.builds + 1
     state.perf.placed, state.perf.kept = counts.place, counts.kept
     local jumpsStarted = debugprofilestop()
-    BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
+    -- Arcs are drawn over the area rounded out to whole views: a pan then
+    -- leaves the stretch of each arc inside it as it was, and BuildJumps
+    -- keeps the arc as drawn. With the area itself, every arc across its
+    -- edge was drawn again at each pan, 15 to 35 ms in game (#152).
+    local vw, vh = state.W / z, state.H / z
+    BuildJumps(drawn, shown, z, { math.floor(x1 / vw) * vw, math.floor(y1 / vh) * vh,
+        math.ceil(x2 / vw) * vw, math.ceil(y2 / vh) * vh })
     state.perf.jumps = debugprofilestop() - jumpsStarted
     -- The near part only matters where a pan could draw more finely: a
     -- build at the finest level everywhere waits for the view to leave the
