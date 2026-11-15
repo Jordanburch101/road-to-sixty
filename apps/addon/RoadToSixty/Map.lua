@@ -1065,6 +1065,10 @@ DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
         end
     end
     local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, far and near, far)
+    --@debug@
+    -- /rts curves (PerfLog.lua): the lines straight, to compare (#152).
+    if ns.db and ns.db.curvesOff then return lines, k, far ~= nil or k > finest end
+    --@end-debug@
     return ns.CurveLines(lines, z, MAX_LINES, view), k, far ~= nil or k > finest
 end
 
