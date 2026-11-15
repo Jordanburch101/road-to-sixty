@@ -24,8 +24,8 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- Hearthstones, teleports and boats each take a time of their own (Style.lua,
 -- Portals.lua); jumps scales that time the same way, here to half.
 local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
-local SHAPE_PIXELS = 0.5        -- detail levels keep the path's shape to within this on screen at the finest level a zoom allows, up to four times it (PathCurve.lua)
-local MAX_LINES = 3000          -- line budget per build, curves included; past it, points merge further
+local SHAPE_PIXELS = 0.5        -- detail levels keep the path's shape to within this on screen at the finest level a zoom allows, up to four times it (PathShape.lua)
+local MAX_LINES = 3000          -- line budget per build; past it, points merge further
 -- The path is built for the view and a margin a view wide on every side, so
 -- panning doesn't build it again at once: nine views, most of it unseen.
 -- One detail level for all of it spent the budget there, and a town walked
@@ -34,8 +34,8 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- it (NEAR views past each edge) get the finest level that fits
 -- NEAR_LINES, the rest keeps only a coarser level's points in what the
 -- near part left (at least FAR_LINES, times FAR_SHARE; levels nest,
--- PathCurve.lua's MakeLevel), and what is left of MAX_LINES curves the
--- lines in view. The map builds again once the view leaves the near part:
+-- PathShape.lua's MakeLevel). Lines are drawn straight between the points
+-- kept. The map builds again once the view leaves the near part:
 -- when the zoom settles, and when a drag pauses for DRAG_PAUSE seconds.
 local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_PAUSE = 0.15 }
 local LINE_WIDTH = 2
@@ -840,7 +840,7 @@ local function CountUpTo(seq)
 end
 
 -- Tolerance in content units of detail level k: its lines pass within
--- about this of the points of the level it is made from (PathCurve.lua's
+-- about this of the points of the level it is made from (PathShape.lua's
 -- KeepShape). Level 0 is fine enough for full zoom; each level up doubles it.
 local function LodDistance(k)
     return SHAPE_PIXELS / MAX_ZOOM * LOD_STEP ^ k
@@ -851,7 +851,7 @@ end
 -- own path is state itself; other characters' paths are built from the
 -- roster.
 --
--- The track simplified at detail level k, made on first use (PathCurve.lua's
+-- The track simplified at detail level k, made on first use (PathShape.lua's
 -- MakeLevel): idx lists the points kept, in order, those its shape needs at
 -- LodDistance(k), every segment's first and last point among them. Levels
 -- nest, whatever order they are made in, and lods.top[i] is the coarsest
@@ -1021,13 +1021,13 @@ local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, far)
 end
 
 -- Lines of a track for a build at zoom z over the area x1, y1, x2, y2, with
--- the view's near part (near) in more detail than the rest (DETAIL), and
--- the lines in view curved with the budget left. Returns the lines, the
--- near part's detail level, and whether moving the view could draw it
--- more finely: zoned, or coarser than the zoom's finest to fit the budget.
--- A build already at the finest everywhere has nothing to gain from a
--- pan, so it waits for the view to leave the whole area (NeedsPathBuild).
-DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
+-- the view's near part (near) in more detail than the rest (DETAIL).
+-- Returns the lines, the near part's detail level, and whether moving the
+-- view could draw it more finely: zoned, or coarser than the zoom's finest
+-- to fit the budget. A build already at the finest everywhere has nothing
+-- to gain from a pan, so it waits for the view to leave the whole area
+-- (NeedsPathBuild).
+DETAIL.Lines = function(track, x1, y1, x2, y2, near, z)
     -- The levels picked last time, as far above the finest the zoom allows.
     local finest = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
     local last = track.picked or {}
@@ -1064,12 +1064,7 @@ DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
             end
         end
     end
-    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, far and near, far)
-    --@debug@
-    -- /rts curves (PerfLog.lua): the lines straight, to compare (#152).
-    if ns.db and ns.db.curvesOff then return lines, k, far ~= nil or k > finest end
-    --@end-debug@
-    return ns.CurveLines(lines, z, MAX_LINES, view), k, far ~= nil or k > finest
+    return LinesIn(track, lod, list, x1, y1, x2, y2, true, far and near, far), k, far ~= nil or k > finest
 end
 
 -- Jump arcs ------------------------------------------------------------------------
@@ -1543,15 +1538,15 @@ local function BuildOtherTracks()
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
--- own path and the same way (DETAIL.Lines), curves included, each within MAX_LINES:
+-- own path and the same way (DETAIL.Lines), each within MAX_LINES:
 -- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
 -- Returns whether moving the view could draw any of them more finely (DETAIL.Lines).
-local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
+local function BuildOtherLines(x1, y1, x2, y2, near, z)
     local otherDrawn, anyFiner = {}, false
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
-            local specs, _, finer = DETAIL.Lines(track, x1, y1, x2, y2, near, view, z)
+            local specs, _, finer = DETAIL.Lines(track, x1, y1, x2, y2, near, z)
             anyFiner = anyFiner or finer
             for _, spec in ipairs(specs) do
                 spec.track = track
@@ -1621,17 +1616,16 @@ local function BuildPath()
     state.perf.lod = 0
     local z = state.zoom
     local x1, y1, x2, y2 = ViewArea(PATH_MARGIN)
-    local near, view = { ViewArea(DETAIL.NEAR) }, { ViewArea(0) }
+    local near = { ViewArea(DETAIL.NEAR) }
 
-    -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
     local drawn, finer
-    drawn, state.lodLevel, finer = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
+    drawn, state.lodLevel, finer = DETAIL.Lines(state, x1, y1, x2, y2, near, z)
     state.perf.detail = debugprofilestop() - started
     local old = state.drawn
     local counts = ns.PathLines.count
     counts.place, counts.kept = 0, 0
     state.fitMin = z
-    finer = BuildOtherLines(x1, y1, x2, y2, near, view, z) or finer
+    finer = BuildOtherLines(x1, y1, x2, y2, near, z) or finer
     state.perf.others = debugprofilestop() - started - state.perf.detail
 
     -- Lines with the same ends as in the last build stay where they are

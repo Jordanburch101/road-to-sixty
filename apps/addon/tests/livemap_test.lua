@@ -20,9 +20,9 @@ local ns = {}
 assert(loadfile("RoadToSixty/LiveMap.lua"))("RoadToSixty", ns)
 local LiveMap = ns.LiveMap
 
--- The detail levels as Map.lua's GetLod makes them (PathCurve.lua's
+-- The detail levels as Map.lua's GetLod makes them (PathShape.lua's
 -- MakeLevel), at Map.lua's tolerances (LodDistance), as the reference.
-assert(loadfile("RoadToSixty/PathCurve.lua"))("RoadToSixty", ns)
+assert(loadfile("RoadToSixty/PathShape.lua"))("RoadToSixty", ns)
 local SHAPE_PIXELS, MAX_ZOOM, LOD_STEP, CHUNK = 1, 64, 2, 64
 local function LodDistance(k) return SHAPE_PIXELS / MAX_ZOOM * LOD_STEP ^ k end
 local function GetLod(track, k)

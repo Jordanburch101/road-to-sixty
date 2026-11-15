@@ -51,7 +51,7 @@ Health.lua
 Routes.lua
 Islands.lua
 Portals.lua
-PathCurve.lua
+PathShape.lua
 PathLines.lua
 Style.lua
 Map.lua

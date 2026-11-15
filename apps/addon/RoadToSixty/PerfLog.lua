@@ -53,16 +53,6 @@ function PerfLog.Frame(elapsed, lua, dragging, state)
     end
 end
 
--- /rts curves: the journey map's lines drawn straight between the points
--- kept, or curved through them (PathCurve.lua), to pick one from
--- screenshots (#152). The map is built again at once if it is open.
-ns.Command("curves", "draw the journey map's lines curved or straight, to compare (developer)", function()
-    ns.db.curvesOff = not ns.db.curvesOff or nil
-    ns.Print("Journey map lines: " .. (ns.db.curvesOff and "straight." or "curved."))
-    -- Builds the path again where the map is, if it is open.
-    ns.Map:RefreshFilters()
-end)
-
 ns.Command("perflog", "record every map frame into the saved variables, /reload to write them; 'clear' empties it (developer)", function(arg)
     if arg == "clear" then
         ns.db.perfLog = PerfLog.on and { started = date(), frames = {} } or nil

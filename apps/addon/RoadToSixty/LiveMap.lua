@@ -73,7 +73,7 @@ local function After(list, i)
     return j
 end
 
--- Carries the detail levels already made (Map.lua's GetLod, PathCurve.lua's
+-- Carries the detail levels already made (Map.lua's GetLod, PathShape.lua's
 -- MakeLevel) on to points from to track.n, so they hold what MakeLevel
 -- would make for the whole path, made in the same order. What KeepShape
 -- keeps depends only on the points since the last one kept, so each level
