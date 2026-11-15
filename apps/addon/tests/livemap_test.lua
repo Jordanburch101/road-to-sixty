@@ -224,6 +224,74 @@ LiveMap.Append(empty, Walk(3, 100, 100, 0), 1, ToContent, 1, nil, false)
 check(empty.n == 3 and empty.brk[1] == true and empty.bounds[1] <= empty.px[1] and empty.bounds[3] >= empty.px[1],
     "the first points on an empty map")
 
+-- Random walks grown a few points at a time, with levels made in a random
+-- order at random moments as the map's warm-up and builds make them, must
+-- end up as levels made afresh for the whole path: the same points, chunks,
+-- top and ends. A level made from a finer one once kept a point because of
+-- the finer level's old last point, which a fresh build would not (#ISSUE).
+local differ, firstDiffer = 0, nil
+for trial = 1, 400 do
+    math.randomseed(trial)
+    local N = math.random(50, 800)
+    local wx, wy, wb, wbrk = {}, {}, {}, {}
+    local x, y, ang, band = 0, 0, 0, 1
+    for i = 1, N do
+        if math.random() < 0.02 then
+            x, y, wbrk[i] = math.random() * 50, math.random() * 50, true
+        else
+            wbrk[i] = i == 1
+        end
+        if math.random() < 0.01 then band = band + 1 end
+        ang = ang + (math.random() - 0.5) * (math.random() < 0.1 and 6 or 0.3)
+        local step = math.random() < 0.2 and 0 or math.random(1, 20) / 50
+        x = math.floor((x + math.cos(ang) * step) * 50 + 0.5) / 50
+        y = math.floor((y + math.sin(ang) * step) * 50 + 0.5) / 50
+        wx[i], wy[i], wb[i] = x, y, band
+    end
+    local order = {}
+    for k = 0, 12 do
+        if math.random() < 0.6 then table.insert(order, math.random(1, #order + 1), k) end
+    end
+    local function Track(n)
+        local t = { n = n, px = wx, py = wy, brk = {}, pb = {}, lods = {} }
+        for i = 1, n do t.brk[i], t.pb[i] = wbrk[i], wb[i] end
+        return t
+    end
+    local n = math.random(1, N)
+    local live, made = Track(n), 0
+    while n < N or made < #order do
+        while made < #order and math.random() < 0.5 do
+            made = made + 1
+            GetLod(live, order[made])
+        end
+        if n < N then
+            local add = math.min(N - n, math.random(1, 5))
+            for i = n + 1, n + add do live.brk[i], live.pb[i] = wbrk[i], wb[i] end
+            live.n = n + add
+            if live.lods.order then LiveMap.ExtendLods(live, n + 1, LodDistance, CHUNK) end
+            n = n + add
+        end
+    end
+    local fresh = Track(N)
+    for _, k in ipairs(order) do GetLod(fresh, k) end
+    local same = live.lods.ends == fresh.lods.ends
+    for _, k in ipairs(order) do
+        local a, b = live.lods[k], fresh.lods[k]
+        same = same and #a.idx == #b.idx and #a.chunks == #b.chunks
+        for j = 1, #b.idx do same = same and a.idx[j] == b.idx[j] end
+        for c = 1, #b.chunks do
+            for f = 1, 7 do same = same and a.chunks[c] and a.chunks[c][f] == b.chunks[c][f] end
+        end
+    end
+    for i = 1, N do same = same and (live.lods.top or {})[i] == (fresh.lods.top or {})[i] end
+    if not same then
+        differ = differ + 1
+        firstDiffer = firstDiffer or trial
+    end
+end
+check(differ == 0, ("grown live, levels made in any order match a fresh build (%d of 400 differ, first trial %s)")
+    :format(differ, tostring(firstDiffer)))
+
 if failures == 0 then
     print("LiveMap tests passed.")
 else

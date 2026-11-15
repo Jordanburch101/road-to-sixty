@@ -121,6 +121,20 @@ local function KeepShape(track, source, first, last, tol, idx, count, forced, f,
 end
 ns.KeepShape = KeepShape
 
+-- How many of points first to last every level keeps whatever their shape
+-- (KeepShape): a segment's first and last, and where the level band changes.
+-- A level with no more points than that (lods.ends, for the whole track) is
+-- as coarse as any can be: Map.lua's PickLod stops there.
+function ns.AlwaysKept(track, first, last)
+    local brk, pb, count = track.brk, track.pb, 0
+    for i = first, last do
+        if brk[i] or brk[i + 1] ~= false or pb and pb[i + 1] and pb[i + 1] ~= pb[i] then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 -- The levels made nearest below and above level k: lods.order lists the
 -- levels in the order they were made.
 local function Neighbours(lods, k)
@@ -164,6 +178,7 @@ function ns.MakeLevel(track, k, tol, chunk, yieldEvery)
             lods.order = lods.order or {}
             lods.order[#lods.order + 1] = k
             lods.top = lods.top or {}
+            lods.ends = lods.ends or ns.AlwaysKept(track, 1, track.n)
             local top = lods.top
             for j = 1, count do
                 local i = idx[j]
@@ -269,6 +284,8 @@ end
 -- towards a corner at its end strayed from where the path went.
 function ns.CurveLines(lines, z, budget, view)
     if z < CURVE_ZOOM or #lines == 0 then return lines end
+    local spare = budget - #lines
+    if spare <= 0 then return lines end
     -- Pieces per line by its length on screen.
     local wanted, length, total = {}, {}, 0
     for k, l in ipairs(lines) do
@@ -283,67 +300,65 @@ function ns.CurveLines(lines, z, budget, view)
     -- How far each curve strays from its line: ox and oy hold its offsets a
     -- quarter, half and three quarters along, kept for the pieces (a curve
     -- bending one way and then the other strays most near the quarters).
-    -- Over budget, only lines in view can have pieces, so only they are
-    -- measured.
-    local narrow = view and total > budget
+    -- False for a curve that stays within FLAT_PIXELS of its line.
     local bulge, ox, oy = {}, {}, {}
-    total = 0
-    for k, l in ipairs(lines) do
-        local n = wanted[k]
-        if n > 1 and narrow and not (math.max(l[1], l[3]) >= view[1] and math.min(l[1], l[3]) <= view[3]
-            and math.max(l[2], l[4]) >= view[2] and math.min(l[2], l[4]) <= view[4]) then
-            n = 1
-        elseif n > 1 then
-            local t1, t2, t3, x0, y0, x1, y1, x2, y2, x3, y3 = Around(lines, k)
-            local off = 0
-            for m = 1, 3 do
-                local f = m / 4
-                local cx, cy = At(t1 + (t2 - t1) * f, t1, t2, t3, x0, y0, x1, y1, x2, y2, x3, y3)
-                local dx, dy = cx - x1 - (x2 - x1) * f, cy - y1 - (y2 - y1) * f
-                ox[3 * k + m], oy[3 * k + m] = dx, dy
-                off = math.max(off, dx * dx + dy * dy)
-            end
-            off = math.sqrt(off) * z
-            if off < FLAT_PIXELS then n = 1 end
-            bulge[k] = off
+    local function Bends(k)
+        local t1, t2, t3, x0, y0, x1, y1, x2, y2, x3, y3 = Around(lines, k)
+        local off = 0
+        for m = 1, 3 do
+            local f = m / 4
+            local cx, cy = At(t1 + (t2 - t1) * f, t1, t2, t3, x0, y0, x1, y1, x2, y2, x3, y3)
+            local dx, dy = cx - x1 - (x2 - x1) * f, cy - y1 - (y2 - y1) * f
+            ox[3 * k + m], oy[3 * k + m] = dx, dy
+            off = math.max(off, dx * dx + dy * dy)
         end
-        wanted[k], total = n, total + n
+        off = math.sqrt(off) * z
+        bulge[k] = off
+        return off >= FLAT_PIXELS
     end
-    if total > budget then
-        local spare = budget - #lines
-        if spare <= 0 then return lines end
-        -- The lines that may get pieces, by their whole length on screen in
-        -- pixels (all past LONGEST together), and the pieces past their
-        -- first that each length wants: counted rather than sorted, as
-        -- sorting them took a quarter of a build.
-        local bucket, need = {}, {}
+    if total <= budget then
+        total = 0
         for k = 1, #lines do
+            if wanted[k] > 1 and not Bends(k) then wanted[k] = 1 end
+            total = total + wanted[k]
+        end
+    else
+        -- Over budget, every line keeps one piece and the room left goes to
+        -- the lines longest on screen, those in view when it is given. The
+        -- lines that may get pieces are put in lists by their whole length
+        -- in pixels (all past LONGEST together; counted rather than sorted,
+        -- as sorting them took a quarter of a build), each list in point
+        -- order, and only measured as their turn comes, until the room is
+        -- used up: measuring every line took most of a build that had room
+        -- for a few dozen pieces.
+        local head, nextIn = {}, {}
+        for k = #lines, 1, -1 do
             if wanted[k] > 1 then
-                local b = math.floor(length[k])
-                if b > LONGEST then b = LONGEST end
-                bucket[k], need[b] = b, (need[b] or 0) + wanted[k] - 1
+                local l = lines[k]
+                if not view or (math.max(l[1], l[3]) >= view[1] and math.min(l[1], l[3]) <= view[3]
+                    and math.max(l[2], l[4]) >= view[2] and math.min(l[2], l[4]) <= view[4]) then
+                    local b = math.floor(length[k])
+                    if b > LONGEST then b = LONGEST end
+                    nextIn[k], head[b] = head[b], k
+                end
             end
         end
-        -- Longest first: lengths above cut get all they want, lines of
-        -- length cut what is left, in point order.
-        local cut = -1
+        local give = {}
         for b = LONGEST, 0, -1 do
-            local n = need[b]
-            if n then
-                if n >= spare then cut = b break end
-                spare = spare - n
+            local k = head[b]
+            while k and spare > 0 do
+                if Bends(k) then
+                    local n = 1 + math.min(wanted[k] - 1, spare)
+                    give[k], spare = n, spare - (n - 1)
+                end
+                k = nextIn[k]
             end
+            if spare <= 0 then break end
         end
         total = 0
-        for k = 1, #wanted do
-            local b, n = bucket[k], 1
-            if b and b > cut then
-                n = wanted[k]
-            elseif b == cut and spare > 0 then
-                n = 1 + math.min(wanted[k] - 1, spare)
-                spare = spare - (n - 1)
-            end
-            wanted[k], total = n, total + n
+        for k = 1, #lines do
+            wanted[k] = give[k] or 1
+            total = total + wanted[k]
         end
     end
     if total == #lines then return lines end

@@ -87,22 +87,42 @@ function LiveMap.ExtendLods(track, from, lodDistance, chunk)
     local lods, n = track.lods, track.n
     if not lods.order then return end
     local oldEnd, top = from - 1, lods.top
-    for i = oldEnd, n do top[i] = nil end
+    -- The old last point was kept by every level for being the end.
+    lods.ends = lods.ends - 1 + ns.AlwaysKept(track, oldEnd, n)
+    -- The point each level went on from: what it keeps up to there is as it
+    -- was, the rest may have changed.
+    local went, least = {}, oldEnd
     for _, k in ipairs(lods.order) do
         local lod = lods[k]
         local idx = lod.idx
         local count = #idx
-        while count > 0 and idx[count] >= oldEnd do
+        -- A level made from a finer one saw the old end as the point after
+        -- that level's last before it, and may have kept that one only
+        -- because the line couldn't reach the end; and whether it keeps the
+        -- point the finer level went on from was decided by the point after
+        -- it, which may be another now. So it goes on from before that
+        -- point, and from no further than the coarser level it keeps all of
+        -- went on from, as that one's points past there may be gone.
+        local before = lod.from and went[lod.from] or oldEnd
+        local upTo = lod.keep and went[lod.keep] or oldEnd
+        while count > 0 and (idx[count] >= before or idx[count] > upTo) do
             idx[count] = nil
             count = count - 1
         end
         local kept, last = count, idx[count] or 0
+        went[k] = last
+        if last < least then least = last end
         local source = lod.from and lods[lod.from].idx
         local forced = lod.keep and lods[lod.keep].idx
         count = ns.KeepShape(track, source, source and After(source, last) or last + 1, source and #source or n,
             lodDistance(k), idx, count, forced, forced and After(forced, last))
         ns.LodChunks(track, idx, count, lod.chunks, math.floor(kept / chunk) + 1, chunk)
-        for j = kept + 1, count do
+    end
+    -- The coarsest level keeping each point, from the first that may have changed.
+    for i = least + 1, n do top[i] = nil end
+    for _, k in ipairs(lods.order) do
+        local idx = lods[k].idx
+        for j = After(idx, least), #idx do
             local i = idx[j]
             if not top[i] or top[i] < k then top[i] = k end
         end

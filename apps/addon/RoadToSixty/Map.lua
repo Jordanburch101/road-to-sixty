@@ -32,11 +32,12 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- through again and again merged its points 100 yards apart (#ISSUE). So,
 -- unless all of it fits MAX_LINES as finely, the view and a little round
 -- it (NEAR views past each edge) get the finest level that fits
--- NEAR_LINES, the rest keeps only a coarser level's points to fit
--- FAR_LINES (levels nest, PathCurve.lua's MakeLevel), and what is
--- left of MAX_LINES curves the lines in view. The map builds again once
--- the view leaves the near part and stays still.
-local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300 }
+-- NEAR_LINES, the rest keeps only a coarser level's points in what the
+-- near part left (at least FAR_LINES, times FAR_SHARE; levels nest,
+-- PathCurve.lua's MakeLevel), and what is left of MAX_LINES curves the
+-- lines in view. The map builds again once the view leaves the near part:
+-- when the zoom settles, and every DRAG_SECONDS while dragging.
+local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_SECONDS = 0.2 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
@@ -899,7 +900,7 @@ end
 -- needed, merging points 100 yards apart, and the curve cut across every
 -- corner. Over budget, the lines are counted as LinesIn draws them (but for
 -- sea courses' boxes), up to one past it.
-local function ChunksIn(track, lod, x1, y1, x2, y2, budget)
+local function ChunksIn(track, lod, x1, y1, x2, y2, budget, skip, exact)
     local list, total = {}, 0
     for _, ch in ipairs(lod.chunks) do
         if ch[5] >= x1 and ch[3] <= x2 and ch[6] >= y1 and ch[4] <= y2 then
@@ -907,18 +908,25 @@ local function ChunksIn(track, lod, x1, y1, x2, y2, budget)
             total = total + ch[2] - ch[1] + 1
         end
     end
-    if total <= budget then return list, total end
+    if total <= budget and not exact then return list, total end
     local idx, px, py, lines = lod.idx, track.px, track.py, 0
+    local s1, s2, s3, s4 = math.huge, math.huge, -math.huge, -math.huge
+    if skip then s1, s2, s3, s4 = skip[1], skip[2], skip[3], skip[4] end
     for _, ch in ipairs(list) do
-        -- A box wholly in the area draws all its lines there.
-        if ch[3] >= x1 and ch[5] <= x2 and ch[4] >= y1 and ch[6] <= y2 then
+        if ch[3] >= s1 and ch[5] <= s3 and ch[4] >= s2 and ch[6] <= s4 then
+            -- A box wholly in the part left out draws nothing.
+        elseif ch[3] >= x1 and ch[5] <= x2 and ch[4] >= y1 and ch[6] <= y2
+            and (ch[5] < s1 or ch[3] > s3 or ch[6] < s2 or ch[4] > s4) then
+            -- A box wholly in the area draws all its lines there.
             lines = lines + ch[7]
             if lines > budget then return list, lines end
         else
             for j = math.max(2, ch[1]), ch[2] do
                 local ax, ay, bx, by = px[idx[j - 1]], py[idx[j - 1]], px[idx[j]], py[idx[j]]
                 if (ax ~= bx or ay ~= by) and math.max(ax, bx) >= x1 and math.min(ax, bx) <= x2
-                    and math.max(ay, by) >= y1 and math.min(ay, by) <= y2 then
+                    and math.max(ay, by) >= y1 and math.min(ay, by) <= y2
+                    and not (ax >= s1 and ax <= s3 and ay >= s2 and ay <= s4
+                        and bx >= s1 and bx <= s3 and by >= s2 and by <= s4) then
                     lines = lines + 1
                     if lines > budget then return list, lines end
                 end
@@ -929,17 +937,39 @@ local function ChunksIn(track, lod, x1, y1, x2, y2, budget)
 end
 
 -- Detail level of a track for the area at zoom z: the finest whose
--- tolerance is at least SHAPE_PIXELS on screen, made coarser until the lines in
--- range fit the budget. Returns the level, its chunks in range, and k.
-local function PickLod(track, x1, y1, x2, y2, z, budget)
-    local k = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
-    local lod, list, total
-    repeat
-        lod = GetLod(track, k)
-        list, total = ChunksIn(track, lod, x1, y1, x2, y2, budget)
-        k = k + 1
-    until total <= budget or k > MAX_LOD
-    return lod, list, k - 1
+-- tolerance is at least SHAPE_PIXELS on screen (or level lowest, if that is
+-- coarser), made coarser until the lines in range fit the budget, or until
+-- the level keeps only what every level keeps (lods.ends), as no level
+-- draws fewer. It starts looking at level start, the one picked last time:
+-- most builds pick the same again, and counting each level up from the
+-- finest was most of a build on a long journey. Returns the level, its
+-- chunks in range, k, and the count (ChunksIn).
+local function PickLod(track, x1, y1, x2, y2, z, budget, start, lowest, skip, exact, highest)
+    lowest = math.max(lowest or 0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
+    highest = math.max(lowest, highest or MAX_LOD)
+    local k = math.min(highest, math.max(lowest, start or lowest))
+    local lod = GetLod(track, k)
+    local list, total = ChunksIn(track, lod, x1, y1, x2, y2, budget, skip, exact)
+    if total <= budget then
+        while k > lowest do
+            local finer = GetLod(track, k - 1)
+            local finerList, finerTotal = ChunksIn(track, finer, x1, y1, x2, y2, budget, skip, exact)
+            if finerTotal > budget then break end
+            k, lod, list, total = k - 1, finer, finerList, finerTotal
+        end
+    else
+        while k < highest and #lod.idx > track.lods.ends do
+            k = k + 1
+            lod = GetLod(track, k)
+            list, total = ChunksIn(track, lod, x1, y1, x2, y2, budget, skip, exact)
+            if total <= budget then break end
+        end
+        -- Nothing fits: the count stopped at the budget, so in full now.
+        if total > budget then
+            list, total = ChunksIn(track, lod, x1, y1, x2, y2, math.huge, skip, true)
+        end
+    end
+    return lod, list, k, total
 end
 
 -- Lines of a track's detail level inside the area, in point order:
@@ -992,23 +1022,50 @@ end
 
 -- Lines of a track for a build at zoom z over the area x1, y1, x2, y2, with
 -- the view's near part (near) in more detail than the rest (DETAIL), and
--- the lines in view curved with the budget left. Returns the lines and the
--- near part's detail level.
+-- the lines in view curved with the budget left. Returns the lines, the
+-- near part's detail level, and whether moving the view could draw it
+-- more finely: zoned, or coarser than the zoom's finest to fit the budget.
+-- A build already at the finest everywhere has nothing to gain from a
+-- pan, so it waits for the view to leave the whole area (NeedsPathBuild).
 DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
-    local lod, list, k = PickLod(track, x1, y1, x2, y2, z, MAX_LINES)
-    local nearLod, _, nearK = PickLod(track, near[1], near[2], near[3], near[4], z, DETAIL.NEAR_LINES)
+    -- The levels picked last time, as far above the finest the zoom allows.
+    local finest = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
+    local last = track.picked or {}
+    track.picked = last
+    local lod, list, k = PickLod(track, x1, y1, x2, y2, z, MAX_LINES, last[1] and finest + last[1])
+    last[1] = k - finest
     local far
-    -- Where the whole area fits as finely as the near part would, it is
-    -- all drawn at that level; else the near part at its own.
-    if nearK < k then
-        _, _, far = PickLod(track, x1, y1, x2, y2, z, DETAIL.FAR_LINES)
-        lod, k, far = nearLod, nearK, math.max(nearK, far)
-        list = ChunksIn(track, lod, x1, y1, x2, y2, math.huge)
-    else
-        near = nil
+    -- Where the whole area fits at the finest level the zoom allows, or as
+    -- finely as the near part would, it is all drawn at that level.
+    if k > finest then
+        local nearLod, _, nearK, nearCount = PickLod(track, near[1], near[2], near[3], near[4], z,
+            DETAIL.NEAR_LINES, last[2] and finest + last[2], nil, nil, true)
+        last[2] = nearK - finest
+        if nearK < k then
+            -- The rest gets what the near part left, counting only its
+            -- lines outside the near part: the finest level that fits.
+            local room = math.max(DETAIL.FAR_LINES, math.floor((MAX_LINES - nearCount) * DETAIL.FAR_SHARE))
+            local _, _, farK, farCount = PickLod(track, x1, y1, x2, y2, z, room,
+                finest + (last[3] or last[1]), nearK + 1, near)
+            last[3] = farK - finest
+            -- Segments' ends alone can be more than its room: the near
+            -- part makes way, and failing that all of it is drawn at the
+            -- one level it fits at, so the budget holds.
+            local fits = true
+            if nearCount + farCount > MAX_LINES then
+                local count
+                nearLod, _, nearK, count = PickLod(track, near[1], near[2], near[3], near[4], z,
+                    MAX_LINES - farCount, nearK + 1, nearK + 1, nil, true, farK)
+                fits = count + farCount <= MAX_LINES
+            end
+            if fits and nearK < farK then
+                lod, k, far = nearLod, nearK, farK
+                list = ChunksIn(track, lod, x1, y1, x2, y2, math.huge)
+            end
+        end
     end
-    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, near, far)
-    return ns.CurveLines(lines, z, MAX_LINES, view), k
+    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, far and near, far)
+    return ns.CurveLines(lines, z, MAX_LINES, view), k, far ~= nil or k > finest
 end
 
 -- Jump arcs ------------------------------------------------------------------------
@@ -1485,11 +1542,14 @@ end
 -- own path and the same way (DETAIL.Lines), curves included, each within MAX_LINES:
 -- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
+-- Returns whether moving the view could draw any of them more finely (DETAIL.Lines).
 local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
-    local otherDrawn = {}
+    local otherDrawn, anyFiner = {}, false
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
-            for _, spec in ipairs((DETAIL.Lines(track, x1, y1, x2, y2, near, view, z))) do
+            local specs, _, finer = DETAIL.Lines(track, x1, y1, x2, y2, near, view, z)
+            anyFiner = anyFiner or finer
+            for _, spec in ipairs(specs) do
                 spec.track = track
                 if spec[5] == "j" and track.pj[spec[6]] then
                     local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
@@ -1549,6 +1609,7 @@ local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
     if state.clock then
         Together.Apply(true)
     end
+    return anyFiner
 end
 
 local function BuildPath()
@@ -1559,13 +1620,13 @@ local function BuildPath()
     local near, view = { ViewArea(DETAIL.NEAR) }, { ViewArea(0) }
 
     -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
-    local drawn
-    drawn, state.lodLevel = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
+    local drawn, finer
+    drawn, state.lodLevel, finer = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
     local old = state.drawn
     local counts = ns.PathLines.count
     counts.place, counts.kept = 0, 0
     state.fitMin = z
-    BuildOtherLines(x1, y1, x2, y2, near, view, z)
+    finer = BuildOtherLines(x1, y1, x2, y2, near, view, z) or finer
 
     -- Lines with the same ends as in the last build stay where they are
     -- (PathLines.Reuse), and nothing already set on a line is set again;
@@ -1622,7 +1683,10 @@ local function BuildPath()
     state.builds = state.builds + 1
     state.perf.placed, state.perf.kept = counts.place, counts.kept
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
-    state.built = { x1, y1, x2, y2, zoom = z, near = near }
+    -- The near part only matters where a pan could draw more finely: a
+    -- build at the finest level everywhere waits for the view to leave the
+    -- whole area, as the replay's recentres would otherwise build each time.
+    state.built = { x1, y1, x2, y2, zoom = z, near = finer and near or nil, at = GetTime() }
     -- Mote line indexes point into the old list: a mote keeps going where
     -- its line is the same in the new one (most of them, when the live map
     -- adds points at the end), and is spawned again elsewhere.
@@ -1639,9 +1703,16 @@ end
 local function NeedsPathBuild()
     local built = state.built
     if not built or not ViewInside(built) then return true end
-    -- Mid-animation or mid-drag, only rebuild when lines would be missing.
-    if state.zoom ~= state.targetZoom or drag then return false end
-    return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM or not ViewInside(built.near)
+    local left = built.near and not ViewInside(built.near)
+    -- Dragged out of the near part, the detail follows the drag, at most
+    -- every DRAG_SECONDS: waiting for the release showed the margin's
+    -- coarser lines for the whole drag (Jordan, 2026-11-15). Lines that
+    -- didn't move are kept (PathLines.Reuse), so a build mid-drag mostly
+    -- places the new ones.
+    if drag then return left and GetTime() - built.at >= DETAIL.DRAG_SECONDS end
+    -- Mid-animation, only rebuild when lines would be missing.
+    if state.zoom ~= state.targetZoom then return false end
+    return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM or left
 end
 
 local function ReleaseTile(index)
