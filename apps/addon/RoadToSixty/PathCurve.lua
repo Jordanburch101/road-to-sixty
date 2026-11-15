@@ -40,28 +40,48 @@ end
 
 -- The lines with each walked or flown one cut into pieces along the curve,
 -- at zoom z, keeping to budget lines in all; the lines as given when
--- zoomed out, or when even one extra piece a line would go over it.
-function ns.CurveLines(lines, z, budget)
+-- zoomed out, or when there is no room for a single extra piece. Over
+-- budget, every line keeps one piece and the room left goes to the lines
+-- longest on screen, where a straight line shows most: those in view
+-- (x1, y1, x2, y2 in content units) when it is given, as the map draws
+-- lines past the view too. Detail comes first, curves get what is left
+-- (#ISSUE): a curve through points 25 yards apart cut across every corner.
+function ns.CurveLines(lines, z, budget, view)
     if z < CURVE_ZOOM or #lines == 0 then return lines end
-    -- Pieces per line by its length on screen, fewer if over budget.
-    local wanted, total = {}, 0
+    -- Pieces per line by its length on screen.
+    local wanted, length, total = {}, {}, 0
     for k, l in ipairs(lines) do
         local n = 1
         if l[5] ~= "j" then
             local px = math.sqrt((l[3] - l[1]) ^ 2 + (l[4] - l[2]) ^ 2) * z
             n = math.max(1, math.min(MAX_PIECES, math.floor(px / PIECE_PIXELS)))
+            length[k] = px
         end
         wanted[k], total = n, total + n
     end
-    local most = MAX_PIECES
-    while total > budget and most > 1 do
-        most, total = most - 1, 0
+    if total > budget then
+        local spare, order = budget - #lines, {}
+        if spare <= 0 then return lines end
+        for k, l in ipairs(lines) do
+            if wanted[k] > 1 and (not view or math.max(l[1], l[3]) >= view[1] and math.min(l[1], l[3]) <= view[3]
+                and math.max(l[2], l[4]) >= view[2] and math.min(l[2], l[4]) <= view[4]) then
+                order[#order + 1] = k
+            end
+        end
+        table.sort(order, function(a, b) return length[a] > length[b] end)
+        local give = {}
+        for _, k in ipairs(order) do
+            if spare == 0 then break end
+            local extra = math.min(wanted[k] - 1, spare)
+            give[k], spare = 1 + extra, spare - extra
+        end
+        total = 0
         for k = 1, #wanted do
-            wanted[k] = math.min(wanted[k], most)
+            wanted[k] = give[k] or 1
             total = total + wanted[k]
         end
     end
-    if total > budget or total == #lines then return lines end
+    if total == #lines then return lines end
 
     local out = {}
     for k, l in ipairs(lines) do

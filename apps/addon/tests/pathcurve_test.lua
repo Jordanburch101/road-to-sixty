@@ -72,6 +72,39 @@ local tight = ns.CurveLines(lines, 8, 8)
 check(#tight <= 8 and #tight >= #lines, "kept to the budget, got " .. #tight)
 check(ns.CurveLines(lines, 8, #lines) == lines, "no room for pieces: the lines as given")
 
+-- Short of room, the pieces go to the longest lines first, and with a view
+-- only to lines in it.
+local long = {
+    Line(0, 0, 2, 0, "w", 2), Line(2, 0, 10, 1, "w", 3), Line(10, 1, 13, 2, "w", 4),
+    Line(13, 2, 30, 0, "w", 5),
+}
+local function PiecesOf(out, point)
+    local n = 0
+    for _, l in ipairs(out) do
+        if l[6] == point then n = n + 1 end
+    end
+    return n
+end
+local some = ns.CurveLines(long, 8, #long + 3)
+check(#some == #long + 3, "the room left is all used, got " .. #some)
+check(PiecesOf(some, 5) == 4, "the longest line gets its pieces first")
+check(PiecesOf(some, 2) == 1 and PiecesOf(some, 4) == 1, "short lines stay whole when room runs out")
+local inView = ns.CurveLines(long, 8, #long + 3, { 0, -1, 11, 3 })
+check(PiecesOf(inView, 5) == 1, "a line outside the view gets no pieces")
+check(PiecesOf(inView, 3) == 4, "the room goes to the lines in view")
+local points2 = {}
+for _, l in ipairs(inView) do points2[l[3] .. "," .. l[4]] = true end
+for _, l in ipairs(long) do
+    check(points2[l[3] .. "," .. l[4]], "recorded point kept when short of room: " .. l[3] .. "," .. l[4])
+end
+local last2 = 0
+for _, l in ipairs(inView) do
+    check(l[6] >= last2, "pieces stay in point order when short of room")
+    last2 = l[6]
+end
+-- Under budget, a view changes nothing: every line gets what it wants.
+check(#ns.CurveLines(long, 8, 3000, { 0, -1, 11, 3 }) == #ns.CurveLines(long, 8, 3000), "under budget the view is not used")
+
 if failures == 0 then
     print("PathCurve tests passed.")
 else

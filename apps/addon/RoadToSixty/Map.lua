@@ -25,7 +25,17 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- Portals.lua); jumps scales that time the same way, here to half.
 local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
 local MIN_PIXELS = 2            -- points closer than this on screen are merged
-local MAX_LINES = 3000          -- line budget per build; past it, points merge further
+local MAX_LINES = 3000          -- line budget per build, curves included; past it, points merge further
+-- The path is built for the view and a margin a view wide on every side, so
+-- panning doesn't build it again at once: nine views, most of it unseen.
+-- One detail level for all of it spent the budget there, and a town walked
+-- through again and again merged its points 100 yards apart (#ISSUE). So,
+-- unless all of it fits MAX_LINES as finely, the view and a little round
+-- it (NEAR views past each edge) get the finest level that fits
+-- NEAR_LINES, the rest merges its points to fit FAR_LINES, and what is
+-- left of MAX_LINES curves the lines in view. The map builds again once
+-- the view leaves the near part and stays still.
+local DETAIL = { NEAR = 0.25, NEAR_LINES = 2400, FAR_LINES = 600 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
@@ -91,10 +101,9 @@ local HOVER_WIDTH = 5
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their path in class colour.
 local OTHER = {
-    -- The same detail and width as the journey shown; class colours and
-    -- ALPHA tell them apart. ponytail: each ticked path can cost MAX_LINES
-    -- lines a zoom frame; lower this if several ticked paths stutter.
-    MAX_LINES = MAX_LINES,  -- most lines per other character's path in range of the view
+    -- The same detail (DETAIL) and width as the journey shown; class colours
+    -- and ALPHA tell them apart. ponytail: each ticked path can cost MAX_LINES
+    -- lines a zoom frame; give them budgets of their own if several stutter.
     LINE_WIDTH = LINE_WIDTH,
     -- Alpha by movement mode, and for jumps (arcs, or a plain line when the
     -- reason is unknown, as between walking and a flight).
@@ -902,8 +911,15 @@ local function StepWarmUp()
     end
 end
 
--- Chunks of a detail level that overlap the area, and how many points they hold.
-local function ChunksIn(lod, x1, y1, x2, y2)
+-- Chunks of a track's detail level that overlap the area, and how many
+-- lines they draw there. Their points are counted first, as that is quick,
+-- but where a town was passed through again and again most chunks reach far
+-- outside the area, so their points are well over the lines: in Stormwind on
+-- a journey to the 40s, the map went two levels coarser than the budget
+-- needed, merging points 100 yards apart, and the curve cut across every
+-- corner. Over budget, the lines are counted as LinesIn draws them (but for
+-- sea courses' boxes), up to one past it.
+local function ChunksIn(track, lod, x1, y1, x2, y2, budget)
     local list, total = {}, 0
     for _, ch in ipairs(lod.chunks) do
         if ch[5] >= x1 and ch[3] <= x2 and ch[6] >= y1 and ch[4] <= y2 then
@@ -911,18 +927,30 @@ local function ChunksIn(lod, x1, y1, x2, y2)
             total = total + ch[2] - ch[1] + 1
         end
     end
-    return list, total
+    if total <= budget then return list, total end
+    local idx, px, py, lines = lod.idx, track.px, track.py, 0
+    for _, ch in ipairs(list) do
+        for j = math.max(2, ch[1]), ch[2] do
+            local ax, ay, bx, by = px[idx[j - 1]], py[idx[j - 1]], px[idx[j]], py[idx[j]]
+            if (ax ~= bx or ay ~= by) and math.max(ax, bx) >= x1 and math.min(ax, bx) <= x2
+                and math.max(ay, by) >= y1 and math.min(ay, by) <= y2 then
+                lines = lines + 1
+                if lines > budget then return list, lines end
+            end
+        end
+    end
+    return list, lines
 end
 
 -- Detail level of a track for the area at zoom z: the finest whose merge
--- distance is at least MIN_PIXELS on screen, made coarser until the points in
+-- distance is at least MIN_PIXELS on screen, made coarser until the lines in
 -- range fit the budget. Returns the level, its chunks in range, and k.
 local function PickLod(track, x1, y1, x2, y2, z, budget)
     local k = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
     local lod, list, total
     repeat
         lod = GetLod(track, k)
-        list, total = ChunksIn(lod, x1, y1, x2, y2)
+        list, total = ChunksIn(track, lod, x1, y1, x2, y2, budget)
         k = k + 1
     until total <= budget or k > MAX_LOD
     return lod, list, k - 1
@@ -933,32 +961,69 @@ end
 -- With jumps set, the gap before each segment (hearthstone, teleport, boat,
 -- graveyard) is a line too, with mode "j". A jump drawn on a sea course or
 -- lane counts as inside wherever its curve is (track.seaTrips).
-local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps)
+-- With near ({ x1, y1, x2, y2 }) and farSq set, only points inside near
+-- keep the level's detail: outside it, a point is kept once it is
+-- sqrt(farSq) from the last one kept, as GetLod merges them, and segments'
+-- first and last points always are (DETAIL).
+local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, farSq)
     local idx, px, py, pm, brk = lod.idx, track.px, track.py, track.pm, track.brk
     local seaTrips = jumps and track.seaTrips or {}
     local drawn, count = {}, 0
+    local p, upTo           -- the last point kept, and the j it was kept at or passed over
     for _, ch in ipairs(list) do
-        for j = math.max(2, ch[1]), ch[2] do
+        local first = math.max(2, ch[1])
+        -- A chunk not following on from the last one starts from the point
+        -- before its run, which its box includes.
+        if upTo ~= first - 1 then p = idx[first - 1] end
+        for j = first, ch[2] do
             local i = idx[j]
-            if jumps or not brk[i] then
-                local p = idx[j - 1]
-                local ax, ay, bx, by = px[p], py[p], px[i], py[i]
-                local box = brk[i] and seaTrips[i] and seaTrips[i].box
-                local outside
-                if box then
-                    outside = box[3] < x1 or box[1] > x2 or box[4] < y1 or box[2] > y2
-                else
-                    outside = math.max(ax, bx) < x1 or math.min(ax, bx) > x2
-                        or math.max(ay, by) < y1 or math.min(ay, by) > y2
+            local x, y = px[i], py[i]
+            local dx, dy = x - px[p], y - py[p]
+            if not near or brk[i] or brk[i + 1] ~= false
+                or x >= near[1] and x <= near[3] and y >= near[2] and y <= near[4]
+                or dx * dx + dy * dy >= farSq then
+                if jumps or not brk[i] then
+                    local ax, ay, bx, by = px[p], py[p], x, y
+                    local box = brk[i] and seaTrips[i] and seaTrips[i].box
+                    local outside
+                    if box then
+                        outside = box[3] < x1 or box[1] > x2 or box[4] < y1 or box[2] > y2
+                    else
+                        outside = math.max(ax, bx) < x1 or math.min(ax, bx) > x2
+                            or math.max(ay, by) < y1 or math.min(ay, by) > y2
+                    end
+                    if (ax ~= bx or ay ~= by) and not outside then
+                        count = count + 1
+                        drawn[count] = { ax, ay, bx, by, brk[i] and "j" or pm and pm[i], i }
+                    end
                 end
-                if (ax ~= bx or ay ~= by) and not outside then
-                    count = count + 1
-                    drawn[count] = { ax, ay, bx, by, brk[i] and "j" or pm and pm[i], i }
-                end
+                p = i
             end
         end
+        upTo = ch[2]
     end
     return drawn
+end
+
+-- Lines of a track for a build at zoom z over the area x1, y1, x2, y2, with
+-- the view's near part (near) in more detail than the rest (DETAIL), and
+-- the lines in view curved with the budget left. Returns the lines and the
+-- near part's detail level.
+DETAIL.Lines = function(track, x1, y1, x2, y2, near, view, z)
+    local lod, list, k = PickLod(track, x1, y1, x2, y2, z, MAX_LINES)
+    local nearLod, _, nearK = PickLod(track, near[1], near[2], near[3], near[4], z, DETAIL.NEAR_LINES)
+    local farSq
+    -- Where the whole area fits as finely as the near part would, it is
+    -- all drawn at that level; else the near part at its own.
+    if nearK < k then
+        local _, _, far = PickLod(track, x1, y1, x2, y2, z, DETAIL.FAR_LINES)
+        lod, k, farSq = nearLod, nearK, LodDistance(math.max(nearK, far)) ^ 2
+        list = ChunksIn(track, lod, x1, y1, x2, y2, math.huge)
+    else
+        near = nil
+    end
+    local lines = LinesIn(track, lod, list, x1, y1, x2, y2, true, near, farSq)
+    return ns.CurveLines(lines, z, MAX_LINES, view), k
 end
 
 -- Jump arcs ------------------------------------------------------------------------
@@ -1405,10 +1470,10 @@ local function BuildOtherTracks()
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
--- own path and the same way, curves included, each within OTHER.MAX_LINES:
+-- own path and the same way (DETAIL.Lines), curves included, each within MAX_LINES:
 -- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
-local function BuildOtherLines(x1, y1, x2, y2, z)
+local function BuildOtherLines(x1, y1, x2, y2, near, view, z)
     local count, thickness = 0, OTHER.LINE_WIDTH / z
     local otherDrawn = {}
     local function Add(track, spec, mode)
@@ -1431,9 +1496,7 @@ local function BuildOtherLines(x1, y1, x2, y2, z)
     end
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
-            local lod, list = PickLod(track, x1, y1, x2, y2, z, OTHER.MAX_LINES)
-            local specs = ns.CurveLines(LinesIn(track, lod, list, x1, y1, x2, y2, true), z, OTHER.MAX_LINES)
-            for _, spec in ipairs(specs) do
+            for _, spec in ipairs((DETAIL.Lines(track, x1, y1, x2, y2, near, view, z))) do
                 spec.track = track
                 if spec[5] == "j" and track.pj[spec[6]] then
                     local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
@@ -1466,14 +1529,14 @@ local function BuildPath()
     state.perf.lod = 0
     local z = state.zoom
     local x1, y1, x2, y2 = ViewArea(PATH_MARGIN)
+    local near, view = { ViewArea(DETAIL.NEAR) }, { ViewArea(0) }
 
-    local lod, list
-    lod, list, state.lodLevel = PickLod(state, x1, y1, x2, y2, z, MAX_LINES)
     -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
-    local drawn = ns.CurveLines(LinesIn(state, lod, list, x1, y1, x2, y2, true), z, MAX_LINES)
+    local drawn
+    drawn, state.lodLevel = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
     local old = state.drawn
     state.drawn = drawn
-    BuildOtherLines(x1, y1, x2, y2, z)
+    BuildOtherLines(x1, y1, x2, y2, near, view, z)
 
     local placeStarted = debugprofilestop()
     local shown = CountUpTo(math.floor(state.cur))
@@ -1513,7 +1576,7 @@ local function BuildPath()
     end
     state.lineCount, state.shown, state.lineZoom = #drawn, shown, z
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
-    state.built = { x1, y1, x2, y2, zoom = z }
+    state.built = { x1, y1, x2, y2, zoom = z, near = near }
     -- Mote line indexes point into the old list: a mote keeps going where
     -- its line is the same in the new one (most of them, when the live map
     -- adds points at the end), and is spawned again elsewhere.
@@ -1530,9 +1593,9 @@ end
 local function NeedsPathBuild()
     local built = state.built
     if not built or not ViewInside(built) then return true end
-    -- Mid-animation, only rebuild when lines would be missing.
-    if state.zoom ~= state.targetZoom then return false end
-    return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM
+    -- Mid-animation or mid-drag, only rebuild when lines would be missing.
+    if state.zoom ~= state.targetZoom or drag then return false end
+    return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM or not ViewInside(built.near)
 end
 
 local function ReleaseTile(index)
@@ -3000,6 +3063,8 @@ local function CreateWindow()
     canvas:SetScript("OnMouseUp", function(_, button)
         if button == "LeftButton" then
             drag = nil
+            -- Dragged out of the near part: its detail follows the view now.
+            if NeedsPathBuild() then ApplyView() end
         elseif button == "RightButton" then
             ZoomOut()
         end
