@@ -51,7 +51,8 @@ Health.lua
 Routes.lua
 Islands.lua
 Portals.lua
-PathCurve.lua
+PathShape.lua
+PathLines.lua
 Style.lua
 Map.lua
 LiveMap.lua
@@ -87,4 +88,6 @@ PortraitProbe.lua
 GearProbe.lua
 GearSwatch.lua
 BGProbe.lua
+LineProbe.lua
+PerfLog.lua
 #@end-debug@

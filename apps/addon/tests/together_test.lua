@@ -25,6 +25,7 @@ local T = ...
 local state, ns, charMarkers, otherLines = T.state, T.ns, T.charMarkers, T.otherLines
 local infoText, speedButton = T.infoText, T.speedButton
 local SPEEDS = { 1, 2 }
+local OTHER = { LINE_WIDTH = 2 }
 local Together = { SPEEDS = { { 600, "10m/s" }, { 3600, "1h/s" } }, GAP = 600, OFFLINE_GAP = 1800,
     button = T.togetherButton }
 local function PlaceCharacters() end
@@ -50,6 +51,7 @@ local function Stub()
 end
 
 local T = { ns = { LastIndex = LastIndex, FormatDuration = function(t) return t .. "s" end } }
+assert(loadfile("RoadToSixty/PathLines.lua"))("RoadToSixty", T.ns)
 T.infoText, T.speedButton, T.togetherButton = Stub(), Stub(), Stub()
 -- Both log off for hours, at different times.
 local friend = { n = 3, pt = { 105, 120, 4000 }, px = { 1, 2, 3 }, py = { 4, 5, 6 },
@@ -95,8 +97,14 @@ check(s.clock == 4320, "the clock went back to the next move: " .. s.clock)
 local calls = T.otherLines[1].calls + marker.calls
 Together.Apply()
 check(T.otherLines[1].calls + marker.calls == calls, "unmoved lines shown again")
+-- After a build, every line is set as far as its track has reached, but
+-- only lines whose state changes are touched: a line the build just placed
+-- (its state unknown) is, one it kept as it was is not.
+T.otherLines[1] = Stub()
+calls = T.otherLines[2].calls + marker.calls
 Together.Apply(true)
-check(T.otherLines[1].calls + marker.calls == calls + 2, "rebuilt lines not shown")
+check(T.otherLines[1].shown == true and T.otherLines[1].calls == 1, "a rebuilt line not shown")
+check(T.otherLines[2].calls + marker.calls == calls + 1, "a line kept as it was set again")
 
 -- Play time: logins cost nothing, and everyone starts at the same moment.
 s.togetherMode = "game"

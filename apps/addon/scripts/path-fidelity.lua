@@ -10,17 +10,15 @@
 -- account's WTF/Account/<name>/SavedVariables/RoadToSixty.lua with traces
 -- from /rts pathprobe. The SVGs go to build/path-fidelity unless told
 -- otherwise. --bend runs the new rule with each BEND in yards instead of
--- Recorder.lua's own, an SVG each. The new line is drawn curved as the map
--- draws it (PathCurve.lua) at --zoom screen pixels a yard, 2.4 unless told.
+-- Recorder.lua's own, an SVG each. Lines are drawn straight between the
+-- points, as the map draws them (#152).
 
 ---@type (number|false)[]
 local bends = { false }     -- false: Recorder.lua's own BEND
-local positional, zoom = {}, 2.4
+local positional = {}
 for _, a in ipairs(arg) do
     local list = a:match("^%-%-bend=(.+)$")
-    if a:match("^%-%-zoom=") then
-        zoom = assert(tonumber(a:match("=(.+)")), "bad --zoom")
-    elseif list then
+    if list then
         bends = {}
         for b in list:gmatch("[^,]+") do bends[#bends + 1] = assert(tonumber(b), "bad --bend " .. b) end
     else
@@ -29,9 +27,6 @@ for _, a in ipairs(arg) do
 end
 local saved, out = positional[1], positional[2] or "build/path-fidelity"
 if saved == "-" then saved = nil end
-
-local curve = {}
-assert(loadfile("RoadToSixty/PathCurve.lua"))("RoadToSixty", curve)
 
 local function Read(path)
     local f = assert(io.open(path, "rb"))
@@ -212,22 +207,6 @@ local function Stray(points, xs, ys)
     return worst, sum / #points
 end
 
--- The line through xs, ys as the map curves it at zoom pixels a yard.
--- CurveLines takes content units and a map zoom of at least its CURVE_ZOOM
--- (4), so yards are scaled to make the pixel lengths come out the same.
-local function Curved(xs, ys)
-    local k = zoom / 4
-    local lines = {}
-    for i = 2, #xs do
-        lines[i - 1] = { xs[i - 1] * k, ys[i - 1] * k, xs[i] * k, ys[i] * k, "w", i }
-    end
-    local cx, cy = { xs[1] }, { ys[1] }
-    for _, l in ipairs(curve.CurveLines(lines, 4, math.huge)) do
-        cx[#cx + 1], cy[#cy + 1] = l[3] / k, l[4] / k
-    end
-    return cx, cy
-end
-
 local function Svg(path, trace, lines)
     local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
     for _, p in ipairs(trace.points) do
@@ -241,7 +220,6 @@ local function Svg(path, trace, lines)
         ('<text x="8" y="20" fill="#ccc" font-family="sans-serif" font-size="14">%s</text>'):format(trace.label) }
     for k, line in ipairs(lines) do
         local pts, xs, ys = {}, line.xs, line.ys
-        if line.curved then xs, ys = Curved(xs, ys) end
         for i = 1, #xs do pts[i] = At(xs[i], ys[i]) end
         parts[#parts + 1] = ('<polyline points="%s" fill="none" stroke="%s" stroke-width="%s"/>'):format(
             table.concat(pts, " "), line.colour, line.width)
@@ -281,8 +259,8 @@ for _, bend in ipairs(bends) do
         Svg(("%s/%02d%s.svg"):format(out, k, bend and ("-bend" .. bend) or ""), trace, {
             { name = "walked", xs = rx, ys = ry, colour = "#888", width = 1 },
             { name = ("old: %d points, strays up to %.1f yd"):format(#ox, ow), xs = ox, ys = oy, colour = "#e55", width = 2, dots = true },
-            { name = ("%s: %d points, strays up to %.1f yd, curved at %.1f px/yd"):format(rule, #nx, nw, zoom),
-                xs = nx, ys = ny, colour = "#5d5", width = 2, dots = true, curved = true },
+            { name = ("%s: %d points, strays up to %.1f yd"):format(rule, #nx, nw),
+                xs = nx, ys = ny, colour = "#5d5", width = 2, dots = true },
         })
     end
     if totals.seconds > 0 then

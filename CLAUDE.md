@@ -52,7 +52,8 @@ for data, its exact format; read that before changing a module.
 | Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
-| PathCurve.lua | walked and flown lines curved through their points when zoomed in (`ns.CurveLines`) |
+| PathShape.lua | the path's shape: the detail levels' points kept by shape, not distance (`ns.MakeLevel`, `ns.KeepShape`, `ns.LodChunks`); the map draws straight lines between them (#152) |
+| PathLines.lua | keeps the map's lines cheap (`ns.PathLines`): a build keeps lines that didn't move, a zoom resizes only the lines in view, nothing already set on a line is set again |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
 | Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`); the item button every window's icons sit in (`Screens.ItemButton`, and `Screens.IconButton` for rows) |
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
@@ -62,7 +63,7 @@ for data, its exact format; read that before changing a module.
 | WhatsNew.lua | the in-game changelog: once per account for each release, a window with the notes of every version not seen yet; `/rts changes` (#132) |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
 | WhatsNewData.lua | the changelog's notes for WhatsNew.lua, written from CHANGELOG.md by the release build (`scripts/whatsnew-data.lua`); not committed |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua, LineProbe.lua, PerfLog.lua | developer tools, left out of releases (LineProbe: `/rts lineprobe`, what zooming lines cost drawn several ways; PerfLog: `/rts perflog`, every map frame into the saved variables) |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app
@@ -300,7 +301,7 @@ The dev install is a junction from the client's `Interface/AddOns/RoadToSixty`
 to this repo's `apps/addon/RoadToSixty/` (the CurseForge app may replace it with a
 release; check it is still a link before testing). `/reload` picks up
 changes. Developer tools: `/rts probe`, `/rts zoneprobe`, `/rts terrain`,
-`/rts swatch`, `/rts icons`, `/rts seed`, `/rts perf`, `/rts tiles`.
+`/rts swatch`, `/rts icons`, `/rts seed`, `/rts perf`, `/rts perflog`, `/rts tiles`, `/rts lineprobe`.
 
 Jordan tests in game and sends screenshots. For visual choices (icons, line
 styles, effects), build candidates into `/rts swatch` or a probe window
