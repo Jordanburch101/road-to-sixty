@@ -89,4 +89,5 @@ GearProbe.lua
 GearSwatch.lua
 BGProbe.lua
 LineProbe.lua
+PerfLog.lua
 #@end-debug@

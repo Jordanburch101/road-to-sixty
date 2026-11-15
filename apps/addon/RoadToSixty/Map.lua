@@ -1622,11 +1622,13 @@ local function BuildPath()
     -- Zoomed in, walked and flown lines curve through their points (PathCurve.lua).
     local drawn, finer
     drawn, state.lodLevel, finer = DETAIL.Lines(state, x1, y1, x2, y2, near, view, z)
+    state.perf.detail = debugprofilestop() - started
     local old = state.drawn
     local counts = ns.PathLines.count
     counts.place, counts.kept = 0, 0
     state.fitMin = z
     finer = BuildOtherLines(x1, y1, x2, y2, near, view, z) or finer
+    state.perf.others = debugprofilestop() - started - state.perf.detail
 
     -- Lines with the same ends as in the last build stay where they are
     -- (PathLines.Reuse), and nothing already set on a line is set again;
@@ -2852,6 +2854,9 @@ function Together.Step(elapsed)
 end
 
 local function OnUpdate(_, elapsed)
+    --@debug@
+    local logStarted = ns.PerfLog and ns.PerfLog.on and debugprofilestop()
+    --@end-debug@
     local moved = false
     -- Jump dots the zoom has shown or hidden fade over a quarter second.
     if state.dotsFading then
@@ -2980,6 +2985,11 @@ local function OnUpdate(_, elapsed)
     ns.LevelPop:Update(elapsed)
     ns.KillPop:Update(elapsed)
     ns.LiveMap:Update(elapsed)
+    --@debug@
+    if logStarted then
+        ns.PerfLog.Frame(elapsed, debugprofilestop() - logStarted, drag ~= nil, state)
+    end
+    --@end-debug@
 end
 
 -- Window ---------------------------------------------------------------------------
