@@ -29,7 +29,7 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- The path is built for the view and a margin a view wide on every side, so
 -- panning doesn't build it again at once: nine views, most of it unseen.
 -- One detail level for all of it spent the budget there, and a town walked
--- through again and again merged its points 100 yards apart (#ISSUE). So,
+-- through again and again merged its points 100 yards apart (#152). So,
 -- unless all of it fits MAX_LINES as finely, the view and a little round
 -- it (NEAR views past each edge) get the finest level that fits
 -- NEAR_LINES, the rest keeps only a coarser level's points in what the

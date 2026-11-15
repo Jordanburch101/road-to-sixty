@@ -228,7 +228,7 @@ check(empty.n == 3 and empty.brk[1] == true and empty.bounds[1] <= empty.px[1] a
 -- order at random moments as the map's warm-up and builds make them, must
 -- end up as levels made afresh for the whole path: the same points, chunks,
 -- top and ends. A level made from a finer one once kept a point because of
--- the finer level's old last point, which a fresh build would not (#ISSUE).
+-- the finer level's old last point, which a fresh build would not (#152).
 local differ, firstDiffer = 0, nil
 for trial = 1, 400 do
     math.randomseed(trial)

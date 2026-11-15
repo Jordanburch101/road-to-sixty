@@ -275,7 +275,7 @@ end
 -- longest on screen, where a straight line shows most: those in view
 -- (x1, y1, x2, y2 in content units) when it is given, as the map draws
 -- lines past the view too. Detail comes first, curves get what is left
--- (#ISSUE): a curve through points 25 yards apart cut across every corner.
+-- (#152): a curve through points 25 yards apart cut across every corner.
 --
 -- A line whose curve keeps within FLAT_PIXELS of it stays whole, as pieces
 -- there would cost lines and show nothing, and a curve is flattened to
