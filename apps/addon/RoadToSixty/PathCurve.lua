@@ -26,6 +26,7 @@ local _, ns = ...
 local CURVE_ZOOM = 4            -- zoom from which lines are curved
 local PIECE_PIXELS = 5          -- a piece for about every this many pixels of line on screen (#57: small loops stay round)
 local MAX_PIECES = 4            -- pieces per line at most
+local LONGEST = 1000            -- lines longer than this many pixels share their turn for pieces
 local FLAT_PIXELS = 0.5         -- a curve straying less than this from its line on screen is left straight
 local BULGE_PIXELS = 2          -- curves stray at most about this far from their line on screen
 
@@ -309,22 +310,40 @@ function ns.CurveLines(lines, z, budget, view)
         wanted[k], total = n, total + n
     end
     if total > budget then
-        local spare, order = budget - #lines, {}
+        local spare = budget - #lines
         if spare <= 0 then return lines end
+        -- The lines that may get pieces, by their whole length on screen in
+        -- pixels (all past LONGEST together), and the pieces past their
+        -- first that each length wants: counted rather than sorted, as
+        -- sorting them took a quarter of a build.
+        local bucket, need = {}, {}
         for k = 1, #lines do
-            if wanted[k] > 1 then order[#order + 1] = k end
+            if wanted[k] > 1 then
+                local b = math.floor(length[k])
+                if b > LONGEST then b = LONGEST end
+                bucket[k], need[b] = b, (need[b] or 0) + wanted[k] - 1
+            end
         end
-        table.sort(order, function(a, b) return length[a] > length[b] end)
-        local give = {}
-        for _, k in ipairs(order) do
-            if spare == 0 then break end
-            local extra = math.min(wanted[k] - 1, spare)
-            give[k], spare = 1 + extra, spare - extra
+        -- Longest first: lengths above cut get all they want, lines of
+        -- length cut what is left, in point order.
+        local cut = -1
+        for b = LONGEST, 0, -1 do
+            local n = need[b]
+            if n then
+                if n >= spare then cut = b break end
+                spare = spare - n
+            end
         end
         total = 0
         for k = 1, #wanted do
-            wanted[k] = give[k] or 1
-            total = total + wanted[k]
+            local b, n = bucket[k], 1
+            if b and b > cut then
+                n = wanted[k]
+            elseif b == cut and spare > 0 then
+                n = 1 + math.min(wanted[k] - 1, spare)
+                spare = spare - (n - 1)
+            end
+            wanted[k], total = n, total + n
         end
     end
     if total == #lines then return lines end

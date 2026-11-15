@@ -36,7 +36,7 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- FAR_LINES (levels nest, PathCurve.lua's MakeLevel), and what is
 -- left of MAX_LINES curves the lines in view. The map builds again once
 -- the view leaves the near part and stays still.
-local DETAIL = { NEAR = 0.25, NEAR_LINES = 2400, FAR_LINES = 600 }
+local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
