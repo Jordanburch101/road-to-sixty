@@ -15,15 +15,16 @@ local _, ns = ...
 --     drag   1 while the mouse drags the map
 --     zoom   1 while the zoom animates
 -- and on a frame with a path build, after it:
---   ",B,build,detail,others,place,lod,placed,kept,lines,otherLines,level,zoomLevel"
+--   ",B,build,detail,others,place,lod,placed,kept,lines,otherLines,level,zoomLevel,jumps"
 --     build   ms for the whole build (BuildPath)
 --     detail  ms choosing the player's lines (DETAIL.Lines)
 --     others  ms building other characters' lines
---     place   ms placing lines and jump arcs
+--     place   ms placing lines and jump arcs (jumps included)
 --     lod     ms making detail levels on demand
 --     placed, kept  lines set down anew, and lines kept where they were
 --     lines, otherLines  lines built for the player and for others
 --     level   the near part's detail level; zoomLevel the map's zoom
+--     jumps   ms of place spent on the jump arcs (BuildJumps)
 
 local PerfLog = {}
 ns.PerfLog = PerfLog
@@ -41,9 +42,9 @@ function PerfLog.Frame(elapsed, lua, dragging, state)
     if state.builds ~= lastBuilds then
         lastBuilds = state.builds
         local p = state.perf
-        line = line .. (",B,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%.2f,%.2f"):format(p.build or 0, p.detail or 0,
+        line = line .. (",B,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%.2f,%.2f,%.2f"):format(p.build or 0, p.detail or 0,
             p.others or 0, p.place or 0, p.lod or 0, p.placed or 0, p.kept or 0, state.lineCount or 0,
-            state.otherLineCount or 0, state.lodLevel or 0, state.zoom)
+            state.otherLineCount or 0, state.lodLevel or 0, state.zoom, p.jumps or 0)
     end
     frames[#frames + 1] = line
     if #frames >= MAX_FRAMES then

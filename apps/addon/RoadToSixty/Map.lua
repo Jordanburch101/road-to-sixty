@@ -36,8 +36,8 @@ local MAX_LINES = 3000          -- line budget per build, curves included; past 
 -- near part left (at least FAR_LINES, times FAR_SHARE; levels nest,
 -- PathCurve.lua's MakeLevel), and what is left of MAX_LINES curves the
 -- lines in view. The map builds again once the view leaves the near part:
--- when the zoom settles, and every DRAG_SECONDS while dragging.
-local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_SECONDS = 0.2 }
+-- when the zoom settles, and when a drag pauses for DRAG_PAUSE seconds.
+local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_PAUSE = 0.15 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
@@ -1684,11 +1684,13 @@ local function BuildPath()
     state.boxes = ns.PathLines.Boxes(drawn)
     state.builds = state.builds + 1
     state.perf.placed, state.perf.kept = counts.place, counts.kept
+    local jumpsStarted = debugprofilestop()
     BuildJumps(drawn, shown, z, { x1, y1, x2, y2 })
+    state.perf.jumps = debugprofilestop() - jumpsStarted
     -- The near part only matters where a pan could draw more finely: a
     -- build at the finest level everywhere waits for the view to leave the
     -- whole area, as the replay's recentres would otherwise build each time.
-    state.built = { x1, y1, x2, y2, zoom = z, near = finer and near or nil, at = GetTime() }
+    state.built = { x1, y1, x2, y2, zoom = z, near = finer and near or nil }
     -- Mote line indexes point into the old list: a mote keeps going where
     -- its line is the same in the new one (most of them, when the live map
     -- adds points at the end), and is spawned again elsewhere.
@@ -1706,12 +1708,12 @@ local function NeedsPathBuild()
     local built = state.built
     if not built or not ViewInside(built) then return true end
     local left = built.near and not ViewInside(built.near)
-    -- Dragged out of the near part, the detail follows the drag, at most
-    -- every DRAG_SECONDS: waiting for the release showed the margin's
-    -- coarser lines for the whole drag (Jordan, 2026-11-15). Lines that
-    -- didn't move are kept (PathLines.Reuse), so a build mid-drag mostly
-    -- places the new ones.
-    if drag then return left and GetTime() - built.at >= DETAIL.DRAG_SECONDS end
+    -- Dragged out of the near part, the detail catches up once the mouse
+    -- has held still for DRAG_PAUSE seconds: waiting for the release showed
+    -- the margin's coarser lines for the whole drag, and a build every 0.2
+    -- seconds while moving made the drag lag and jump, as one took 60 to
+    -- 100 ms in game (Jordan's /rts perflog, 2026-11-15).
+    if drag then return left and GetTime() - drag.movedAt >= DETAIL.DRAG_PAUSE end
     -- Mid-animation, only rebuild when lines would be missing.
     if state.zoom ~= state.targetZoom then return false end
     return math.abs(math.log(state.zoom / built.zoom)) > REBUILD_ZOOM or left
@@ -2895,12 +2897,17 @@ local function OnUpdate(_, elapsed)
     end
     if drag then
         local cx, cy = CursorOnCanvas()
+        if cx ~= drag.cx or cy ~= drag.cy then
+            drag.cx, drag.cy, drag.movedAt = cx, cy, GetTime()
+        end
         local ox, oy = drag.ox - (cx - drag.x) / state.zoom, drag.oy - (cy - drag.y) / state.zoom
         if ox ~= state.ox or oy ~= state.oy then
             state.ox, state.oy = ox, oy
             ClampView()
             moved = true
         end
+        -- Held still mid-drag: the detail catches up (NeedsPathBuild).
+        moved = moved or NeedsPathBuild()
     end
     if moved then
         ApplyView()
@@ -3240,7 +3247,7 @@ local function CreateWindow()
     canvas:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then
             local cx, cy = CursorOnCanvas()
-            drag = { x = cx, y = cy, ox = state.ox, oy = state.oy }
+            drag = { x = cx, y = cy, ox = state.ox, oy = state.oy, movedAt = GetTime() }
             state.targetZoom = state.zoom
         end
     end)
