@@ -88,4 +88,5 @@ PortraitProbe.lua
 GearProbe.lua
 GearSwatch.lua
 BGProbe.lua
+LineProbe.lua
 #@end-debug@

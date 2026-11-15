@@ -63,7 +63,7 @@ for data, its exact format; read that before changing a module.
 | WhatsNew.lua | the in-game changelog: once per account for each release, a window with the notes of every version not seen yet; `/rts changes` (#132) |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
 | WhatsNewData.lua | the changelog's notes for WhatsNew.lua, written from CHANGELOG.md by the release build (`scripts/whatsnew-data.lua`); not committed |
-| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua | developer tools, left out of releases |
+| Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua, LineProbe.lua | developer tools, left out of releases (LineProbe: `/rts lineprobe`, what zooming lines cost drawn several ways) |
 
 `apps/server/` is the sync server (#1): Elysia on Bun, Postgres through
 Drizzle, an S3 store (R2 in production). `src/sync.ts` is the API the app
@@ -301,7 +301,7 @@ The dev install is a junction from the client's `Interface/AddOns/RoadToSixty`
 to this repo's `apps/addon/RoadToSixty/` (the CurseForge app may replace it with a
 release; check it is still a link before testing). `/reload` picks up
 changes. Developer tools: `/rts probe`, `/rts zoneprobe`, `/rts terrain`,
-`/rts swatch`, `/rts icons`, `/rts seed`, `/rts perf`, `/rts tiles`.
+`/rts swatch`, `/rts icons`, `/rts seed`, `/rts perf`, `/rts tiles`, `/rts lineprobe`.
 
 Jordan tests in game and sends screenshots. For visual choices (icons, line
 styles, effects), build candidates into `/rts swatch` or a probe window

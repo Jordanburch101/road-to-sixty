@@ -2101,7 +2101,8 @@ local function UpdatePerf()
         .. "\nSizing %.2f ms (most %.2f), %d resized (most %d)%s - in view %d of %d lines, %d of %d others, %d jumps - build placed %d, kept %d"):format(
         p.world, p.decode, p.setup, p.build, p.lod, p.place, p.terrain, p.view, state.n, state.lineCount,
         state.lodLevel, TerrainCount(), state.tilesSkipped, state.zoom,
-        p.fit, p.fitMost, p.sized, p.sizedMost, ns.db.perfAll and " [all, as before]" or "",
+        p.fit, p.fitMost, p.sized, p.sizedMost,
+        (ns.db.perfAll and " [all, as before]" or "") .. (ns.db.perfDrift and (" [drift %s]"):format(ns.db.perfDrift) or ""),
         #state.visible, state.lineCount, #state.otherVisible, state.otherLineCount, #state.jumps, p.placed, p.kept))
 end
 
@@ -2134,12 +2135,14 @@ local function ApplyView()
         state.perf.fitMost, state.perf.sizedMost = 0, 0
     end
     state.zooming = not settled
+    -- /rts perf drift tries other amounts in a developer build.
+    local drift = ns.dev and ns.db.perfDrift or 0.1
     if NeedsPathBuild() then
         BuildPath()
-    elseif z ~= state.lineZoom and (settled or math.abs(z / state.lineZoom - 1) > 0.1) then
+    elseif z ~= state.lineZoom and (settled or math.abs(z / state.lineZoom - 1) > drift) then
         SetLineThickness()
     end
-    if z ~= state.otherZoom and (settled or math.abs(z / state.otherZoom - 1) > 0.1) then
+    if z ~= state.otherZoom and (settled or math.abs(z / state.otherZoom - 1) > drift) then
         SetOtherThickness()
     end
     UpdateVisible()
