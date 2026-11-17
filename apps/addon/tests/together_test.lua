@@ -32,7 +32,6 @@ local function PlaceCharacters() end
 local function FormatTime(t) return "t" .. t end
 local function SetPlaying(on) state.playing = on end
 local function ApplyCursor() end
-local function FollowHead() end
 ]]
 
 local function LastIndex(times, t)
@@ -87,8 +86,10 @@ Together.Apply()
 check(marker.shown == true and marker.x == 2, "not waiting where it logged off")
 check(T.otherLines[1].shown == true and T.otherLines[2].shown == false, "lines while logged off")
 s.clock = 120
+s.following = nil
 Together.Step(0.016)            -- the long stretch nobody moved in is skipped
 check(s.clock == 4000 and s.cur == 2, "gap not skipped: " .. s.clock)
+check(s.following, "the view does not follow a together replay")
 check(marker.x == 3 and T.otherLines[2].shown == true, "did not return")
 s.clock = 120
 Together.Step(7)                -- a step past the next move is not pulled back to it

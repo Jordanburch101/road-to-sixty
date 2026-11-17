@@ -112,7 +112,15 @@ local OTHER = {
     ALPHA = { w = 0.55, t = 0.3, g = 0.2, j = 0.3 },
 }
 
-local HEAD = { TEXTURE = "Interface\\WorldMap\\WorldMapArrow", SIZE = 24 }   -- the replay's arrow
+-- The replay's arrow, and how the view pans with it (FollowHead): parts of
+-- the view's width and height, GLIDE how quickly the view catches up.
+local HEAD = {
+    TEXTURE = "Interface\\WorldMap\\WorldMapArrow", SIZE = 24,
+    ZONE = 0.3,                 -- the view stays still while the arrow is this far or more from each edge
+    EDGE = 0.1,                 -- and never lets it come nearer an edge than this
+    GLIDE = 3,                  -- after t seconds, exp(-GLIDE * t) of the way to the middle part is left
+    FAR = 0.5,                  -- an arrow further off screen than this is centred at once
+}
 local JUMP_ZOOM = 6             -- zoom the map goes to at least when jumping to an event
 local MAP_BORDER = 4            -- the map's and panel's frames reach this far outside them
 local MAP_SHADOW = { 18, 0.55 } -- inner edge shadow: width, darkest alpha
@@ -2759,17 +2767,52 @@ local function SetPlaying(playing)
     playButton:SetText(playing and "Pause" or "Play")
 end
 
--- While zoomed in, keep the star on screen during a replay.
-local function FollowHead()
-    local seq = math.floor(state.cur)
-    if state.zoom <= state.minZoom or seq < 1 or not state.headX then return end
-    local x, y = state.headX, state.headY
-    local fx = (x - state.ox) * state.zoom / state.W
-    local fy = (y - state.oy) * state.zoom / state.H
-    if fx < 0.1 or fx > 0.9 or fy < 0.1 or fy > 0.9 then
-        CenterOn(x, y)
-        ApplyView()
+-- While zoomed in, the view pans with the arrow once something moved it
+-- (state.following: the replay, the scrub bar, the player on the live map).
+-- It stays still while the arrow is in the middle part of the view, then
+-- glides after it, so a walk pans the map along steadily instead of
+-- jumping a view at a time; the arrow is never left nearer an edge than
+-- HEAD.EDGE, or past it, however fast the replay. One far off screen (a
+-- teleport, the scrub bar dragged a long way) is centred at once. Called
+-- from OnUpdate once the replay has moved the arrow, before the view is
+-- applied; returns whether it moved the view.
+local function FollowHead(elapsed)
+    if drag or state.zoom <= state.minZoom or math.floor(state.cur) < 1 or not state.headX then
+        state.following = nil
+        return false
     end
+    local vw, vh = state.W / state.zoom, state.H / state.zoom
+    local fx, fy = (state.headX - state.ox) / vw, (state.headY - state.oy) / vh
+    local far, zone, edge = HEAD.FAR, HEAD.ZONE, HEAD.EDGE
+    if fx < -far or fx > 1 + far or fy < -far or fy > 1 + far then
+        CenterOn(state.headX, state.headY)
+        state.following = nil
+        return true
+    end
+    -- The view's move, in parts of a view, that brings the arrow back to
+    -- the middle part: a share of it each frame, then held to the edges.
+    local dx = fx < zone and fx - zone or fx > 1 - zone and fx - (1 - zone) or 0
+    local dy = fy < zone and fy - zone or fy > 1 - zone and fy - (1 - zone) or 0
+    if dx == 0 and dy == 0 then
+        state.following = nil
+        return false
+    end
+    local t = 1 - math.exp(-HEAD.GLIDE * elapsed)
+    if math.abs(dx) * state.W < 0.5 and math.abs(dy) * state.H < 0.5 then
+        t = 1       -- under half a pixel left: the rest of the way
+    end
+    local mx = math.max(fx - (1 - edge), math.min(fx - edge, dx * t))
+    local my = math.max(fy - (1 - edge), math.min(fy - edge, dy * t))
+    local ox, oy = state.ox, state.oy
+    state.ox, state.oy = ox + mx * vw, oy + my * vh
+    ClampView()
+    -- Held by the map's edge, or arrived: nothing more to do.
+    if state.ox == ox and state.oy == oy then
+        state.following = nil
+        return false
+    end
+    if t == 1 then state.following = nil end
+    return true
 end
 
 -- Replaying together: every path turned on plays at once on one clock. The
@@ -2925,7 +2968,7 @@ function Together.Step(elapsed)
     state.cur = ns.LastIndex(Together.ClockTimes(state), clock)
     ApplyCursor()
     Together.Apply()
-    FollowHead()
+    state.following = true
 end
 
 local function OnUpdate(_, elapsed)
@@ -3049,7 +3092,7 @@ local function OnUpdate(_, elapsed)
             SetPlaying(false)
         end
         ApplyCursor()
-        FollowHead()
+        state.following = true
         -- At the end, markerNow is math.huge: everything up to now has passed.
         local now = state.markerNow == math.huge and ns.Now() or state.markerNow
         -- Only what is inside the date range pops up (Range.lua).
@@ -3060,6 +3103,15 @@ local function OnUpdate(_, elapsed)
         ns.GuildPop:Passed(before, now)
         ns.LevelPop:Passed(before, now)
         ns.KillPop:Passed(before, now)
+    end
+    -- The view pans after the arrow the replay just moved, in the same
+    -- frame. Not while a zoom animates, which keeps the point under the
+    -- cursor still (it picks up again once the zoom settles), nor while
+    -- the map is hidden under the Gear or Stats screen. Zooming and
+    -- dragging never pan with it, so the view is applied once a frame.
+    if state.following and state.zoom == state.targetZoom and canvas:IsShown()
+        and FollowHead(elapsed) then
+        ApplyView()
     end
     ns.QuestPop:Update(elapsed)
     ns.GuildPop:Update(elapsed)
@@ -3190,7 +3242,7 @@ local function CreateScrub()
                 Together.Apply()
             end
             -- Zoomed in, the map follows the arrow as the replay does.
-            FollowHead()
+            state.following = true
         end
         if scrub:IsMouseOver() and seq ~= hovered then
             hovered = seq
@@ -3235,7 +3287,7 @@ local function CreateWindow()
         ns.GuildPop:Clear()
         ns.LevelPop:Clear()
         ns.KillPop:Clear()
-        drag = nil
+        drag, state.following = nil, nil
         state.targetZoom = state.zoom
     end)
     tinsert(UISpecialFrames, "RoadToSixtyJourneyFrame")
@@ -3670,7 +3722,7 @@ function Map:OpenNow(keep)
     end
 
     SetPlaying(false)
-    drag = nil
+    drag, state.following = nil, nil
     state.built, state.jumpKey = nil, nil
     state.cur = state.n
     if state.clock then
@@ -3714,7 +3766,7 @@ function Map:ShowCharacter(e)
     end
     local toContent = c and state.toContent[c]
     if not toContent then return end
-    drag = nil
+    drag, state.following = nil, nil
     SetZoomNow(math.max(state.zoom, JUMP_ZOOM))
     CenterOn(toContent(x, y))
     ApplyView()
@@ -3812,7 +3864,7 @@ end
 function Map:JumpTo(t, continentID, x, y)
     if not (frame and frame:IsShown()) then return end
     SetPlaying(false)
-    drag = nil
+    drag, state.following = nil, nil
 
     -- A moment before the first point shown (a zone row on the Stats screen
     -- for a zone entered before the date range) goes to that first point,
@@ -4032,21 +4084,24 @@ Map.inner = {
         state.journey = nil
         Map:OpenNow(true)
     end,
-    -- The arrow moved with the player: placed again. The view moves with it,
-    -- as a replay's does, only when the arrow walked out of the middle of
-    -- the view by itself: never while the map is dragged or zooming, and not
-    -- when the view was moved away from it (it was already outside then).
+    -- The arrow moved with the player: placed again. The view pans with it,
+    -- as a replay's does, only when the arrow walked out of the middle part
+    -- of the view (HEAD.ZONE) by itself: never while the map is dragged or
+    -- zooming, and not when the view was moved away from it (it was already
+    -- outside then). The middle part reaches a hair further here, as a
+    -- glide leaves the arrow on its edge, give or take rounding.
     HeadMoved = function()
         local x, y = state.headX, state.headY
         PlaceHead()
         if drag or state.zoom ~= state.targetZoom or not x or not state.headX then return end
+        local lo = HEAD.ZONE - 0.01
         local function Inside(hx, hy)
             local fx = (hx - state.ox) * state.zoom / state.W
             local fy = (hy - state.oy) * state.zoom / state.H
-            return fx >= 0.1 and fx <= 0.9 and fy >= 0.1 and fy <= 0.9
+            return fx >= lo and fx <= 1 - lo and fy >= lo and fy <= 1 - lo
         end
         if Inside(x, y) and not Inside(state.headX, state.headY) then
-            FollowHead()
+            state.following = true
         end
     end,
 }
