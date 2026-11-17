@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.9
+
+### New
+- The journey map now pans smoothly with your character during a replay,
+  instead of jumping each time you reach the edge of the view. It does the
+  same when you drag along the replay bar, and when the map follows you live.
+
 ## 1.20.8
 
 ### Fixed
