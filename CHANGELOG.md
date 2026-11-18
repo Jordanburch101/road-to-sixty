@@ -9,9 +9,10 @@ broken and now works. Leave out internal changes. Sections are
 ## 1.20.10
 
 ### Fixed
-- No more error every few seconds while playing with few or no Battle.net
-  friends online. Road to Sixty also tells again whether a friend you
-  share journeys with is online from your Battle.net friends list.
+- No more error every few seconds while you play. It came from checking
+  your Battle.net friends list, and that check now works too: a friend you
+  share journeys with shows as online when Battle.net says they're
+  playing that character.
 
 ## 1.20.9
 
