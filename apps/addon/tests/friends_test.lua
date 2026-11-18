@@ -1138,13 +1138,18 @@ check(EF:Online(fay) == true, "a failing friends list call not passed over")
 ev.env.C_FriendList = nil
 local game = { isOnline = true, clientProgram = "WoW", playerGuid = "Player-1-0A17", characterName = "Alt" }
 local games = 1
-ev.env.BNGetNumFriends = function() return 2 end
+-- As in the game, the count comes with the number online after it (#151):
+-- read as tonumber's base, 1 is an error and 2 loses the count.
+local online = 1
+ev.env.BNGetNumFriends = function() return 2, online end
 ev.env.C_BattleNet = {
     GetFriendAccountInfo = function(i) return { battleTag = i == 2 and "Fay#1234" or "Other#1" } end,
     GetFriendNumGameAccounts = function() return games end,
     GetFriendGameAccountInfo = function() return game end,
 }
 check(fay.battleTag == "Fay#1234" and EF:Online(fay) == false, "their account on another character not taken as offline")
+online = 2
+check(EF:Online(fay) == false, "the number online taken as part of Battle.net's friend count")
 game.playerGuid = fay.guid
 check(EF:Online(fay) == true, "their account on this character not taken as online")
 game.playerGuid, game.characterName = nil, "Fay"

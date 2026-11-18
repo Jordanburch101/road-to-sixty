@@ -6,6 +6,14 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.10
+
+### Fixed
+- No more error every few seconds while you play. It came from checking
+  your Battle.net friends list, and that check now works too: a friend you
+  share journeys with shows as online when Battle.net says they're
+  playing that character.
+
 ## 1.20.9
 
 ### New

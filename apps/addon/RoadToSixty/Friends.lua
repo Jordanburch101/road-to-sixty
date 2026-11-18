@@ -746,11 +746,13 @@ local function ListedKey(name)
     return Key((name:gsub("%-.*$", "")))
 end
 
--- A game call that may be missing or fail: its first two results, or nil.
+-- A game call that may be missing or fail: its first result, or nil. Only
+-- the first, as a count passed to tonumber would take a second as its base:
+-- BNGetNumFriends also returns the number online (#151).
 local function Call(fn, ...)
     if not fn then return nil end
-    local ok, a, b = pcall(fn, ...)
-    if ok then return Clean(a), Clean(b) end
+    local ok, a = pcall(fn, ...)
+    if ok then return Clean(a) end
     return nil
 end
 
