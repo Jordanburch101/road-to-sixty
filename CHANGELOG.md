@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.10
+
+### Fixed
+- A rare killed in a dungeon while someone else had it targeted, such as
+  your group's tank, now keeps its name in your History when you click
+  its corpse afterwards, instead of showing as "a rare elite".
+
 ## 1.20.9
 
 ### New
