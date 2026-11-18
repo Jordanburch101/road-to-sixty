@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.10
+
+### Fixed
+- No more error every few seconds while playing with few or no Battle.net
+  friends online. Road to Sixty also tells again whether a friend you
+  share journeys with is online from your Battle.net friends list.
+
 ## 1.20.9
 
 ### New

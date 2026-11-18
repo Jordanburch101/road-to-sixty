@@ -755,11 +755,13 @@ local function Call(fn, ...)
 end
 
 -- What the game's friends lists say of a friend: true or false when one of
--- them knows, nil when neither does.
+-- them knows, nil when neither does. Each count is Call's first result alone,
+-- in its own brackets: BNGetNumFriends also returns the number online, which
+-- tonumber would take as its base (#151).
 local function Listed(rec, key)
     local guid = rec.guid
     local lists = C_FriendList or {}
-    for i = 1, tonumber(Call(lists.GetNumFriends)) or 0 do
+    for i = 1, tonumber((Call(lists.GetNumFriends))) or 0 do
         local info = Call(lists.GetFriendInfoByIndex, i)
         if type(info) == "table" and ((guid and Clean(info.guid) == guid) or ListedKey(info.name) == key) then
             return Clean(info.connected) == true
@@ -767,11 +769,11 @@ local function Listed(rec, key)
     end
     local bnet = C_BattleNet or {}
     if not rec.battleTag or not bnet.GetFriendAccountInfo then return nil end
-    for i = 1, tonumber(Call(BNGetNumFriends)) or 0 do
+    for i = 1, tonumber((Call(BNGetNumFriends))) or 0 do
         local account = Call(bnet.GetFriendAccountInfo, i)
         if type(account) == "table" and Clean(account.battleTag) == rec.battleTag then
             local other = false
-            for j = 1, tonumber(Call(bnet.GetFriendNumGameAccounts, i)) or 0 do
+            for j = 1, tonumber((Call(bnet.GetFriendNumGameAccounts, i))) or 0 do
                 local game = Call(bnet.GetFriendGameAccountInfo, i, j)
                 if type(game) == "table" and Clean(game.isOnline) == true and Clean(game.clientProgram) == "WoW" then
                     local id = Clean(game.playerGuid)
