@@ -103,6 +103,8 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo build --bin rts-sync && scripts/wine-check.sh target/debug/rts-sync
 
+      # The AppImage is 80 MB, and artifacts share one storage quota that
+      # fails every workflow's upload when full, so it is kept a week.
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Linux'
         with:
@@ -110,3 +112,4 @@ jobs:
           path: |
             smoke/
             apps/desktop/target/release/bundle/appimage/*.AppImage
+          retention-days: 7
