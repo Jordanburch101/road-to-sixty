@@ -37,7 +37,12 @@ local MAX_LINES = 3000          -- line budget per build; past it, points merge 
 -- PathShape.lua's MakeLevel). Lines are drawn straight between the points
 -- kept. The map builds again once the view leaves the near part:
 -- when the zoom settles, and when a drag pauses for DRAG_PAUSE seconds.
-local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_PAUSE = 0.15 }
+-- MERGE is how near in pixels a newer walk must pass to a line for it to be
+-- merged into it (PathShape.lua's MergeLines, DETAIL.Merge): the lines it
+-- frees let the map draw about two levels finer at every zoom, at the same
+-- cost (2026-11-19, Stormwind on a journey to 37). nil draws every line;
+-- /rts merge turns it off and on in a developer build, to compare.
+local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_PAUSE = 0.15, MERGE = 2 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
@@ -872,7 +877,12 @@ local function GetLod(track, k, background)
     local lod = track.lods[k]
     if lod then return lod end
     local started = debugprofilestop()
+    -- Never merged here (DETAIL.Merge does that in the warm-up): merging a
+    -- level took 1.5 s in game, too long for a build to wait.
     lod = ns.MakeLevel(track, k, LodDistance(k), CHUNK, background and LOD_YIELD)
+    -- Another character's level, made for a build: merged once the warm-up
+    -- is free (OnUpdate).
+    if track ~= state and DETAIL.MERGE then state.mergeWanted = true end
     if not background then
         state.perf.lod = state.perf.lod + debugprofilestop() - started
     end
@@ -883,17 +893,157 @@ end
 -- each frame, so zooming in later does not stop to build them. A build
 -- wanting a level first makes it at once from the finest made below it.
 local function StartWarmUp()
+    state.merging = nil         -- a merge the old warm-up was doing is dropped with it
     state.warm = coroutine.create(function()
         for k = 0, WARM_LODS do
             GetLod(state, k, true)
         end
+        if DETAIL.MERGE then DETAIL.Merge() end
     end)
 end
 
+-- Merges the lines newer walks cover (PathShape.lua's MergeLines) into the
+-- player's own levels already made, inside the warm-up: the level in view
+-- and the two finer ones first, as a merged level may fit the budget more
+-- finely, then the rest. Each is merged within DETAIL.MERGE pixels at the
+-- closest zoom it is the finest for, so within half to all of that where it
+-- is drawn. The path is built again once a level near the one in view is.
+-- Merging takes up to MERGE_MS of each frame (Due). Levels merged are kept
+-- in RoadToSixtyCache between sessions (Cache): a level made again with the
+-- same points takes them back at once, and is merged again only once
+-- REMERGE of its lines are newer than those.
+DETAIL.MERGE_MS = 5
+DETAIL.REMERGE = { lines = 200, share = 0.05 }
+DETAIL.MERGE_VERSION = 2       -- raised when what is kept changes; older entries are dropped
+
+DETAIL.Due = function()
+    return debugprofilestop() - (state.warmAt or 0) > DETAIL.MERGE_MS
+end
+
+-- The cache's levels for the journey shown: only over all its time, as a
+-- date range draws other points, and only the three journeys shown last
+-- are kept. nil when it can't be kept. Anything in it not shaped as it
+-- writes is dropped, so a damaged file can't stop the merge each time, and
+-- so is an older journey of the same character (the same GUID before the
+-- stamp's start), which an erase leaves behind (Core.lua's ResetCharacter).
+DETAIL.Cache = function()
+    local id = ns.view and ns.view.journeyId
+    if type(id) ~= "string" or not ns.Range:IsAll() then return nil end
+    RoadToSixtyCache = type(RoadToSixtyCache) == "table" and RoadToSixtyCache or {}
+    local all = type(RoadToSixtyCache.merged) == "table" and RoadToSixtyCache.merged or {}
+    RoadToSixtyCache.merged = all
+    local version = "|" .. DETAIL.MERGE_VERSION
+    local key = ("%s|%s%s"):format(id, DETAIL.MERGE, version)
+    local guid = id:match("^(.*):[^:]*$")
+    local keys = {}
+    for other, e in pairs(all) do
+        local otherId = type(other) == "string" and other:match("^(.*)|[^|]*|[^|]*$")
+        if type(e) ~= "table" or type(e.levels) ~= "table" or type(e.at) ~= "number"
+            or not otherId or other:sub(-#version) ~= version
+            or guid and otherId ~= id and otherId:match("^(.*):[^:]*$") == guid then
+            all[other] = nil
+        elseif other ~= key then
+            keys[#keys + 1] = { other, e.at }
+        end
+    end
+    -- Others, newest first, past the two kept beside this one.
+    table.sort(keys, function(a, b) return a[2] > b[2] end)
+    for i = 3, #keys do all[keys[i][1]] = nil end
+    local entry = all[key] or { levels = {} }
+    all[key] = entry
+    entry.at = ns.Now()
+    return entry.levels
+end
+
+DETAIL.Merge = function()
+    local order, seen = {}, {}
+    local now = state.lodLevel or 0
+    for _, k in ipairs({ now, now - 1, now - 2 }) do
+        if k >= 0 then order[#order + 1] = k; seen[k] = true end
+    end
+    for k = 0, WARM_LODS do
+        if not seen[k] then order[#order + 1] = k end
+    end
+    local cache = DETAIL.Cache()
+    local kept, merged, started = 0, 0, debugprofilestop()
+    local why = {}      -- levels merged now and why: new (nothing kept), differ, or newer lines
+    -- Points the player adds meanwhile carry the levels on (LiveMap's
+    -- ExtendLods), which may change their last few lines, so merges those
+    -- could undo are dropped (DropMergedAfter). The map picks the level up
+    -- once it is built again (OnUpdate).
+    local function Apply(track, k, lod, hid, count)
+        ns.DropMergedAfter(hid, lod.idx, count - 2)
+        lod.hid = hid
+        ns.LodChunks(track, lod.idx, #lod.idx, lod.chunks, 1, CHUNK, hid)
+        if track ~= state or k <= (state.lodLevel or 0) + 2 then state.built = nil end
+    end
+    -- Merges a level of a track afresh; false when merging stopped meanwhile.
+    local function Fresh(track, k, lod)
+        local dist = DETAIL.MergeDistance(k)
+        local count = #lod.idx
+        local hid = ns.MergeLines(track, lod.idx, count, dist, DETAIL.Due)
+        -- Toggled off while it ran (a fresh warm-up drops this one).
+        if not DETAIL.MERGE or track.lods[k] ~= lod then return false end
+        merged = merged + 1
+        Apply(track, k, lod, hid, count)
+        if track == state and cache then cache[k] = ns.PackMerged(lod.idx, count - 2, hid, dist, DETAIL.Due) end
+        return true
+    end
+    state.merging = true
+    for _, k in ipairs(order) do
+        local lod = state.lods[k]
+        if lod and not lod.hid then
+            local hid, upTo = nil, 0
+            if cache then hid, upTo = ns.UnpackMerged(cache[k], lod.idx, DETAIL.MergeDistance(k), DETAIL.Due) end
+            if hid then
+                kept = kept + 1
+                Apply(state, k, lod, hid, upTo)
+            end
+            local newer = #lod.idx - (upTo or 0)
+            if not hid or newer > math.max(DETAIL.REMERGE.lines, #lod.idx * DETAIL.REMERGE.share) then
+                why[#why + 1] = ("%d %s"):format(k, hid and newer .. " newer"
+                    or (cache and cache[k]) and "differs" or "new")
+                if hid then kept = kept - 1 end
+                if not Fresh(state, k, lod) then state.merging = nil return end
+            end
+            if DETAIL.Due() then coroutine.yield() end
+        end
+    end
+    -- Other characters' paths shown: the levels their builds made, kept for
+    -- this session only, as the cache holds the journeys shown.
+    local others = 0
+    for _, track in ipairs(state.otherTracks or {}) do
+        for k = 0, MAX_LOD do
+            local lod = track.lods[k]
+            if lod and not lod.hid then
+                if not Fresh(track, k, lod) then state.merging = nil return end
+                others = others + 1
+                if DETAIL.Due() then coroutine.yield() end
+            end
+        end
+    end
+    state.merging = nil
+    --@debug@
+    if kept + merged > 0 then
+        ns.Print(("Path lines merged: %d levels kept from last time, %d merged now%s%s, %.1f s."):format(
+            kept, merged - others, #why > 0 and " (" .. table.concat(why, ", ") .. ")" or "",
+            others > 0 and (", %d of other characters'"):format(others) or "",
+            (debugprofilestop() - started) / 1000))
+    end
+    --@end-debug@
+end
+
+-- The distance level k is merged within, in content units: DETAIL.MERGE
+-- pixels at the closest zoom it is the finest for.
+DETAIL.MergeDistance = function(k)
+    return DETAIL.MERGE / math.min(MAX_ZOOM, MAX_ZOOM / LOD_STEP ^ (k - 1))
+end
+
 local function StepWarmUp()
+    state.warmAt = debugprofilestop()   -- when this frame's slice began (DETAIL.Due)
     local ok, err = coroutine.resume(state.warm)
     if not ok then
-        state.warm = nil
+        state.warm, state.merging = nil, nil
         geterrorhandler()(err)
     elseif coroutine.status(state.warm) == "dead" then
         state.warm = nil
@@ -918,6 +1068,11 @@ local function ChunksIn(track, lod, x1, y1, x2, y2, budget, skip, exact)
     end
     if total <= budget and not exact then return list, total end
     local idx, px, py, lines = lod.idx, track.px, track.py, 0
+    -- Lines merged (MergeLines) up to where the track is shown are not drawn,
+    -- but in the far part (skip) the lines join a coarser level's points
+    -- across the ones merged, so they are all drawn there (LinesIn).
+    local hid, upTo = not skip and lod.hid, track.mergeUpTo or math.huge
+    local whole = hid and upTo >= track.n and 7 or 8
     local s1, s2, s3, s4 = math.huge, math.huge, -math.huge, -math.huge
     if skip then s1, s2, s3, s4 = skip[1], skip[2], skip[3], skip[4] end
     for _, ch in ipairs(list) do
@@ -926,15 +1081,20 @@ local function ChunksIn(track, lod, x1, y1, x2, y2, budget, skip, exact)
         elseif ch[3] >= x1 and ch[5] <= x2 and ch[4] >= y1 and ch[6] <= y2
             and (ch[5] < s1 or ch[3] > s3 or ch[6] < s2 or ch[4] > s4) then
             -- A box wholly in the area draws all its lines there.
-            lines = lines + ch[7]
+            lines = lines + (ch[whole] or ch[7])
             if lines > budget then return list, lines end
         else
             for j = math.max(2, ch[1]), ch[2] do
                 local ax, ay, bx, by = px[idx[j - 1]], py[idx[j - 1]], px[idx[j]], py[idx[j]]
+                -- A merged line is left out only with both ends in the area,
+                -- as LinesIn leaves it out only inside the near part.
                 if (ax ~= bx or ay ~= by) and math.max(ax, bx) >= x1 and math.min(ax, bx) <= x2
                     and math.max(ay, by) >= y1 and math.min(ay, by) <= y2
                     and not (ax >= s1 and ax <= s3 and ay >= s2 and ay <= s4
-                        and bx >= s1 and bx <= s3 and by >= s2 and by <= s4) then
+                        and bx >= s1 and bx <= s3 and by >= s2 and by <= s4)
+                    and not (hid and hid[j] and hid[j] <= upTo
+                        and ax >= x1 and ax <= x2 and ay >= y1 and ay <= y2
+                        and bx >= x1 and bx <= x2 and by >= y1 and by <= y2) then
                     lines = lines + 1
                     if lines > budget then return list, lines end
                 end
@@ -992,6 +1152,10 @@ end
 local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, far)
     local idx, px, py, pm, brk = lod.idx, track.px, track.py, track.pm, track.brk
     local top = track.lods.top
+    local hid, mergeTo = lod.hid, track.mergeUpTo or math.huge
+    -- The latest point any line left out waits for: a replay back before it
+    -- must draw that line again (NeedsPathBuild).
+    track.mergeMax = nil
     local seaTrips = jumps and track.seaTrips or {}
     local drawn, count = {}, 0
     local p, upTo           -- the last point kept, and the j it was kept at or passed over
@@ -1015,7 +1179,17 @@ local function LinesIn(track, lod, list, x1, y1, x2, y2, jumps, near, far)
                         outside = math.max(ax, bx) < x1 or math.min(ax, bx) > x2
                             or math.max(ay, by) < y1 or math.min(ay, by) > y2
                     end
-                    if (ax ~= bx or ay ~= by) and not outside then
+                    -- A line merged into newer walks is left out, but only
+                    -- the level's own line with both ends in the near part:
+                    -- outside it the far part draws coarser joins, which may
+                    -- pass well away from the line's cover.
+                    local merged = hid and hid[j] and hid[j] <= mergeTo and p == idx[j - 1]
+                        and (not near or ax >= near[1] and ax <= near[3] and ay >= near[2] and ay <= near[4]
+                            and x >= near[1] and x <= near[3] and y >= near[2] and y <= near[4])
+                    if merged and not outside and (ax ~= bx or ay ~= by) then
+                        track.mergeMax = math.max(track.mergeMax or 0, hid[j])
+                    end
+                    if (ax ~= bx or ay ~= by) and not outside and not merged then
                         count = count + 1
                         drawn[count] = { ax, ay, bx, by, brk[i] and "j" or pm and pm[i], i }
                     end
@@ -1621,9 +1795,14 @@ end
 -- Returns whether moving the view could draw any of them more finely (DETAIL.Lines).
 local function BuildOtherLines(x1, y1, x2, y2, near, z)
     local otherDrawn, anyFiner = {}, false
+    -- Each path's latest point a line left out waits for (LinesIn), so a
+    -- replay together going back draws them again (NeedsPathBuild).
+    state.otherMergeMax = {}
     for _, track in ipairs(state.otherTracks) do
         if track.n > 1 then
+            track.mergeUpTo = state.clock and track.cur or math.huge
             local specs, _, finer = DETAIL.Lines(track, x1, y1, x2, y2, near, z)
+            state.otherMergeMax[track] = track.mergeMax
             anyFiner = anyFiner or finer
             for _, spec in ipairs(specs) do
                 spec.track = track
@@ -1696,6 +1875,9 @@ local function BuildPath()
     local near = { ViewArea(DETAIL.NEAR) }
 
     local drawn, finer
+    -- Lines merged into walks past the replay's point are drawn until it
+    -- gets there (NeedsPathBuild builds again if it goes back).
+    state.mergeUpTo = math.floor(state.cur)
     drawn, state.lodLevel, finer = DETAIL.Lines(state, x1, y1, x2, y2, near, z)
     state.perf.detail = debugprofilestop() - started
     local old = state.drawn
@@ -1773,7 +1955,8 @@ local function BuildPath()
     -- The near part only matters where a pan could draw more finely: a
     -- build at the finest level everywhere waits for the view to leave the
     -- whole area, as the replay's recentres would otherwise build each time.
-    state.built = { x1, y1, x2, y2, zoom = z, near = finer and near or nil }
+    state.built = { x1, y1, x2, y2, zoom = z, near = finer and near or nil, mergeMax = state.mergeMax,
+        otherMergeMax = state.otherMergeMax }
     -- Mote line indexes point into the old list: a mote keeps going where
     -- its line is the same in the new one (most of them, when the live map
     -- adds points at the end), and is spawned again elsewhere.
@@ -1790,6 +1973,14 @@ end
 local function NeedsPathBuild()
     local built = state.built
     if not built or not ViewInside(built) then return true end
+    -- The replay gone back before a line left out is covered: it is drawn
+    -- again (checked each frame too, as scrubbing moves no view; OnUpdate).
+    if built.mergeMax and math.floor(state.cur) < built.mergeMax then return true end
+    if state.clock then
+        for track, latest in pairs(built.otherMergeMax or {}) do
+            if (track.cur or 0) < latest then return true end
+        end
+    end
     local left = built.near and not ViewInside(built.near)
     -- Dragged out of the near part, the detail catches up once the mouse
     -- has held still for DRAG_PAUSE seconds: waiting for the release showed
@@ -3040,6 +3231,15 @@ local function OnUpdate(_, elapsed)
     end
     if state.warm then
         StepWarmUp()
+    elseif state.mergeWanted then
+        state.mergeWanted = nil
+        StartWarmUp()
+    end
+    -- With lines merged, the path is built again when a level finishes
+    -- merging, or the replay goes back before a line left out is covered,
+    -- neither of which moves the view (DETAIL.Merge, NeedsPathBuild).
+    if DETAIL.MERGE and NeedsPathBuild() then
+        ApplyView()
     end
     if state.tileQueue then
         ShowQueuedTiles()
@@ -4021,6 +4221,32 @@ ns.Command("tiles", "toggle showing, in red, terrain tiles left out for lying in
     end
     ns.Print("Skipped terrain tiles " .. (ns.db.showSkipped and "shown in red." or "hidden."))
 end)
+
+-- Trying out merging lines a newer walk covers (PathShape.lua's MergeLines):
+-- the detail levels are made again with or without it.
+ns.Command("merge", "toggle merging path lines a newer walk covers; a number sets how near, in pixels (2) (developer)", function(arg)
+    local pixels = tonumber(arg)
+    if pixels then
+        DETAIL.MERGE = pixels > 0 and pixels or nil
+    else
+        DETAIL.MERGE = not DETAIL.MERGE and 2 or nil
+    end
+    state.lods, state.picked, state.built = {}, nil, nil
+    for _, track in ipairs(state.otherTracks or {}) do
+        track.lods, track.picked = {}, nil
+    end
+    -- The warm-up merges the levels, so it starts again even with the map
+    -- closed: it runs once the map is open, and opening it on the same
+    -- journey doesn't start it.
+    StartWarmUp()
+    if frame and frame:IsShown() then
+        ApplyView()
+    end
+    local open = frame and frame:IsShown()
+    ns.Print(DETAIL.MERGE and ("Merging lines within %s px: %s, and says when it's done. /rts merge again turns it off."):format(
+        DETAIL.MERGE, open and "it runs now in the background" or "it runs once the map is open")
+        or "Not merging lines (/rts merge turns it on).")
+end)
 --@end-debug@
 
 ns.Command("motes", "toggle sparkles drifting along the journey map path", function()
@@ -4052,7 +4278,9 @@ Map.inner = {
         if not built or box[3] >= built[1] and box[1] <= built[3] and box[4] >= built[2] and box[2] <= built[4] then
             state.built = nil
         end
-        if state.warm then StartWarmUp() end
+        -- Not while it merges: the levels are all made by then, and starting
+        -- over each time the player moved kept the merge from ever ending.
+        if state.warm and not state.merging then StartWarmUp() end
         local runs = scrub.runs
         if runs and runs[#runs] then
             runs[#runs].last = state.n

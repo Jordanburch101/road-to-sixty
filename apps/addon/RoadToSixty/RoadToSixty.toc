@@ -5,7 +5,7 @@
 ## IconTexture: Interface\Icons\Ability_Hunter_Pathfinding
 ## AddonCompartmentFunc: RoadToSixty_OnAddonCompartmentClick
 ## Version: @project-version@
-## SavedVariables: RoadToSixtyDB
+## SavedVariables: RoadToSixtyDB, RoadToSixtyCache
 ## SavedVariablesPerCharacter: RoadToSixtyCharDB
 ## OptionalDeps: RoadToSixty_Sync
 

@@ -47,6 +47,13 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
   syncing until the server is redeployed, as the server's merge refuses
   a newer layout than it knows. List a new kind in Merge's `ABOUT` and
   the sync spec instead.
+- `RoadToSixtyCache` (account-wide, in the same file as `RoadToSixtyDB`)
+  holds only what can be worked out again from the journeys: the map's
+  merged path lines (Map.lua's `DETAIL.Cache`). It has no `DATA_VERSION`:
+  every entry is checked before use and dropped when it doesn't match, and
+  `DETAIL.MERGE_VERSION` starts it over. The app reads only the
+  per-character files, so it never sees it. Never keep anything in it that
+  can't be lost.
 - Counts kept per PC (Tally.lua) go under the PC that started the thing:
   an open dungeon run and group carry `pc`, so two PCs finishing the same
   one from their copies count it once after the merge.

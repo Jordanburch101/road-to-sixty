@@ -52,7 +52,7 @@ for data, its exact format; read that before changing a module.
 | Cosmic.lua | the Cosmic map as the outermost layer where the client has Outland (Anniversary): Azeroth's world map in its globe, Outland in its painting, and world 530's points placed on Outland or the Blood Elf and Draenei zones (#75) |
 | Islands.lua | maps the world map leaves out (Zephras Isle, continent 2991), drawn in the sea at a chosen spot, on a layer above the zone art |
 | Portals.lua | hearthstone and teleport portals and the replay's dive through them (`ns.Portals`) |
-| PathShape.lua | the path's shape: the detail levels' points kept by shape, not distance (`ns.MakeLevel`, `ns.KeepShape`, `ns.LodChunks`); the map draws straight lines between them (#152) |
+| PathShape.lua | the path's shape: the detail levels' points kept by shape, not distance (`ns.MakeLevel`, `ns.KeepShape`, `ns.LodChunks`); the map draws straight lines between them (#152); lines a newer walk covers, merged so the budget goes on detail (`ns.MergeLines`), and kept between sessions in `RoadToSixtyCache` (`ns.PackMerged`, `ns.UnpackMerged`) |
 | PathLines.lua | keeps the map's lines cheap (`ns.PathLines`): a build keeps lines that didn't move, a zoom resizes only the lines in view, nothing already set on a line is set again |
 | MarkerPiles.lua | markers piling up on screen: merged with a count, spread apart, fanned out on hover |
 | Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`); the item button every window's icons sit in (`Screens.ItemButton`, and `Screens.IconButton` for rows) |
@@ -104,7 +104,8 @@ Saved variables: `RoadToSixtyDB` (account) and `RoadToSixtyCharDB`
 every change to what is saved or what it means, list the change there, and
 bring older files up in `Upgrade`. A new event kind needs no bump (see
 apps/addon/AGENTS.md). `addon` holds the addon version that last loaded
-the file.
+the file. `RoadToSixtyCache` (account) holds only what can be worked out
+again, the map's merged path lines, and has no version (AGENTS.md).
 
 ## Commands
 

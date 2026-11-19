@@ -8,12 +8,17 @@ local _, ns = ...
 --
 -- RoadToSixtyDB.perfLog = { started = "date", frames = { "...", ... } },
 -- one string a frame, at most MAX_FRAMES (then it stops):
---   "t,frame,lua,drag,zoom"
+--   "t,frame,lua,drag,zoom,merged,inView,warm"
 --     t      GetTime() in seconds
 --     frame  ms since the frame before (elapsed): what the player feels
 --     lua    ms in the map's OnUpdate this frame, builds included
 --     drag   1 while the mouse drags the map
 --     zoom   1 while the zoom animates
+--     merged 1 when the near part's detail level has its lines merged
+--            (/rts merge, PathShape.lua's MergeLines)
+--     inView the player's lines in view, those a zoom frame resizes
+--     warm   1 while the warm-up makes or merges detail levels in the
+--            background, which adds to lua
 -- and on a frame with a path build, after it:
 --   ",B,build,detail,others,place,lod,placed,kept,lines,otherLines,level,zoomLevel,jumps"
 --     build   ms for the whole build (BuildPath)
@@ -37,8 +42,10 @@ function PerfLog.Frame(elapsed, lua, dragging, state)
     local log = ns.db.perfLog
     if not log then return end
     local frames = log.frames
-    local line = ("%.3f,%.1f,%.2f,%d,%d"):format(GetTime(), elapsed * 1000, lua,
-        dragging and 1 or 0, state.zoom ~= state.targetZoom and 1 or 0)
+    local lod = state.lods and state.lods[state.lodLevel or 0]
+    local line = ("%.3f,%.1f,%.2f,%d,%d,%d,%d,%d"):format(GetTime(), elapsed * 1000, lua,
+        dragging and 1 or 0, state.zoom ~= state.targetZoom and 1 or 0,
+        lod and lod.hid and 1 or 0, state.visible and #state.visible or 0, state.warm and 1 or 0)
     if state.builds ~= lastBuilds then
         lastBuilds = state.builds
         local p = state.perf

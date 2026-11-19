@@ -6,6 +6,17 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.11
+
+### Fixed
+- Paths on the journey map follow where you walked more closely in places
+  you have been through many times, such as the capitals. Where a newer
+  walk runs along an older one, the map draws the newest on top and uses
+  the room for finer detail. The first time you open the map after
+  updating, this takes a few seconds to show.
+- After zooming the journey map, the newest part of your path no longer
+  goes missing until the replay moves.
+
 ## 1.20.10
 
 ### Fixed
