@@ -244,6 +244,79 @@ function ns.MergeLines(track, idx, count, dist, yieldEvery)
     return hid
 end
 
+--@debug@
+-- Checks merged lines (MergeLines) another way, for /rts mergecheck: every
+-- point along each, each quarter of dist, must lie within 1.25 dist of a
+-- walking line still drawn that is newer than the line and the two carrying
+-- on from it, and ends by hid[j] (so the replay never leaves it out before
+-- it is covered). MergeLines looks every half dist along a line, so a point
+-- between two it looked at can lie a quarter dist further from its cover:
+-- 1.25 dist is as far as a merge it made right can be. Its own grid of
+-- cells that far across, with lines put in every quarter of dist, so it
+-- shares nothing with MergeLines' search. Returns how many lines are
+-- merged, how many fail, the first that fails, and the farthest any point
+-- of a merged line lies from a cover, as a share of dist.
+function ns.CheckMerged(track, idx, hid, dist)
+    local px, py, pm, brk = track.px, track.py, track.pm, track.brk
+    local floor, ceil, sqrt = math.floor, math.ceil, math.sqrt
+    local reach = dist * 1.25
+    local grid, count, farthest = {}, #idx, 0
+    local function Line(j)
+        local a, i = idx[j - 1], idx[j]
+        for p = a + 1, i do if brk[p] then return nil end end
+        if not pm or pm[i] ~= "w" then return nil end
+        return px[a], py[a], px[i] - px[a], py[i] - py[a]
+    end
+    for j = 2, count do
+        local ax, ay, dx, dy = Line(j)
+        if ax and not hid[j] then
+            local steps = math.max(1, ceil(sqrt(dx * dx + dy * dy) / (dist / 4)))
+            for s = 0, steps do
+                local key = floor((ax + dx * s / steps) / reach) .. ":" .. floor((ay + dy * s / steps) / reach)
+                local bucket = grid[key] or {}
+                grid[key] = bucket
+                if bucket[#bucket] ~= j then bucket[#bucket + 1] = j end
+            end
+        end
+    end
+    local merged, failed, first = 0, 0, nil
+    for j, h in pairs(hid) do
+        merged = merged + 1
+        local ax, ay, dx, dy = Line(j)
+        local ok = ax ~= nil
+        if ok then
+            local steps = math.max(1, ceil(sqrt(dx * dx + dy * dy) / (dist / 4)))
+            for s = 0, steps do
+                local x, y = ax + dx * s / steps, ay + dy * s / steps
+                local cx, cy, best = floor(x / reach), floor(y / reach), math.huge
+                for gx = cx - 1, cx + 1 do
+                    for gy = cy - 1, cy + 1 do
+                        for _, o in ipairs(grid[gx .. ":" .. gy] or {}) do
+                            if o > j + 2 and idx[o] <= h then
+                                local bx, by, ex, ey = Line(o)
+                                local len = ex * ex + ey * ey
+                                local t = len > 0 and ((x - bx) * ex + (y - by) * ey) / len or 0
+                                t = math.max(0, math.min(1, t))
+                                local qx, qy = bx + t * ex - x, by + t * ey - y
+                                best = math.min(best, qx * qx + qy * qy)
+                            end
+                        end
+                    end
+                end
+                best = sqrt(best)
+                if best > reach * (1 + 1e-9) then ok = false break end
+                farthest = math.max(farthest, best / dist)
+            end
+        end
+        if not ok then
+            failed = failed + 1
+            first = first and math.min(first, j) or j
+        end
+    end
+    return merged, failed, first, farthest
+end
+--@end-debug@
+
 -- Drops the merges that lines from position from on could undo, as the live
 -- map carries a level on from there (LiveMap's ExtendLods) and a level made
 -- in a later session may keep other points there: those lines' own, and

@@ -171,6 +171,20 @@ do
     end
     check(asked > 0 and yields == asked, ("a time limit not asked or kept to: asked %d, yielded %d"):format(asked, yields))
 
+    -- The developer check (CheckMerged) passes these merges, and catches a
+    -- line marked merged that nothing covers (walk 3, far from the rest) and
+    -- one left out before its cover is reached.
+    local merged, failed = ns.CheckMerged(track, idx, hid, 0.5)
+    check(merged == 4 and failed == 0, ("merges checked: %d, failed %d"):format(merged, failed))
+    local wrong = {}
+    for j, h in pairs(hid) do wrong[j] = h end
+    wrong[13] = 20
+    local _, bad, first = ns.CheckMerged(track, idx, wrong, 0.5)
+    check(bad == 1 and first == 13, "a line nothing covers not caught")
+    wrong[13], wrong[5] = nil, 8
+    _, bad, first = ns.CheckMerged(track, idx, wrong, 0.5)
+    check(bad == 1 and first == 5, "a line left out before its cover not caught")
+
     -- Chunks count lines drawn, and every line in the eighth field.
     local chunks = ns.LodChunks(track, idx, #idx, {}, 1, 64, hid)
     check(chunks[1][7] == chunks[1][8] - 4, ("merged lines left out of the count, got %d of %d"):format(

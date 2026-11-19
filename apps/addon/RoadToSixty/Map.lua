@@ -1025,13 +1025,57 @@ DETAIL.Merge = function()
     state.merging = nil
     --@debug@
     if kept + merged > 0 then
+        local seconds = (debugprofilestop() - started) / 1000
         ns.Print(("Path lines merged: %d levels kept from last time, %d merged now%s%s, %.1f s."):format(
             kept, merged - others, #why > 0 and " (" .. table.concat(why, ", ") .. ")" or "",
-            others > 0 and (", %d of other characters'"):format(others) or "",
-            (debugprofilestop() - started) / 1000))
+            others > 0 and (", %d of other characters'"):format(others) or "", seconds))
+        local bytes = 0
+        for _, saved in pairs(cache or {}) do bytes = bytes + #(saved.d or "") end
+        DETAIL.Log(("merge,%d,%d,%d,%d,%.2f,%.0f,%s"):format(state.n, kept, merged - others, others,
+            seconds, bytes / 1024, table.concat(why, " ")))
     end
     --@end-debug@
 end
+
+--@debug@
+-- The merges and checks of a developer build, kept in the saved variables
+-- for reading afterwards (/reload writes them): RoadToSixtyDB.mergeLog, the
+-- last 200, each "kind,time,...":
+--   merge,time,points,kept,merged,others,seconds,cacheKB,why (DETAIL.Merge)
+--   check,time,levels,merged,failed,farthest (/rts mergecheck)
+DETAIL.Log = function(line)
+    local log = ns.db.mergeLog or {}
+    ns.db.mergeLog = log
+    local kind, rest = line:match("^(%a+),(.*)$")
+    log[#log + 1] = ("%s,%d,%s"):format(kind, ns.Now(), rest)
+    while #log > 200 do table.remove(log, 1) end
+end
+
+-- Checks every merged line of the player's levels and the other characters'
+-- shown another way (PathShape.lua's CheckMerged). It takes a few seconds
+-- on a long journey, with the game held still meanwhile.
+ns.Command("mergecheck", "check the map's merged path lines another way (developer; holds the game a few seconds)", function()
+    local levels, merged, failed, farthest = 0, 0, 0, 0
+    local started = debugprofilestop()
+    for _, track in ipairs({ state, unpack(state.otherTracks or {}) }) do
+        for k = 0, MAX_LOD do
+            local lod = track.lods and track.lods[k]
+            if lod and lod.hid then
+                local m, f, first, far = ns.CheckMerged(track, lod.idx, lod.hid, DETAIL.MergeDistance(k))
+                levels, merged, failed = levels + 1, merged + m, failed + f
+                farthest = math.max(farthest, far)
+                if f > 0 then
+                    ns.Print(("Level %d%s: %d of %d merged lines not covered (first at %d)."):format(
+                        k, track == state and "" or " of another character", f, m, first))
+                end
+            end
+        end
+    end
+    ns.Print(("Merge check: %d levels, %d merged lines, %d not covered, farthest %.2f of the distance, %.1f s."):format(
+        levels, merged, failed, farthest, (debugprofilestop() - started) / 1000))
+    DETAIL.Log(("check,%d,%d,%d,%.3f"):format(levels, merged, failed, farthest))
+end)
+--@end-debug@
 
 -- The distance level k is merged within, in content units: DETAIL.MERGE
 -- pixels at the closest zoom it is the finest for.
