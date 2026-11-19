@@ -1709,10 +1709,12 @@ local function BuildPath()
     -- (PathLines.Reuse), and nothing already set on a line is set again;
     -- UpdateVisible, which follows, sizes the ones in view for the zoom.
     local placeStarted = debugprofilestop()
+    -- Counted in the new lines: counted in the old ones, a build with more
+    -- lines than the last left its newest hidden until the replay moved.
+    state.drawn = drawn
     local shown = CountUpTo(math.floor(state.cur))
     local pb = state.pb
     local order, spare = ns.PathLines.Reuse(old, lines, state.lineCount, drawn)
-    state.drawn = drawn
     for i, spec in ipairs(drawn) do
         local line = order[i]
         if line then
