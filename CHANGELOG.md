@@ -8,6 +8,11 @@ broken and now works. Leave out internal changes. Sections are
 
 ## 1.20.12
 
+### New
+- The journey map shows your path in full detail when you zoom in on
+  places you went through again and again, such as your starting town and
+  the roads out of it. Loops you walked there were cut short before.
+
 ### Fixed
 - Zooming the journey map in and out is smoother, and the map catches up
   faster after each zoom, most of all where many deaths, boat trips and

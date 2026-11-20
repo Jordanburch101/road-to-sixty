@@ -25,7 +25,15 @@ local Style = ns.Style   -- colours, icons and categories (Style.lua)
 -- Portals.lua); jumps scales that time the same way, here to half.
 local REPLAY_YARDS = { w = 400, g = 400, t = 1600, jumps = 0.5 }
 local SHAPE_PIXELS = 0.5        -- detail levels keep the path's shape to within this on screen at the finest level a zoom allows, up to four times it (PathShape.lua)
-local MAX_LINES = 3000          -- line budget per build; past it, points merge further
+-- Line budget per build; past it, points merge further. 3000 until 1.20.11:
+-- a town walked through again and again (Goldshire, on a journey to 37)
+-- drew levels 1 to 10 four levels coarser than the zoom could show, its
+-- loops cut short by yards. The busiest views of that journey need up to
+-- 10,900 lines for the finest level before merging, 5,400 after; a zoom
+-- frame costs about 1 ms more per 1000 lines in view, and the jump arcs'
+-- cost cut (#154) more than pays for it. 10000: full detail, no lag seen
+-- (Jordan, 2026-11-20).
+local MAX_LINES = 10000
 -- The path is built for the view and a margin a view wide on every side, so
 -- panning doesn't build it again at once: nine views, most of it unseen.
 -- One detail level for all of it spent the budget there, and a town walked
@@ -42,7 +50,7 @@ local MAX_LINES = 3000          -- line budget per build; past it, points merge 
 -- frees let the map draw about two levels finer at every zoom, at the same
 -- cost (2026-11-19, Stormwind on a journey to 37). nil draws every line;
 -- /rts merge turns it off and on in a developer build, to compare.
-local DETAIL = { NEAR = 0.15, NEAR_LINES = 2700, FAR_LINES = 300, FAR_SHARE = 1, DRAG_PAUSE = 0.15, MERGE = 2 }
+local DETAIL = { NEAR = 0.15, NEAR_LINES = 9000, FAR_LINES = 1000, FAR_SHARE = 1, DRAG_PAUSE = 0.15, MERGE = 2 }
 local LINE_WIDTH = 2
 local SPEEDS = { 1, 2, 4, 8, 16, 32 }
 -- Replaying together (see the Replay section), in one table as this file is
