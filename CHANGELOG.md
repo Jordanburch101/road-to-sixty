@@ -6,6 +6,13 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.12
+
+### Fixed
+- Zooming the journey map in and out is smoother, and the map catches up
+  faster after each zoom, most of all where many deaths, boat trips and
+  dungeon trips cross the view.
+
 ## 1.20.11
 
 ### Fixed

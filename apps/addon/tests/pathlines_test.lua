@@ -133,6 +133,13 @@ check(fading and dot.target == 1 and dot.alpha == 0, "in view, a dot whose row s
 dot.target, dot.alpha = 0, 0
 sized, fading = PathLines.FitJump(jump, 2, true)
 check(not fading and dot.target == 1 and dot.alpha == 1 and dot.a == 1, "out of view, it takes its row at once")
+check(dot.alphaSet == 1 and dot.sz == 2 and stroke.sz == 2, "each piece keeps the alpha and zoom set on it")
+-- A chunk of the pieces only (the ones in view): the others and the jump's
+-- zoom are left alone.
+calls = 0
+sized = PathLines.FitJump(jump, 4, true, 2, 2)
+check(sized == 1 and calls == 1 and dot.w == 1.5 and stroke.thickness == 2.5 and jump.tz == 2,
+    "a chunk of a jump's pieces is sized alone")
 
 if failures > 0 then
     print(failures .. " PathLines test(s) failed.")

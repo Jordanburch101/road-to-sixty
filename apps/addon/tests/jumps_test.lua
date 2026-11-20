@@ -20,13 +20,16 @@ local from = assert(source:find("\n-- Jump arcs", 1, true))
 local to = assert(source:find("\n-- Lines and jumps are sized for the zoom now", from, true))
 
 -- Stand-in widgets: every method call is counted; shown is tracked.
-local calls, made = 0, 0
+local calls, made, byMethod = 0, 0, {}
 local function Widget(kind)
     made = made + 1
     local w = { kind = kind, shown = true }
     return setmetatable(w, { __index = function(_, method)
+        -- Only methods: a field such as isLine is nil unless set, as on a real texture.
+        if not method:match("^%u") then return nil end
         return function(self, ...)
             calls = calls + 1
+            byMethod[method] = (byMethod[method] or 0) + 1
             if method == "Hide" then self.shown = false
             elseif method == "Show" then self.shown = true
             elseif method == "SetShown" then self.shown = (...) and true or false end
@@ -34,10 +37,19 @@ local function Widget(kind)
         end
     end })
 end
-local layer = { CreateLine = function() return Widget("line") end, CreateTexture = function() return Widget("texture") end }
+local layer = { CreateLine = function() return Widget("line") end, CreateTexture = function() return Widget("texture") end,
+    GetFrameLevel = function() return 9 end }
+-- Arc frames (JumpSet): pieces made on them, shown or hidden with one call.
+local frames = {}
+function CreateFrame()
+    local f = Widget("frame")
+    f.CreateLine, f.CreateTexture = layer.CreateLine, layer.CreateTexture
+    frames[#frames + 1] = f
+    return f
+end
 
 local T = {
-    state = { jumps = {}, pj = {}, seaTrips = {}, zoom = 8, lineZoom = 8, journey = {} },
+    state = { jumps = {}, jumpSets = {}, pj = {}, seaTrips = {}, zoom = 8, lineZoom = 8, journey = {} },
     ns = {
         PathLines = { FitJump = function() return 0, false end },
         Portals = { Begin = function() end, Add = function() end, Finish = function() end },
@@ -57,14 +69,24 @@ local prelude = [[
 local T = ...
 local state, ns, Style, pathLayer, overlay = T.state, T.ns, T.Style, T.pathLayer, T.overlay
 local addonName = "RoadToSixty"
-local jumpLines, jumpDots, jumpIcons = {}, {}, {}
+local jumpIcons = {}
 local JUMP_ARC, JUMP_ARC_STEPS, JUMP_ICON_ZOOM, JUMP_ICON = 0.2, 16, 4, 16
 local JUMP_OUTLINE, JUMP_OUTLINE_COLOR, JUMP_LINE, LINE_WIDTH = 4, { 0, 0, 0, 0.8 }, 2, 2
 local JUMP_DOT, JUMP_DOT_SPACING, JUMP_DASH, JUMP_GAP, JUMP_MAX_PIECES = 4, 10, 6, 4, 150
+local DETAIL = {}
 ]]
-local chunk = assert(loadstring(prelude .. source:sub(from, to) .. "\nreturn BuildJumps, jumpLines, jumpDots"))
-local BuildJumps, freeLines, freeDots = chunk(T)
+local chunk = assert(loadstring(prelude .. source:sub(from, to) .. "\nreturn BuildJumps, DETAIL"))
+local BuildJumps, DETAIL = chunk(T)
 local state = T.state
+-- The spare pieces of the arc frame in use.
+local function Spares()
+    local all = {}
+    for _, part in ipairs(state.jumpSet.lines) do all[#all + 1] = part end
+    for _, pool in pairs(state.jumpSet.dots) do
+        for _, part in ipairs(pool) do all[#all + 1] = part end
+    end
+    return all
+end
 
 -- Jump lines as the map builds them: { x1, y1, x2, y2, "j", point }.
 local function Jump(x1, y1, x2, y2, p, reason)
@@ -119,8 +141,7 @@ for _, part in ipairs(oldB.parts) do
     check(not owner[part] and not part.shown, "a piece B gave back is hidden and in no arc")
 end
 local free = 0
-for _, part in ipairs(freeLines) do free = free + 1 check(not owner[part], "free lines are in no arc") end
-for _, part in ipairs(freeDots) do free = free + 1 check(not owner[part], "free dots are in no arc") end
+for _, part in ipairs(Spares()) do free = free + 1 check(not owner[part], "spare pieces are in no arc") end
 check(free > 0, "pieces given back are free to reuse")
 
 -- Visibility follows the replay: arcs past shown hide their pieces.
@@ -141,10 +162,83 @@ check(#over.marks < #state.jumps[1].marks, "a route on top of another leaves its
 BuildJumps(Drawn({ A2 }), 99, 8, AREA)
 check(state.jumps[1] ~= over and #state.jumps[1].marks > #over.marks, "alone again, it is drawn with all its dots")
 
--- Another zoom: everything drawn again (sizes and spacing are per zoom).
-local before = state.jumps[1]
-BuildJumps(Drawn({ A2 }), 99, 12, AREA)
-check(state.jumps[1] ~= before, "a new zoom draws arcs again")
+-- Zoom steps within the doubling the zoom is in (8 up to 16) keep every arc
+-- as drawn, as spacing is worked out for the doubling: drawing them all
+-- again after each step was 110 to 210 ms of a build in game (#154). FitJump
+-- resizes their pieces for the zoom, as it does between builds.
+BuildJumps(Drawn({ A, B, C }), 99, 8, AREA)
+local kept = state.jumps[1]
+calls, made = 0, 0
+for _, z in ipairs({ 9, 11.3, 15.9 }) do
+    BuildJumps(Drawn({ A, B, C }), 99, z, AREA)
+end
+check(made == 0 and calls <= 3, ("zoom steps within a doubling make no calls (made %d, calls %d)"):format(made, calls))
+check(state.jumps[1] == kept and state.jumps[2].build == kept.build, "zoom steps within a doubling keep the arcs")
+-- Into the next doubling, spacing changes: dotted and dashed arcs are drawn
+-- again; the solid one, which has no spacing, too, as the cache is per
+-- doubling.
+BuildJumps(Drawn({ A, B, C }), 99, 16, AREA)
+check(state.jumps[1] ~= kept, "the next doubling draws arcs again")
+-- Out of it again, they are drawn for that doubling once more.
+local at16 = state.jumps[1]
+BuildJumps(Drawn({ A, B, C }), 99, 7.9, AREA)
+check(state.jumps[1] ~= at16, "the doubling below draws arcs again")
+local at4 = state.jumps[1]
+
+-- Each doubling's arcs are on a frame of their own, kept for the last three:
+-- zooming back into one shows its arcs again as they were, with no piece
+-- made or placed, its frame shown and the one left hidden.
+check(#state.jumpSets == 3 and #frames == 3, "a frame for each of three doublings, got " .. #frames)
+local set4 = state.jumpSet
+calls, made = 0, 0
+BuildJumps(Drawn({ A, B, C }), 99, 8.5, AREA)
+check(state.jumps[1] == kept and made == 0, ("back in a kept doubling, its arcs are as they were (made %d)"):format(made))
+check(calls <= 6, "back in a kept doubling, only frames and icons are called, got " .. calls)
+check(state.jumpSet.frame.shown and not set4.frame.shown, "the doubling's frame is shown, the one left hidden")
+BuildJumps(Drawn({ A, B, C }), 99, 4.2, AREA)
+check(state.jumps[1] == at4, "and the other way, the doubling below's arcs are kept too")
+
+-- A fourth doubling takes the frame of the one farthest from it (4, for
+-- 32): its pieces are used again, those left over hidden, and its arcs
+-- are gone.
+made = 0
+BuildJumps(Drawn({ A, B, C }), 99, 32, AREA)
+check(#frames == 3 and state.jumpSet == set4, "a fourth doubling takes the farthest one's frame")
+local inArc = {}
+for _, jump in ipairs(state.jumps) do
+    check(jump ~= at4, "the doubling that made way has none of its arcs left")
+    for _, part in ipairs(jump.parts) do
+        inArc[part] = true
+        check(part.shown, "a piece of an arc drawn is shown")
+    end
+end
+local spares = Spares()
+for _, part in ipairs(spares) do
+    check(not inArc[part] and not part.shown, "a piece left over from the doubling that made way is hidden")
+end
+local drawnNow = 0
+for _ in pairs(inArc) do drawnNow = drawnNow + 1 end
+check(made < drawnNow, ("the doubling that made way gave its pieces to the new one (made %d of %d)"):format(made, drawnNow))
+-- The other two doublings, 8 and 16, are still kept.
+BuildJumps(Drawn({ A, B, C }), 99, 9, AREA)
+check(state.jumps[1] == kept, "doublings kept stay kept when another makes way")
+
+-- A piece used again takes only what it lacks: a round dot of the same
+-- colour and size is only moved and shown, and given its row's alpha if it
+-- had another. (The one SetAtlas is the arc's icon.)
+local A3 = Jump(10, 12, 60, 12, 6, "h")
+BuildJumps(Drawn({ A }), 99, 9, AREA)
+BuildJumps(Drawn({ A3 }), 99, 9, AREA)
+-- (A's pieces, given back, are used for it again.)
+byMethod = {}
+BuildJumps(Drawn({ A }), 99, 9, AREA)
+check((byMethod.SetAtlas or 0) <= 1 and not byMethod.SetVertexColor and not byMethod.ClearAllPoints and not byMethod.SetSize,
+    "a dot of the same look reused sets no texture, colour or size: " .. (function()
+        local out = {}
+        for m, c in pairs(byMethod) do out[#out + 1] = m .. " " .. c end
+        return table.concat(out, ", ")
+    end)())
+check((byMethod.SetPoint or 0) > 20, "but it is moved")
 
 if failures == 0 then
     print("Jumps tests passed.")
