@@ -399,9 +399,22 @@ end
 -- screen, so the next one starts hundreds of yards on, and read back as a
 -- teleport (Jordan, 2026-10-25; that reload was saved with no reason at
 -- all). The map draws it as one flight.
+-- A login within LOGIN_JOIN yards of where the path stopped, in the same
+-- mode, carries it on too: a /reload or a relog moves the player a few
+-- yards at most, and each was drawn as a login's dotted arc (362 of one
+-- journey's 374 logins were under 20 yards, Jordan, 2026-11-20).
+local LOGIN_JOIN = 50
 function Recorder:Continues(previous, path)
-    return previous ~= nil and previous.m == "t" and path.m == "t" and previous.c == path.c
-        and (path.j == nil or path.j == "l") and #previous.x > 0 and path.x[1] ~= nil
+    if previous == nil or previous.c ~= path.c or #previous.x == 0 or path.x[1] == nil then
+        return false
+    end
+    if path.j == "l" and previous.m == path.m then
+        local last = #previous.x
+        if Dist(previous.x[last], previous.y[last], path.x[1], path.y[1]) <= LOGIN_JOIN then
+            return true
+        end
+    end
+    return previous.m == "t" and path.m == "t" and (path.j == nil or path.j == "l")
 end
 
 -- The last position of a decoded path, or nil.

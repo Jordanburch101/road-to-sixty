@@ -2092,7 +2092,10 @@ local function BuildOtherLines(x1, y1, x2, y2, near, z)
             anyFiner = anyFiner or finer
             for _, spec in ipairs(specs) do
                 spec.track = track
-                if spec[5] == "j" and track.pj[spec[6]] then
+                local reason = spec[5] == "j" and track.pj[spec[6]]
+                if reason and Style.Jump(reason).style == "none" then
+                    -- (a stretch not recorded: nothing drawn, Style.lua)
+                elseif reason then
                     local curve = JumpCurve(spec[1], spec[2], spec[3], spec[4],
                         Style.Jump(track.pj[spec[6]]).bend)
                     for p = 2, #curve do
@@ -2202,10 +2205,12 @@ local function BuildPath()
         state.fitMin = math.min(state.fitMin, line.tz or z)
         local mode, band = spec[5], pb[spec[6]]
         -- Lines the filter hides get no tooltip, motes or arc either, nor do
-        -- repeats of a boat trip, which the route's first trip stands for.
+        -- repeats of a boat trip, which the route's first trip stands for,
+        -- nor jumps drawn as nothing (a stretch not recorded, Style.lua).
         local boat = mode == "j" and state.seaTrips[spec[6]]
         spec.hidden = mode == "t" and not ns.FilterShown("flights")
             or mode == "j" and not ns.FilterShown(Style.JUMP_CATEGORY[state.pj[spec[6]]])
+            or mode == "j" and Style.Jump(state.pj[spec[6]]).style == "none"
             or boat and boat.dupe or false
         -- A jump's own line is never shown (void), as BuildJumps draws its
         -- arc, nor is one the filter hides: hidden rather than drawn
@@ -3318,7 +3323,9 @@ end
 -- not across a login. With its journey's events (track.events), a gap is
 -- time away when a session started in it: a logout in a dungeon or on a
 -- flight leaves no login tag on the path. Older saves without sessions go
--- by the tags and long breaks.
+-- by the tags and long breaks (a login a few yards on carries the path on,
+-- Recorder:Continues, so its time away counts as played in those: saves
+-- from before October 2026 only).
 function Together.PlayedTimes(track)
     local logins = {}
     for _, e in ipairs(track.events or {}) do

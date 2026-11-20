@@ -332,6 +332,13 @@ check(Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "l", 2000, 0)), "a flig
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "h", 2000, 0)), "a flight after a hearthstone does not")
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "w", nil, 20, 0)), "landing does not continue the flight")
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(1, "t", nil, 20, 0)), "a flight on another continent does not")
+-- A /reload or relog a few yards on carries the path on; one far off, or
+-- in another mode, or a walk with no login, does not.
+check(Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", "l", 12, 0)), "a login a few yards on continues the walk")
+check(JR(P(0, "w", nil, 0, 0), P(0, "w", "l", 12, 0)) == nil, "and is no jump")
+check(not Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", "l", 400, 0)), "a login far off does not")
+check(not Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", nil, 12, 0)), "a break with no login does not")
+check(not Recorder:Continues(P(0, "g", nil, 0, 0), P(0, "w", "l", 12, 0)), "a login in another mode does not")
 
 -- 11. Bends keep their shape (#57). Each walk is a segment of its own, one
 -- position a sample, rounded to whole yards as the game's are.

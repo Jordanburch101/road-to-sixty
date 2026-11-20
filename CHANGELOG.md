@@ -18,6 +18,11 @@ broken and now works. Leave out internal changes. Sections are
 - A trip's tooltip on the journey map, and History, sometimes named the
   zone you left as where you landed, such as "Redridge Mountains to
   Redridge Mountains" for a trip that ended in Stormwind.
+- A /reload or a quick relog no longer leaves a small dotted line on your
+  path. And when the game or your PC crashed, which loses what you did since
+  you last logged out, the map no longer draws a dotted line from where it
+  last saved you to where you came back: the path just stops and starts
+  again.
 
 ## 1.20.11
 
