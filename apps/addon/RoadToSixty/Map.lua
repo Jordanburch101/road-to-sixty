@@ -895,11 +895,55 @@ end
 local function StartWarmUp()
     state.merging = nil         -- a merge the old warm-up was doing is dropped with it
     state.warm = coroutine.create(function()
-        for k = 0, WARM_LODS do
-            GetLod(state, k, true)
+        if DETAIL.MERGE then
+            DETAIL.InOrder()
+            DETAIL.Merge()
+        else
+            for k = 0, WARM_LODS do
+                GetLod(state, k, true)
+            end
         end
-        if DETAIL.MERGE then DETAIL.Merge() end
     end)
+end
+
+-- Makes the player's levels 0 to WARM_LODS again in order, each from the one
+-- before, when they weren't made so, and puts them in place of those made.
+-- A level comes out a little differently by the levels made before it
+-- (PathShape.lua's MakeLevel): the map opened at a middle zoom makes that
+-- level first, from every point, and the finer ones keep its points. So
+-- merged levels kept between sessions (DETAIL.Cache) matched only when the
+-- map opened at the same zoom: four of nine didn't, in game (2026-11-20).
+-- Made in order, a level is the same whatever zoom the map opens at. They are
+-- made on a track of their own, so builds meanwhile use the levels already
+-- made, and points the player adds meanwhile are carried on to them at the
+-- end (LiveMap's ExtendLods). state.merging keeps those points from
+-- starting the warm-up over.
+DETAIL.InOrder = function()
+    local function Made()
+        for _, k in ipairs(state.lods.order or {}) do
+            local lod = state.lods[k]
+            if lod.keep or lod.from ~= (k > 0 and k - 1 or nil) then return false end
+        end
+        return true
+    end
+    -- Made in order so far, the rest are made after them; but a build may
+    -- make a coarser level meanwhile, which the ones after then keep.
+    if Made() then
+        for k = 0, WARM_LODS do GetLod(state, k, true) end
+        if Made() then return end
+    end
+    state.merging = true
+    local made = setmetatable({ lods = {}, n = state.n }, { __index = state })
+    for k = 0, WARM_LODS do
+        ns.MakeLevel(made, k, LodDistance(k), CHUNK, LOD_YIELD)
+    end
+    if state.n > made.n then
+        local from = made.n + 1
+        made.n = state.n
+        ns.LiveMap.ExtendLods(made, from, LodDistance, CHUNK)
+    end
+    state.lods, state.picked, state.built = made.lods, nil, nil
+    state.merging = nil
 end
 
 -- Merges the lines newer walks cover (PathShape.lua's MergeLines) into the
