@@ -9,6 +9,7 @@
     "workspace.ignoreDir": ["build", "dist"],
     "diagnostics.globals": [
         "RoadToSixtyDB",
+        "RoadToSixtyCache",
         "RoadToSixtyCharDB",
         "RoadToSixtySync",
         "BNGetInfo",
