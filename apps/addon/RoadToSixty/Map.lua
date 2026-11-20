@@ -269,9 +269,18 @@ local function ZoneName(mapID)
     return info and info.name or ""
 end
 
-local function ZoneAt(t)
+-- The zone at time t; with landed, where a jump at t landed: the zone is
+-- noted a moment after a login or a loading screen, so a jump from Redridge
+-- that landed in Stormwind read "Redridge to Redridge" (2026-11-10, a zone
+-- noted 2 seconds after). One noted within ns.LANDED_SECONDS is the landing's.
+local function ZoneAt(t, landed)
     local tl = state.timelines
-    return ZoneName(tl.zones[ns.LastIndex(tl.zoneTimes, t)])
+    local k = ns.LastIndex(tl.zoneTimes, t)
+    local after = tl.zoneTimes[k + 1]
+    if landed and after and after - t <= ns.LANDED_SECONDS then
+        k = k + 1
+    end
+    return ZoneName(tl.zones[k])
 end
 
 -- World setup, once per session -------------------------------------------------
@@ -3169,7 +3178,7 @@ local function ShowLineTooltip(spec)
             -- Point i starts the segment after the jump; i - 1 ends the one before.
             local style = Style.Jump(state.pj[i])
             GameTooltip:AddLine(style[1], style[2], style[3], style[4])
-            GameTooltip:AddLine(state.boats[i] or ("%s to %s"):format(ZoneAt(pt[i - 1]), ZoneAt(pt[i])), 1, 1, 1)
+            GameTooltip:AddLine(state.boats[i] or ("%s to %s"):format(ZoneAt(pt[i - 1]), ZoneAt(pt[i], true)), 1, 1, 1)
             -- A route taken more than once, as far as the replay has reached.
             local boat = state.seaTrips[i]
             local count, last = 0, i

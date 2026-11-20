@@ -15,6 +15,9 @@ broken and now works. Leave out internal changes. Sections are
 - A few deaths showed on the journey map as a teleport, or as logging in
   when you reloaded or relogged right after dying. They now show as deaths,
   past ones too.
+- A trip's tooltip on the journey map, and History, sometimes named the
+  zone you left as where you landed, such as "Redridge Mountains to
+  Redridge Mountains" for a trip that ended in Stormwind.
 
 ## 1.20.11
 
