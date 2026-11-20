@@ -12,6 +12,9 @@ broken and now works. Leave out internal changes. Sections are
 - Zooming the journey map in and out is smoother, and the map catches up
   faster after each zoom, most of all where many deaths, boat trips and
   dungeon trips cross the view.
+- A few deaths showed on the journey map as a teleport, or as logging in
+  when you reloaded or relogged right after dying. They now show as deaths,
+  past ones too.
 
 ## 1.20.11
 

@@ -171,14 +171,20 @@ end
 -- not a walk out. That holds even when the last sample outside was a ghost
 -- too (a corpse run back in, revived inside, then died again): ghosts are
 -- revived on entering, so a ghost coming out has died in there.
+-- A ghost where the player was last seen alive died in between, whatever
+-- else is pending: died, then a /reload or a relog, and back as a ghost at
+-- the graveyard was saved as the login (Jordan, 2026-11-05). After those,
+-- the last sample's mode is gone, and the last segment saved has it.
 local function JumpReason(mode, c, x, y, previousMode, previousC)
     local reason
-    if pending and GetTime() - pendingAt < PENDING_SECONDS then
-        reason = pending
-    elseif mode == "g" and leftInstance then
+    local segments = ns.char.segments
+    local before = previousMode or (segments[#segments] and segments[#segments].m)
+    if mode == "g" and leftInstance then
         reason = "di"
-    elseif mode == "g" and previousMode and previousMode ~= "g" then
+    elseif mode == "g" and before and before ~= "g" then
         reason = "d"
+    elseif pending and GetTime() - pendingAt < PENDING_SECONDS then
+        reason = pending
     elseif leftInstance then
         reason = entered and InstanceExit(entered.c, entered.x, entered.y, c, x, y) or "i"
     elseif previousC and c ~= previousC then
@@ -299,11 +305,23 @@ local function Sample()
     prev = prev or {}
     prev.c, prev.x, prev.y = c, x, y
 
+    -- Released at the corpse: the client can flag the ghost a sample before
+    -- it moves them to the graveyard, so the death opened a ghost segment of
+    -- one point at the corpse and the jump to the graveyard came after it
+    -- with no reason, drawn as an unknown teleport (three deaths in eleven
+    -- days, 2026-11-13 and 19). The death goes with the jump.
+    local carried
+    if current and jumped and mode == "g" and current.mode == "g"
+        and (current.seg.j == "d" or current.seg.j == "di")
+        and current.x == current.seg.x and current.y == current.seg.y then
+        carried, current.seg.j = current.seg.j, nil
+    end
     if current and (jumped or current.mode ~= mode or current.c ~= c) then
         CloseSegment()
     end
     if not current then
-        OpenSegment(mode, c, x, y, t, JumpReason(mode, c, x, y, previousMode, previousC))
+        local reason = JumpReason(mode, c, x, y, previousMode, previousC)
+        OpenSegment(mode, c, x, y, t, carried or reason)
         return
     end
     if pending and GetTime() - pendingAt >= CAST_LANDS_SECONDS then
@@ -400,6 +418,19 @@ end
 local PORTAL_WORLD = 530
 
 function Recorder:JumpReason(previous, path)
+    -- Released at the corpse a sample before the move to the graveyard, as
+    -- saved before Sample carried the death on (see there): a ghost segment
+    -- of one point with the death, then a ghost's jump with none. Read back,
+    -- that jump is the death.
+    if path.m == "g" and not path.j and previous and previous.m == "g" and #previous.x == 1
+        and (previous.j == "d" or previous.j == "di") then
+        return previous.j
+    end
+    -- A ghost after a segment alive died in between, though saved as a
+    -- login before JumpReason put the death first (see there).
+    if path.m == "g" and path.j == "l" and previous and previous.m ~= "g" then
+        return "d"
+    end
     if path.j == "b" and previous and (previous.c == PORTAL_WORLD or path.c == PORTAL_WORLD) then
         local last = #previous.x
         local docked = ns.Dock and last > 0 and path.x[1]

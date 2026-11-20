@@ -258,6 +258,39 @@ check(lastJump() == "di", "died again after a corpse run in, got " .. tostring(l
 game.ghost = false
 Tick()
 
+-- Released at the corpse: flagged a ghost a sample before being moved to
+-- the graveyard. The death goes with the jump to the graveyard, not with
+-- the one point at the corpse.
+game.ghost = true
+Tick()
+local atCorpse = #ns.char.segments
+game.x = game.x + 900
+Tick()
+check(lastJump() == "d", "released a sample before the move, the jump is the death, got " .. tostring(lastJump()))
+check(ns.char.segments[atCorpse].j == nil, "the point at the corpse is no death of its own")
+game.ghost = false
+Tick()
+-- Saved before that, the jump reads back as the death.
+-- Died, then a /reload or relog, and back as a ghost at the graveyard: the
+-- death, not the login (Jordan, 2026-11-05).
+Fire("PLAYER_ENTERING_WORLD", false, true)
+game.ghost = true
+game.x = game.x + 460
+Tick()
+check(lastJump() == "d", "died, reloaded, back as a ghost elsewhere: a death, got " .. tostring(lastJump()))
+game.ghost = false
+Tick()
+local function Ghost(j, xs) return { c = 0, m = "g", j = j, x = xs, y = { 0, 0 } } end
+check(Recorder:JumpReason({ c = 0, m = "w", x = { 0 }, y = { 0 } }, Ghost("l", { 460 })) == "d",
+    "saved as a login before, a ghost after a walk reads back as the death")
+check(Recorder:JumpReason(Ghost("d", { 0, 30 }), Ghost("l", { 400 })) == "l",
+    "a ghost logging in as a ghost far off stays a login")
+check(Recorder:JumpReason(Ghost("d", { 0 }), Ghost(nil, { 900 })) == "d",
+    "a ghost's jump after one point at the corpse is the death")
+check(Recorder:JumpReason(Ghost("di", { 0 }), Ghost(nil, { 900 })) == "di", "in an instance too")
+check(Recorder:JumpReason(Ghost("d", { 0, 30 }), Ghost(nil, { 900 })) == nil,
+    "a ghost who walked before the jump is not that")
+
 -- Old saves have such deaths as "i"; they decode as deaths.
 local old = Recorder:Decode({ m = "g", c = 0, t = 1, x = 0, y = 0, d = "", j = "i" })
 check(old.j == "di", "old death in an instance decodes as a death, got " .. tostring(old.j))
