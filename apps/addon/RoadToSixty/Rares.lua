@@ -24,9 +24,12 @@ local _, ns = ...
 --   within KILL_SECONDS after it, the name coming from the message; the
 --   message comes while the dying target still shows alive, and the target
 --   is cleared at once. A dead rare corpse clicked records one not caught
---   so (no XP, or killed while not targeted), named from the kill list when
---   it has exactly one kill in the last LOOKBACK seconds; looting it adds
---   the NPC ID.
+--   so (no XP, or killed while not targeted: a group's tank often has it),
+--   named from the kills since a rare of its classification and level was
+--   last seen alive (targeted, moused over or by its nameplate), or in the
+--   last LOOKBACK seconds unseen: the one name there this journey has
+--   killed only once, or a rare's known, as adds' names repeat. Looting it
+--   adds the NPC ID.
 -- A target the player was not tapped on (someone else's kill) is not one.
 
 local Rares = {}
@@ -37,7 +40,8 @@ local SEEN_SECONDS = 30 * 60    -- how long a rare seen counts
 local SAME_CORPSE = 10 * 60     -- a rare corpse inside an instance with the same classification
                                 -- and level this soon after one recorded is the same one
 local SAME_MOMENT = 0.2         -- a rare's own message and its target clearing come together
-local LOOKBACK = 15             -- seconds back the kill list may name a rare corpse clicked
+local LOOKBACK = 60             -- seconds back the kill list may name a rare corpse clicked, not seen alive
+local SIGHT_SECONDS = 5 * 60    -- a rare seen alive inside an instance this lately died after it
 
 local Log = function(...) ns.Journal:Log(...) end
 
@@ -45,7 +49,8 @@ local RARE = { rare = true, rareelite = true }
 
 local seen = {}     -- open world: GUID -> unit info (see Read) of a rare seen alive, with t = GetTime()
 local done = {}     -- GUID -> true once its kill is recorded this session
-local recent = {}   -- inside instances: { classification, level, GetTime() } of kills recorded
+local recent = {}   -- inside instances: { classification, level, GetTime(), name } of kills recorded
+local sighted = {}  -- inside instances: Sighting(info) -> ns.Now() a rare of it was last seen alive
 -- The rare targeted while alive (unit info), and a kill message waiting for
 -- its target to go: { name, GetTime() }. lost is the engaged rare whose
 -- target went with no message yet: { info, GetTime() }.
@@ -70,6 +75,12 @@ end
 -- { ns.Now(), classification, level, GUID or false }. special is the one
 -- targeted now, alive.
 local moments, special = {}, nil
+-- /rts rareprobe units (at the end): on while it watches the units besides
+-- the target, printing what it sees with the time.
+local unitWatch = false
+local function WatchPrint(text)
+    ns.Print(("%.1f %s"):format(GetTime(), text))
+end
 --@end-debug@
 
 local function Secret(v)
@@ -139,13 +150,13 @@ end
 -- Records a rare's kill: logs the first of each, counts the rest. info is
 -- its unit info, name the best name known for it, how as in the header.
 local function Record(info, name, how)
+    name = name or info.name
     if info.guid then
         if done[info.guid] then return end
         done[info.guid] = true
     else
-        recent[#recent + 1] = { info.class, info.level, GetTime() }
+        recent[#recent + 1] = { info.class, info.level, GetTime(), name }
     end
-    name = name or info.name
     --@debug@
     lastKill = ("%s, %s (%s)"):format(tostring(name), Recording() and "recorded" or "not recorded (seeded journey)", how)
     --@end-debug@
@@ -165,18 +176,44 @@ local function Record(info, name, how)
     return ns.char.events[#ns.char.events], key
 end
 
--- Inside an instance (no GUID), a rare corpse clicked has no name; if the
--- kill list has exactly one kill in the last LOOKBACK seconds, that was it
--- (several, say from area damage, could be any of them).
-local function RecentKillName()
+-- What a rare inside an instance is known by while its name is secret.
+local function Sighting(info)
+    return ("%s %s"):format(tostring(info.class), tostring(info.level))
+end
+
+-- Inside an instance (no GUID), a rare corpse clicked has no name. It died
+-- after it was last seen alive, or, not seen, in the last LOOKBACK seconds.
+-- Of the kills since, an add's name has been killed before (a pull's adds
+-- are of a few kinds, met all through the dungeon) and a rare's is new, or
+-- a rare's known. The one such name is it; several (say two new kinds in
+-- one pull) could be any, and none is no XP. A rare recorded lately has a
+-- name already, so it is none of them.
+local function CorpseName(info)
     if ns.view ~= ns.char then return end   -- Journal:Kills reads the journey shown
-    local name, count = nil, 0
-    local kills = ns.Journal:Kills()
-    for k = #kills, 1, -1 do
-        if kills[k].t < ns.Now() - LOOKBACK then break end
-        name, count = kills[k].name, count + 1
+    local since = sighted[Sighting(info)]
+    local from = since and since >= ns.Now() - SIGHT_SECONDS and since or ns.Now() - LOOKBACK
+    local taken = {}
+    for i = #recent, 1, -1 do
+        local r = recent[i]
+        if GetTime() - r[3] > SAME_CORPSE then break end
+        if r[4] then taken[r[4]] = true end
     end
-    return count == 1 and name or nil
+    local times, window = {}, {}
+    for _, kill in ipairs(ns.Journal:Kills()) do
+        local n = kill.name
+        if n then
+            times[n] = (times[n] or 0) + 1
+            if kill.t >= from then window[#window + 1] = n end
+        end
+    end
+    local name
+    for _, n in ipairs(window) do
+        if not taken[n] and (times[n] == 1 or KnownByName(n)) then
+            if name and name ~= n then return end
+            name = n
+        end
+    end
+    return name
 end
 
 -- Inside an instance (no GUID): whether a rare corpse is one recorded lately.
@@ -189,12 +226,16 @@ local function RecentCorpse(info)
     return false
 end
 
--- Remembers a rare seen alive in the open world, by GUID.
+-- Remembers a rare seen alive: in the open world by GUID, inside an
+-- instance by classification and level.
 function Rares:Look(unit)
     local info = UnitInfo(unit)
-    if info and info.guid and not info.dead and IsRare(info) then
+    if not (info and not info.dead and IsRare(info)) then return end
+    if info.guid then
         info.t = GetTime()
         seen[info.guid] = info
+    else
+        sighted[Sighting(info)] = ns.Now()
     end
 end
 
@@ -231,6 +272,9 @@ local function Rename(c, name)
     local rares, events = ns.char.rares, ns.char.events
     local entry = rares and rares[c.key]
     if not entry or entry[3] == name then return end
+    for _, r in ipairs(recent) do
+        if r[4] == entry[3] then r[4] = name end
+    end
     local known = KnownByName(name)
     if known then
         -- A rare killed before (by NPC ID or name): counted there, and this
@@ -277,7 +321,7 @@ function Rares:Target()
         engaged = rare
         self:Look("target")
     elseif not rare.tapDenied and (rare.guid or not RecentCorpse(rare)) then
-        Record(Seen(rare.guid) or rare, not rare.guid and RecentKillName() or nil, "c")
+        Record(Seen(rare.guid) or rare, not rare.guid and CorpseName(rare) or nil, "c")
     end
 end
 
@@ -300,6 +344,7 @@ function Rares:Killed(name)
     Trace(("kill %s (target %s, engaged %s)"):format(name, UnitExists("target") and "yes" or "none",
         engaged and "yes" or "no"))
     lastKill = name .. ", not a rare"
+    if unitWatch then WatchPrint("kill " .. name) end
     --@end-debug@
     -- Open world: a rare seen alive with this name.
     for guid, s in pairs(seen) do
@@ -555,10 +600,75 @@ ns.On("NAME_PLATE_UNIT_ADDED", function(unit) Rares:Look(unit) end)
 ns.On("LOOT_OPENED", function() Rares:Looted() end)
 
 --@debug@
+-- /rts rareprobe units [elites]: watches the units besides the target a
+-- rare could be seen on inside an instance (focus, the pet's and the party's
+-- targets, nameplates), to learn whether they could catch a kill when the
+-- rare is not the target (#34): each rare (or elite) appearing on one, what
+-- becomes of it (dead, gone, a nameplate removed), and which of its
+-- classification, level and death read as secret. Kill messages print as
+-- they come, to line the two up.
+local WATCH_TOKENS = { "target", "focus", "pettarget", "party1target", "party2target", "party3target", "party4target" }
+for i = 1, 40 do WATCH_TOKENS[#WATCH_TOKENS + 1] = "nameplate" .. i end
+local POLL_SECONDS = 0.1
+local watchElites, watchFrame = false, nil
+local watched = {}  -- token -> what was last printed of it
+
+-- A value from fn(unit) as text: "secret", "error" or the value.
+local function Raw(fn, unit)
+    local ok, value = pcall(fn, unit)
+    if not ok then return "error" end
+    if Secret(value) then return "secret" end
+    return tostring(value)
+end
+
+local function Poll()
+    for _, token in ipairs(WATCH_TOKENS) do
+        local state
+        if UnitExists(token) and not Read(UnitIsPlayer, token) then
+            local class = Raw(UnitClassification, token)
+            if RARE[class] or (watchElites and class == "elite") or class == "secret" or class == "error" then
+                state = ("%s level %s, dead %s"):format(class, Raw(UnitLevel, token), Raw(UnitIsDead, token))
+            end
+        end
+        local before = watched[token]
+        if state and state ~= before then
+            WatchPrint(("%s: %s"):format(token, state))
+        elseif before and not state then
+            WatchPrint(("%s: gone (was %s)"):format(token, before))
+        end
+        watched[token] = state
+    end
+end
+
+-- A nameplate removed: whether its unit still reads as dead at that moment.
+ns.On("NAME_PLATE_UNIT_REMOVED", function(unit)
+    if unitWatch and watched[unit] then
+        WatchPrint(("%s removed: dead %s"):format(unit, Raw(UnitIsDead, unit)))
+    end
+end)
+
+local function ToggleUnitWatch(elites)
+    unitWatch, watchElites = not unitWatch, elites
+    wipe(watched)
+    if not watchFrame then
+        watchFrame = CreateFrame("Frame")
+        local wait = 0
+        watchFrame:SetScript("OnUpdate", function(_, elapsed)
+            wait = wait - elapsed
+            if wait > 0 then return end
+            wait = POLL_SECONDS
+            ns.SafeCall(Poll)
+        end)
+    end
+    watchFrame:SetShown(unitWatch)
+    ns.Print("Watching units for rares" .. (elites and " and elites" or "") .. ": "
+        .. (unitWatch and "on (/rts rareprobe units again to stop)" or "off") .. ".")
+end
+
 -- /rts rareprobe: what the client tells about the target, and what the
 -- recorder made of the last target and kill. /rts rareprobe elites toggles
 -- test mode.
-ns.Command("rareprobe", "check rare mob detection; elites to count elites as rares (developer)", function(arg)
+ns.Command("rareprobe", "check rare mob detection; elites to count elites as rares, units to watch the party's targets and nameplates (developer)", function(arg)
     local P = ns.Print
     if arg == "elites" then
         testElites = not testElites
@@ -593,6 +703,10 @@ ns.Command("rareprobe", "check rare mob detection; elites to count elites as rar
             P(("%s: %s level %s, NPC %s -> %s"):format(date("%H:%M:%S", m[1]), m[2], tostring(m[3]),
                 npc or "(secret)", #near > 0 and table.concat(near, ", ") or "no kill recorded (no XP?)"))
         end
+        return
+    end
+    if arg == "units" or arg == "units elites" then
+        ToggleUnitWatch(arg == "units elites")
         return
     end
     if arg == "loot" then

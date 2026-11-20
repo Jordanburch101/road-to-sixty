@@ -1,8 +1,9 @@
 -- Offline test of Rares.lua with fake units, as Forever shows them: names
 -- and GUIDs readable in the open world, secret inside instances. Covers
 -- kills with XP and without (loot, corpse), adds, a target dropped, someone
--- else's kill, counting a rare killed again, and the NPC ID added by loot
--- inside an instance. Run with LuaJIT from the repo root:
+-- else's kill, counting a rare killed again, the NPC ID added by loot
+-- inside an instance, and a corpse there named from the kills since its rare
+-- was seen alive (#34). Run with LuaJIT from apps/addon:
 -- luajit tests/rares_test.lua
 
 local failures = 0
@@ -306,6 +307,87 @@ KillTarget("Overlord Ramtusk")
 now = now + 0.05
 Rares:Killed("Razorfen Handler")
 check(Count() == base + 5 and Last()[6] == "Overlord Ramtusk", "an add just after the rare's own clear renames nothing")
+
+-- A rare's corpse clicked, named from the kills since it was seen (#34) -----------
+
+-- A kill in the kill list now, as the XP message makes one.
+local function Kill(name)
+    kills[#kills + 1] = { t = now, xp = 59, name = name }
+    Rares:Killed(name)
+end
+local function ClickCorpse(class, level)
+    units.target = { nil, class, level, nil, true, false }
+    Fire("PLAYER_TARGET_CHANGED")
+    units.target = nil
+end
+
+-- The Stockade as seen on live: the rare seen by its nameplate, the player
+-- on an add when the rare's message comes (the tank has it), adds after,
+-- then its corpse clicked 17 seconds on: two kills in the seconds before, but
+-- only one name never killed before.
+base = Count()
+now = now + 20 * 60
+Kill("Defias Inmate")
+now = now + 5
+units.nameplate5 = { nil, "rareelite", 26, nil, false, false }
+Fire("NAME_PLATE_UNIT_ADDED", "nameplate5")
+units.nameplate5 = nil
+Target(nil, "normal", 25, nil)
+now = now + 9
+Kill("Bruegal Ironknuckle")
+check(Count() == base, "a rare not targeted at its message is not caught then")
+now = now + 11
+Kill("Defias Inmate")
+now = now + 3
+Kill("Defias Inmate")
+now = now + 3
+ClickCorpse("rareelite", 26)
+check(Count() == base + 1 and Last()[6] == "Bruegal Ironknuckle" and Last()[10] == "c",
+    "corpse named from the one new name since the rare was seen")
+
+-- Not seen alive, its corpse clicked 40 seconds after: the last minute's kills.
+now = now + 20 * 60
+Kill("Defias Inmate")
+now = now + 2
+Kill("Kam Deepfury")
+now = now + 10
+Kill("Defias Inmate")
+now = now + 30
+ClickCorpse("rareelite", 27)
+check(Count() == base + 2 and Last()[6] == "Kam Deepfury", "corpse not seen alive named from the last minute")
+
+-- Seen alive by mouseover, killed, and its corpse clicked two minutes on.
+now = now + 20 * 60
+units.mouseover = { nil, "rare", 23, nil, false, false }
+Fire("UPDATE_MOUSEOVER_UNIT")
+units.mouseover = nil
+now = now + 30
+Kill("Hamhock")
+now = now + 5
+Kill("Defias Inmate")
+now = now + 120
+ClickCorpse("rare", 23)
+check(Count() == base + 3 and Last()[6] == "Hamhock", "corpse named from the kills since it was seen, minutes back")
+
+-- Two new names since (a first pull of new adds): no guess.
+now = now + 20 * 60
+Kill("Defias Convict")
+now = now + 3
+Kill("Targorr the Dread")
+now = now + 10
+ClickCorpse("rareelite", 24)
+check(Count() == base + 4 and Last()[6] == nil, "two new names: left nameless")
+
+-- A rare recorded just before (with XP, targeted) is not another corpse's name.
+now = now + 20 * 60
+Kill("Defias Convict")
+Target(nil, "rare", 22, nil)
+kills[#kills + 1] = { t = now, xp = 90, name = "Bazil Thredd" }
+KillTarget("Bazil Thredd")
+check(Count() == base + 5 and Last()[6] == "Bazil Thredd", "a rare recorded by its message")
+now = now + 10
+ClickCorpse("rareelite", 28)
+check(Count() == base + 6 and Last()[6] == nil, "a rare recorded lately is not another corpse's name")
 
 if failures > 0 then
     print(("rares_test: %d failure(s)"):format(failures))

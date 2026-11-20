@@ -16,6 +16,9 @@ broken and now works. Leave out internal changes. Sections are
   updating, this takes a few seconds to show.
 - After zooming the journey map, the newest part of your path no longer
   goes missing until the replay moves.
+- A rare killed in a dungeon while someone else had it targeted, such as
+  your group's tank, now keeps its name in your History when you click
+  its corpse afterwards, instead of showing as "a rare elite".
 
 ## 1.20.10
 
