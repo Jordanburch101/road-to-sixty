@@ -110,13 +110,18 @@ function LiveMap.ExtendLods(track, from, lodDistance, chunk)
             count = count - 1
         end
         local kept, last = count, idx[count] or 0
+        -- Lines merged (MergeLines) stay merged, but for those the lines
+        -- carried on from here covered; new lines are drawn until the level
+        -- is merged again, as the newest are never covered.
+        local hid = lod.hid
+        if hid then ns.DropMergedAfter(hid, idx, kept + 1) end
         went[k] = last
         if last < least then least = last end
         local source = lod.from and lods[lod.from].idx
         local forced = lod.keep and lods[lod.keep].idx
         count = ns.KeepShape(track, source, source and After(source, last) or last + 1, source and #source or n,
             lodDistance(k), idx, count, forced, forced and After(forced, last))
-        ns.LodChunks(track, idx, count, lod.chunks, math.floor(kept / chunk) + 1, chunk)
+        ns.LodChunks(track, idx, count, lod.chunks, math.floor(kept / chunk) + 1, chunk, hid)
     end
     -- The coarsest level keeping each point, from the first that may have changed.
     for i = least + 1, n do top[i] = nil end

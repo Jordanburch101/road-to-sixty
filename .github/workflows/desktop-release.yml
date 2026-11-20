@@ -94,10 +94,13 @@ jobs:
           fi
           ls -l out
 
+      # Only publish below reads these; two weeks leaves time to re-run it
+      # without filling the artifact storage quota.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}
           path: out/
+          retention-days: 14
 
   publish:
     needs: build

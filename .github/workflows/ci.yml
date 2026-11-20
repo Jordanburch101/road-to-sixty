@@ -46,11 +46,13 @@ jobs:
         run: ./scripts/package.ps1
 
       # The artifact is zipped by GitHub, so upload the folder: the download
-      # then holds RoadToSixty/ ready to drop into Interface/AddOns.
+      # then holds RoadToSixty/ ready to drop into Interface/AddOns. Kept a
+      # week, as artifacts share one storage quota and a full one fails CI.
       - uses: actions/upload-artifact@v4
         with:
           name: RoadToSixty-${{ steps.package.outputs.version }}
           path: apps/addon/build/
+          retention-days: 7
 
   # The website: its tests, then a build with stand-in settings.
   web:
