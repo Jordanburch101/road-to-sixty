@@ -147,8 +147,8 @@ bunx tauri dev                      # the app with its window, using this PC's r
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports
 old LuaLS warnings in Parse.lua (69, 115), Probe.lua (52, 830), Sync.lua
-(107), Friends.lua (997) and tests/tally_test.lua; anything new is ours
-to fix.
+(132), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
+anything new is ours to fix.
 
 ## Release
 
@@ -247,7 +247,9 @@ Verified in game; trust these over web guides, and re-check after patches.
   alive, and the target is cleared at the same moment (no `UNIT_HEALTH`
   death is seen first).
 - Since client 1.60.1.71037 (2026-11-21), `GetRealmName()` and
-  `GetNormalizedRealmName()` return `""` (seen in game). Never save or key
+  `GetNormalizedRealmName()` return `""` (seen in game), `GetRealmID()`
+  returns 0, and `UnitFullName("player")` gives the first name and surname,
+  no realm, so nothing in the client names the realm. Never save or key
   anything by them directly: `ns.RealmName()` (Roster.lua) treats an empty
   realm as unknown and falls back to the realm saved for the character, then
   one of the account's characters on the same server (the GUID's server ID).

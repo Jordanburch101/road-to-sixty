@@ -83,8 +83,29 @@ function Sync.Apply(char, entry)
     return "merged", out
 end
 
+-- The sync folder's key for this character when its realm is not known:
+-- Forever's client 71037 gives none (Roster.lua's ns.RealmName), and
+-- 1.20.11 saved the name as "First Last-", which the app refuses to back
+-- up. The app's entry for the character names it with the realm: the one
+-- entry for this full name whose journey holds this journey's stamp (a
+-- namesake on another realm has another), or with no stamp the only entry
+-- for the name; nil if none or it can't tell.
+function Sync.KeyFor(chars, fullName, stamp)
+    local prefix, match, count = fullName .. "-", nil, 0
+    for key, entry in pairs(chars) do
+        if type(key) == "string" and #key > #prefix and key:sub(1, #prefix) == prefix then
+            local journey = type(entry) == "table" and entry.journey
+            if not stamp or (type(journey) == "string" and journey:find(stamp, 1, true)) then
+                match, count = key, count + 1
+            end
+        end
+    end
+    return count == 1 and match or nil
+end
+
 -- At login, first after Core: before the tidy, the roster and the recorder
 -- read the journey, and while the loading screen still hides any wait.
+-- With no realm known, the name is put right from the folder first (KeyFor).
 ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
@@ -94,6 +115,10 @@ ns.On("PLAYER_LOGIN", function()
     -- whose surname the client hadn't given yet. Another character's
     -- journey under that first name is told apart by its stamp in Apply.
     local chars = Sync.found and type(data.chars) == "table" and data.chars
+    if chars and not ns.Roster:Name() then
+        local key = Sync.KeyFor(chars, ns.Roster:FullName(), ns.char.journeyId)
+        if key then ns.char.rosterKey = key end
+    end
     local entry = chars and (chars[ns.Roster:Name()]
         or ns.Roster.FirstName and chars[ns.Roster:FirstName()])
     if not entry then return end

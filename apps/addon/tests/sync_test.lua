@@ -276,6 +276,37 @@ for _, broken in ipairs({ '{ ["x"] = os.exit() }', Write({ version = 3, events =
     check(#raised == 0 and ns.Sync:Describe():find("could not bring in version 7"), "and /rts check shows why: " .. ns.Sync:Describe())
 end
 
+-- No realm known (Forever's client 71037 gives an empty one, and 1.20.11
+-- saved the name as "First Last-"): the sync folder's key for this
+-- character gives it back, by the full name and the journey's stamp.
+do
+    local mine, theirs = "Player-1-0A:100", "Player-2-0B:100"
+    local function E(stamp) return { version = 3, journey = Write(Journey({ journeyId = stamp })) } end
+    local chars = { ["Ann Lee-Test Realm"] = E(mine), ["Ann Leeson-Test Realm"] = E(theirs), ["Bo Lee-Test Realm"] = E(theirs) }
+    check(Sync.KeyFor(chars, "Ann Lee", mine) == "Ann Lee-Test Realm", "the realm from the sync folder's key for this name and journey")
+    check(Sync.KeyFor(chars, "Ann Lee", "Player-1-0A:999") == nil, "not another journey's")
+    chars["Ann Lee-Other Realm"] = E(theirs)
+    check(Sync.KeyFor(chars, "Ann Lee", mine) == "Ann Lee-Test Realm", "a namesake on another realm, told apart by the stamp")
+    check(Sync.KeyFor(chars, "Ann Lee", nil) == nil, "with no stamp, two of the name can't be told apart")
+    chars["Ann Lee-Other Realm"] = nil
+    check(Sync.KeyFor(chars, "Ann Lee", nil) == "Ann Lee-Test Realm", "with no stamp, the only one of the name")
+    check(Sync.KeyFor({ ["Ann Lee-"] = E(mine) }, "Ann Lee", mine) == nil, "never a key with no realm")
+    -- At login, before the roster names it: the saved name is put right,
+    -- so the entry is found and brought in.
+    ns = Load(Journey({ journeyId = mine, rosterKey = "Ann Lee-", events = Session(1000) }),
+        { chars = { ["Ann Lee-Test Realm"] = E(mine) } })
+    -- As Roster.lua's with no realm from the client: the saved name's realm, if any.
+    ns.Roster.FullName = function() return "Ann Lee" end
+    ns.Roster.Name = function()
+        local realm = tostring(ns.char.rosterKey or ""):match("^[^%-]+%-(.+)$")
+        return realm and ("Ann Lee-" .. realm)
+    end
+    ns.Roster.FirstName = function() return nil end
+    Login()
+    check(ns.Sync.status and ns.Sync.status.version == 3,
+        "a name saved without its realm is put right at login, and its entry brought in")
+end
+
 if failures == 0 then
     io.write("Sync tests passed.\n")
 else

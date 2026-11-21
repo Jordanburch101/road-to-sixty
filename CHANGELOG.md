@@ -15,9 +15,10 @@ broken and now works. Leave out internal changes. Sections are
 
 ### Fixed
 - Since the Forever client update of 21 November, the game no longer
-  gives add-ons the realm's name, and journeys played on your other PCs
-  stopped coming in through the Road to Sixty app. They come in again, and
-  a character saved without its realm since the update gets it back.
+  gives add-ons the realm's name, so the Road to Sixty app stopped backing
+  up your characters and journeys from your other PCs stopped coming in.
+  Both work again: log in and out once with this version, and a character
+  saved without its realm since the update gets it back.
 - Zooming the journey map in and out is smoother, and the map catches up
   faster after each zoom, most of all where many deaths, boat trips and
   dungeon trips cross the view.

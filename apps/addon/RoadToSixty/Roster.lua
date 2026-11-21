@@ -51,8 +51,10 @@ local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded
 -- below as "First Last-", which the app can't read, so the merged journey
 -- from another PC was never found in the sync folder. An empty realm is no
 -- answer: then this character's realm as last saved (its roster entry, or
--- its saved name), then that of a character of this account on the same
--- server (the GUID's server ID, "Player-<server>-<id>").
+-- its saved name, which Sync.lua puts right from the sync folder when
+-- 1.20.11 saved it empty), then that of a character of this account on
+-- the same server (the GUID's server ID, "Player-<server>-<id>"), never a
+-- beta or stress test one (Gone), whose realms are gone.
 function ns.RealmName()
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
@@ -65,7 +67,7 @@ function ns.RealmName()
     local server = guid and guid:match("^Player%-(%d+)%-")
     for _, e in pairs(server and roster or {}) do
         if type(e) == "table" and type(e.guid) == "string" and e.guid:match("^Player%-(%d+)%-") == server
-            and type(e.realm) == "string" and e.realm ~= "" then
+            and type(e.realm) == "string" and e.realm ~= "" and not Roster:Gone(e) then
             return e.realm
         end
     end
