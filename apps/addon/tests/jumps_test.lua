@@ -52,7 +52,8 @@ local T = {
     state = { jumps = {}, jumpSets = {}, pj = {}, seaTrips = {}, zoom = 8, lineZoom = 8, journey = {} },
     ns = {
         PathLines = { FitJump = function() return 0, false end },
-        Portals = { Begin = function() end, Add = function() end, Finish = function() end },
+        -- Counts the builds that lay the portals out (Begin).
+        Portals = { Begin = function(self) self.laid = (self.laid or 0) + 1 end, Add = function() end, Finish = function() end },
     },
     Style = {},
     pathLayer = layer, overlay = layer,
@@ -191,9 +192,12 @@ local at4 = state.jumps[1]
 check(#state.jumpSets == 3 and #frames == 3, "a frame for each of three doublings, got " .. #frames)
 local set4 = state.jumpSet
 calls, made = 0, 0
+local laid = T.ns.Portals.laid
 BuildJumps(Drawn({ A, B, C }), 99, 8.5, AREA)
 check(state.jumps[1] == kept and made == 0, ("back in a kept doubling, its arcs are as they were (made %d)"):format(made))
 check(calls <= 6, "back in a kept doubling, only frames and icons are called, got " .. calls)
+-- The portals are the doubling's just left, so they are laid out again.
+check(T.ns.Portals.laid == laid + 1, "back in a kept doubling, the portals are laid out again")
 check(state.jumpSet.frame.shown and not set4.frame.shown, "the doubling's frame is shown, the one left hidden")
 BuildJumps(Drawn({ A, B, C }), 99, 4.2, AREA)
 check(state.jumps[1] == at4, "and the other way, the doubling below's arcs are kept too")

@@ -116,10 +116,11 @@ local HOVER_WIDTH = 5
 -- Other characters from the roster: class icons at their last position and,
 -- if turned on per character, their path in class colour.
 local OTHER = {
-    -- The same detail (DETAIL) and width as the journey shown; class colours
-    -- and ALPHA tell them apart. ponytail: each ticked path can cost MAX_LINES
-    -- lines a zoom frame; give them budgets of their own if several stutter.
+    -- The same detail (DETAIL) and width as the journey shown, within a
+    -- share of its line budget (SHARE); class colours and ALPHA tell them
+    -- apart.
     LINE_WIDTH = LINE_WIDTH,
+    SHARE = 0.3,                -- of the line budget for each path (DETAIL.Lines): 3000 of 10000
     -- Alpha by movement mode, and for jumps (arcs, or a plain line when the
     -- reason is unknown, as between walking and a flight).
     ALPHA = { w = 0.55, t = 0.3, g = 0.2, j = 0.3 },
@@ -1316,23 +1317,29 @@ end
 -- to gain from a pan, so it waits for the view to leave the whole area
 -- (NeedsPathBuild).
 DETAIL.Lines = function(track, x1, y1, x2, y2, near, z)
+    -- Other characters' paths keep the budget all paths had before the
+    -- player's own went to 10000 (OTHER.SHARE): each one ticked costs its
+    -- lines on every zoom frame.
+    local share = track == state and 1 or OTHER.SHARE
+    local maxLines, nearLines = math.floor(MAX_LINES * share), math.floor(DETAIL.NEAR_LINES * share)
+    local farLines = math.floor(DETAIL.FAR_LINES * share)
     -- The levels picked last time, as far above the finest the zoom allows.
     local finest = math.max(0, math.ceil(math.log(MAX_ZOOM / z) / math.log(LOD_STEP) - 1e-9))
     local last = track.picked or {}
     track.picked = last
-    local lod, list, k = PickLod(track, x1, y1, x2, y2, z, MAX_LINES, last[1] and finest + last[1])
+    local lod, list, k = PickLod(track, x1, y1, x2, y2, z, maxLines, last[1] and finest + last[1])
     last[1] = k - finest
     local far
     -- Where the whole area fits at the finest level the zoom allows, or as
     -- finely as the near part would, it is all drawn at that level.
     if k > finest then
         local nearLod, _, nearK, nearCount = PickLod(track, near[1], near[2], near[3], near[4], z,
-            DETAIL.NEAR_LINES, last[2] and finest + last[2], nil, nil, true)
+            nearLines, last[2] and finest + last[2], nil, nil, true)
         last[2] = nearK - finest
         if nearK < k then
             -- The rest gets what the near part left, counting only its
             -- lines outside the near part: the finest level that fits.
-            local room = math.max(DETAIL.FAR_LINES, math.floor((MAX_LINES - nearCount) * DETAIL.FAR_SHARE))
+            local room = math.max(farLines, math.floor((maxLines - nearCount) * DETAIL.FAR_SHARE))
             local _, _, farK, farCount = PickLod(track, x1, y1, x2, y2, z, room,
                 finest + (last[3] or last[1]), nearK + 1, near)
             last[3] = farK - finest
@@ -1340,11 +1347,11 @@ DETAIL.Lines = function(track, x1, y1, x2, y2, near, z)
             -- part makes way, and failing that all of it is drawn at the
             -- one level it fits at, so the budget holds.
             local fits = true
-            if nearCount + farCount > MAX_LINES then
+            if nearCount + farCount > maxLines then
                 local count
                 nearLod, _, nearK, count = PickLod(track, near[1], near[2], near[3], near[4], z,
-                    MAX_LINES - farCount, nearK + 1, nearK + 1, nil, true, farK)
-                fits = count + farCount <= MAX_LINES
+                    maxLines - farCount, nearK + 1, nearK + 1, nil, true, farK)
+                fits = count + farCount <= maxLines
             end
             if fits and nearK < farK then
                 lod, k, far = nearLod, nearK, farK
@@ -1568,8 +1575,7 @@ DETAIL.JumpSet = function(zb)
         return
     end
     if current then
-        current.jumps, current.cache, current.key = state.jumps, state.jumpCache, state.jumpKey
-        current.ribbons = state.ribbons
+        current.jumps, current.cache, current.ribbons = state.jumps, state.jumpCache, state.ribbons
         current.frame:Hide()
         for _, jump in ipairs(state.jumps) do
             if jump.icon then
@@ -1612,11 +1618,15 @@ DETAIL.JumpSet = function(zb)
                 jumpIcons[#jumpIcons + 1] = jump.icon
             end
         end
-        set.jumps, set.cache, set.key, set.ribbons, set.spares = {}, nil, nil, {}, true
+        set.jumps, set.cache, set.ribbons, set.spares = {}, nil, {}, true
     end
     set.zb = zb
     state.jumpSet = set
-    state.jumps, state.jumpCache, state.jumpKey, state.ribbons = set.jumps, set.cache, set.key, set.ribbons
+    -- Not its key: a build drawn from the same as the last one returns early
+    -- (BuildJumps), but the portals (Portals.lua, laid out at each build) are
+    -- the doubling's just left. Without the key the build lays them out
+    -- again, and keeps every arc drawn from the same with no call on it.
+    state.jumps, state.jumpCache, state.jumpKey, state.ribbons = set.jumps, set.cache, nil, set.ribbons
     set.frame:Show()
     -- Its arcs are sized for the zoom they were left at: UpdateVisible
     -- sizes those in view at once, as if they had come into view, and fades
@@ -2083,7 +2093,7 @@ local function BuildOtherTracks()
 end
 
 -- Lines of the other characters' tracks in the area, built with the player's
--- own path and the same way (DETAIL.Lines), each within MAX_LINES:
+-- own path and the same way (DETAIL.Lines), each within OTHER.SHARE of MAX_LINES:
 -- every line costs time on each zoom frame. Jumps with a known reason are arcs, made of
 -- several lines that share the jump's spec fields.
 -- Returns whether moving the view could draw any of them more finely (DETAIL.Lines).
@@ -4249,9 +4259,6 @@ function Map:OpenNow(keep)
     SetPlaying(false)
     drag, state.following = nil, nil
     state.built, state.jumpKey = nil, nil
-    for _, set in ipairs(state.jumpSets) do
-        set.key = nil
-    end
     state.cur = state.n
     if state.clock then
         Together.End()
