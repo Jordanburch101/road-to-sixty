@@ -115,7 +115,10 @@ ns.On("PLAYER_LOGIN", function()
     -- whose surname the client hadn't given yet. Another character's
     -- journey under that first name is told apart by its stamp in Apply.
     local chars = Sync.found and type(data.chars) == "table" and data.chars
-    if chars and not ns.Roster:Name() then
+    -- (Not by the realm's ruleset, Roster.lua's last resort: the folder's
+    -- name comes first.)
+    local known = ns.RealmName and ns.RealmName(true) or not ns.RealmName and ns.Roster:Name()
+    if chars and not known then
         local key = Sync.KeyFor(chars, ns.Roster:FullName(), ns.char.journeyId)
         if key then ns.char.rosterKey = key end
     end

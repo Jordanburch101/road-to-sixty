@@ -54,23 +54,47 @@ local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded
 -- its saved name, which Sync.lua puts right from the sync folder when
 -- 1.20.11 saved it empty), then that of a character of this account on
 -- the same server (the GUID's server ID, "Player-<server>-<id>"), never a
--- beta or stress test one (Gone), whose realms are gone.
-function ns.RealmName()
+-- beta or stress test one (Gone), whose realms are gone, nor one named by
+-- its ruleset (below).
+-- Last, unless noRules, the realm's ruleset as its name (RulesRealm): a
+-- character made since 71037 on a server with none of the account's
+-- others has nothing else. Full names are unique across the region, so it
+-- tells the character apart as well. Such a character keeps that name
+-- (ns.char.realmByRules) should the client give realms again: the server
+-- and the app know it by it. Returns the realm and "rules" for those.
+local function RulesRealm()
+    local rules, rule = C_GameRules, Enum and Enum.GameRule
+    if not (rules and rules.IsGameRuleActive and rule and rule.PvPRuleset and rule.RPRuleset) then return nil end
+    local function On(id)
+        local ok, on = pcall(rules.IsGameRuleActive, id)
+        return ok and on == true
+    end
+    if rule.HardcoreRuleset and On(rule.HardcoreRuleset) then return "Hardcore" end
+    local rp, pvp = On(rule.RPRuleset), On(rule.PvPRuleset)
+    -- As the app shows Forever's realms (realmName in its format.ts).
+    return rp and pvp and "RP-PvP" or rp and "RP" or pvp and "PvP" or "Normal"
+end
+function ns.RealmName(noRules)
+    local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
+    if saved and ns.char.realmByRules then return saved, "rules" end
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
     local guid = ns.PlayerGUID and ns.PlayerGUID()
     local roster = ns.db and ns.db.roster or {}
     local own = guid and roster[guid]
-    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" then return own.realm end
-    local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
+    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" and not own.realmByRules then
+        return own.realm
+    end
     if saved then return saved end
     local server = guid and guid:match("^Player%-(%d+)%-")
     for _, e in pairs(server and roster or {}) do
         if type(e) == "table" and type(e.guid) == "string" and e.guid:match("^Player%-(%d+)%-") == server
-            and type(e.realm) == "string" and e.realm ~= "" and not Roster:Gone(e) then
+            and type(e.realm) == "string" and e.realm ~= "" and not e.realmByRules and not Roster:Gone(e) then
             return e.realm
         end
     end
+    local rules = not noRules and RulesRealm()
+    if rules then return rules, "rules" end
 end
 
 -- The name the app, the sync server and the sync folder know the character
@@ -192,7 +216,8 @@ ns.On("PLAYER_LOGIN", function()
     roster[key] = entry
     -- (RealmName reads the entry and the name as saved, so both are set
     -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
-    local realm = ns.RealmName()
+    local realm, how = ns.RealmName()
+    if how == "rules" then ns.char.realmByRules, entry.realmByRules = true, true end
     ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
     entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()
     entry.realm = realm or entry.realm

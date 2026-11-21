@@ -283,6 +283,45 @@ Fire("PLAYER_LOGIN")
 Fire("PLAYER_LOGOUT")
 check(ns.RealmName() == nil and Roster:Name() == nil and ns.char.rosterKey == "Eagin-" and Roster:Key() == GUID,
     "a realm nothing knows: no name made, the saved one kept, got " .. tostring(ns.char.rosterKey))
+-- Where the client has game rules (Forever, ids as seen in game): the
+-- realm's ruleset names it as a last resort, and the character keeps that
+-- name even once the client gives realms again.
+local active = { [213] = true }
+C_GameRules = { IsGameRuleActive = function(id) return active[id] == true end }
+Enum = { GameRule = { PvPRuleset = 213, RPRuleset = 214, HardcoreRuleset = 10 } }
+check(select(2, ns.RealmName()) == "rules" and ns.RealmName(true) == nil, "the ruleset only as a last resort")
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmByRules and e.realmByRules,
+    "nothing else known: named by the realm's ruleset, got " .. tostring(ns.char.rosterKey))
+active = { [213] = true, [214] = true }
+check(ns.RealmName() == "PvP", "once named by it, the name stays")
+active = { [214] = true }
+ns.char.realmByRules, e.realmByRules = nil, nil
+ns.char.rosterKey, e.realm = "Eagin-", ""
+check(ns.RealmName() == "RP", "an RP realm")
+active = { [213] = true, [214] = true }
+check(ns.RealmName() == "RP-PvP", "an RP-PvP realm, as the app shows it")
+active = { [10] = true, [213] = true }
+check(ns.RealmName() == "Hardcore", "Hardcore before the rest")
+active = {}
+check(ns.RealmName() == "Normal", "and a normal realm")
+active = { [213] = true }
+Fire("PLAYER_LOGIN")
+GetRealmName = function() return "Test" end
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-PvP" and ns.RealmName() == "PvP",
+    "named by its ruleset, it keeps that name when the client gives realms again, got " .. tostring(ns.char.rosterKey))
+-- Another character of the account on that server doesn't take it from
+-- this one: it would be no ruleset name of its own, and change later.
+GetRealmName = function() return "" end
+local SIB = "Player-1-00000077"
+ns.db.roster[SIB] = { guid = SIB, realm = "Test", name = "Sib", realmByRules = true }
+ns.char.realmByRules, ns.char.rosterKey = nil, "Eagin-"
+e.realm, e.realmByRules = "", nil
+check(select(2, ns.RealmName()) == "rules", "a realm named by its ruleset is not borrowed")
+ns.db.roster[SIB] = nil
+C_GameRules, Enum = nil, nil
+ns.char.realmByRules, e.realmByRules = nil, nil
 ns.db.roster[ALT] = nil
 for key, entry in pairs(others) do ns.db.roster[key] = entry end
 GetRealmName = function() return "Test" end
