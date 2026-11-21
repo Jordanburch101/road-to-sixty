@@ -254,6 +254,41 @@ UnitGUID = function() return nil end
 check(Roster:Key() == "Eagin-Test" and Roster:Name() == "Eagin-Test", "Name-Realm when the client gives no GUID")
 UnitGUID = function() return GUID end
 
+-- Forever's client 71037 gives an empty realm (2026-11-21). It is no realm:
+-- the one saved stands, and the names the app reads keep it.
+GetRealmName = function() return "" end
+Fire("PLAYER_LOGIN")
+check(ns.RealmName() == "Test" and ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
+    ("an empty realm from the client: the realm as saved, got %s, %s"):format(tostring(ns.char.rosterKey), tostring(e.realm)))
+Fire("PLAYER_LOGOUT")
+check(ns.char.rosterKey == "Eagin-Test", "and the logout keeps it, got " .. tostring(ns.char.rosterKey))
+-- 1.20.11 saved it empty everywhere: a character of the account on the same
+-- server (the GUID's server ID) gives it back.
+local ALT = "Player-1-00000099"
+ns.db.roster[ALT] = { guid = ALT, realm = "Test", name = "Alt" }
+e.realm, ns.char.rosterKey = "", "Eagin-"
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
+    "an empty realm saved before is put right from a character on the same server, got " .. tostring(ns.char.rosterKey))
+-- Nothing knows it (the only other character on another server): the
+-- names saved are kept, never made emptier.
+ns.db.roster[ALT] = nil
+local others = {}
+for key, entry in pairs(ns.db.roster) do
+    if key ~= GUID then others[key], ns.db.roster[key] = entry, nil end
+end
+ns.db.roster[ALT] = { guid = "Player-2-00000099", realm = "Test", name = "Alt" }
+e.realm, ns.char.rosterKey = "", "Eagin-"
+Fire("PLAYER_LOGIN")
+Fire("PLAYER_LOGOUT")
+check(ns.RealmName() == nil and Roster:Name() == nil and ns.char.rosterKey == "Eagin-" and Roster:Key() == GUID,
+    "a realm nothing knows: no name made, the saved one kept, got " .. tostring(ns.char.rosterKey))
+ns.db.roster[ALT] = nil
+for key, entry in pairs(others) do ns.db.roster[key] = entry end
+GetRealmName = function() return "Test" end
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test", "a realm from the client again puts both right")
+
 -- On Forever, characters last seen before launch (the beta's, the stress
 -- test's) are not listed; this one always is, and friends are not touched.
 ns.Forever = true

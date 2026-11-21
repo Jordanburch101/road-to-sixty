@@ -45,23 +45,53 @@ local VERSION = 5           -- of the copy's layout; ns.char.rosterBuilt holds t
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
 
+-- The realm's name, or nil when nothing knows it. Forever's client
+-- 1.60.1.71037 (2026-11-21) returns "" from GetRealmName and
+-- GetNormalizedRealmName (seen in game), and 1.20.11 saved that: the name
+-- below as "First Last-", which the app can't read, so the merged journey
+-- from another PC was never found in the sync folder. An empty realm is no
+-- answer: then this character's realm as last saved (its roster entry, or
+-- its saved name), then that of a character of this account on the same
+-- server (the GUID's server ID, "Player-<server>-<id>").
+function ns.RealmName()
+    local realm = GetRealmName()
+    if type(realm) == "string" and realm ~= "" then return realm end
+    local guid = ns.PlayerGUID and ns.PlayerGUID()
+    local roster = ns.db and ns.db.roster or {}
+    local own = guid and roster[guid]
+    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" then return own.realm end
+    local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
+    if saved then return saved end
+    local server = guid and guid:match("^Player%-(%d+)%-")
+    for _, e in pairs(server and roster or {}) do
+        if type(e) == "table" and type(e.guid) == "string" and e.guid:match("^Player%-(%d+)%-") == server
+            and type(e.realm) == "string" and e.realm ~= "" then
+            return e.realm
+        end
+    end
+end
+
 -- The name the app, the sync server and the sync folder know the character
 -- by: its full name (FullName) and realm, "First Last-Realm" on Forever,
--- "Name-Realm" elsewhere. Up to 1.20.5 it was the first name alone, so on
+-- "Name-Realm" elsewhere; nil when the realm is not known (RealmName), so
+-- the name saved is kept. Up to 1.20.5 it was the first name alone, so on
 -- Forever an account's characters sharing one were one character to the
 -- server, all but the newest listed as earlier journeys and never synced to
 -- another PC (#141). The server finds a journey's row under either name by
 -- its stamp, and renames it to the full one.
 function Roster:Name()
-    return self:FullName() .. "-" .. GetRealmName()
+    local realm = ns.RealmName()
+    return realm and (self:FullName() .. "-" .. realm)
 end
 
 -- Name-Realm by the first name alone: the roster's keys before GUIDs, the
 -- key when the client gives no GUID, and the sync folder's name for a
--- journey whose server row hasn't taken the full name yet (Sync.lua).
+-- journey whose server row hasn't taken the full name yet (Sync.lua). Nil
+-- when the realm is not known.
 local function FirstName()
     -- The undisguised name, as FullName takes it.
-    return ((UnitNameUnmodified or UnitName)("player")) .. "-" .. GetRealmName()
+    local realm = ns.RealmName()
+    return realm and (((UnitNameUnmodified or UnitName)("player")) .. "-" .. realm)
 end
 function Roster:FirstName()
     return FirstName()
@@ -82,9 +112,10 @@ function Roster:FullName()
     return name
 end
 
--- This character's roster key: its GUID, or Name-Realm if the client gives none.
+-- This character's roster key: its GUID, or Name-Realm if the client gives
+-- none (the name alone if nothing knows the realm either).
 function Roster:Key()
-    return ns.PlayerGUID() or FirstName()
+    return ns.PlayerGUID() or FirstName() or (UnitNameUnmodified or UnitName)("player")
 end
 
 -- A copy of a recorder segment, from its decoded path: the open segment's
@@ -150,15 +181,19 @@ ns.On("PLAYER_LOGIN", function()
     ns.db.roster = roster
     -- An entry from before GUIDs, keyed by the first name, moves to the GUID.
     local key, old = Roster:Key(), FirstName()
-    if key ~= old and roster[old] and not roster[old].guid then
+    if old and key ~= old and roster[old] and not roster[old].guid then
         roster[old] = nil
         ns.db.showPaths[key], ns.db.showPaths[old] = ns.db.showPaths[old], nil
         if ns.db.hidden then ns.db.hidden[old] = nil end   -- this character is never hidden
     end
     entry = roster[key] or {}
     roster[key] = entry
-    ns.char.rosterKey = Roster:Name()
-    entry.name, entry.realm, entry.guid = Roster:FullName(), GetRealmName(), ns.PlayerGUID()
+    -- (RealmName reads the entry and the name as saved, so both are set
+    -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
+    local realm = ns.RealmName()
+    ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
+    entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()
+    entry.realm = realm or entry.realm
     entry.class = select(2, UnitClass("player"))
     ns.char.class = entry.class
     entry.level = UnitLevel("player")
@@ -185,7 +220,7 @@ ns.On("PLAYER_LOGOUT", function()
     -- uploads the file this writes, and the roster's copy is made from it.
     -- Never back to the first name, should the surname be missing now.
     local name = Roster:Name()
-    if name ~= FirstName() or not ns.char.rosterKey then ns.char.rosterKey = name end
+    if name and (name ~= FirstName() or not ns.char.rosterKey) then ns.char.rosterKey = name end
     Roster:Sync()
     entry.name = Roster:FullName()
     entry.seen = ns.Now()

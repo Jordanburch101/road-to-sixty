@@ -517,6 +517,17 @@ local function SquashRealm(realm)
     return (realm:gsub("[%s%-]", ""):lower())
 end
 
+-- This realm's name, or nil (Roster.lua's ns.RealmName: Forever's client
+-- 71037 gives an empty one). A realm saved empty is none.
+local function MyRealm()
+    if ns.RealmName then return ns.RealmName() end
+    local realm = GetRealmName()
+    return realm ~= "" and realm or nil
+end
+local function Realm(realm)
+    return realm ~= "" and realm or nil
+end
+
 -- Forever gives every character a surname, and a full name is unique across
 -- the region: a friend is "First Last", and needs no realm to tell them apart.
 local function Surnames()
@@ -588,7 +599,8 @@ local function SenderKey(sender)
     if not name then return nil end
     local key = Key(name)
     local rec = ns.db.friends[key]
-    if rec and realm ~= "" and SquashRealm(realm) ~= SquashRealm(rec.realm or GetRealmName()) then return nil end
+    local theirs = rec and (Realm(rec.realm) or MyRealm())
+    if theirs and realm ~= "" and SquashRealm(realm) ~= SquashRealm(theirs) then return nil end
     return key, name
 end
 
@@ -686,7 +698,7 @@ local function Apply(rec, b)
     -- A character new to their roster has no last position yet.
     local last = segments[#segments]
     if last and not rec.c then rec.c, rec.x, rec.y = last.c, last.x, last.y end
-    rec.realm = rec.realm or GetRealmName()
+    rec.realm = Realm(rec.realm) or MyRealm()
     rec.seen = ns.Now()
     rec.key, rec.friend = rec.guid, true
     return true
@@ -1213,7 +1225,7 @@ function Friends:Add(name)
     end
     local key = Key(name)
     if not ns.db.friends[key] then
-        ns.db.friends[key] = { name = name, realm = GetRealmName() }
+        ns.db.friends[key] = { name = name, realm = MyRealm() }
         ns.Print(name .. " is now a friend of every character on this account. Once they add you too, "
             .. "whichever of your characters is online shares its journey with them.")
     end
@@ -1436,7 +1448,7 @@ ns.Command("friendprobe", "check how names reach the friends sync (developer): /
             -- Matched as if this character were a friend, for a moment.
             local mine, held = Key(me), ns.db.friends[Key(me)]
             for _, got in ipairs(probe.got) do
-                ns.db.friends[mine] = held or { name = me, realm = GetRealmName() }
+                ns.db.friends[mine] = held or { name = me, realm = MyRealm() }
                 local key = SenderKey(got.sender)
                 ns.db.friends[mine] = held
                 ns.Print(("Came back for %q as sender %q: %s."):format(got.form, got.sender,

@@ -246,6 +246,11 @@ Verified in game; trust these over web guides, and re-check after patches.
   names the mob in plain text; it comes while the dying target still shows
   alive, and the target is cleared at the same moment (no `UNIT_HEALTH`
   death is seen first).
+- Since client 1.60.1.71037 (2026-11-21), `GetRealmName()` and
+  `GetNormalizedRealmName()` return `""` (seen in game). Never save or key
+  anything by them directly: `ns.RealmName()` (Roster.lua) treats an empty
+  realm as unknown and falls back to the realm saved for the character, then
+  one of the account's characters on the same server (the GUID's server ID).
 - `GetServerTime()` exists and returns Unix seconds (1 second from `time()`
   on a PC with a correct clock). Every saved time uses it through `ns.Now()`,
   so journeys from PCs with different clocks line up; use `ns.Now()`, never
