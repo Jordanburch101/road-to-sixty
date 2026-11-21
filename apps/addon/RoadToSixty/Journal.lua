@@ -224,6 +224,14 @@ local function Snapshot(level, partial)
     }
 end
 
+-- A zone is noted once the client puts the player in it, at a login or a
+-- loading screen's end, which can come seconds after the path's first point
+-- there (2 seconds after a login, 2026-11-10). A zone noted this soon after
+-- a jump is where the jump landed (the map's and History's "A to B"). Kept
+-- short: a jump that landed in the zone it left notes none, and a border
+-- crossed seconds after would be taken for the landing's.
+ns.LANDED_SECONDS = 5
+
 local function CheckZone()
     if IsInInstance() then return end
     local mapID = C_Map.GetBestMapForUnit("player")

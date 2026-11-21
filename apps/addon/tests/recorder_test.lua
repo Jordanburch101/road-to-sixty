@@ -258,6 +258,43 @@ check(lastJump() == "di", "died again after a corpse run in, got " .. tostring(l
 game.ghost = false
 Tick()
 
+-- Released at the corpse: flagged a ghost a sample before being moved to
+-- the graveyard. The death goes with the jump to the graveyard, not with
+-- the one point at the corpse.
+game.ghost = true
+Tick()
+local atCorpse = #ns.char.segments
+game.x = game.x + 900
+Tick()
+check(lastJump() == "d", "released a sample before the move, the jump is the death, got " .. tostring(lastJump()))
+check(ns.char.segments[atCorpse].j == nil, "the point at the corpse is no death of its own")
+game.ghost = false
+Tick()
+-- Saved before that, the jump reads back as the death.
+-- Died, then a /reload or relog, and back as a ghost at the graveyard: the
+-- death, not the login (Jordan, 2026-11-05).
+Fire("PLAYER_ENTERING_WORLD", false, true)
+game.ghost = true
+game.x = game.x + 460
+Tick()
+check(lastJump() == "d", "died, reloaded, back as a ghost elsewhere: a death, got " .. tostring(lastJump()))
+game.ghost = false
+Tick()
+local function Ghost(j, xs) return { c = 0, m = "g", j = j, x = xs, y = { 0, 0 } } end
+check(Recorder:JumpReason({ c = 0, m = "w", x = { 0 }, y = { 0 } }, Ghost("l", { 460 })) == "d",
+    "saved as a login before, a ghost after a walk reads back as the death")
+check(Recorder:JumpReason({ c = 0, m = "w", x = { 0 }, y = { 0 } }, Ghost("l", { 4000 })) == "l",
+    "but not one far beyond any graveyard")
+check(Recorder:JumpReason({ c = 1, m = "w", x = { 0 }, y = { 0 } }, Ghost("l", { 460 })) == "l",
+    "nor one on another continent")
+check(Recorder:JumpReason(Ghost("d", { 0, 30 }), Ghost("l", { 400 })) == "l",
+    "a ghost logging in as a ghost far off stays a login")
+check(Recorder:JumpReason(Ghost("d", { 0 }), Ghost(nil, { 900 })) == "d",
+    "a ghost's jump after one point at the corpse is the death")
+check(Recorder:JumpReason(Ghost("di", { 0 }), Ghost(nil, { 900 })) == "di", "in an instance too")
+check(Recorder:JumpReason(Ghost("d", { 0, 30 }), Ghost(nil, { 900 })) == nil,
+    "a ghost who walked before the jump is not that")
+
 -- Old saves have such deaths as "i"; they decode as deaths.
 local old = Recorder:Decode({ m = "g", c = 0, t = 1, x = 0, y = 0, d = "", j = "i" })
 check(old.j == "di", "old death in an instance decodes as a death, got " .. tostring(old.j))
@@ -299,6 +336,13 @@ check(Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "l", 2000, 0)), "a flig
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "t", "h", 2000, 0)), "a flight after a hearthstone does not")
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(0, "w", nil, 20, 0)), "landing does not continue the flight")
 check(not Recorder:Continues(P(0, "t", nil, 0, 0), P(1, "t", nil, 20, 0)), "a flight on another continent does not")
+-- A /reload or relog a few yards on carries the path on; one far off, or
+-- in another mode, or a walk with no login, does not.
+check(Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", "l", 12, 0)), "a login a few yards on continues the walk")
+check(JR(P(0, "w", nil, 0, 0), P(0, "w", "l", 12, 0)) == nil, "and is no jump")
+check(not Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", "l", 400, 0)), "a login far off does not")
+check(not Recorder:Continues(P(0, "w", nil, 0, 0), P(0, "w", nil, 12, 0)), "a break with no login does not")
+check(not Recorder:Continues(P(0, "g", nil, 0, 0), P(0, "w", "l", 12, 0)), "a login in another mode does not")
 
 -- 11. Bends keep their shape (#57). Each walk is a segment of its own, one
 -- position a sample, rounded to whole yards as the game's are.
@@ -503,6 +547,47 @@ Fire("PLAYER_ENTERING_WORLD", false, true)
 game.x = game.x + 20
 Tick()
 check(lastJump() == "l", "a reload outdoors is the login, got " .. tostring(lastJump()))
+
+-- A real /reload or relog starts the recorder afresh, with no last sample
+-- (the PLAYER_ENTERING_WORLD above keeps it): only the segment saved last
+-- says the player was alive. So these come last, as Recorder is loaded again.
+local function Reload()
+    Fire("PLAYER_LOGOUT")
+    for k in pairs(handlers) do handlers[k] = nil end
+    assert(loadfile("RoadToSixty/Recorder.lua"))("RoadToSixty", ns)
+    Fire("PLAYER_LOGIN")
+    Fire("PLAYER_ENTERING_WORLD", false, true)
+end
+local function Walk()
+    game.ghost = false
+    for _ = 1, 20 do
+        game.x = game.x + 2
+        Tick()
+    end
+end
+Walk()
+Reload()
+game.ghost = true
+game.x = game.x + 460
+Tick()
+check(lastJump() == "d", "died, relogged, back as a ghost at the graveyard: a death, got " .. tostring(lastJump()))
+-- Far beyond any graveyard from where the path stopped, or on another
+-- continent: the play between was never saved (a crash, or another PC's
+-- not synced yet), so a login, not a death drawn across it.
+Walk()
+Reload()
+game.ghost = true
+game.x = game.x + 4000
+Tick()
+check(lastJump() == "l", "back as a ghost far off after a crash: a login, got " .. tostring(lastJump()))
+Walk()
+Reload()
+game.ghost, game.c = true, 1
+game.x = game.x + 460
+Tick()
+check(lastJump() == "l", "back as a ghost on another continent: a login, got " .. tostring(lastJump()))
+game.c = 0
+Walk()
 
 check(ns.errors.count == 0, "no errors while recording")
 

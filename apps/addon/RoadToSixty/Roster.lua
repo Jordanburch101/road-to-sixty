@@ -45,23 +45,91 @@ local VERSION = 5           -- of the copy's layout; ns.char.rosterBuilt holds t
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
 
+-- The realm's name, or nil when nothing knows it, and how it was found.
+-- Forever's client 1.60.1.71037 (2026-11-21) returns "" from GetRealmName
+-- and GetNormalizedRealmName (seen in game), and 1.20.11 saved that: the
+-- name below as "First Last-", which the app refuses to back up. An empty
+-- realm is no answer. In order:
+--   kept    the saved name's realm, for a character whose realm is kept
+--           (ns.char.realmKept) whatever the client says: one named by its
+--           ruleset, or by the server's name for it in the sync folder
+--           (Sync.lua). The server and the app know it by that name, and
+--           another PC may have named it so.
+--   (nil)   the client's realm; then this character's realm as last saved
+--           (its roster entry, or its saved name); then that of a character
+--           of this account on the same server (the GUID's server ID,
+--           "Player-<server>-<id>"), never a beta or stress test one (Gone),
+--           whose realms are gone, nor one named by its ruleset.
+--   rules   unless noRules, the realm's ruleset as its name (RulesRealm): a
+--           character made since 71037 on a server with none of the
+--           account's others has nothing else. Full names are unique across
+--           the region, so it tells the character apart as well.
+-- With noRules, a ruleset's name is never the answer, kept or saved: Friends
+-- and Duels compare realms, and a ruleset names none.
+-- The names RulesRealm gives. No realm the client names is one of these
+-- (Forever's look like "CAMWOW US1 Realm 1 PvE"), so a realm saved as one
+-- was named by its ruleset.
+local RULES = { Hardcore = true, ["RP-PvP"] = true, RP = true, PvP = true, Normal = true }
+function ns.IsRulesRealm(realm)
+    return RULES[realm] == true
+end
+local function RulesRealm()
+    local rules, rule = C_GameRules, Enum and Enum.GameRule
+    if not (rules and rules.IsGameRuleActive and rule and rule.PvPRuleset and rule.RPRuleset) then return nil end
+    local function On(id)
+        local ok, on = pcall(rules.IsGameRuleActive, id)
+        return ok and on == true
+    end
+    if rule.HardcoreRuleset and On(rule.HardcoreRuleset) then return "Hardcore" end
+    local rp, pvp = On(rule.RPRuleset), On(rule.PvPRuleset)
+    -- As the app shows Forever's realms (realmName in its format.ts).
+    return rp and pvp and "RP-PvP" or rp and "RP" or pvp and "PvP" or "Normal"
+end
+function ns.RealmName(noRules)
+    local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
+    if saved and noRules and RULES[saved] then saved = false end
+    if saved and ns.char.realmKept then return saved, "kept" end
+    local realm = GetRealmName()
+    if type(realm) == "string" and realm ~= "" then return realm end
+    local guid = ns.PlayerGUID and ns.PlayerGUID()
+    local roster = ns.db and ns.db.roster or {}
+    local own = guid and roster[guid]
+    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" and not RULES[own.realm] then
+        return own.realm
+    end
+    if saved then return saved end
+    local server = guid and guid:match("^Player%-(%d+)%-")
+    for _, e in pairs(server and roster or {}) do
+        if type(e) == "table" and type(e.guid) == "string" and e.guid:match("^Player%-(%d+)%-") == server
+            and type(e.realm) == "string" and e.realm ~= "" and not RULES[e.realm] and not Roster:Gone(e) then
+            return e.realm
+        end
+    end
+    local rules = not noRules and RulesRealm()
+    if rules then return rules, "rules" end
+end
+
 -- The name the app, the sync server and the sync folder know the character
 -- by: its full name (FullName) and realm, "First Last-Realm" on Forever,
--- "Name-Realm" elsewhere. Up to 1.20.5 it was the first name alone, so on
+-- "Name-Realm" elsewhere; nil when the realm is not known (RealmName), so
+-- the name saved is kept. Up to 1.20.5 it was the first name alone, so on
 -- Forever an account's characters sharing one were one character to the
 -- server, all but the newest listed as earlier journeys and never synced to
 -- another PC (#141). The server finds a journey's row under either name by
 -- its stamp, and renames it to the full one.
 function Roster:Name()
-    return self:FullName() .. "-" .. GetRealmName()
+    local realm = ns.RealmName()
+    return realm and (self:FullName() .. "-" .. realm)
 end
 
 -- Name-Realm by the first name alone: the roster's keys before GUIDs, the
 -- key when the client gives no GUID, and the sync folder's name for a
--- journey whose server row hasn't taken the full name yet (Sync.lua).
+-- journey whose server row hasn't taken the full name yet (Sync.lua). Nil
+-- when the realm is not known.
 local function FirstName()
     -- The undisguised name, as FullName takes it.
-    return ((UnitNameUnmodified or UnitName)("player")) .. "-" .. GetRealmName()
+    local realm = ns.RealmName()
+    return realm and (((UnitNameUnmodified or UnitName)("player")) .. "-" .. realm)
 end
 function Roster:FirstName()
     return FirstName()
@@ -82,9 +150,10 @@ function Roster:FullName()
     return name
 end
 
--- This character's roster key: its GUID, or Name-Realm if the client gives none.
+-- This character's roster key: its GUID, or Name-Realm if the client gives
+-- none (the name alone if nothing knows the realm either).
 function Roster:Key()
-    return ns.PlayerGUID() or FirstName()
+    return ns.PlayerGUID() or FirstName() or (UnitNameUnmodified or UnitName)("player")
 end
 
 -- A copy of a recorder segment, from its decoded path: the open segment's
@@ -150,15 +219,23 @@ ns.On("PLAYER_LOGIN", function()
     ns.db.roster = roster
     -- An entry from before GUIDs, keyed by the first name, moves to the GUID.
     local key, old = Roster:Key(), FirstName()
-    if key ~= old and roster[old] and not roster[old].guid then
+    if old and key ~= old and roster[old] and not roster[old].guid then
         roster[old] = nil
         ns.db.showPaths[key], ns.db.showPaths[old] = ns.db.showPaths[old], nil
         if ns.db.hidden then ns.db.hidden[old] = nil end   -- this character is never hidden
     end
     entry = roster[key] or {}
     roster[key] = entry
-    ns.char.rosterKey = Roster:Name()
-    entry.name, entry.realm, entry.guid = Roster:FullName(), GetRealmName(), ns.PlayerGUID()
+    -- (RealmName reads the entry and the name as saved, so both are set
+    -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
+    local realm, how = ns.RealmName()
+    -- Named by its ruleset: kept so (and never lent to another character,
+    -- as its name shows; 1.20.12's test builds marked it realmByRules).
+    if how == "rules" then ns.char.realmKept = true end
+    entry.realmByRules = nil
+    ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
+    entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()
+    entry.realm = realm or entry.realm
     entry.class = select(2, UnitClass("player"))
     ns.char.class = entry.class
     entry.level = UnitLevel("player")
@@ -185,7 +262,7 @@ ns.On("PLAYER_LOGOUT", function()
     -- uploads the file this writes, and the roster's copy is made from it.
     -- Never back to the first name, should the surname be missing now.
     local name = Roster:Name()
-    if name ~= FirstName() or not ns.char.rosterKey then ns.char.rosterKey = name end
+    if name and (name ~= FirstName() or not ns.char.rosterKey) then ns.char.rosterKey = name end
     Roster:Sync()
     entry.name = Roster:FullName()
     entry.seen = ns.Now()

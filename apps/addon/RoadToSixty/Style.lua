@@ -26,7 +26,7 @@ local GHOST_COLOR = { 0.85, 0.85, 0.95, 0.5 }
 
 -- Jumps between segments are drawn as arcs, styled by why the path jumped
 -- (seg.j in Recorder.lua): { label, r, g, b, a, style = "dots", "dash",
--- "solid" or "ribbon", icon = atlas at the top of the arc, dot / spacing =
+-- "solid", "ribbon" or "none" (not drawn at all), icon = atlas at the top of the arc, dot / spacing =
 -- dot size and spacing in screen pixels, start / finish = texture at the
 -- arc's start or end and its size, bend = how far the arc bends (JUMP_ARC
 -- if unset), plain = a "solid" line as thin as the path with no outline }.
@@ -62,7 +62,12 @@ local JUMP_STYLES = {
     b = { "Boat or zeppelin", 0.9, 0.1, 0.08, 1, style = "dots", dot = 6, spacing = 11, replay = 2.5, pace = 60,
         start = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\ring", 18 },
         finish = { "Interface\\AddOns\\" .. addonName .. "\\Travel\\cross", 22 } },
-    l = { "Logged in", 1, 1, 1, 0.7, style = "dots", instant = true },
+    -- Logged in far from where the path stopped: a stretch the game never
+    -- saved (a crash loses the session, as it saves only at a logout or a
+    -- /reload) or played with the addon off. Nothing between: the path
+    -- stops and starts again (Jordan's pick in /rts swatch, 2026-11-20). A
+    -- login a few yards on carries the path on instead (Recorder:Continues).
+    l = { "Not recorded", 1, 1, 1, 0.7, style = "none", instant = true },
     -- A teleport the recorder could not name (Recorder:JumpReason): portals
     -- in a pale gold, apart from the hearthstone's green and the mage's blue.
     u = { "Teleported", 1, 0.85, 0.55, 1, style = "portal", pace = 80 },

@@ -152,21 +152,27 @@ end
 -- Sizes a jump's pieces for zoom z: lines by their width, dots by their
 -- size, both in screen pixels (Map.lua's JumpLine and JumpDot), and works
 -- out which rows of dots the zoom shows. A dot whose row changed fades to
--- it, or with snap (the jump was out of view) takes it at once. Returns how
--- many pieces it resized and whether any dot is fading.
-function PathLines.FitJump(jump, z, snap)
-    local fading = false
-    for _, part in ipairs(jump.parts) do
+-- it, or with snap (the jump was out of view) takes it at once. Only pieces
+-- from to to, if given (a chunk in view, Map.lua's AddPart). Each piece
+-- keeps the zoom it is sized for (sz) and the alpha set on it (alphaSet),
+-- so Map.lua sets neither again on reuse. Returns how many pieces it
+-- resized and whether any dot is fading.
+function PathLines.FitJump(jump, z, snap, from, to)
+    local fading, parts = false, jump.parts
+    for k = from or 1, to or #parts do
+        local part = parts[k]
         if part.width then
             part:SetThickness(part.width / z)
+            part.sz = z
         elseif part.size then
             part:SetSize(part.size / z, part.size / z)
+            part.sz = z
             if part.fade then
                 local target = part.fade * z >= part.fadePx and 1 or 0
                 if target ~= part.target then
                     part.target = target
                     if snap then
-                        part.alpha = target
+                        part.alpha, part.alphaSet = target, target
                         part:SetAlpha(target)
                     else
                         fading = true
@@ -175,9 +181,12 @@ function PathLines.FitJump(jump, z, snap)
             end
         end
     end
-    jump.tz = z
-    count.thick = count.thick + #jump.parts
-    return #jump.parts, fading
+    local n = (to or #parts) - (from or 1) + 1
+    if not from then
+        jump.tz = z
+    end
+    count.thick = count.thick + n
+    return n, fading
 end
 
 -- Shows or hides a line, unless it already is. One shown inside fit

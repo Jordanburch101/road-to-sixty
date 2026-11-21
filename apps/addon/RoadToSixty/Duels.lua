@@ -61,8 +61,13 @@ local function Same(a, b)
     if type(a) ~= "string" or type(b) ~= "string" then return false end
     a, b = Key(a), Key(b)
     if a == b then return true end
+    -- (empty on Forever's client 71037: then the realm as Roster.lua knows it)
     local realm = GetNormalizedRealmName and GetNormalizedRealmName()
-    if type(realm) ~= "string" then return false end
+    if (type(realm) ~= "string" or realm == "") and ns.RealmName then
+        realm = ns.RealmName(true)   -- never a ruleset: no message names that
+        realm = realm and realm:gsub("%-", "")   -- as normalized: no hyphens (spaces go in Key)
+    end
+    if type(realm) ~= "string" or realm == "" then return false end
     realm = Key(realm)
     return a .. "-" .. realm == b or b .. "-" .. realm == a
 end

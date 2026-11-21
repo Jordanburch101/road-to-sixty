@@ -171,14 +171,26 @@ end
 -- not a walk out. That holds even when the last sample outside was a ghost
 -- too (a corpse run back in, revived inside, then died again): ghosts are
 -- revived on entering, so a ghost coming out has died in there.
+-- A ghost where the player was last seen alive died in between, whatever
+-- else is pending: died, then a /reload or a relog, and back as a ghost at
+-- the graveyard was saved as the login (Jordan, 2026-11-05). After those,
+-- the last sample's mode is gone, and the last segment saved has it, if the
+-- ghost is near where that segment stopped (GhostNear). Further away, the
+-- play between was never saved (a crash, or another PC's not synced yet):
+-- a login, which the map leaves out, not a death drawn across it.
 local function JumpReason(mode, c, x, y, previousMode, previousC)
     local reason
-    if pending and GetTime() - pendingAt < PENDING_SECONDS then
-        reason = pending
-    elseif mode == "g" and leftInstance then
+    local segments = ns.char.segments
+    local before = previousMode
+    if not before and mode == "g" and #segments > 0 and Recorder:GhostNear(Recorder:GetPath(#segments), c, x, y) then
+        before = segments[#segments].m
+    end
+    if mode == "g" and leftInstance then
         reason = "di"
-    elseif mode == "g" and previousMode and previousMode ~= "g" then
+    elseif mode == "g" and before and before ~= "g" then
         reason = "d"
+    elseif pending and GetTime() - pendingAt < PENDING_SECONDS then
+        reason = pending
     elseif leftInstance then
         reason = entered and InstanceExit(entered.c, entered.x, entered.y, c, x, y) or "i"
     elseif previousC and c ~= previousC then
@@ -299,11 +311,23 @@ local function Sample()
     prev = prev or {}
     prev.c, prev.x, prev.y = c, x, y
 
+    -- Released at the corpse: the client can flag the ghost a sample before
+    -- it moves them to the graveyard, so the death opened a ghost segment of
+    -- one point at the corpse and the jump to the graveyard came after it
+    -- with no reason, drawn as an unknown teleport (three deaths in eleven
+    -- days, 2026-11-13 and 19). The death goes with the jump.
+    local carried
+    if current and jumped and mode == "g" and current.mode == "g"
+        and (current.seg.j == "d" or current.seg.j == "di")
+        and current.x == current.seg.x and current.y == current.seg.y then
+        carried, current.seg.j = current.seg.j, nil
+    end
     if current and (jumped or current.mode ~= mode or current.c ~= c) then
         CloseSegment()
     end
     if not current then
-        OpenSegment(mode, c, x, y, t, JumpReason(mode, c, x, y, previousMode, previousC))
+        local reason = JumpReason(mode, c, x, y, previousMode, previousC)
+        OpenSegment(mode, c, x, y, t, carried or reason)
         return
     end
     if pending and GetTime() - pendingAt >= CAST_LANDS_SECONDS then
@@ -381,9 +405,22 @@ end
 -- screen, so the next one starts hundreds of yards on, and read back as a
 -- teleport (Jordan, 2026-10-25; that reload was saved with no reason at
 -- all). The map draws it as one flight.
+-- A login within LOGIN_JOIN yards of where the path stopped, in the same
+-- mode, carries it on too: a /reload or a relog moves the player a few
+-- yards at most, and each was drawn as a login's dotted arc (362 of one
+-- journey's 374 logins were under 20 yards, Jordan, 2026-11-20).
+local LOGIN_JOIN = 50
 function Recorder:Continues(previous, path)
-    return previous ~= nil and previous.m == "t" and path.m == "t" and previous.c == path.c
-        and (path.j == nil or path.j == "l") and #previous.x > 0 and path.x[1] ~= nil
+    if previous == nil or previous.c ~= path.c or #previous.x == 0 or path.x[1] == nil then
+        return false
+    end
+    if path.j == "l" and previous.m == path.m then
+        local last = #previous.x
+        if Dist(previous.x[last], previous.y[last], path.x[1], path.y[1]) <= LOGIN_JOIN then
+            return true
+        end
+    end
+    return previous.m == "t" and path.m == "t" and (path.j == nil or path.j == "l")
 end
 
 -- The last position of a decoded path, or nil.
@@ -399,7 +436,33 @@ end
 -- a teleport ("u"), not a boat's red dots (Jordan, 2026-10-25).
 local PORTAL_WORLD = 530
 
+-- True when a ghost at c, x, y is near enough to where the decoded path
+-- stopped to have died there and been sent to the graveyard: on its
+-- continent, within GRAVEYARD_DIST yards. Of 44 deaths on Jordan's
+-- characters (2026-11-21), the ghost came back at most 1540 yards from
+-- where the player was last alive, half within 600.
+local GRAVEYARD_DIST = 2500
+function Recorder:GhostNear(path, c, x, y)
+    local last = path and #path.x or 0
+    return last > 0 and x ~= nil and path.c == c
+        and Dist(path.x[last], path.y[last], x, y) <= GRAVEYARD_DIST
+end
+
 function Recorder:JumpReason(previous, path)
+    -- Released at the corpse a sample before the move to the graveyard, as
+    -- saved before Sample carried the death on (see there): a ghost segment
+    -- of one point with the death, then a ghost's jump with none. Read back,
+    -- that jump is the death.
+    if path.m == "g" and not path.j and previous and previous.m == "g" and #previous.x == 1
+        and (previous.j == "d" or previous.j == "di") then
+        return previous.j
+    end
+    -- A ghost near where a segment alive stopped died in between, though
+    -- saved as a login before JumpReason put the death first (see there).
+    if path.m == "g" and path.j == "l" and previous and previous.m ~= "g"
+        and self:GhostNear(previous, path.c, path.x[1], path.y[1]) then
+        return "d"
+    end
     if path.j == "b" and previous and (previous.c == PORTAL_WORLD or path.c == PORTAL_WORLD) then
         local last = #previous.x
         local docked = ns.Dock and last > 0 and path.x[1]

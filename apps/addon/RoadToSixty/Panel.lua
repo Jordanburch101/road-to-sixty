@@ -464,8 +464,13 @@ local function ZoneTimeline()
             times[#times + 1], zones[#zones + 1] = e[1], e[6]
         end
     end
-    return function(t)
-        return zones[ns.LastIndex(times, t)]
+    -- With landed, where a jump at t landed (Map.lua's ZoneAt says why).
+    return function(t, landed)
+        local k = ns.LastIndex(times, t)
+        if landed and times[k + 1] and times[k + 1] - t <= ns.LANDED_SECONDS then
+            k = k + 1
+        end
+        return zones[k]
     end
 end
 
@@ -508,7 +513,7 @@ local function BuildHistory()
         local jump = TRAVEL_JUMPS[reason]
         if jump then
             local from = ZoneName(zoneAt(previous and previous.t[#previous.t] or startT))
-            local to = ZoneName(zoneAt(startT))
+            local to = ZoneName(zoneAt(startT, true))
             local route = from == to and ("In " .. to) or (from .. " to " .. to)
             -- Boats are named after their docks when both ends are near one.
             if path.j == "b" and previous then

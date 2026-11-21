@@ -276,6 +276,90 @@ for _, broken in ipairs({ '{ ["x"] = os.exit() }', Write({ version = 3, events =
     check(#raised == 0 and ns.Sync:Describe():find("could not bring in version 7"), "and /rts check shows why: " .. ns.Sync:Describe())
 end
 
+-- Forever's client 71037 gives no realm, so a PC names a character by what
+-- it has: the name 1.20.11 saved as "First Last-", another character's
+-- realm on that server, or the realm's ruleset. When the sync folder has no
+-- entry under that name, the entry holding this character's journey (its
+-- stamp's GUID) gives the realm the server knows it by, kept from then on.
+do
+    local Sync = ns.Sync   -- (the ns given IsRulesRealm below)
+    local GUID, OTHER = "Player-1-0A", "Player-2-0B"
+    local function E(stamp, extra)
+        local j = Journey({ journeyId = stamp, events = Session(1000) })
+        for k, v in pairs(extra or {}) do j[k] = v end
+        return { version = 3, journey = Write(j) }
+    end
+    local chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100"), ["Bo Lee-Test Realm"] = E(OTHER .. ":100") }
+    check(Sync.RealmFor(chars, GUID) == "Test Realm", "the realm of the entry holding this character's journey")
+    check(Sync.RealmFor(chars, "Player-3-0C") == nil, "none for a character the folder hasn't")
+    check(Sync.RealmFor(chars, nil) == nil, "none with no GUID")
+    -- Another journey of the same character (an erase) is still this character's.
+    check(Sync.RealmFor({ ["Ann-Test Realm"] = E(GUID .. ":999") }, GUID) == "Test Realm", "any journey of this character, by any name")
+    -- Another character's journey mentioning this GUID (a group) is not this one's.
+    check(Sync.RealmFor({ ["Bo Lee-Test Realm"] = E(OTHER .. ":1", { events = { { 1, "grp", GUID .. ":5" } } }) }, GUID) == nil,
+        "only the journey's own stamp counts")
+    -- Two PCs that each uploaded under their own name: both see both rows
+    -- and pick the same, a realm's own name before a ruleset's, then the
+    -- first in byte order.
+    ns.IsRulesRealm = function(realm) return realm == "PvP" end
+    chars["Ann Lee-PvP"] = E(GUID .. ":100")
+    check(Sync.RealmFor(chars, GUID) == "Test Realm", "a realm's own name before a ruleset's")
+    check(Sync.RealmFor({ ["Ann Lee-PvP"] = E(GUID .. ":100") }, GUID) == "PvP", "a ruleset's when it is all there is")
+    chars["Ann Lee-Other Realm"] = E(GUID .. ":200")
+    check(Sync.RealmFor(chars, GUID) == "Other Realm", "two realms' own names: the first")
+    chars["Ann Lee-Other Realm"], chars["Ann Lee-PvP"] = nil, nil
+    check(Sync.RealmFor({ ["Ann Lee-"] = E(GUID .. ":100") }, GUID) == nil, "never a key with no realm")
+
+    -- At login, before the roster names it. This PC names it by another
+    -- character's realm on the server ("Other Realm", as Roster.lua's
+    -- RealmName would), but the server knows it as "Ann Lee-Test Realm":
+    -- the folder's realm is taken and kept, so the entry is found and
+    -- brought in and the next upload goes to the same row.
+    UnitGUID = function() return GUID end
+    ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", events = Session(1000) }),
+        { chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+    ns.Roster = {
+        FullName = function() return "Ann Lee" end,
+        Name = function()
+            local saved = tostring(ns.char.rosterKey or ""):match("^[^%-]+%-(.+)$")
+            return "Ann Lee-" .. (ns.char.realmKept and saved or "Other Realm")
+        end,
+        FirstName = function() return nil end,
+    }
+    Login()
+    check(ns.Sync.status and ns.Sync.status.version == 3, "the folder's entry under another realm is found and brought in")
+    check(ns.char.rosterKey == "Ann Lee-Test Realm" and ns.char.realmKept, "and its realm kept, got " .. tostring(ns.char.rosterKey))
+    -- Found under this PC's own name, nothing changes.
+    ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", events = Session(1000) }),
+        { chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+    ns.Roster = {
+        FullName = function() return "Ann Lee" end,
+        Name = function() return "Ann Lee-Test Realm" end,
+        FirstName = function() return nil end,
+    }
+    Login()
+    check(ns.Sync.status and not ns.char.realmKept, "an entry under this PC's name keeps nothing")
+    -- Split already: this PC named her by the ruleset and uploaded so, the
+    -- other by the realm's own name. This PC's own entry is there, but it
+    -- takes the other's, so both upload to one row from then on.
+    local function Named(rosterKey)
+        ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = rosterKey, realmKept = true, events = Session(1000) }),
+            { chars = { ["Ann Lee-PvP"] = E(GUID .. ":100"), ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+        ns.IsRulesRealm = function(realm) return realm == "PvP" end
+        ns.Roster = {
+            FullName = function() return "Ann Lee" end,
+            Name = function() return ns.char.rosterKey end,
+            FirstName = function() return nil end,
+        }
+        Login()
+        return ns.char.rosterKey
+    end
+    check(Named("Ann Lee-PvP") == "Ann Lee-Test Realm" and ns.char.realmKept,
+        "split across two PCs: the ruleset's name gives way, got " .. tostring(ns.char.rosterKey))
+    check(Named("Ann Lee-Test Realm") == "Ann Lee-Test Realm", "and the realm's own name stays")
+    UnitGUID = function() return nil end
+end
+
 if failures == 0 then
     io.write("Sync tests passed.\n")
 else

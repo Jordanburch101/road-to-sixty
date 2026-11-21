@@ -254,6 +254,86 @@ UnitGUID = function() return nil end
 check(Roster:Key() == "Eagin-Test" and Roster:Name() == "Eagin-Test", "Name-Realm when the client gives no GUID")
 UnitGUID = function() return GUID end
 
+-- Forever's client 71037 gives an empty realm (2026-11-21). It is no realm:
+-- the one saved stands, and the names the app reads keep it.
+GetRealmName = function() return "" end
+Fire("PLAYER_LOGIN")
+check(ns.RealmName() == "Test" and ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
+    ("an empty realm from the client: the realm as saved, got %s, %s"):format(tostring(ns.char.rosterKey), tostring(e.realm)))
+Fire("PLAYER_LOGOUT")
+check(ns.char.rosterKey == "Eagin-Test", "and the logout keeps it, got " .. tostring(ns.char.rosterKey))
+-- 1.20.11 saved it empty everywhere: a character of the account on the same
+-- server (the GUID's server ID) gives it back.
+local ALT = "Player-1-00000099"
+ns.db.roster[ALT] = { guid = ALT, realm = "Test", name = "Alt" }
+e.realm, ns.char.rosterKey = "", "Eagin-"
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
+    "an empty realm saved before is put right from a character on the same server, got " .. tostring(ns.char.rosterKey))
+-- Nothing knows it (the only other character on another server): the
+-- names saved are kept, never made emptier.
+ns.db.roster[ALT] = nil
+local others = {}
+for key, entry in pairs(ns.db.roster) do
+    if key ~= GUID then others[key], ns.db.roster[key] = entry, nil end
+end
+ns.db.roster[ALT] = { guid = "Player-2-00000099", realm = "Test", name = "Alt" }
+e.realm, ns.char.rosterKey = "", "Eagin-"
+Fire("PLAYER_LOGIN")
+Fire("PLAYER_LOGOUT")
+check(ns.RealmName() == nil and Roster:Name() == nil and ns.char.rosterKey == "Eagin-" and Roster:Key() == GUID,
+    "a realm nothing knows: no name made, the saved one kept, got " .. tostring(ns.char.rosterKey))
+-- Where the client has game rules (Forever, ids as seen in game): the
+-- realm's ruleset names it as a last resort, and the character keeps that
+-- name even once the client gives realms again.
+local active = { [213] = true }
+C_GameRules = { IsGameRuleActive = function(id) return active[id] == true end }
+Enum = { GameRule = { PvPRuleset = 213, RPRuleset = 214, HardcoreRuleset = 10 } }
+check(select(2, ns.RealmName()) == "rules" and ns.RealmName(true) == nil, "the ruleset only as a last resort")
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmKept,
+    "nothing else known: named by the realm's ruleset, got " .. tostring(ns.char.rosterKey))
+active = { [213] = true, [214] = true }
+check(ns.RealmName() == "PvP", "once named by it, the name stays")
+-- Friends and Duels compare realms: a ruleset names none, kept or not.
+check(ns.RealmName(true) == nil, "never a ruleset's name with noRules, got " .. tostring((ns.RealmName(true))))
+active = { [214] = true }
+ns.char.realmKept = nil
+ns.char.rosterKey, e.realm = "Eagin-", ""
+check(ns.RealmName() == "RP", "an RP realm")
+active = { [213] = true, [214] = true }
+check(ns.RealmName() == "RP-PvP", "an RP-PvP realm, as the app shows it")
+active = { [10] = true, [213] = true }
+check(ns.RealmName() == "Hardcore", "Hardcore before the rest")
+active = {}
+check(ns.RealmName() == "Normal", "and a normal realm")
+active = { [213] = true }
+Fire("PLAYER_LOGIN")
+GetRealmName = function() return "Test" end
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-PvP" and ns.RealmName() == "PvP",
+    "named by its ruleset, it keeps that name when the client gives realms again, got " .. tostring(ns.char.rosterKey))
+-- Another character of the account on that server doesn't take it from
+-- this one: it would be no ruleset name of its own, and change later.
+GetRealmName = function() return "" end
+local SIB = "Player-1-00000077"
+ns.db.roster[SIB] = { guid = SIB, realm = "RP", name = "Sib" }
+ns.char.realmKept, ns.char.rosterKey = nil, "Eagin-"
+e.realm = ""
+check(ns.RealmName() == "PvP" and select(2, ns.RealmName()) == "rules", "a realm named by its ruleset is not borrowed")
+-- Once the sibling's real realm is known (the sync folder's, Sync.lua),
+-- it is lent, whatever named it before.
+ns.db.roster[SIB].realm = "Test"
+check(ns.RealmName() == "Test", "its realm's own name is, got " .. tostring(ns.RealmName()))
+ns.db.roster[SIB] = nil
+C_GameRules, Enum = nil, nil
+ns.char.realmKept = nil
+ns.db.roster[ALT] = nil
+for key, entry in pairs(others) do ns.db.roster[key] = entry end
+GetRealmName = function() return "Test" end
+Fire("PLAYER_LOGIN")
+check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test", "a realm from the client again puts both right")
+
 -- On Forever, characters last seen before launch (the beta's, the stress
 -- test's) are not listed; this one always is, and friends are not touched.
 ns.Forever = true

@@ -6,6 +6,34 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.20.12
+
+### New
+- The journey map shows your path in full detail when you zoom in on
+  places you went through again and again, such as your starting town and
+  the roads out of it. Loops you walked there were cut short before.
+
+### Fixed
+- Since the Forever client update of 21 November, the game no longer
+  gives add-ons the realm's name, so the Road to Sixty app stopped backing
+  up your characters and journeys from your other PCs stopped coming in.
+  Both work again: log in and out once with this version, and a character
+  saved without its realm since the update gets it back.
+- Zooming the journey map in and out is smoother, and the map catches up
+  faster after each zoom, most of all where many deaths, boat trips and
+  dungeon trips cross the view.
+- A few deaths showed on the journey map as a teleport, or as logging in
+  when you reloaded or relogged right after dying. They now show as deaths,
+  past ones too.
+- A trip's tooltip on the journey map, and History, sometimes named the
+  zone you left as where you landed, such as "Redridge Mountains to
+  Redridge Mountains" for a trip that ended in Stormwind.
+- A /reload or a quick relog no longer leaves a small dotted line on your
+  path. And when the game or your PC crashed, which loses what you did since
+  you last logged out, the map no longer draws a dotted line from where it
+  last saved you to where you came back: the path just stops and starts
+  again.
+
 ## 1.20.11
 
 ### Fixed

@@ -147,8 +147,8 @@ bunx tauri dev                      # the app with its window, using this PC's r
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports
 old LuaLS warnings in Parse.lua (69, 115), Probe.lua (52, 830), Sync.lua
-(107), Friends.lua (997) and tests/tally_test.lua; anything new is ours
-to fix.
+(148), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
+anything new is ours to fix.
 
 ## Release
 
@@ -246,6 +246,18 @@ Verified in game; trust these over web guides, and re-check after patches.
   names the mob in plain text; it comes while the dying target still shows
   alive, and the target is cleared at the same moment (no `UNIT_HEALTH`
   death is seen first).
+- Since client 1.60.1.71037 (2026-11-21), `GetRealmName()` and
+  `GetNormalizedRealmName()` return `""` (seen in game), `GetRealmID()`
+  returns 0, and `UnitFullName("player")` gives the first name and surname,
+  no realm, so nothing in the client names the realm. Never save or key
+  anything by them directly: `ns.RealmName()` (Roster.lua) treats an empty
+  realm as unknown and falls back to the realm saved for the character, then
+  one of the account's characters on the same server (the GUID's server ID),
+  then the realm's ruleset. A realm taken from the sync folder (the server's
+  name for the character, Sync.lua) or a ruleset is kept from then on. Two
+  PCs that named one character two ways (two rows on the server) both take
+  the same name from the sync folder: a realm's own name before a ruleset's. `C_GameRules.IsGameRuleActive` works, with
+  `Enum.GameRule.PvPRuleset` 213, `RPRuleset` 214 and `HardcoreRuleset` 10.
 - `GetServerTime()` exists and returns Unix seconds (1 second from `time()`
   on a PC with a correct clock). Every saved time uses it through `ns.Now()`,
   so journeys from PCs with different clocks line up; use `ns.Now()`, never
