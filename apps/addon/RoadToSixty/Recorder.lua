@@ -174,11 +174,17 @@ end
 -- A ghost where the player was last seen alive died in between, whatever
 -- else is pending: died, then a /reload or a relog, and back as a ghost at
 -- the graveyard was saved as the login (Jordan, 2026-11-05). After those,
--- the last sample's mode is gone, and the last segment saved has it.
+-- the last sample's mode is gone, and the last segment saved has it, if the
+-- ghost is near where that segment stopped (GhostNear). Further away, the
+-- play between was never saved (a crash, or another PC's not synced yet):
+-- a login, which the map leaves out, not a death drawn across it.
 local function JumpReason(mode, c, x, y, previousMode, previousC)
     local reason
     local segments = ns.char.segments
-    local before = previousMode or (segments[#segments] and segments[#segments].m)
+    local before = previousMode
+    if not before and mode == "g" and #segments > 0 and Recorder:GhostNear(Recorder:GetPath(#segments), c, x, y) then
+        before = segments[#segments].m
+    end
     if mode == "g" and leftInstance then
         reason = "di"
     elseif mode == "g" and before and before ~= "g" then
@@ -430,6 +436,18 @@ end
 -- a teleport ("u"), not a boat's red dots (Jordan, 2026-10-25).
 local PORTAL_WORLD = 530
 
+-- True when a ghost at c, x, y is near enough to where the decoded path
+-- stopped to have died there and been sent to the graveyard: on its
+-- continent, within GRAVEYARD_DIST yards. Of 44 deaths on Jordan's
+-- characters (2026-11-21), the ghost came back at most 1540 yards from
+-- where the player was last alive, half within 600.
+local GRAVEYARD_DIST = 2500
+function Recorder:GhostNear(path, c, x, y)
+    local last = path and #path.x or 0
+    return last > 0 and x ~= nil and path.c == c
+        and Dist(path.x[last], path.y[last], x, y) <= GRAVEYARD_DIST
+end
+
 function Recorder:JumpReason(previous, path)
     -- Released at the corpse a sample before the move to the graveyard, as
     -- saved before Sample carried the death on (see there): a ghost segment
@@ -439,9 +457,10 @@ function Recorder:JumpReason(previous, path)
         and (previous.j == "d" or previous.j == "di") then
         return previous.j
     end
-    -- A ghost after a segment alive died in between, though saved as a
-    -- login before JumpReason put the death first (see there).
-    if path.m == "g" and path.j == "l" and previous and previous.m ~= "g" then
+    -- A ghost near where a segment alive stopped died in between, though
+    -- saved as a login before JumpReason put the death first (see there).
+    if path.m == "g" and path.j == "l" and previous and previous.m ~= "g"
+        and self:GhostNear(previous, path.c, path.x[1], path.y[1]) then
         return "d"
     end
     if path.j == "b" and previous and (previous.c == PORTAL_WORLD or path.c == PORTAL_WORLD) then
