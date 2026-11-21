@@ -64,7 +64,7 @@ local function Same(a, b)
     -- (empty on Forever's client 71037: then the realm as Roster.lua knows it)
     local realm = GetNormalizedRealmName and GetNormalizedRealmName()
     if (type(realm) ~= "string" or realm == "") and ns.RealmName then
-        realm = ns.RealmName()
+        realm = ns.RealmName(true)   -- never a ruleset: no message names that
         realm = realm and realm:gsub("%-", "")   -- as normalized: no hyphens (spaces go in Key)
     end
     if type(realm) ~= "string" or realm == "" then return false end

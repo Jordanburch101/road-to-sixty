@@ -83,29 +83,35 @@ function Sync.Apply(char, entry)
     return "merged", out
 end
 
--- The sync folder's key for this character when its realm is not known:
--- Forever's client 71037 gives none (Roster.lua's ns.RealmName), and
--- 1.20.11 saved the name as "First Last-", which the app refuses to back
--- up. The app's entry for the character names it with the realm: the one
--- entry for this full name whose journey holds this journey's stamp (a
--- namesake on another realm has another), or with no stamp the only entry
--- for the name; nil if none or it can't tell.
-function Sync.KeyFor(chars, fullName, stamp)
-    local prefix, match, count = fullName .. "-", nil, 0
+-- The realm the server knows this character by, from the sync folder, for
+-- when the folder has no entry under the name worked out here. Forever's
+-- client 71037 gives no realm (Roster.lua's ns.RealmName), so a PC names
+-- it by what it has: the name 1.20.11 saved as "First Last-", which the app
+-- refuses to back up, or another character's realm on that server, or the
+-- realm's ruleset. Two PCs can then name one character two ways, and the
+-- server would keep it as two. The entry whose journey belongs to this
+-- character's GUID (its stamp is "<GUID>:<start>") names it as the server
+-- does; nil if none, or if entries under two realms hold it.
+function Sync.RealmFor(chars, guid)
+    if type(guid) ~= "string" or guid == "" then return nil end
+    local found
     for key, entry in pairs(chars) do
-        if type(key) == "string" and #key > #prefix and key:sub(1, #prefix) == prefix then
-            local journey = type(entry) == "table" and entry.journey
-            if not stamp or (type(journey) == "string" and journey:find(stamp, 1, true)) then
-                match, count = key, count + 1
-            end
+        local realm = type(key) == "string" and key:match("^[^%-]+%-(.+)$")
+        local journey = realm and type(entry) == "table" and entry.journey
+        -- (the stamp's field, as Parse.Write or the game writes it: other
+        -- GUIDs appear in a journey too, a group's members for one)
+        if type(journey) == "string" and journey:find('%["journeyId"%]%s*=%s*"' .. guid:gsub("%p", "%%%0") .. ":") then
+            if found and found ~= realm then return nil end
+            found = realm
         end
     end
-    return count == 1 and match or nil
+    return found
 end
 
 -- At login, first after Core: before the tidy, the roster and the recorder
 -- read the journey, and while the loading screen still hides any wait.
--- With no realm known, the name is put right from the folder first (KeyFor).
+-- A character the folder has under another name than this PC's takes the
+-- folder's realm, kept from then on (RealmFor, Roster.lua's realmKept).
 ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
@@ -115,15 +121,17 @@ ns.On("PLAYER_LOGIN", function()
     -- whose surname the client hadn't given yet. Another character's
     -- journey under that first name is told apart by its stamp in Apply.
     local chars = Sync.found and type(data.chars) == "table" and data.chars
-    -- (Not by the realm's ruleset, Roster.lua's last resort: the folder's
-    -- name comes first.)
-    local known = ns.RealmName and ns.RealmName(true) or not ns.RealmName and ns.Roster:Name()
-    if chars and not known then
-        local key = Sync.KeyFor(chars, ns.Roster:FullName(), ns.char.journeyId)
-        if key then ns.char.rosterKey = key end
+    local function Find()
+        local name, first = ns.Roster:Name(), ns.Roster.FirstName and ns.Roster:FirstName()
+        return chars and (name and chars[name] or first and chars[first])
     end
-    local entry = chars and (chars[ns.Roster:Name()]
-        or ns.Roster.FirstName and chars[ns.Roster:FirstName()])
+    local entry, kept = Find(), nil
+    local realm = chars and not entry and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
+    if realm then
+        kept = ns.Roster:FullName() .. "-" .. realm
+        ns.char.rosterKey, ns.char.realmKept = kept, true
+        entry = Find()
+    end
     if not entry then return end
     local started = debugprofilestop()
     local ok, what, value = pcall(Sync.Apply, ns.char, entry)
@@ -135,6 +143,8 @@ ns.On("PLAYER_LOGIN", function()
         for k, v in pairs(value) do char[k] = v end
         ns.CharDefaults(char)
         char.addon, char.syncedVersion, char.rosterBuilt = addon, entry.version, nil
+        -- (the journey brought in may name it otherwise)
+        if kept then char.rosterKey, char.realmKept = kept, true end
         ns.Print(what == "merged" and "Brought in your journey from your other PCs."
             or "Restored this character's journey to the version picked in the Road to Sixty app.")
     elseif what == "problem" then

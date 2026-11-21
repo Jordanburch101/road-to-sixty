@@ -276,35 +276,61 @@ for _, broken in ipairs({ '{ ["x"] = os.exit() }', Write({ version = 3, events =
     check(#raised == 0 and ns.Sync:Describe():find("could not bring in version 7"), "and /rts check shows why: " .. ns.Sync:Describe())
 end
 
--- No realm known (Forever's client 71037 gives an empty one, and 1.20.11
--- saved the name as "First Last-"): the sync folder's key for this
--- character gives it back, by the full name and the journey's stamp.
+-- Forever's client 71037 gives no realm, so a PC names a character by what
+-- it has: the name 1.20.11 saved as "First Last-", another character's
+-- realm on that server, or the realm's ruleset. When the sync folder has no
+-- entry under that name, the entry holding this character's journey (its
+-- stamp's GUID) gives the realm the server knows it by, kept from then on.
 do
-    local mine, theirs = "Player-1-0A:100", "Player-2-0B:100"
-    local function E(stamp) return { version = 3, journey = Write(Journey({ journeyId = stamp })) } end
-    local chars = { ["Ann Lee-Test Realm"] = E(mine), ["Ann Leeson-Test Realm"] = E(theirs), ["Bo Lee-Test Realm"] = E(theirs) }
-    check(Sync.KeyFor(chars, "Ann Lee", mine) == "Ann Lee-Test Realm", "the realm from the sync folder's key for this name and journey")
-    check(Sync.KeyFor(chars, "Ann Lee", "Player-1-0A:999") == nil, "not another journey's")
-    chars["Ann Lee-Other Realm"] = E(theirs)
-    check(Sync.KeyFor(chars, "Ann Lee", mine) == "Ann Lee-Test Realm", "a namesake on another realm, told apart by the stamp")
-    check(Sync.KeyFor(chars, "Ann Lee", nil) == nil, "with no stamp, two of the name can't be told apart")
-    chars["Ann Lee-Other Realm"] = nil
-    check(Sync.KeyFor(chars, "Ann Lee", nil) == "Ann Lee-Test Realm", "with no stamp, the only one of the name")
-    check(Sync.KeyFor({ ["Ann Lee-"] = E(mine) }, "Ann Lee", mine) == nil, "never a key with no realm")
-    -- At login, before the roster names it: the saved name is put right,
-    -- so the entry is found and brought in.
-    ns = Load(Journey({ journeyId = mine, rosterKey = "Ann Lee-", events = Session(1000) }),
-        { chars = { ["Ann Lee-Test Realm"] = E(mine) } })
-    -- As Roster.lua's with no realm from the client: the saved name's realm, if any.
-    ns.Roster.FullName = function() return "Ann Lee" end
-    ns.Roster.Name = function()
-        local realm = tostring(ns.char.rosterKey or ""):match("^[^%-]+%-(.+)$")
-        return realm and ("Ann Lee-" .. realm)
+    local GUID, OTHER = "Player-1-0A", "Player-2-0B"
+    local function E(stamp, extra)
+        local j = Journey({ journeyId = stamp, events = Session(1000) })
+        for k, v in pairs(extra or {}) do j[k] = v end
+        return { version = 3, journey = Write(j) }
     end
-    ns.Roster.FirstName = function() return nil end
+    local chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100"), ["Bo Lee-Test Realm"] = E(OTHER .. ":100") }
+    check(Sync.RealmFor(chars, GUID) == "Test Realm", "the realm of the entry holding this character's journey")
+    check(Sync.RealmFor(chars, "Player-3-0C") == nil, "none for a character the folder hasn't")
+    check(Sync.RealmFor(chars, nil) == nil, "none with no GUID")
+    -- Another journey of the same character (an erase) is still this character's.
+    check(Sync.RealmFor({ ["Ann-Test Realm"] = E(GUID .. ":999") }, GUID) == "Test Realm", "any journey of this character, by any name")
+    -- Another character's journey mentioning this GUID (a group) is not this one's.
+    check(Sync.RealmFor({ ["Bo Lee-Test Realm"] = E(OTHER .. ":1", { events = { { 1, "grp", GUID .. ":5" } } }) }, GUID) == nil,
+        "only the journey's own stamp counts")
+    chars["Ann Lee-Other Realm"] = E(GUID .. ":200")
+    check(Sync.RealmFor(chars, GUID) == nil, "two realms for one character: it can't tell")
+    check(Sync.RealmFor({ ["Ann Lee-"] = E(GUID .. ":100") }, GUID) == nil, "never a key with no realm")
+
+    -- At login, before the roster names it. This PC names it by another
+    -- character's realm on the server ("Other Realm", as Roster.lua's
+    -- RealmName would), but the server knows it as "Ann Lee-Test Realm":
+    -- the folder's realm is taken and kept, so the entry is found and
+    -- brought in and the next upload goes to the same row.
+    UnitGUID = function() return GUID end
+    ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", events = Session(1000) }),
+        { chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+    ns.Roster = {
+        FullName = function() return "Ann Lee" end,
+        Name = function()
+            local saved = tostring(ns.char.rosterKey or ""):match("^[^%-]+%-(.+)$")
+            return "Ann Lee-" .. (ns.char.realmKept and saved or "Other Realm")
+        end,
+        FirstName = function() return nil end,
+    }
     Login()
-    check(ns.Sync.status and ns.Sync.status.version == 3,
-        "a name saved without its realm is put right at login, and its entry brought in")
+    check(ns.Sync.status and ns.Sync.status.version == 3, "the folder's entry under another realm is found and brought in")
+    check(ns.char.rosterKey == "Ann Lee-Test Realm" and ns.char.realmKept, "and its realm kept, got " .. tostring(ns.char.rosterKey))
+    -- Found under this PC's own name, nothing changes.
+    ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", events = Session(1000) }),
+        { chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+    ns.Roster = {
+        FullName = function() return "Ann Lee" end,
+        Name = function() return "Ann Lee-Test Realm" end,
+        FirstName = function() return nil end,
+    }
+    Login()
+    check(ns.Sync.status and not ns.char.realmKept, "an entry under this PC's name keeps nothing")
+    UnitGUID = function() return nil end
 end
 
 if failures == 0 then

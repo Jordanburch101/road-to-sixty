@@ -45,23 +45,25 @@ local VERSION = 5           -- of the copy's layout; ns.char.rosterBuilt holds t
 local entry     -- this character's roster entry
 local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded path
 
--- The realm's name, or nil when nothing knows it. Forever's client
--- 1.60.1.71037 (2026-11-21) returns "" from GetRealmName and
--- GetNormalizedRealmName (seen in game), and 1.20.11 saved that: the name
--- below as "First Last-", which the app can't read, so the merged journey
--- from another PC was never found in the sync folder. An empty realm is no
--- answer: then this character's realm as last saved (its roster entry, or
--- its saved name, which Sync.lua puts right from the sync folder when
--- 1.20.11 saved it empty), then that of a character of this account on
--- the same server (the GUID's server ID, "Player-<server>-<id>"), never a
--- beta or stress test one (Gone), whose realms are gone, nor one named by
--- its ruleset (below).
--- Last, unless noRules, the realm's ruleset as its name (RulesRealm): a
--- character made since 71037 on a server with none of the account's
--- others has nothing else. Full names are unique across the region, so it
--- tells the character apart as well. Such a character keeps that name
--- (ns.char.realmByRules) should the client give realms again: the server
--- and the app know it by it. Returns the realm and "rules" for those.
+-- The realm's name, or nil when nothing knows it, and how it was found.
+-- Forever's client 1.60.1.71037 (2026-11-21) returns "" from GetRealmName
+-- and GetNormalizedRealmName (seen in game), and 1.20.11 saved that: the
+-- name below as "First Last-", which the app refuses to back up. An empty
+-- realm is no answer. In order:
+--   kept    the saved name's realm, for a character whose realm is kept
+--           (ns.char.realmKept) whatever the client says: one named by its
+--           ruleset, or by the server's name for it in the sync folder
+--           (Sync.lua). The server and the app know it by that name, and
+--           another PC may have named it so.
+--   (nil)   the client's realm; then this character's realm as last saved
+--           (its roster entry, or its saved name); then that of a character
+--           of this account on the same server (the GUID's server ID,
+--           "Player-<server>-<id>"), never a beta or stress test one (Gone),
+--           whose realms are gone, nor one named by its ruleset.
+--   rules   unless noRules, the realm's ruleset as its name (RulesRealm): a
+--           character made since 71037 on a server with none of the
+--           account's others has nothing else. Full names are unique across
+--           the region, so it tells the character apart as well.
 local function RulesRealm()
     local rules, rule = C_GameRules, Enum and Enum.GameRule
     if not (rules and rules.IsGameRuleActive and rule and rule.PvPRuleset and rule.RPRuleset) then return nil end
@@ -76,7 +78,7 @@ local function RulesRealm()
 end
 function ns.RealmName(noRules)
     local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
-    if saved and ns.char.realmByRules then return saved, "rules" end
+    if saved and ns.char.realmKept then return saved, "kept" end
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
     local guid = ns.PlayerGUID and ns.PlayerGUID()
@@ -217,7 +219,12 @@ ns.On("PLAYER_LOGIN", function()
     -- (RealmName reads the entry and the name as saved, so both are set
     -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
     local realm, how = ns.RealmName()
-    if how == "rules" then ns.char.realmByRules, entry.realmByRules = true, true end
+    -- Named by its ruleset: kept so, and never lent to another character.
+    if how == "rules" then
+        ns.char.realmKept, entry.realmByRules = true, true
+    elseif how ~= "kept" then
+        entry.realmByRules = nil
+    end
     ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
     entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()
     entry.realm = realm or entry.realm

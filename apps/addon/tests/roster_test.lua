@@ -291,12 +291,12 @@ C_GameRules = { IsGameRuleActive = function(id) return active[id] == true end }
 Enum = { GameRule = { PvPRuleset = 213, RPRuleset = 214, HardcoreRuleset = 10 } }
 check(select(2, ns.RealmName()) == "rules" and ns.RealmName(true) == nil, "the ruleset only as a last resort")
 Fire("PLAYER_LOGIN")
-check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmByRules and e.realmByRules,
+check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmKept and e.realmByRules,
     "nothing else known: named by the realm's ruleset, got " .. tostring(ns.char.rosterKey))
 active = { [213] = true, [214] = true }
 check(ns.RealmName() == "PvP", "once named by it, the name stays")
 active = { [214] = true }
-ns.char.realmByRules, e.realmByRules = nil, nil
+ns.char.realmKept, e.realmByRules = nil, nil
 ns.char.rosterKey, e.realm = "Eagin-", ""
 check(ns.RealmName() == "RP", "an RP realm")
 active = { [213] = true, [214] = true }
@@ -316,12 +316,12 @@ check(ns.char.rosterKey == "Eagin-PvP" and ns.RealmName() == "PvP",
 GetRealmName = function() return "" end
 local SIB = "Player-1-00000077"
 ns.db.roster[SIB] = { guid = SIB, realm = "Test", name = "Sib", realmByRules = true }
-ns.char.realmByRules, ns.char.rosterKey = nil, "Eagin-"
+ns.char.realmKept, ns.char.rosterKey = nil, "Eagin-"
 e.realm, e.realmByRules = "", nil
 check(select(2, ns.RealmName()) == "rules", "a realm named by its ruleset is not borrowed")
 ns.db.roster[SIB] = nil
 C_GameRules, Enum = nil, nil
-ns.char.realmByRules, e.realmByRules = nil, nil
+ns.char.realmKept, e.realmByRules = nil, nil
 ns.db.roster[ALT] = nil
 for key, entry in pairs(others) do ns.db.roster[key] = entry end
 GetRealmName = function() return "Test" end

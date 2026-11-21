@@ -147,7 +147,7 @@ bunx tauri dev                      # the app with its window, using this PC's r
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports
 old LuaLS warnings in Parse.lua (69, 115), Probe.lua (52, 830), Sync.lua
-(135), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
+(143), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
 anything new is ours to fix.
 
 ## Release
@@ -253,7 +253,9 @@ Verified in game; trust these over web guides, and re-check after patches.
   anything by them directly: `ns.RealmName()` (Roster.lua) treats an empty
   realm as unknown and falls back to the realm saved for the character, then
   one of the account's characters on the same server (the GUID's server ID),
-  then the realm's ruleset. `C_GameRules.IsGameRuleActive` works, with
+  then the realm's ruleset. A realm taken from the sync folder (the server's
+  name for the character, Sync.lua) or a ruleset is kept from then on, so two
+  PCs never name one character two ways. `C_GameRules.IsGameRuleActive` works, with
   `Enum.GameRule.PvPRuleset` 213, `RPRuleset` 214 and `HardcoreRuleset` 10.
 - `GetServerTime()` exists and returns Unix seconds (1 second from `time()`
   on a PC with a correct clock). Every saved time uses it through `ns.Now()`,

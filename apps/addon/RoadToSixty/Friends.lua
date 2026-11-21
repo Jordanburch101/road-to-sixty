@@ -520,7 +520,7 @@ end
 -- This realm's name, or nil (Roster.lua's ns.RealmName: Forever's client
 -- 71037 gives an empty one). A realm saved empty is none.
 local function MyRealm()
-    if ns.RealmName then return ns.RealmName() end
+    if ns.RealmName then return (ns.RealmName(true)) end   -- never a ruleset: no client says that
     local realm = GetRealmName()
     return realm ~= "" and realm or nil
 end
