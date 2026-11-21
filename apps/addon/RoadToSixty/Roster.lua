@@ -64,6 +64,15 @@ local decoded = setmetatable({}, { __mode = "k" })  -- copied segment -> decoded
 --           character made since 71037 on a server with none of the
 --           account's others has nothing else. Full names are unique across
 --           the region, so it tells the character apart as well.
+-- With noRules, a ruleset's name is never the answer, kept or saved: Friends
+-- and Duels compare realms, and a ruleset names none.
+-- The names RulesRealm gives. No realm the client names is one of these
+-- (Forever's look like "CAMWOW US1 Realm 1 PvE"), so a realm saved as one
+-- was named by its ruleset.
+local RULES = { Hardcore = true, ["RP-PvP"] = true, RP = true, PvP = true, Normal = true }
+function ns.IsRulesRealm(realm)
+    return RULES[realm] == true
+end
 local function RulesRealm()
     local rules, rule = C_GameRules, Enum and Enum.GameRule
     if not (rules and rules.IsGameRuleActive and rule and rule.PvPRuleset and rule.RPRuleset) then return nil end
@@ -78,20 +87,21 @@ local function RulesRealm()
 end
 function ns.RealmName(noRules)
     local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
+    if saved and noRules and RULES[saved] then saved = false end
     if saved and ns.char.realmKept then return saved, "kept" end
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
     local guid = ns.PlayerGUID and ns.PlayerGUID()
     local roster = ns.db and ns.db.roster or {}
     local own = guid and roster[guid]
-    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" and not own.realmByRules then
+    if type(own) == "table" and type(own.realm) == "string" and own.realm ~= "" and not RULES[own.realm] then
         return own.realm
     end
     if saved then return saved end
     local server = guid and guid:match("^Player%-(%d+)%-")
     for _, e in pairs(server and roster or {}) do
         if type(e) == "table" and type(e.guid) == "string" and e.guid:match("^Player%-(%d+)%-") == server
-            and type(e.realm) == "string" and e.realm ~= "" and not e.realmByRules and not Roster:Gone(e) then
+            and type(e.realm) == "string" and e.realm ~= "" and not RULES[e.realm] and not Roster:Gone(e) then
             return e.realm
         end
     end
@@ -219,12 +229,10 @@ ns.On("PLAYER_LOGIN", function()
     -- (RealmName reads the entry and the name as saved, so both are set
     -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
     local realm, how = ns.RealmName()
-    -- Named by its ruleset: kept so, and never lent to another character.
-    if how == "rules" then
-        ns.char.realmKept, entry.realmByRules = true, true
-    elseif how ~= "kept" then
-        entry.realmByRules = nil
-    end
+    -- Named by its ruleset: kept so (and never lent to another character,
+    -- as its name shows; 1.20.12's test builds marked it realmByRules).
+    if how == "rules" then ns.char.realmKept = true end
+    entry.realmByRules = nil
     ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
     entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()
     entry.realm = realm or entry.realm

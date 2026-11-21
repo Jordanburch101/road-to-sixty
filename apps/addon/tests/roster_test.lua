@@ -291,12 +291,14 @@ C_GameRules = { IsGameRuleActive = function(id) return active[id] == true end }
 Enum = { GameRule = { PvPRuleset = 213, RPRuleset = 214, HardcoreRuleset = 10 } }
 check(select(2, ns.RealmName()) == "rules" and ns.RealmName(true) == nil, "the ruleset only as a last resort")
 Fire("PLAYER_LOGIN")
-check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmKept and e.realmByRules,
+check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmKept,
     "nothing else known: named by the realm's ruleset, got " .. tostring(ns.char.rosterKey))
 active = { [213] = true, [214] = true }
 check(ns.RealmName() == "PvP", "once named by it, the name stays")
+-- Friends and Duels compare realms: a ruleset names none, kept or not.
+check(ns.RealmName(true) == nil, "never a ruleset's name with noRules, got " .. tostring((ns.RealmName(true))))
 active = { [214] = true }
-ns.char.realmKept, e.realmByRules = nil, nil
+ns.char.realmKept = nil
 ns.char.rosterKey, e.realm = "Eagin-", ""
 check(ns.RealmName() == "RP", "an RP realm")
 active = { [213] = true, [214] = true }
@@ -315,13 +317,17 @@ check(ns.char.rosterKey == "Eagin-PvP" and ns.RealmName() == "PvP",
 -- this one: it would be no ruleset name of its own, and change later.
 GetRealmName = function() return "" end
 local SIB = "Player-1-00000077"
-ns.db.roster[SIB] = { guid = SIB, realm = "Test", name = "Sib", realmByRules = true }
+ns.db.roster[SIB] = { guid = SIB, realm = "RP", name = "Sib" }
 ns.char.realmKept, ns.char.rosterKey = nil, "Eagin-"
-e.realm, e.realmByRules = "", nil
-check(select(2, ns.RealmName()) == "rules", "a realm named by its ruleset is not borrowed")
+e.realm = ""
+check(ns.RealmName() == "PvP" and select(2, ns.RealmName()) == "rules", "a realm named by its ruleset is not borrowed")
+-- Once the sibling's real realm is known (the sync folder's, Sync.lua),
+-- it is lent, whatever named it before.
+ns.db.roster[SIB].realm = "Test"
+check(ns.RealmName() == "Test", "its realm's own name is, got " .. tostring(ns.RealmName()))
 ns.db.roster[SIB] = nil
 C_GameRules, Enum = nil, nil
-ns.char.realmKept, e.realmByRules = nil, nil
+ns.char.realmKept = nil
 ns.db.roster[ALT] = nil
 for key, entry in pairs(others) do ns.db.roster[key] = entry end
 GetRealmName = function() return "Test" end

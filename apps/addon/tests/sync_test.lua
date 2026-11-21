@@ -282,6 +282,7 @@ end
 -- entry under that name, the entry holding this character's journey (its
 -- stamp's GUID) gives the realm the server knows it by, kept from then on.
 do
+    local Sync = ns.Sync   -- (the ns given IsRulesRealm below)
     local GUID, OTHER = "Player-1-0A", "Player-2-0B"
     local function E(stamp, extra)
         local j = Journey({ journeyId = stamp, events = Session(1000) })
@@ -297,8 +298,16 @@ do
     -- Another character's journey mentioning this GUID (a group) is not this one's.
     check(Sync.RealmFor({ ["Bo Lee-Test Realm"] = E(OTHER .. ":1", { events = { { 1, "grp", GUID .. ":5" } } }) }, GUID) == nil,
         "only the journey's own stamp counts")
+    -- Two PCs that each uploaded under their own name: both see both rows
+    -- and pick the same, a realm's own name before a ruleset's, then the
+    -- first in byte order.
+    ns.IsRulesRealm = function(realm) return realm == "PvP" end
+    chars["Ann Lee-PvP"] = E(GUID .. ":100")
+    check(Sync.RealmFor(chars, GUID) == "Test Realm", "a realm's own name before a ruleset's")
+    check(Sync.RealmFor({ ["Ann Lee-PvP"] = E(GUID .. ":100") }, GUID) == "PvP", "a ruleset's when it is all there is")
     chars["Ann Lee-Other Realm"] = E(GUID .. ":200")
-    check(Sync.RealmFor(chars, GUID) == nil, "two realms for one character: it can't tell")
+    check(Sync.RealmFor(chars, GUID) == "Other Realm", "two realms' own names: the first")
+    chars["Ann Lee-Other Realm"], chars["Ann Lee-PvP"] = nil, nil
     check(Sync.RealmFor({ ["Ann Lee-"] = E(GUID .. ":100") }, GUID) == nil, "never a key with no realm")
 
     -- At login, before the roster names it. This PC names it by another
@@ -330,6 +339,24 @@ do
     }
     Login()
     check(ns.Sync.status and not ns.char.realmKept, "an entry under this PC's name keeps nothing")
+    -- Split already: this PC named her by the ruleset and uploaded so, the
+    -- other by the realm's own name. This PC's own entry is there, but it
+    -- takes the other's, so both upload to one row from then on.
+    local function Named(rosterKey)
+        ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = rosterKey, realmKept = true, events = Session(1000) }),
+            { chars = { ["Ann Lee-PvP"] = E(GUID .. ":100"), ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
+        ns.IsRulesRealm = function(realm) return realm == "PvP" end
+        ns.Roster = {
+            FullName = function() return "Ann Lee" end,
+            Name = function() return ns.char.rosterKey end,
+            FirstName = function() return nil end,
+        }
+        Login()
+        return ns.char.rosterKey
+    end
+    check(Named("Ann Lee-PvP") == "Ann Lee-Test Realm" and ns.char.realmKept,
+        "split across two PCs: the ruleset's name gives way, got " .. tostring(ns.char.rosterKey))
+    check(Named("Ann Lee-Test Realm") == "Ann Lee-Test Realm", "and the realm's own name stays")
     UnitGUID = function() return nil end
 end
 

@@ -83,17 +83,19 @@ function Sync.Apply(char, entry)
     return "merged", out
 end
 
--- The realm the server knows this character by, from the sync folder, for
--- when the folder has no entry under the name worked out here. Forever's
--- client 71037 gives no realm (Roster.lua's ns.RealmName), so a PC names
--- it by what it has: the name 1.20.11 saved as "First Last-", which the app
--- refuses to back up, or another character's realm on that server, or the
--- realm's ruleset. Two PCs can then name one character two ways, and the
--- server would keep it as two. The entry whose journey belongs to this
--- character's GUID (its stamp is "<GUID>:<start>") names it as the server
--- does; nil if none, or if entries under two realms hold it.
+-- The realm the server knows this character by, from the sync folder.
+-- Forever's client 71037 gives no realm (Roster.lua's ns.RealmName), so a
+-- PC names it by what it has: the name 1.20.11 saved as "First Last-",
+-- which the app refuses to back up, or another character's realm on that
+-- server, or the realm's ruleset. Two PCs can then name one character two
+-- ways, and the server keeps it as two rows, each PC merging only its own
+-- for good. The entries whose journey belongs to this character's GUID (its
+-- stamp is "<GUID>:<start>") name it as the server does. Every PC's folder
+-- holds every row, so each picks the same one: a realm's own name before a
+-- ruleset's, then the first in byte order. Nil if no entry holds it.
 function Sync.RealmFor(chars, guid)
     if type(guid) ~= "string" or guid == "" then return nil end
+    local rules = ns.IsRulesRealm or function(_) return false end
     local found
     for key, entry in pairs(chars) do
         local realm = type(key) == "string" and key:match("^[^%-]+%-(.+)$")
@@ -101,8 +103,9 @@ function Sync.RealmFor(chars, guid)
         -- (the stamp's field, as Parse.Write or the game writes it: other
         -- GUIDs appear in a journey too, a group's members for one)
         if type(journey) == "string" and journey:find('%["journeyId"%]%s*=%s*"' .. guid:gsub("%p", "%%%0") .. ":") then
-            if found and found ~= realm then return nil end
-            found = realm
+            local better = not found or rules(found) and not rules(realm)
+                or rules(found) == rules(realm) and realm < found
+            if better then found = realm end
         end
     end
     return found
@@ -110,8 +113,10 @@ end
 
 -- At login, first after Core: before the tidy, the roster and the recorder
 -- read the journey, and while the loading screen still hides any wait.
--- A character the folder has under another name than this PC's takes the
--- folder's realm, kept from then on (RealmFor, Roster.lua's realmKept).
+-- A character the folder names otherwise than this PC takes the folder's
+-- realm, kept from then on (RealmFor, Roster.lua's realmKept): even when an
+-- entry under this PC's name is there too, as two PCs that each uploaded
+-- under their own name both see both, and must agree on one.
 ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
@@ -125,13 +130,13 @@ ns.On("PLAYER_LOGIN", function()
         local name, first = ns.Roster:Name(), ns.Roster.FirstName and ns.Roster:FirstName()
         return chars and (name and chars[name] or first and chars[first])
     end
-    local entry, kept = Find(), nil
-    local realm = chars and not entry and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
-    if realm then
+    local kept
+    local realm = chars and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
+    if realm and ns.Roster:Name() ~= ns.Roster:FullName() .. "-" .. realm then
         kept = ns.Roster:FullName() .. "-" .. realm
         ns.char.rosterKey, ns.char.realmKept = kept, true
-        entry = Find()
     end
+    local entry = Find()
     if not entry then return end
     local started = debugprofilestop()
     local ok, what, value = pcall(Sync.Apply, ns.char, entry)
