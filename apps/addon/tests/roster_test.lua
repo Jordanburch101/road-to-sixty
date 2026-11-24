@@ -295,6 +295,11 @@ check(ns.char.rosterKey == "Eagin-PvP" and e.realm == "PvP" and ns.char.realmKep
     "nothing else known: named by the realm's ruleset, got " .. tostring(ns.char.rosterKey))
 active = { [213] = true, [214] = true }
 check(ns.RealmName() == "PvP", "once named by it, the name stays")
+-- After /rts reset the logout saves the name, not that it is kept.
+ns.char.realmKept = nil
+Fire("PLAYER_LOGIN")
+check(ns.char.realmKept and ns.char.rosterKey == "Eagin-PvP", "a ruleset's name saved is kept again")
+active = { [213] = true, [214] = true }
 -- Friends and Duels compare realms: a ruleset names none, kept or not.
 check(ns.RealmName(true) == nil, "never a ruleset's name with noRules, got " .. tostring((ns.RealmName(true))))
 active = { [214] = true }

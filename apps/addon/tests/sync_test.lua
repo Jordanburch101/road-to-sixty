@@ -316,6 +316,8 @@ do
     -- the folder's realm is taken and kept, so the entry is found and
     -- brought in and the next upload goes to the same row.
     UnitGUID = function() return GUID end
+    local build = { "1.60.1", "71037", "", 16001 }   -- Forever
+    GetBuildInfo = function() return unpack(build) end
     ns = Load(Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", events = Session(1000) }),
         { chars = { ["Ann Lee-Test Realm"] = E(GUID .. ":100") } })
     ns.Roster = {
@@ -357,6 +359,55 @@ do
     check(Named("Ann Lee-PvP") == "Ann Lee-Test Realm" and ns.char.realmKept,
         "split across two PCs: the ruleset's name gives way, got " .. tostring(ns.char.rosterKey))
     check(Named("Ann Lee-Test Realm") == "Ann Lee-Test Realm", "and the realm's own name stays")
+
+    -- A restore on the entry never replaces play saved under another name:
+    -- it went up to another row, or (1.20.11's "Ann Lee-") never went up.
+    -- Both lost a session for good on a real server (1.20.12).
+    local function Has(char, t)
+        for _, e in ipairs(char.events) do if e[1] == t and e[2] == "on" then return true end end
+        return false
+    end
+    -- name is what this PC calls her before the folder is asked.
+    local function LoginWith(fields, entry, name)
+        local char = Journey({ journeyId = GUID .. ":100", events = Session(5000) })
+        for k, v in pairs(fields) do char[k] = v end
+        entry.journey = Write(Journey({ journeyId = GUID .. ":100", events = Session(1000) }))
+        ns = Load(char, { chars = { ["Ann Lee-Test Realm"] = entry } })
+        ns.IsRulesRealm = function(realm) return realm == "PvP" end
+        ns.Roster = {
+            FullName = function() return "Ann Lee" end,
+            Name = function() return ns.char.realmKept and ns.char.rosterKey or name end,
+            FirstName = function() return nil end,
+        }
+        Login()
+        return ns.Sync.status and ns.Sync.status.what
+    end
+    local what = LoginWith({ rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 3 }, { version = 9, restore = 8 }, nil)
+    check(what == "merged" and Has(ns.char, 5000) and Has(ns.char, 1000),
+        "a switch to a row with a restore keeps the play saved under the other name, got " .. tostring(what))
+    check(ns.char.rosterKey == "Ann Lee-Test Realm" and ns.char.realmKept and ns.char.syncedVersion == 9, "and takes its name and version")
+    -- The other row's version says nothing of this one, however high.
+    what = LoginWith({ rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 50 }, { version = 9 }, nil)
+    check(what == "merged" and Has(ns.char, 1000), "a switch brings the row in whatever version the other was at, got " .. tostring(what))
+    -- Saved with no realm: the same whether the folder gives the realm or
+    -- another character on the server already had.
+    for _, name in ipairs({ "Ann Lee-Other Realm", "Ann Lee-Test Realm" }) do
+        what = LoginWith({ rosterKey = "Ann Lee-", syncedVersion = 3 }, { version = 9, restore = 9 }, name)
+        check(what == "merged" and Has(ns.char, 5000), "play that was never backed up survives a restore, got " .. tostring(what) .. " for " .. name)
+    end
+    what = LoginWith({ rosterKey = "Ann Lee-", syncedVersion = 9 }, { version = 9 }, "Ann Lee-Test Realm")
+    check(what == "same", "the same row's version already brought in stays so, got " .. tostring(what))
+    -- Under the entry's own realm a restore is a restore, with the name as
+    -- the server's, or still the first name alone (#141), or none saved.
+    for _, key in ipairs({ "Ann Lee-Test Realm", "Ann-Test Realm", false }) do
+        what = LoginWith({ rosterKey = key or nil, syncedVersion = 3 }, { version = 9, restore = 9 }, "Ann Lee-Test Realm")
+        check(what == "replaced" and not Has(ns.char, 5000), "a restore still replaces, got " .. tostring(what) .. " for " .. tostring(key))
+    end
+    -- Where the client names realms (Classic), the folder never renames.
+    build = { "1.15.8", "1", "", 11509 }
+    LoginWith({ rosterKey = "Ann Lee-Moved Realm" }, { version = 9 }, "Ann Lee-Moved Realm")
+    check(ns.char.rosterKey == "Ann Lee-Moved Realm" and not ns.char.realmKept, "on Classic the client's realm stands")
+    GetBuildInfo = function() return unpack({}) end
     UnitGUID = function() return nil end
 end
 

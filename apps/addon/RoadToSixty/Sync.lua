@@ -43,11 +43,19 @@ end
 -- place, as the login would anyway, and changes nothing else in it. An
 -- entry for another journey of this name (another GUID's, or the one
 -- before an erase here) is "same": nothing to bring in.
-function Sync.Apply(char, entry)
+-- was is the realm char was saved under when that isn't the entry's: "" for
+-- none (1.20.11's "First Last-"), nil when it is the entry's. The server's
+-- copy under the entry's name then may not hold char's play at all: it went
+-- up to another row, or was refused and never went up. A restore picked for
+-- the entry would throw that play away for good, so it is merged instead.
+-- What the restore took out may come back; nothing is lost.
+function Sync.Apply(char, entry, was)
     if type(entry) ~= "table" or type(entry.version) ~= "number" then
         return "problem", "the sync folder's entry has no version number"
     end
-    if char.syncedVersion and entry.version <= char.syncedVersion then return "same" end
+    -- (brought in from another realm's row, it says nothing of this one)
+    local synced = (was == nil or was == "") and char.syncedVersion or nil
+    if synced and entry.version <= synced then return "same" end
     if type(entry.journey) ~= "string" then return "problem", "the sync folder's entry has no journey" end
     local ok, journey = pcall(ns.Parse.Read, entry.journey)
     if not ok then return "problem", "the synced journey can't be read (" .. tostring(journey) .. ")" end
@@ -72,7 +80,8 @@ function Sync.Apply(char, entry)
     -- the restore in has play since then that a replace would throw away.
     -- replace is what app 0.1.1 writes instead of restore.
     local restore = tonumber(entry.restore)
-    if erased or (restore and (char.syncedVersion or 0) < restore) or (not restore and entry.replace) then
+    local restored = was == nil and ((restore and (synced or 0) < restore) or (not restore and entry.replace))
+    if erased or restored then
         return "replaced", journey
     end
     local out
@@ -92,7 +101,9 @@ end
 -- for good. The entries whose journey belongs to this character's GUID (its
 -- stamp is "<GUID>:<start>") name it as the server does. Every PC's folder
 -- holds every row, so each picks the same one: a realm's own name before a
--- ruleset's, then the first in byte order. Nil if no entry holds it.
+-- ruleset's, then the first in byte order. (A row the server can't hand
+-- over yet is missing, so a PC may pick another until it is there.) Nil if
+-- no entry holds it.
 function Sync.RealmFor(chars, guid)
     if type(guid) ~= "string" or guid == "" then return nil end
     local rules = ns.IsRulesRealm or function(_) return false end
@@ -131,15 +142,20 @@ ns.On("PLAYER_LOGIN", function()
         return chars and (name and chars[name] or first and chars[first])
     end
     local kept
-    local realm = chars and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
+    -- The realm it was saved under, "" for none; nil for no name saved.
+    local was = type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.*)$") or nil
+    -- (Forever only: elsewhere the client names the realm, and is right)
+    local realm = chars and ns.Forever and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
     if realm and ns.Roster:Name() ~= ns.Roster:FullName() .. "-" .. realm then
         kept = ns.Roster:FullName() .. "-" .. realm
         ns.char.rosterKey, ns.char.realmKept = kept, true
     end
     local entry = Find()
     if not entry then return end
+    local name = ns.Roster:Name()
+    if was and name and was == name:match("^[^%-]+%-(.*)$") then was = nil end
     local started = debugprofilestop()
-    local ok, what, value = pcall(Sync.Apply, ns.char, entry)
+    local ok, what, value = pcall(Sync.Apply, ns.char, entry, was)
     if not ok then what, value = "problem", value end
     local status = { what = what, version = type(entry) == "table" and entry.version or nil }
     if what == "merged" or what == "replaced" then
