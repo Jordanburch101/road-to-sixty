@@ -88,7 +88,8 @@ end
 function ns.RealmName(noRules)
     local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
     if saved and noRules and RULES[saved] then saved = false end
-    if saved and ns.char.realmKept then return saved, "kept" end
+    -- (not where the client names the realm: there it is always right)
+    if saved and ns.char.realmKept and not ns.Classic then return saved, "kept" end
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
     local guid = ns.PlayerGUID and ns.PlayerGUID()
@@ -230,8 +231,9 @@ ns.On("PLAYER_LOGIN", function()
     -- after it: an empty realm 1.20.11 saved on 71037 is put right here.)
     local realm, how = ns.RealmName()
     -- Named by its ruleset: kept so (and never lent to another character,
-    -- as its name shows; 1.20.12's test builds marked it realmByRules).
-    if how == "rules" then ns.char.realmKept = true end
+    -- as its name shows; 1.20.12's test builds marked it realmByRules). By
+    -- its name, as /rts reset drops realmKept and the logout saves the name.
+    if how == "rules" or ns.IsRulesRealm(realm) then ns.char.realmKept = true end
     entry.realmByRules = nil
     ns.char.rosterKey = Roster:Name() or ns.char.rosterKey
     entry.name, entry.guid = Roster:FullName(), ns.PlayerGUID()

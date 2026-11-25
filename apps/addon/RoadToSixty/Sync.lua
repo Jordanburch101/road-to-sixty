@@ -37,17 +37,40 @@ local function Stamp(char)
     return guid, tonumber(start)
 end
 
+-- Whether copy has every session char has, by their logins.
+local function HasSessions(copy, char)
+    local has = {}
+    for _, e in ipairs(copy.events or {}) do
+        if e[2] == "on" then has[e[1]] = true end
+    end
+    for _, e in ipairs(char.events or {}) do
+        if e[2] == "on" and not has[e[1]] then return false end
+    end
+    return true
+end
+
 -- What a sync folder entry does to char, the journey this PC saved: "same"
 -- when that version was already brought in; "merged" or "replaced" with
 -- the journey to keep; "problem" with why it can't be used. Tidies char in
 -- place, as the login would anyway, and changes nothing else in it. An
 -- entry for another journey of this name (another GUID's, or the one
 -- before an erase here) is "same": nothing to bring in.
-function Sync.Apply(char, entry)
+-- moved is this PC's mark that char was saved under another realm than the
+-- entry's (the login below), or nil. The server's copy under the entry's
+-- name then may not hold char's play at all: it went up to another row, or
+-- was refused and never went up. A restore picked for the entry would throw
+-- that play away for good, so it is merged instead, once: a restore picked
+-- after that one (a higher id than moved.refused) is a restore, as by then
+-- the play has gone up with the merge. Merged, the third value is whether
+-- the entry held every session of char's, the fourth the restore merged
+-- instead, if one was.
+function Sync.Apply(char, entry, moved)
     if type(entry) ~= "table" or type(entry.version) ~= "number" then
         return "problem", "the sync folder's entry has no version number"
     end
-    if char.syncedVersion and entry.version <= char.syncedVersion then return "same" end
+    -- (brought in from another realm's row, it says nothing of this one)
+    local synced = (not moved or moved.from == "") and char.syncedVersion or nil
+    if synced and entry.version <= synced then return "same" end
     if type(entry.journey) ~= "string" then return "problem", "the sync folder's entry has no journey" end
     local ok, journey = pcall(ns.Parse.Read, entry.journey)
     if not ok then return "problem", "the synced journey can't be read (" .. tostring(journey) .. ")" end
@@ -72,15 +95,27 @@ function Sync.Apply(char, entry)
     -- the restore in has play since then that a replace would throw away.
     -- replace is what app 0.1.1 writes instead of restore.
     local restore = tonumber(entry.restore)
-    if erased or (restore and (char.syncedVersion or 0) < restore) or (not restore and entry.replace) then
+    local pending = (restore and (synced or 0) < restore) or (not restore and entry.replace)
+    local id = restore or entry.version
+    local refused = pending and moved and not (moved.refused and id > moved.refused) and id or nil
+    if erased or (pending and not refused) then
         return "replaced", journey
     end
+    local held = HasSessions(journey, char)
+    -- A copy that can't merge (damaged) can't go up either, so a restore
+    -- held back for it would never be taken: replaced, as before the mark.
     local out
     out, why = ns.Merge.Merge(char, journey)
-    if not out then return "problem", why end
+    if not out then
+        if refused then return "replaced", journey end
+        return "problem", why
+    end
     local passed, failed = ns.Merge.Check(char, journey, out)
-    if not passed then return "problem", failed end
-    return "merged", out
+    if not passed then
+        if refused then return "replaced", journey end
+        return "problem", failed
+    end
+    return "merged", out, held, refused
 end
 
 -- The realm the server knows this character by, from the sync folder.
@@ -92,7 +127,9 @@ end
 -- for good. The entries whose journey belongs to this character's GUID (its
 -- stamp is "<GUID>:<start>") name it as the server does. Every PC's folder
 -- holds every row, so each picks the same one: a realm's own name before a
--- ruleset's, then the first in byte order. Nil if no entry holds it.
+-- ruleset's, then the first in byte order. (A row the server can't hand
+-- over yet is missing, so a PC may pick another until it is there.) Nil if
+-- no entry holds it.
 function Sync.RealmFor(chars, guid)
     if type(guid) ~= "string" or guid == "" then return nil end
     local rules = ns.IsRulesRealm or function(_) return false end
@@ -117,6 +154,13 @@ end
 -- realm, kept from then on (RealmFor, Roster.lua's realmKept): even when an
 -- entry under this PC's name is there too, as two PCs that each uploaded
 -- under their own name both see both, and must agree on one.
+-- ns.char.moved marks a journey saved under another realm than the one it
+-- is named by now, from the login that names it so until the folder's copy
+-- has all its sessions: up to then its play may be in no backup, and the
+-- saved name no longer shows it. { from = the realm it was saved under, ""
+-- for none or once a copy of this row's came in; pc = the PC that marked it,
+-- as a merge on the server may carry it to another PC, which ignores it;
+-- refused = the restore Apply merged instead }.
 ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
@@ -131,15 +175,28 @@ ns.On("PLAYER_LOGIN", function()
         return chars and (name and chars[name] or first and chars[first])
     end
     local kept
-    local realm = chars and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
+    -- The realm it was saved under, "" for none; nil for no name saved.
+    local was = type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.*)$") or nil
+    -- (Forever only: elsewhere the client names the realm, and is right)
+    local realm = chars and ns.Forever and Sync.RealmFor(chars, ns.PlayerGUID and ns.PlayerGUID())
     if realm and ns.Roster:Name() ~= ns.Roster:FullName() .. "-" .. realm then
         kept = ns.Roster:FullName() .. "-" .. realm
         ns.char.rosterKey, ns.char.realmKept = kept, true
     end
+    local mark = ns.char.moved
+    if type(mark) ~= "table" or mark.pc ~= ns.pc or type(mark.from) ~= "string" then
+        ns.char.moved, mark = nil, nil
+    end
+    local name = ns.Roster:Name()
+    local now = name and name:match("^[^%-]+%-(.*)$")
+    if was and now and was ~= now then
+        mark = { from = was, pc = ns.pc, refused = mark and tonumber(mark.refused) }
+        ns.char.moved = mark
+    end
     local entry = Find()
     if not entry then return end
     local started = debugprofilestop()
-    local ok, what, value = pcall(Sync.Apply, ns.char, entry)
+    local ok, what, value, held, refused = pcall(Sync.Apply, ns.char, entry, mark)
     if not ok then what, value = "problem", value end
     local status = { what = what, version = type(entry) == "table" and entry.version or nil }
     if what == "merged" or what == "replaced" then
@@ -148,9 +205,17 @@ ns.On("PLAYER_LOGIN", function()
         for k, v in pairs(value) do char[k] = v end
         ns.CharDefaults(char)
         char.addon, char.syncedVersion, char.rosterBuilt = addon, entry.version, nil
+        -- (the copy may hold the mark of the PC it came from; from here
+        -- syncedVersion is this row's)
+        char.moved = what == "merged" and mark and not held
+            and { from = "", pc = ns.pc, refused = refused or mark.refused } or nil
         -- (the journey brought in may name it otherwise)
         if kept then char.rosterKey, char.realmKept = kept, true end
-        ns.Print(what == "merged" and "Brought in your journey from your other PCs."
+        status.refused = refused
+        ns.Print(refused and "Brought in your journey from your other PCs, but not the restore picked in the Road to"
+            .. " Sixty app: some of what you played on this PC may not be backed up yet, and the restore would have"
+            .. " thrown it away. Quit the game so the app backs it up, then pick the version again to restore it."
+            or what == "merged" and "Brought in your journey from your other PCs."
             or "Restored this character's journey to the version picked in the Road to Sixty app.")
     elseif what == "problem" then
         status.why = tostring(value)
@@ -168,6 +233,10 @@ function Sync:Describe()
     if s.what == "same" then return ("Sync: version %s was already brought in."):format(tostring(s.version)) end
     if s.what == "problem" then
         return ("|cffff4040Sync: could not bring in version %s: %s.|r"):format(tostring(s.version), s.why)
+    end
+    if s.refused then
+        return ("Sync: merged version %s at login, not restored: play on this PC may not be backed up yet. Quit"
+            .. " the game, then pick the version again in the app."):format(tostring(s.version))
     end
     return ("Sync: %s version %s at login in %d ms."):format(
         s.what == "merged" and "merged" or "restored", tostring(s.version), s.ms)

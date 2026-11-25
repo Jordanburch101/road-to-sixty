@@ -44,6 +44,12 @@ local addonName, ns = ...
 --   journeyId  the journey's stamp, "<GUID>:<start>" (see DATA_VERSION 4),
 --              so a namesake made after a character is deleted, or an
 --              erased journey, is never merged with the old one (#51)
+--   moved      { from, pc, refused }: the journey was saved under another
+--              realm than it is named by now, and its play may be in no
+--              backup yet, so a restore is merged instead once (Sync.lua).
+--              Optional and ignored by older versions, so no layout change
+--   realmKept  true when the realm in rosterKey stands whatever the client
+--              says: a ruleset's name, or the sync folder's (Roster.lua)
 -- addon is the addon version that last loaded the file (the toc's version
 -- placeholder, unfilled, in a developer install), so whatever reads it
 -- knows what wrote it. Never write the placeholder itself in a .lua file:
