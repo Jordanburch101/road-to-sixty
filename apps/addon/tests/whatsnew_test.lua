@@ -94,26 +94,37 @@ check(WhatsNew.Newer("2.0.10", "2.0.9") and not WhatsNew.Newer("2.0.9", "2.0.10"
 check(not WhatsNew.Newer("2.1.0", "2.1.0") and not WhatsNew.Newer("2.1.0-beta1", "2.0.0")
     and not WhatsNew.Newer("@project-version@", "1.0.0"), "only X.Y.Z is newer")
 
-local data = {}
+local data = { { version = "1.2.0", sections = {} }, { version = "1.1.1", sections = {} }, { version = "1.1.0", sections = {} } }
 for i = 20, 1, -1 do data[#data + 1] = { version = "1.0." .. i, sections = {} } end
-local list, seen = WhatsNew.AtLogin(data, "1.0.20", "1.0.17", true)
-check(#list == 3 and list[1].version == "1.0.20" and list[3].version == "1.0.18" and seen == "1.0.20",
-    "every version since the last one seen, newest first")
-list = WhatsNew.AtLogin(data, "1.0.20", "1.0.2", true)
-check(#list == 8 and list.cut and list[8].version == "1.0.13", "at most eight, the rest noted")
-list = WhatsNew.AtLogin(data, "1.0.18", "1.0.17", true)
-check(#list == 1 and list[1].version == "1.0.18", "nothing newer than the version running")
-list, seen = WhatsNew.AtLogin(data, "1.0.20", "1.0.20", true)
-check(list == nil and seen == "1.0.20", "nothing twice")
-list, seen = WhatsNew.AtLogin(data, "1.0.19", "1.0.20", true)
-check(list == nil and seen == "1.0.20", "an older version after a newer one shows nothing, and keeps the newer")
-list, seen = WhatsNew.AtLogin(data, "1.0.20", nil, false)
-check(list == nil and seen == "1.0.20", "a new account notes its first version quietly")
-list, seen = WhatsNew.AtLogin(data, "1.0.20", nil, true)
-check(#list == 1 and list[1].version == "1.0.20" and seen == "1.0.20",
+local list, seen = WhatsNew.AtLogin(data, "1.1.0", "1.0.17", true)
+check(#list == 4 and list[1].version == "1.1.0" and list[2].version == "1.0.20" and list[4].version == "1.0.18"
+    and seen == "1.1.0", "every version since the last one seen, newest first, at a new X.Y")
+list = WhatsNew.AtLogin(data, "1.1.0", "1.0.2", true)
+check(#list == 8 and list.cut and list[8].version == "1.0.14", "at most eight, the rest noted")
+check(list[1].version == "1.1.0", "nothing newer than the version running")
+-- A patch release of the X.Y already seen opens nothing and notes nothing:
+-- its notes wait for the next X.Y.
+for _, case in ipairs({ { "1.0.20", "1.0.17" }, { "1.0.20", "1.0.2" }, { "1.1.1", "1.1.0" } }) do
+    list, seen = WhatsNew.AtLogin(data, case[1], case[2], true)
+    check(list == nil and seen == case[2], "a patch release " .. case[1] .. " shows nothing, and keeps " .. case[2] .. " as seen")
+end
+-- An account that never ran the X.Y.0 (a hotfix came first) sees it at the hotfix.
+list, seen = WhatsNew.AtLogin(data, "1.1.1", "1.0.20", true)
+check(list and #list == 2 and list[1].version == "1.1.1" and list[2].version == "1.1.0" and seen == "1.1.1",
+    "a new X.Y first run at its X.Y.1 shows it")
+list, seen = WhatsNew.AtLogin(data, "1.1.0", "1.1.0", true)
+check(list == nil and seen == "1.1.0", "nothing twice")
+list, seen = WhatsNew.AtLogin(data, "1.0.19", "1.1.0", true)
+check(list == nil and seen == "1.1.0", "an older version after a newer one shows nothing, and keeps the newer")
+for _, v in ipairs({ "1.0.20", "1.1.0" }) do
+    list, seen = WhatsNew.AtLogin(data, v, nil, false)
+    check(list == nil and seen == v, "a new account notes its first version quietly: " .. v)
+end
+list, seen = WhatsNew.AtLogin(data, "1.1.1", nil, true)
+check(#list == 1 and list[1].version == "1.1.1" and seen == "1.1.1",
     "an account from before the window sees this version's notes")
-list, seen = WhatsNew.AtLogin(data, "1.0.21-beta1", "1.0.20", true)
-check(list == nil and seen == "1.0.20", "a beta shows nothing")
+list, seen = WhatsNew.AtLogin(data, "1.1.2-beta1", "1.1.0", true)
+check(list == nil and seen == "1.1.0", "a beta shows nothing")
 list, seen = WhatsNew.AtLogin(data, "@project-version@", nil, true)
 check(list == nil and seen == nil, "a dev build shows nothing and notes nothing")
 
@@ -125,6 +136,10 @@ local function Login(roster)
     handlers.PLAYER_LOGIN()
 end
 ns.db.whatsNewSeen = "2.0.9"
+version = "2.0.10"
+Login({ a = {} })
+check(#timers == 0 and shown == nil and ns.db.whatsNewSeen == "2.0.9", "a patch release of a seen X.Y opens nothing at login")
+version = "2.1.0"
 Login({ a = {} })
 check(shown == nil and ns.db.whatsNewSeen == "2.0.9" and #timers == 1, "shown at once, or seen before it shows")
 combat = true

@@ -8,6 +8,12 @@ broken and now works. Leave out internal changes. Sections are
 
 ## 1.20.13
 
+### New
+- The What's new window now opens only for bigger updates: the first time
+  you play a 1.21 version, say, not for 1.20.13. It shows the notes of
+  every version since you last saw it. Type /rts changes to see what's new
+  at any time.
+
 ### Fixed
 - Restoring an older version of a character in the Road to Sixty app could
   throw away play that was never backed up, such as what you played after
