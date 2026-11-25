@@ -102,11 +102,19 @@ function Sync.Apply(char, entry, moved)
         return "replaced", journey
     end
     local held = HasSessions(journey, char)
+    -- A copy that can't merge (damaged) can't go up either, so a restore
+    -- held back for it would never be taken: replaced, as before the mark.
     local out
     out, why = ns.Merge.Merge(char, journey)
-    if not out then return "problem", why end
+    if not out then
+        if refused then return "replaced", journey end
+        return "problem", why
+    end
     local passed, failed = ns.Merge.Check(char, journey, out)
-    if not passed then return "problem", failed end
+    if not passed then
+        if refused then return "replaced", journey end
+        return "problem", failed
+    end
     return "merged", out, held, refused
 end
 
@@ -205,8 +213,8 @@ ns.On("PLAYER_LOGIN", function()
         if kept then char.rosterKey, char.realmKept = kept, true end
         status.refused = refused
         ns.Print(refused and "Brought in your journey from your other PCs, but not the restore picked in the Road to"
-            .. " Sixty app: some of what you played on this PC wasn't backed up yet, and the restore would have"
-            .. " thrown it away. It is backed up when you log out. To restore, pick the version again after that."
+            .. " Sixty app: some of what you played on this PC may not be backed up yet, and the restore would have"
+            .. " thrown it away. Quit the game so the app backs it up, then pick the version again to restore it."
             or what == "merged" and "Brought in your journey from your other PCs."
             or "Restored this character's journey to the version picked in the Road to Sixty app.")
     elseif what == "problem" then
@@ -227,8 +235,8 @@ function Sync:Describe()
         return ("|cffff4040Sync: could not bring in version %s: %s.|r"):format(tostring(s.version), s.why)
     end
     if s.refused then
-        return ("Sync: merged version %s at login, not restored: play on this PC wasn't backed up yet. Pick the"
-            .. " version again in the app after you log out."):format(tostring(s.version))
+        return ("Sync: merged version %s at login, not restored: play on this PC may not be backed up yet. Quit"
+            .. " the game, then pick the version again in the app."):format(tostring(s.version))
     end
     return ("Sync: %s version %s at login in %d ms."):format(
         s.what == "merged" and "merged" or "restored", tostring(s.version), s.ms)

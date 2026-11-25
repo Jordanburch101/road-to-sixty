@@ -147,7 +147,7 @@ bunx tauri dev                      # the app with its window, using this PC's r
 
 Run the addon commands from `apps/addon/`. `check.ps1` currently reports
 old LuaLS warnings in Parse.lua (69, 115), Probe.lua (52, 830), Sync.lua
-(197), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
+(205), Friends.lua (1011), Map.lua (1890, 3547) and tests/tally_test.lua;
 anything new is ours to fix.
 
 ## Release

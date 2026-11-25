@@ -481,6 +481,20 @@ do
     local marked = Write(Journey({ journeyId = GUID .. ":100", events = Session(1000), moved = { from = "", pc = "pc-1" } }))
     what = Again(ns.char, { version = 17, journey = marked }, "Ann Lee-Test Realm")
     check(what == "merged" and ns.char.moved == nil, "and one that comes with a copy is dropped, got " .. tostring(what))
+    -- A copy that can't merge can't go up either: the restore is taken, or
+    -- it would be held back for good.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", syncedVersion = 3, events = Session(5000),
+        moved = { from = "", pc = "pc-1" } })
+    ns = Load(char, { pc = "pc-1", chars = { ["Ann Lee-Test Realm"] = { version = 21, restore = 21, journey = good } } })
+    rawset(ns.Merge, "Merge", function() return nil, "a damaged journey" end)
+    ns.Roster = { FullName = function() return "Ann Lee" end, Name = function() return "Ann Lee-Test Realm" end, FirstName = function() end }
+    Login()
+    check(ns.Sync.status.what == "replaced" and ns.char.moved == nil, "a damaged copy takes the restore held back, got " .. ns.Sync.status.what)
+    ns = Load(Journey({ journeyId = GUID .. ":100", events = Session(5000) }), { pc = "pc-1", chars = { ["Ann Lee-Test Realm"] = { version = 22, journey = good } } })
+    rawset(ns.Merge, "Merge", function() return nil, "a damaged journey" end)
+    ns.Roster = { FullName = function() return "Ann Lee" end, Name = function() return "Ann Lee-Test Realm" end, FirstName = function() end }
+    Login()
+    check(ns.Sync.status.what == "problem", "but without a restore it stays a problem, got " .. ns.Sync.status.what)
     -- A mark that isn't one is dropped.
     char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", syncedVersion = 3, events = Session(5000),
         moved = { from = 5, pc = "pc-1" } })
