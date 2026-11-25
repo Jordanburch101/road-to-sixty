@@ -258,7 +258,7 @@ UnitGUID = function() return GUID end
 -- the one saved stands, and the names the app reads keep it.
 GetRealmName = function() return "" end
 Fire("PLAYER_LOGIN")
-check(ns.RealmName() == "Test" and ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
+check(ns.RealmName() == "Test" and ns.char.rosterKey == "Eagin-Test" and e.realm == "Test" and not ns.char.realmKept,
     ("an empty realm from the client: the realm as saved, got %s, %s"):format(tostring(ns.char.rosterKey), tostring(e.realm)))
 Fire("PLAYER_LOGOUT")
 check(ns.char.rosterKey == "Eagin-Test", "and the logout keeps it, got " .. tostring(ns.char.rosterKey))
@@ -268,8 +268,8 @@ local ALT = "Player-1-00000099"
 ns.db.roster[ALT] = { guid = ALT, realm = "Test", name = "Alt" }
 e.realm, ns.char.rosterKey = "", "Eagin-"
 Fire("PLAYER_LOGIN")
-check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test",
-    "an empty realm saved before is put right from a character on the same server, got " .. tostring(ns.char.rosterKey))
+check(ns.char.rosterKey == "Eagin-Test" and e.realm == "Test" and not ns.char.realmKept,
+    "an empty realm saved before is put right from a character on the same server (and not kept), got " .. tostring(ns.char.rosterKey))
 -- Nothing knows it (the only other character on another server): the
 -- names saved are kept, never made emptier.
 ns.db.roster[ALT] = nil
@@ -318,6 +318,9 @@ GetRealmName = function() return "Test" end
 Fire("PLAYER_LOGIN")
 check(ns.char.rosterKey == "Eagin-PvP" and ns.RealmName() == "PvP",
     "named by its ruleset, it keeps that name when the client gives realms again, got " .. tostring(ns.char.rosterKey))
+ns.Classic = true
+check(ns.RealmName() == "Test", "but where the client always names the realm (Classic), the client's stands")
+ns.Classic = nil
 -- Another character of the account on that server doesn't take it from
 -- this one: it would be no ruleset name of its own, and change later.
 GetRealmName = function() return "" end

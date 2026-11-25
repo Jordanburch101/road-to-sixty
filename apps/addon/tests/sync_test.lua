@@ -389,6 +389,8 @@ do
     -- The other row's version says nothing of this one, however high.
     what = LoginWith({ rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 50 }, { version = 9 }, nil)
     check(what == "merged" and Has(ns.char, 1000), "a switch brings the row in whatever version the other was at, got " .. tostring(what))
+    what = LoginWith({ rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 50 }, { version = 9, restore = 8 }, nil)
+    check(what == "merged" and ns.Sync.status.refused == 8, "and its restore counts as the one merged instead, got " .. tostring(what))
     -- Saved with no realm: the same whether the folder gives the realm or
     -- another character on the server already had.
     for _, name in ipairs({ "Ann Lee-Other Realm", "Ann Lee-Test Realm" }) do
@@ -404,12 +406,14 @@ do
         check(what == "replaced" and not Has(ns.char, 5000), "a restore still replaces, got " .. tostring(what) .. " for " .. tostring(key))
     end
     -- A login that moves it without bringing a copy in (an entry that is a
-    -- problem, none yet, nothing new) saves the new name, so the mark says
-    -- it moved until a login does.
+    -- problem, nothing for her, nothing new) saves the new name, so a mark
+    -- says it moved: once, a restore is merged instead, and the player told.
     local good = Write(Journey({ journeyId = GUID .. ":100", events = Session(1000) }))
-    local function Again(char, entry, name)
-        ns = Load(char, entry and { chars = { ["Ann Lee-Test Realm"] = entry } })
+    local function Again(char, entry, name, key)
+        key = key or "Ann Lee-Test Realm"
+        ns = Load(char, { pc = "pc-1", chars = entry and { [key] = entry } or {} })
         ns.IsRulesRealm = function(realm) return realm == "PvP" end
+        said = {}
         ns.Roster = {
             FullName = function() return "Ann Lee" end,
             Name = function() return ns.char.realmKept and ns.char.rosterKey or name end,
@@ -419,34 +423,81 @@ do
         ns.char.rosterKey = ns.Roster:Name() or ns.char.rosterKey   -- as Roster.lua's login does
         return ns.Sync.status and ns.Sync.status.what or "nothing"
     end
+    local function Marked(refused)
+        local m = ns.char.moved
+        return type(m) == "table" and m.from == "" and m.pc == "pc-1" and m.refused == refused
+    end
     local firsts = {
         ["a problem"] = { version = 8, restore = 8, journey = '{["journeyId"] = "' .. GUID .. ':100",' },
         ["nothing new"] = { version = 3, journey = good },
-        ["no folder"] = false,
+        ["nothing for her"] = false,
     }
     for how, first in pairs(firsts) do
         local char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", syncedVersion = 3, events = Session(5000) })
         Again(char, first or nil, "Ann Lee-Test Realm")
-        check(ns.char.rosterKey == "Ann Lee-Test Realm" and ns.char.movedFrom == "", how .. " first: moved and marked")
+        check(ns.char.rosterKey == "Ann Lee-Test Realm" and Marked(nil), how .. " first: moved and marked")
         what = Again(char, { version = 9, restore = 9, journey = good }, "Ann Lee-Test Realm")
-        check(what == "merged" and Has(ns.char, 5000) and ns.char.movedFrom == "",
-            how .. " first: then a restore keeps the play, got " .. tostring(what))
-        -- Not sent up yet, so the next restore keeps it as well; the copy
-        -- that has it ends the mark.
-        what = Again(char, { version = 10, restore = 10, journey = good }, "Ann Lee-Test Realm")
-        check(what == "merged" and Has(ns.char, 5000), how .. " first: still not sent up, got " .. tostring(what))
-        what = Again(char, { version = 11, journey = Write(ns.char) }, "Ann Lee-Test Realm")
-        check(what == "merged" and ns.char.movedFrom == nil, how .. " first: the mark goes once the folder's copy has it all")
+        check(what == "merged" and Has(ns.char, 5000) and Has(ns.char, 1000) and Marked(9) and ns.Sync.status.refused == 9,
+            how .. " first: then a restore is merged instead, got " .. tostring(what))
+        check(said[1] and said[1]:find("not the restore") and ns.Sync:Describe():find("not restored"), how .. " first: and the player is told")
+        -- Only "on" events count as its sessions, and the folder's must hold
+        -- all of this PC's, not the other way round.
+        local other = Journey({ journeyId = GUID .. ":100", events = Session(1000) })
+        other.events[#other.events + 1] = { 7000, "on", 0, 0, 0, 10 }
+        other.events[#other.events + 1] = { 5000, "lvl", 0, 0, 0, 2 }
+        what = Again(char, { version = 10, journey = Write(other) }, "Ann Lee-Test Realm")
+        check(what == "merged" and Marked(9), how .. " first: a copy without its sessions keeps the mark, got " .. tostring(what))
+        -- The same restore again is merged again; a later one is a restore.
+        what = Again(char, { version = 11, restore = 9, journey = good }, "Ann Lee-Test Realm")
+        check(what == "merged" and Has(ns.char, 5000), how .. " first: the same restore isn't taken twice, got " .. tostring(what))
         what = Again(char, { version = 12, restore = 12, journey = good }, "Ann Lee-Test Realm")
-        check(what == "replaced", how .. " first: and the next restore is a restore, got " .. tostring(what))
+        check(what == "replaced" and not Has(ns.char, 5000) and ns.char.moved == nil,
+            how .. " first: the restore picked again is a restore, got " .. tostring(what))
     end
-    -- The copy brought in may hold the mark of the PC it came from.
-    what = LoginWith({ rosterKey = "Ann Lee-Test Realm", syncedVersion = 3 }, { version = 9 }, "Ann Lee-Test Realm")
-    local marked = Write(Journey({ journeyId = GUID .. ":100", events = Session(9000), movedFrom = "" }))
-    for _, entry in ipairs({ { version = 10, journey = marked }, { version = 11, restore = 11, journey = marked } }) do
-        Again(ns.char, entry, "Ann Lee-Test Realm")
-        check(ns.char.movedFrom == nil, "another PC's mark is not taken, after " .. ns.Sync.status.what)
-    end
+    -- The folder's copy holding all its play ends the mark, and from then
+    -- the row's version counts.
+    local char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 50, events = Session(5000) })
+    Again(char, { version = 9, journey = good }, nil)
+    check(Marked(nil) and ns.char.syncedVersion == 9, "a switch keeps the mark while the row lacks its play")
+    what = Again(char, { version = 9, journey = good }, nil)
+    check(what == "same", "and the row's version brought in counts, got " .. tostring(what))
+    local all = Journey({ journeyId = GUID .. ":100", events = Both(Session(1000), Session(5000)) })
+    all.events[#all.events + 1] = { 8000, "on", 0, 0, 0, 10 }
+    what = Again(char, { version = 13, journey = Write(all) }, nil)
+    check(what == "merged" and ns.char.moved == nil, "a copy with all its sessions and more ends the mark, got " .. tostring(what))
+    -- Erased on another PC: replaced, and the mark goes with the old journey.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", events = Session(5000) })
+    what = Again(char, { version = 14, journey = Write(Journey({ journeyId = GUID .. ":900", events = Session(9000) })) }, "Ann Lee-Test Realm")
+    check(what == "replaced" and ns.char.moved == nil, "erased elsewhere: replaced, no mark left, got " .. tostring(what))
+    -- An older app's replace is a restore too.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", syncedVersion = 3, events = Session(5000) })
+    what = Again(char, { version = 15, replace = true, journey = good }, "Ann Lee-Test Realm")
+    check(what == "merged" and Has(ns.char, 5000) and Marked(15), "an older app's replace is merged once too, got " .. tostring(what))
+    -- Another PC's mark (a merge on the server carries it) is not this one's.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", syncedVersion = 3, events = Session(5000),
+        moved = { from = "", pc = "pc-2" } })
+    what = Again(char, { version = 16, restore = 16, journey = good }, "Ann Lee-Test Realm")
+    check(what == "replaced", "another PC's mark is ignored, got " .. tostring(what))
+    local marked = Write(Journey({ journeyId = GUID .. ":100", events = Session(1000), moved = { from = "", pc = "pc-1" } }))
+    what = Again(ns.char, { version = 17, journey = marked }, "Ann Lee-Test Realm")
+    check(what == "merged" and ns.char.moved == nil, "and one that comes with a copy is dropped, got " .. tostring(what))
+    -- A mark that isn't one is dropped.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Test Realm", syncedVersion = 3, events = Session(5000),
+        moved = { from = 5, pc = "pc-1" } })
+    what = Again(char, { version = 19, restore = 19, journey = good }, "Ann Lee-Test Realm")
+    check(what == "replaced" and ns.char.moved == nil, "a damaged mark is dropped, got " .. tostring(what))
+    -- Moved again, the restore already merged instead still counts.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-PvP", realmKept = true, syncedVersion = 9, events = Session(5000),
+        moved = { from = "", pc = "pc-1", refused = 9 } })
+    what = Again(char, { version = 20, restore = 20, journey = good }, nil)
+    check(what == "replaced", "a second move doesn't merge a later restore instead, got " .. tostring(what))
+    -- A realm with a hyphen in it is one realm; no name, no mark.
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-Azjol-Nerub", syncedVersion = 3, events = Session(5000) })
+    what = Again(char, { version = 18, restore = 18, journey = good }, "Ann Lee-Azjol-Nerub", "Ann Lee-Azjol-Nerub")
+    check(what == "replaced" and ns.char.moved == nil, "a realm with a hyphen isn't a move, got " .. tostring(what))
+    char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", events = Session(5000) })
+    what = Again(char, nil, nil)
+    check(ns.char.moved == nil and ns.char.rosterKey == "Ann Lee-", "no realm known yet: no mark")
     -- Where the client names realms (Classic), the folder never renames.
     build = { "1.15.8", "1", "", 11509 }
     LoginWith({ rosterKey = "Ann Lee-Moved Realm" }, { version = 9 }, "Ann Lee-Moved Realm")

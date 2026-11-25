@@ -88,7 +88,8 @@ end
 function ns.RealmName(noRules)
     local saved = ns.char and type(ns.char.rosterKey) == "string" and ns.char.rosterKey:match("^[^%-]+%-(.+)$")
     if saved and noRules and RULES[saved] then saved = false end
-    if saved and ns.char.realmKept then return saved, "kept" end
+    -- (not where the client names the realm: there it is always right)
+    if saved and ns.char.realmKept and not ns.Classic then return saved, "kept" end
     local realm = GetRealmName()
     if type(realm) == "string" and realm ~= "" then return realm end
     local guid = ns.PlayerGUID and ns.PlayerGUID()

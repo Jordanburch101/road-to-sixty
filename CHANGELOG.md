@@ -13,8 +13,9 @@ broken and now works. Leave out internal changes. Sections are
   throw away play that was never backed up, such as what you played after
   the Forever client update of 21 November before updating Road to Sixty,
   or play on a second PC that had saved the character under another realm
-  name. That play is now kept. If it happens to your character, some play
-  the restore took out may come back: pick the version again to restore it.
+  name. That play is now kept: such a restore is held back once, and the
+  game tells you in chat when it happens. Log out so the app backs that play
+  up, then pick the version again in the app to restore it.
 
 ## 1.20.12
 
