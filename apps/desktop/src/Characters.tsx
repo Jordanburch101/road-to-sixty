@@ -3,7 +3,7 @@ import compass from "@road-to-sixty/ui/compass.png";
 import { Button } from "@road-to-sixty/ui/Button";
 import { useState, type ReactNode } from "react";
 import { characters, removeCharacter, setPaused, useLoad, type Status } from "./api";
-import { BETA, CLASSES, byGame, characterLine, isTest, played, realmName, testJourneys, testWords } from "./format";
+import { BETA, CLASSES, byGame, byPlayed,characterLine, isTest, played, realmName, testJourneys, testWords } from "./format";
 import { Portrait } from "./Portrait";
 
 export type Tab = "characters" | "account";
@@ -12,7 +12,7 @@ export function Characters({ status, onTab, onOpen }: { status: Status; onTab: (
   const server = useLoad(characters, [status.lastSynced]);
   const now = new Date();
   const info = new Map((server.data ?? []).filter((c) => !c.earlier).map((c) => [`${c.name}-${c.realm}`, c]));
-  const { main, test } = byGame(status.characters, info);
+  const { main, test } = byGame(byPlayed(status.characters, info), info);
   const remove = testJourneys(server.data ?? []);
   const [showTest, setShowTest] = useState(false);
   const [asking, setAsking] = useState(false);
