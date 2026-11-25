@@ -106,9 +106,10 @@ bun run test              # every test under LuaJIT, and under Lua 5.1 if instal
 - Real SavedVariables files hold other players' names and GUIDs. They never
   go into a test, a fixture or an issue.
 - CHANGELOG.md is also the in-game changelog (WhatsNew.lua, #132): after
-  an update to an X.Y.0, every player sees the sections of the versions
-  they haven't seen in a window (a patch release opens nothing; its notes
-  wait for the next X.Y.0), and `/rts changes` shows them at any time. So
+  an update to a newer X.Y, every player sees the sections of the versions
+  they haven't seen in a window (a patch release of an X.Y already seen
+  opens nothing; its notes wait for the next X.Y), and `/rts changes`
+  shows them at any time. So
   every release needs its `## X.Y.Z` section, written for players, and
   nothing else is updated by hand for it.
   `RoadToSixty/WhatsNewData.lua`, the notes the addon carries, is

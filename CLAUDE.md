@@ -60,7 +60,7 @@ for data, its exact format; read that before changing a module.
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
 | Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
-| WhatsNew.lua | the in-game changelog: once per account for each X.Y.0 release (patch releases open nothing), a window with the notes of every version not seen yet; `/rts changes` (#132) |
+| WhatsNew.lua | the in-game changelog: once per account for each X.Y (a patch release of an X.Y already seen opens nothing), a window with the notes of every version not seen yet; `/rts changes` (#132) |
 | MinimapTiles.lua (Forever's terrain tiles), MinimapTilesAnniversary.lua and MinimapTilesEra.lua (each classic client's own, world 530's included, `scripts/minimap-tiles.py`), ZoneOverlays.lua, ZoneOverlaysEra.lua (Classic Era's overlay file IDs, `zone-overlays.py <build> --era`), ZoneOverlaysAnniversary.lua (the Anniversary realms', `--anniversary`, with its zones' masks), ZoneMasks/, SeedGear.lua | generated data, do not edit by hand (the MinimapTiles.lua generator is not in the repo; SeedGear.lua, the stress seed's gear, is developer only) |
 | WhatsNewData.lua | the changelog's notes for WhatsNew.lua, written from CHANGELOG.md by the release build (`scripts/whatsnew-data.lua`); not committed |
 | Probe.lua, Seed.lua, Swatch.lua, IconBrowser.lua, GuildProbe.lua, PartyProbe.lua, LevelProbe.lua, MountProbe.lua, PortraitProbe.lua, GearProbe.lua, GearSwatch.lua, BGProbe.lua, LineProbe.lua, PerfLog.lua | developer tools, left out of releases (LineProbe: `/rts lineprobe`, what zooming lines cost drawn several ways; PerfLog: `/rts perflog`, every map frame into the saved variables) |
@@ -156,9 +156,10 @@ anything new is ours to fix.
    with `### New` and `### Fixed`, non-technical, written for players.
    `bash apps/addon/scripts/changelog.sh X.Y.Z` prints what the release will use.
    The same section is the in-game changelog (WhatsNew.lua, #132): players
-   see it in a window when they update to the next X.Y.0 (a patch release
-   opens nothing, its notes wait), and in `/rts changes`, so every release
-   needs one, and each note must read well on its own. Nothing else is updated by
+   see it in a window when they first run a newer X.Y (a patch release of
+   an X.Y already seen opens nothing, its notes wait), and in `/rts
+   changes`, so every release needs one, and each note must read well on
+   its own. Nothing else is updated by
    hand: the release build writes `RoadToSixty/WhatsNewData.lua` from
    CHANGELOG.md (`scripts/whatsnew-data.lua`, run by `package.ps1`), and
    that file is not committed.
