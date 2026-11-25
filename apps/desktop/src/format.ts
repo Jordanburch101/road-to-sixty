@@ -118,6 +118,22 @@ export function byGame<T extends { key: string }>(rows: T[], info: Map<string, C
   return { main: rows.filter((r) => !test.includes(r)), test };
 }
 
+// The list's order: the last played first, by the server's row for each. A
+// row the server doesn't have yet goes on top, since it is new or needs
+// looking at; rows with no time played go last; ties go by name.
+export function byPlayed<T extends { key: string }>(rows: T[], info: Map<string, CharacterInfo>): T[] {
+  const rank = (r: T) => {
+    const i = info.get(r.key);
+    if (i === undefined) return Infinity;
+    return i.lastPlayedAt !== null ? Date.parse(i.lastPlayedAt) : -Infinity;
+  };
+  return [...rows].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    return ra === rb ? a.key.localeCompare(b.key) : rb > ra ? 1 : -1;
+  });
+}
+
 // What Remove all takes out: every journey of each name whose current
 // journey is a test one, earlier ones too, oldest first. The server refuses
 // to remove a name's current journey while an earlier one is left, so the

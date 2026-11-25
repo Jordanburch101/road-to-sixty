@@ -88,7 +88,9 @@ shell plan is `docs/superpowers/plans/2026-10-14-app-shell.md`.
   the per-user Run key on Windows, `~/.config/autostart` on Linux pointing
   at the AppImage file itself, so moving the file breaks it), started with `--hidden`.
 - `src/` is the app's window, Vite and React styled from `packages/ui`.
-  The Characters list puts test characters in a group of their own,
+  The Characters list shows the last played first (`byPlayed` in
+  `format.ts`, by the server's `lastPlayedAt`), with characters the server
+  doesn't have yet on top. It puts test characters in a group of their own,
   hidden until Show is pressed, with one button to remove them all
   (`isTest` in `format.ts`): the server's `game` is `_classic_beta_`, or
   it is `_forever_` and the character was last played before Forever's

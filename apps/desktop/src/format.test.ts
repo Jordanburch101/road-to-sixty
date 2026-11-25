@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CharacterInfo, DeviceInfo, VersionInfo } from "@road-to-sixty/api";
 import type { Folder } from "./api";
-import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, characterLine, deviceLine, earlierLine, earlierOf, played, realmName, removeWords, titleLine, updateWords, versionLine, when } from "./format";
+import { BETA, ago, folderWords, gameName, installFolder, isTest, testJourneys, testWords, byGame, byPlayed,characterLine, deviceLine, earlierLine, earlierOf, played, realmName, removeWords, titleLine, updateWords, versionLine, when } from "./format";
 
 const now = new Date(2026, 9, 15, 22, 0);
 const at = (...parts: [number, number, number, number, number]) => new Date(...parts).toISOString();
@@ -89,6 +89,27 @@ test("beta and stress test characters are listed apart, by the server's row for 
   expect(BETA).toBe("_classic_beta_");
   expect(testWords(1)).toBe("Remove 1 beta and stress test character from the backup, earlier journeys included? Journeys on your PCs stay.");
   expect(testWords(3)).toBe("Remove 3 beta and stress test characters from the backup, earlier journeys included? Journeys on your PCs stay.");
+});
+
+test("the list puts the last played first, new rows on top and rows never played last", () => {
+  const info = new Map([
+    ["Ann-Nightslayer", { ...ann, lastPlayedAt: "2026-11-20T10:00:00Z" }],
+    ["Bob-Nightslayer", { ...ann, id: 2, name: "Bob", lastPlayedAt: "2026-11-24T22:00:00Z" }],
+    ["Di-Nightslayer", { ...ann, id: 3, name: "Di", lastPlayedAt: null }],
+    ["Ed-Nightslayer", { ...ann, id: 4, name: "Ed", lastPlayedAt: null }],
+    ["Flo-Nightslayer", { ...ann, id: 5, name: "Flo", lastPlayedAt: "2026-11-24T22:00:00Z" }],
+  ]);
+  const rows = ["Ed-Nightslayer", "Ann-Nightslayer", "Cy-Nightslayer", "Di-Nightslayer", "Flo-Nightslayer", "Bob-Nightslayer"].map((key) => ({ key }));
+  expect(byPlayed(rows, info).map((r) => r.key)).toEqual([
+    "Cy-Nightslayer",
+    "Bob-Nightslayer",
+    "Flo-Nightslayer",
+    "Ann-Nightslayer",
+    "Di-Nightslayer",
+    "Ed-Nightslayer",
+  ]);
+  // Before the server answers, the list keeps its order by name.
+  expect(byPlayed(rows, new Map()).map((r) => r.key)).toEqual([...rows.map((r) => r.key)].sort());
 });
 
 test("Remove all takes every journey of a test character, oldest first, and leaves live ones", () => {
