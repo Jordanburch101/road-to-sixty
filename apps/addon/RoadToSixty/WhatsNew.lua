@@ -1,19 +1,23 @@
 local addonName, ns = ...
 
--- The in-game changelog (#132): once per account for each release, its own
--- window with the notes of every version the account hasn't seen, newest
--- first, a few seconds after login and never in combat. /rts changes opens
--- it again. The notes are CHANGELOG.md's, in WhatsNewData.lua, which the
+-- The in-game changelog (#132): once per account for each X.Y.0 release,
+-- its own window with the notes of every version the account hasn't seen,
+-- newest first, a few seconds after login and never in combat. A patch
+-- release (X.Y.Z, Z > 0) opens nothing and leaves whatsNewSeen as it was,
+-- so its notes are in the window the next X.Y.0 opens (Jordan's call,
+-- 2026-11-25: only the bigger updates are worth a window at login).
+-- /rts changes opens it at any time. The notes are CHANGELOG.md's, in WhatsNewData.lua, which the
 -- release build writes (scripts/whatsnew-data.lua); a dev install has none
 -- until that script is run by hand.
 --
 --   RoadToSixtyDB.whatsNewSeen = the newest version the window has shown, or
 --                                the version a new account started on
 --
--- Only a full release (X.Y.Z) shows it at login, never a beta or a dev
+-- Only a full release (X.Y.0) shows it at login, never a beta or a dev
 -- build. A brand-new account shows nothing: its first version is noted
 -- quietly. An account that already has characters but no whatsNewSeen
--- (updating into the first version with the window) sees that version's notes.
+-- (updating into the first version with the window) sees that version's
+-- notes, at the first X.Y.0.
 
 local WhatsNew = {}
 ns.WhatsNew = WhatsNew
@@ -59,9 +63,12 @@ end
 -- may be nil or empty, when nothing shows. known: the account had
 -- characters before this login.
 function WhatsNew.AtLogin(data, current, seen, known)
-    if not Parts(current) then return nil, seen end
+    local _, _, patch = Parts(current)
+    if not patch then return nil, seen end
+    if not seen and not known then return nil, current end
+    -- (a patch release waits, noting nothing, for the next X.Y.0)
+    if patch ~= 0 then return nil, seen end
     if not seen then
-        if not known then return nil, current end
         for _, v in ipairs(data) do
             if v.version == current then return { v }, current end
         end
