@@ -403,6 +403,50 @@ do
         what = LoginWith({ rosterKey = key or nil, syncedVersion = 3 }, { version = 9, restore = 9 }, "Ann Lee-Test Realm")
         check(what == "replaced" and not Has(ns.char, 5000), "a restore still replaces, got " .. tostring(what) .. " for " .. tostring(key))
     end
+    -- A login that moves it without bringing a copy in (an entry that is a
+    -- problem, none yet, nothing new) saves the new name, so the mark says
+    -- it moved until a login does.
+    local good = Write(Journey({ journeyId = GUID .. ":100", events = Session(1000) }))
+    local function Again(char, entry, name)
+        ns = Load(char, entry and { chars = { ["Ann Lee-Test Realm"] = entry } })
+        ns.IsRulesRealm = function(realm) return realm == "PvP" end
+        ns.Roster = {
+            FullName = function() return "Ann Lee" end,
+            Name = function() return ns.char.realmKept and ns.char.rosterKey or name end,
+            FirstName = function() return nil end,
+        }
+        Login()
+        ns.char.rosterKey = ns.Roster:Name() or ns.char.rosterKey   -- as Roster.lua's login does
+        return ns.Sync.status and ns.Sync.status.what or "nothing"
+    end
+    local firsts = {
+        ["a problem"] = { version = 8, restore = 8, journey = '{["journeyId"] = "' .. GUID .. ':100",' },
+        ["nothing new"] = { version = 3, journey = good },
+        ["no folder"] = false,
+    }
+    for how, first in pairs(firsts) do
+        local char = Journey({ journeyId = GUID .. ":100", rosterKey = "Ann Lee-", syncedVersion = 3, events = Session(5000) })
+        Again(char, first or nil, "Ann Lee-Test Realm")
+        check(ns.char.rosterKey == "Ann Lee-Test Realm" and ns.char.movedFrom == "", how .. " first: moved and marked")
+        what = Again(char, { version = 9, restore = 9, journey = good }, "Ann Lee-Test Realm")
+        check(what == "merged" and Has(ns.char, 5000) and ns.char.movedFrom == "",
+            how .. " first: then a restore keeps the play, got " .. tostring(what))
+        -- Not sent up yet, so the next restore keeps it as well; the copy
+        -- that has it ends the mark.
+        what = Again(char, { version = 10, restore = 10, journey = good }, "Ann Lee-Test Realm")
+        check(what == "merged" and Has(ns.char, 5000), how .. " first: still not sent up, got " .. tostring(what))
+        what = Again(char, { version = 11, journey = Write(ns.char) }, "Ann Lee-Test Realm")
+        check(what == "merged" and ns.char.movedFrom == nil, how .. " first: the mark goes once the folder's copy has it all")
+        what = Again(char, { version = 12, restore = 12, journey = good }, "Ann Lee-Test Realm")
+        check(what == "replaced", how .. " first: and the next restore is a restore, got " .. tostring(what))
+    end
+    -- The copy brought in may hold the mark of the PC it came from.
+    what = LoginWith({ rosterKey = "Ann Lee-Test Realm", syncedVersion = 3 }, { version = 9 }, "Ann Lee-Test Realm")
+    local marked = Write(Journey({ journeyId = GUID .. ":100", events = Session(9000), movedFrom = "" }))
+    for _, entry in ipairs({ { version = 10, journey = marked }, { version = 11, restore = 11, journey = marked } }) do
+        Again(ns.char, entry, "Ann Lee-Test Realm")
+        check(ns.char.movedFrom == nil, "another PC's mark is not taken, after " .. ns.Sync.status.what)
+    end
     -- Where the client names realms (Classic), the folder never renames.
     build = { "1.15.8", "1", "", 11509 }
     LoginWith({ rosterKey = "Ann Lee-Moved Realm" }, { version = 9 }, "Ann Lee-Moved Realm")

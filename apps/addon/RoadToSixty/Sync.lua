@@ -37,6 +37,18 @@ local function Stamp(char)
     return guid, tonumber(start)
 end
 
+-- Whether copy has every session char has, by their logins.
+local function HasSessions(copy, char)
+    local has = {}
+    for _, e in ipairs(copy.events or {}) do
+        if e[2] == "on" then has[e[1]] = true end
+    end
+    for _, e in ipairs(char.events or {}) do
+        if e[2] == "on" and not has[e[1]] then return false end
+    end
+    return true
+end
+
 -- What a sync folder entry does to char, the journey this PC saved: "same"
 -- when that version was already brought in; "merged" or "replaced" with
 -- the journey to keep; "problem" with why it can't be used. Tidies char in
@@ -49,6 +61,8 @@ end
 -- up to another row, or was refused and never went up. A restore picked for
 -- the entry would throw that play away for good, so it is merged instead.
 -- What the restore took out may come back; nothing is lost.
+-- The third value of "merged" is whether the entry already held every
+-- session of char's.
 function Sync.Apply(char, entry, was)
     if type(entry) ~= "table" or type(entry.version) ~= "number" then
         return "problem", "the sync folder's entry has no version number"
@@ -84,12 +98,13 @@ function Sync.Apply(char, entry, was)
     if erased or restored then
         return "replaced", journey
     end
+    local held = HasSessions(journey, char)
     local out
     out, why = ns.Merge.Merge(char, journey)
     if not out then return "problem", why end
     local passed, failed = ns.Merge.Check(char, journey, out)
     if not passed then return "problem", failed end
-    return "merged", out
+    return "merged", out, held
 end
 
 -- The realm the server knows this character by, from the sync folder.
@@ -128,6 +143,10 @@ end
 -- realm, kept from then on (RealmFor, Roster.lua's realmKept): even when an
 -- entry under this PC's name is there too, as two PCs that each uploaded
 -- under their own name both see both, and must agree on one.
+-- ns.char.movedFrom is the realm the journey was saved under before the one
+-- it is under now ("" for none), from the login that moved it until the
+-- folder's copy has all its sessions: up to then its play may be in no
+-- backup, and the saved name no longer shows it (Apply's was).
 ns.On("PLAYER_LOGIN", function()
     local data = RoadToSixtySync
     RoadToSixtySync = nil   -- the journey text is large; the game runs data.lua again at every load
@@ -150,12 +169,16 @@ ns.On("PLAYER_LOGIN", function()
         kept = ns.Roster:FullName() .. "-" .. realm
         ns.char.rosterKey, ns.char.realmKept = kept, true
     end
+    local name = ns.Roster:Name()
+    local now = name and name:match("^[^%-]+%-(.*)$")
+    if was and now and was ~= now then
+        ns.char.movedFrom = was
+    end
     local entry = Find()
     if not entry then return end
-    local name = ns.Roster:Name()
-    if was and name and was == name:match("^[^%-]+%-(.*)$") then was = nil end
     local started = debugprofilestop()
-    local ok, what, value = pcall(Sync.Apply, ns.char, entry, was)
+    local moved = ns.char.movedFrom
+    local ok, what, value, held = pcall(Sync.Apply, ns.char, entry, moved)
     if not ok then what, value = "problem", value end
     local status = { what = what, version = type(entry) == "table" and entry.version or nil }
     if what == "merged" or what == "replaced" then
@@ -164,6 +187,9 @@ ns.On("PLAYER_LOGIN", function()
         for k, v in pairs(value) do char[k] = v end
         ns.CharDefaults(char)
         char.addon, char.syncedVersion, char.rosterBuilt = addon, entry.version, nil
+        -- (the copy may hold the mark of the PC it came from; from here
+        -- syncedVersion is this row's, so the mark is as for no realm)
+        char.movedFrom = what == "merged" and moved and not held and "" or nil
         -- (the journey brought in may name it otherwise)
         if kept then char.rosterKey, char.realmKept = kept, true end
         ns.Print(what == "merged" and "Brought in your journey from your other PCs."
