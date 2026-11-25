@@ -125,7 +125,9 @@ export function byPlayed<T extends { key: string }>(rows: T[], info: Map<string,
   const rank = (r: T) => {
     const i = info.get(r.key);
     if (i === undefined) return Infinity;
-    return i.lastPlayedAt !== null ? Date.parse(i.lastPlayedAt) : -Infinity;
+    // A time that won't parse counts as none, so the sort stays consistent.
+    const t = i.lastPlayedAt !== null ? Date.parse(i.lastPlayedAt) : NaN;
+    return Number.isNaN(t) ? -Infinity : t;
   };
   return [...rows].sort((a, b) => {
     const ra = rank(a);
