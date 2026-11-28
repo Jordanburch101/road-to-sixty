@@ -19,3 +19,9 @@ services:
     image: chrislusf/seaweedfs:4.54
     command: server -s3
     ports: ["127.0.0.1:58333:8333"]
+    # Ready once the S3 gateway answers, so `up --wait` (CI) waits for it:
+    # without this the first test could start before it did, and timed out.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 2s
+      retries: 30
