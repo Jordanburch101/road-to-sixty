@@ -239,9 +239,11 @@ impl Addons {
     /// games that aren't running. Runs every 30 seconds, so an update goes
     /// in soon after the game closes.
     pub fn tick(&self, picked: &[PathBuf], notifier: &Notifier) {
-        let programs = watch::running_programs(&mut sysinfo::System::new());
+        // Programs that can't be listed (a system sysinfo doesn't support)
+        // count every game as running: an update never goes into one in use.
+        let programs = sysinfo::System::new().ok().map(|mut s| watch::running_programs(&mut s));
         self.tick_with(&installs::find_installs(picked), notifier, &|game| {
-            watch::game_running(game, &programs)
+            programs.as_ref().is_none_or(|p| watch::game_running(game, p))
         });
     }
 

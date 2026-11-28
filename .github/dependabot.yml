@@ -12,8 +12,8 @@
 #   and merge together, or `tauri build` refuses the mismatch. Majors by hand.
 # - Bun's version is pinned in package.json (packageManager), CI
 #   (oven-sh/setup-bun) and the server's and website's Dockerfiles, and a
-#   minor can change bun.lock's format: oven/bun takes patches only, the
-#   rest by hand.
+#   minor can change bun.lock's format: all four move together, by hand, so
+#   oven/bun is left out here (a bump of the images alone splits them).
 # - The website's nginx stays on its stable line (even minors, 1.28):
 #   patches only, a new stable line by hand.
 # - The test Postgres in docker-compose.yml stays on production's major.
@@ -108,7 +108,8 @@ updates:
       actions:
         patterns: ["*"]
 
-  # The server's image (oven/bun): patches only, see above.
+  # The server's image: oven/bun only, which moves by hand (see above);
+  # kept so a new base image line in the Dockerfile is picked up.
   - package-ecosystem: "docker"
     directory: "/apps/server"
     target-branch: "main"
@@ -125,9 +126,9 @@ updates:
       prefix: "Server"
     ignore:
       - dependency-name: "oven/bun"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
-  # The website's image (#173): Bun builds it, nginx serves it. Patches only.
+  # The website's image (#173): Bun builds it (by hand, see above), nginx
+  # serves it (patches only).
   - package-ecosystem: "docker"
     directory: "/apps/web"
     target-branch: "main"
@@ -144,7 +145,6 @@ updates:
       prefix: "Website"
     ignore:
       - dependency-name: "oven/bun"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "nginx"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:

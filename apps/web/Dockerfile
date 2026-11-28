@@ -23,7 +23,7 @@ ARG PUBLIC_ADDON_URL
 ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL PUBLIC_DOWNLOADS=$PUBLIC_DOWNLOADS PUBLIC_ADDON_URL=$PUBLIC_ADDON_URL
 RUN cd apps/web && bun run build
 
-FROM nginx:1.28.0-alpine
+FROM nginx:1.28.3-alpine
 # Only the site: not nginx's sample pages.
 RUN rm -rf /usr/share/nginx/html/*
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf

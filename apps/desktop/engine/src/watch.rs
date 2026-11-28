@@ -299,7 +299,9 @@ pub fn run(
     for path in seen.keys() {
         schedule.changed(path.clone(), start.checked_sub(SETTLE).unwrap_or(start));
     }
-    let mut system = sysinfo::System::new();
+    // (an Err only on a system sysinfo doesn't support: then no game is seen
+    // running, as before one starts)
+    let mut system = sysinfo::System::new().ok();
     let mut last_pass: Option<Instant> = None;
     let mut wait_until = start;
     let mut starts = Starts::default();
@@ -330,7 +332,7 @@ pub fn run(
         }
         let mut started = false;
         if pace.look(now) {
-            let programs = running_programs(&mut system);
+            let programs = system.as_mut().map(running_programs).unwrap_or_default();
             running = games
                 .iter()
                 .filter(|g| game_running(&g.path, &programs))

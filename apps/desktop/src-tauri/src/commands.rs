@@ -27,7 +27,7 @@ pub fn link(app: AppHandle, name: String) {
         let links = app.state::<Links>();
         let this = links.begin();
         let name = match name.trim() {
-            "" => pc_name(sysinfo::System::host_name()),
+            "" => pc_name(sysinfo::System::host_name().ok()),
             name => name.chars().take(40).collect(),
         };
         let result = rts_sync::link::link(
@@ -66,7 +66,7 @@ pub fn link(app: AppHandle, name: String) {
 /// The name the link box starts with.
 #[tauri::command]
 pub fn host_name() -> String {
-    pc_name(sysinfo::System::host_name())
+    pc_name(sysinfo::System::host_name().ok())
 }
 
 fn pc_name(host: Option<String>) -> String {
