@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
 
 // Static pages only: the site has no server. The address is a build setting:
-// Vercel's environment, or .env locally (which this file doesn't get on its
+// the server's build settings (a Docker build arg), or .env locally (which this file doesn't get on its
 // own, unlike the pages).
 try {
   process.loadEnvFile();

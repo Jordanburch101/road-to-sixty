@@ -3,7 +3,9 @@
 The public site (#1): what the addon and the app do, the app's download
 for the visitor's computer (Mac, Windows, or Linux for the Steam Deck in
 Desktop Mode, early, #47) with the first-run steps, Privacy and Terms.
-Static pages built by Astro, hosted on Vercel. The design is
+Static pages built by Astro, served by nginx from a Docker image
+(`Dockerfile`, `nginx.conf`) on the server that runs the sync server,
+behind Cloudflare (#173). The design is
 `docs/superpowers/specs/2026-10-15-website-design.md`; the mockups are the
 "Website" row of the mockups canvas.
 
@@ -66,7 +68,9 @@ bun run build
   while it rises.
 - The screenshots show only Jordan's own characters. Blur any other
   player's name before adding one.
-- No cookies, and no fonts or scripts from other sites. The one exception
-  to "no tracking" is Vercel Web Analytics (`<Analytics />` in Layout.astro),
-  which sets no cookies and loads from the site's own address; the Privacy
-  page says so. Add nothing else that counts visitors.
+- No cookies, no analytics, and no fonts or scripts from other sites. The
+  Privacy page says the site counts no visits; change it in the same
+  commit if that ever changes.
+- `nginx.conf` serves pages without a trailing-slash redirect, the 404 page
+  for unknown paths, and caches `/_astro/` (hashed names) for a year. A
+  new kind of route (a redirect, a header) goes there, not in Astro.
