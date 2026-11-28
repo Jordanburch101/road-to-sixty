@@ -203,7 +203,9 @@ Dependabot (`.github/dependabot.yml`, its rules in its header) opens grouped
 minor and patch updates weekly against `main` for the Bun workspace, the
 desktop's Cargo workspace, workflow actions and the server's images; a
 major comes on its own. Security updates are on in the repo's settings. The
-Dependabot sweep reviews and merges them. Tauri's crates and its
+Dependabot sweep (the global `/dependabot-sweep` skill) batches, verifies
+and merges them; this repo's profile for it, with its hold list and notes,
+is `.claude/box-sweep.json`. Tauri's crates and its
 `@tauri-apps` packages are pinned to matching versions: their two "tauri"
 pull requests merge together, and majors are done by hand, as are Bun's
 version (`packageManager`, CI, the server's Dockerfile) and the Rust
