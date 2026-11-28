@@ -24,6 +24,8 @@ ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL PUBLIC_DOWNLOADS=$PUBLIC_DOWNLOADS PUBLIC_A
 RUN cd apps/web && bun run build
 
 FROM nginx:1.28.0-alpine
+# Only the site: not nginx's sample pages.
+RUN rm -rf /usr/share/nginx/html/*
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
