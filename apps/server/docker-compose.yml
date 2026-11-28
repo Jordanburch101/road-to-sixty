@@ -16,6 +16,6 @@ services:
       interval: 2s
       retries: 30
   s3:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.54
     command: server -s3
     ports: ["127.0.0.1:58333:8333"]

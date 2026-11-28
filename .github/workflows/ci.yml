@@ -19,7 +19,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # tags, for the version from git describe
 
@@ -48,7 +48,7 @@ jobs:
       # The artifact is zipped by GitHub, so upload the folder: the download
       # then holds RoadToSixty/ ready to drop into Interface/AddOns. Kept a
       # week, as artifacts share one storage quota and a full one fails CI.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: RoadToSixty-${{ steps.package.outputs.version }}
           path: apps/addon/build/
@@ -58,7 +58,7 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -78,7 +78,7 @@ jobs:
   server:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:

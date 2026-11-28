@@ -40,7 +40,9 @@ fn main() -> ExitCode {
                     _ => "not linked".into(),
                 }
             );
-            let programs = watch::running_programs(&mut sysinfo::System::new());
+            let programs = sysinfo::System::new()
+                .map(|mut s| watch::running_programs(&mut s))
+                .unwrap_or_default();
             for game in sync::games(&state) {
                 println!(
                     "{} (addon {}){}",
