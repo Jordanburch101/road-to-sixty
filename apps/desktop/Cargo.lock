@@ -3306,7 +3306,7 @@ dependencies = [
 
 [[package]]
 name = "road-to-sixty-app"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "rts-sync",
  "serde",
