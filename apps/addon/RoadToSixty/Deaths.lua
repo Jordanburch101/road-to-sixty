@@ -3,7 +3,8 @@ local _, ns = ...
 -- Who killed the player (issue #81), added to its "die" event (Journal.lua):
 --   die  killer, kind, spell
 -- killer the name of what dealt the killing blow; kind "p" when that was a
--- player, "pet" a player's pet (a hunter's, a warlock's: its own name, as
+-- player, "self" the player themself (from 1.21: an explosive backfiring;
+-- before, "p" with their own name), "pet" a player's pet (a hunter's, a warlock's: its own name, as
 -- the recap gives no owner), "e" the world (falling, drowning, lava: killer
 -- is then what it was), nil a creature or not known; spell the killing
 -- blow's spell, nil for melee. All nil when the client told nothing. Seen
@@ -60,6 +61,8 @@ local function KillingBlow()
     local kind
     if type(guid) == "string" then
         kind = guid:match("^Player%-") and "p" or guid:match("^Pet%-") and "pet" or nil
+        -- The player's own blow (their explosive backfiring) is no player's kill.
+        if kind == "p" and UnitGUID and guid == Plain(UnitGUID("player")) then kind = "self" end
     end
     local spell = event ~= "SWING_DAMAGE" and Plain(blow.spellName) or nil
     return killer, kind, type(spell) == "string" and spell or nil, when
@@ -101,12 +104,52 @@ ns.On("PLAYER_DEAD", function()
     end
 end)
 
+-- The names a journey's character goes by in the death recap, as a set:
+-- its roster key's name without the realm ("First Last" on Forever), and
+-- the name its roster or friends entry lists (a friend's journey has no
+-- roster key, and a key saved before the surname loaded has the first name
+-- only). The journey the map shows when left out.
+function Deaths.OwnNames(journey, entry)
+    if journey == nil and entry == nil then journey, entry = ns.view, ns.viewEntry end
+    local names = {}
+    local key = type(journey) == "table" and journey.rosterKey
+    local name = type(key) == "string" and key:match("^(.-)%-")
+    if name then names[name] = true end
+    if type(entry) == "table" and type(entry.name) == "string" then names[entry.name] = true end
+    return names
+end
+
+-- Whether the player dealt their own killing blow: "self", or, as deaths
+-- before 1.21 saved it, "p" with one of the player's own names (me:
+-- OwnNames). "self" needs no DATA_VERSION bump: it is a value older code
+-- does not know in a field it only shows, read there as a creature's kill,
+-- and Merge copies it as it is.
+function Deaths.BySelf(e, me)
+    return e[7] == "self" or e[7] == "p" and type(me) == "table" and me[e[6]] == true
+end
+
+-- Whether another player, or a player's pet, dealt the killing blow: such a
+-- death has its own marker and History filter ("diePvP" in Style.lua). me:
+-- the journey's own names (OwnNames), as an explosive backfiring names the
+-- player; the journey the map shows when left out.
+function Deaths.ByPlayer(e, me)
+    return (e[7] == "p" or e[7] == "pet") and not Deaths.BySelf(e, me or Deaths.OwnNames())
+end
+
+-- The icon kind a death shows with: "diePvP" for one by a player, else "die".
+function Deaths.Look(e)
+    return Deaths.ByPlayer(e) and "diePvP" or "die"
+end
+
 -- How to show a death: "Killed by Name (Mortal Strike)", "Killed by Name
 -- (pet, Kill Command)", "Died: Falling", or "Died" when its killer is not known.
 function Deaths:Title(e)
     local killer, kind, spell = e[6], e[7], e[8]
     if type(killer) ~= "string" then return "Died" end
     if kind == "e" then return "Died: " .. killer end
+    if Deaths.BySelf(e, Deaths.OwnNames()) then
+        return type(spell) == "string" and ("Died: " .. spell) or "Killed yourself"
+    end
     local notes = {}
     if kind == "pet" then notes[#notes + 1] = "pet" end
     if type(spell) == "string" then notes[#notes + 1] = spell end

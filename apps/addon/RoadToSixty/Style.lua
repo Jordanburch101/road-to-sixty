@@ -49,11 +49,13 @@ local JUMP_STYLES = {
     -- and may be again, see issue #18.
     h = { "Hearthstone", 0.4, 1, 0.45, 1, style = "portal", pace = 80 },
     p = { "Teleport", 0.35, 0.65, 1, 1, style = "portal", pace = 80 },
-    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "dots", replay = 0.6 },
-    -- From the instance's door, where the path stopped, to the graveyard:
-    -- drawn like the ghost's run back that follows it.
+    -- Not drawn: the death's skull marks where it began and the ghost's run
+    -- back starts at the graveyard (Jordan's call, 2026-11-27; it was white
+    -- dots). Nor from an instance's door, where the path stopped, to the
+    -- graveyard (it was a faint solid line, like the ghost's run).
+    d = { "Died - to the graveyard", 0.85, 0.85, 0.95, 0.9, style = "none", instant = true },
     di = { "Died in an instance - to the graveyard", GHOST_COLOR[1], GHOST_COLOR[2], GHOST_COLOR[3], GHOST_COLOR[4],
-        style = "solid", plain = true, bend = 0, replay = 0.6 },
+        style = "none", instant = true },
     i = { "Through an instance", 1, 0.6, 0.2, 1, style = "dash" },
     -- Sent out of an instance to a graveyard (left the group): portals, in grey.
     it = { "Teleported out of an instance", 0.75, 0.75, 0.8, 1, style = "portal", pace = 80 },
@@ -82,10 +84,14 @@ local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 -- where the client lacks the kind's own, as Era and Anniversary lack some
 -- of Forever's (#72, picked by Jordan in /rts swatch icons). The kind's
 -- own is always tried first, so a client that gains it later uses it.
--- fallback is a texture path for when both are missing.
+-- fallback is a texture path for when both are missing. tint colours the
+-- icon.
 local EVENT_ICONS = {
     lvl = { atlas = "UI-HUD-UnitFrame-SmallCircle", classic = "collections-levelplate-black", size = 22 },
     die = { atlas = "DungeonSkull", size = 16 },
+    -- Not a kind: a death by a player (Deaths.Look). A placeholder until
+    -- Jordan picks from /rts swatch icons.
+    diePvP = { atlas = "DungeonSkull", tint = { 1, 0.3, 0.25 }, size = 18 },
     ["in"] = { atlas = "Dungeon", size = 20 },
     run = { atlas = "Dungeon", size = 20 },
     zone = { atlas = "Waypoint-MapPin-Untracked", classic = "poi-town", size = 16 },
@@ -111,6 +117,7 @@ local EVENT_ICONS = {
     ench = { file = "Interface\\Icons\\Trade_Engraving", size = 18 },
     gath = { file = "Interface\\Icons\\INV_Ore_Copper_01", size = 18 },    -- a node shows its resource's icon instead
     duel = { file = "Interface\\Icons\\Ability_DualWield", size = 18 },
+    hk = { file = "Interface\\Icons\\Ability_Warrior_Challange", size = 18 },
 }
 -- A kind with no icon of its own gets this, rather than an error that
 -- stops the whole side panel (as enchants did in 1.11.0).
@@ -164,11 +171,11 @@ end
 -- without one are always shown; loot is split by quality in Panel.lua.
 local JUMP_CATEGORY = { h = "hearths", p = "teleports", u = "teleports", b = "boats", d = "deaths", di = "deaths", i = "dungeons", it = "dungeons" }
 local CATEGORY = {
-    lvl = "levels", die = "deaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
+    lvl = "levels", die = "deaths", diePvP = "pvpDeaths", ["in"] = "dungeons", run = "dungeons", zone = "zones",
     hearth = "hearths", teleport = "teleports", boat = "boats", flight = "flights", qd = "quests",
     prof = "professions", rec = "recipes", gj = "guilds", gl = "guilds", gr = "guilds",
     grp = "groups", rep = "reps", ride = "mounts", mount = "mounts", rare = "rares", ench = "enchants",
-    duel = "duels",
+    duel = "duels", hk = "worldPvP",
 }
 
 -- False if the player has turned this History filter category off.
@@ -219,7 +226,7 @@ function ns.SetEventIcon(icon, text, kind, level, file)
         icon:SetTexture(art)
         icon:SetTexCoord(0, 1, 0, 1)
     end
-    icon:SetVertexColor(1, 1, 1)
+    if style.tint then icon:SetVertexColor(unpack(style.tint)) else icon:SetVertexColor(1, 1, 1) end
     text:SetText("")
     if kind == "lvl" then
         text:SetText(level)

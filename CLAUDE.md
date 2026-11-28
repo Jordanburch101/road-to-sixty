@@ -49,6 +49,7 @@ for data, its exact format; read that before changing a module.
 | Battlegrounds.lua | a battleground's result, score, honor and reputation, kept on its run as `pvp` (#80) |
 | Deaths.lua | who killed the player, from the death recap, added to the `die` event (#81) |
 | Duels.lua | duels the player fights (`duel` events): the opponent, the result, who challenged, `/rts duelprobe` (#88) |
+| WorldPvP.lua | enemy players killed in the open world (`hk` events), from the honorable kill message, described from enemies seen just before; `/rts pvpprobe` |
 | Sources.lua | where each piece of gear came from (drop, quest, vendor, trade, mail, ...), noted as items arrive and put into the `eq` event when worn |
 | Roster.lua | account-wide character list with a copy of each journey; `ns.view`, the journey the map shows |
 | Friends.lua | syncing journeys with friends by addon whisper, and automatic sync; friends list through `Roster:Entries` but stay out of the roster; format in its header; `/rts friendprobe` |
@@ -69,6 +70,7 @@ for data, its exact format; read that before changing a module.
 | Screens.lua | the map window's modes (Map, Gear, Stats): the switch, and the screens that take the map's and the panel's place (`ns.Screens`); the item button every window's icons sit in (`Screens.ItemButton`, and `Screens.IconButton` for rows) |
 | GearTimeline.lua, GearScreen.lua | the gear screen, a mode of the map window: the gear worn over the journey (GearTimeline.lua, no game calls) and the screen (#64) |
 | Stats.lua, StatsScreen.lua | the Stats screen, a mode of the map window: running totals over the journey for any window of it (Stats.lua, no game calls) and the screen (#83) |
+| Battles.lua | world PvP battles on the zoomed-out map: players killed and deaths by players near each other on screen, as one marker over a glow; below `HIDE_ZOOM` only (the kills and deaths show one by one from there) |
 | Panel.lua, FriendsPanel.lua, Parties.lua, GearCard.lua, QuestPop.lua, GuildPop.lua, LevelPop.lua, KillPop.lua, KillMarks.lua | map side panel and replay effects |
 | MinimapButton.lua, Options.lua | minimap button and the settings panel |
 | WhatsNew.lua | the in-game changelog: once per account for each X.Y (a patch release of an X.Y already seen opens nothing), a window with the notes of every version not seen yet; `/rts changes` (#132) |

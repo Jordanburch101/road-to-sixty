@@ -79,6 +79,7 @@ local function IsUnit(s)
 end
 
 -- What can be read of a player unit: { class, level, race, guild }.
+-- (WorldPvP.lua describes the players killed with it too.)
 local function Describe(unit)
     if not (UnitExists(unit) and UnitIsPlayer(unit)) then return nil end
     local level = Plain(UnitLevel(unit))
@@ -89,6 +90,7 @@ local function Describe(unit)
         guild = Plain((GetGuildInfo(unit))),
     }
 end
+Duels.DescribeUnit = Describe
 
 -- The opponent's details: the target's when it is them (read last, so the
 -- level is the one at the end), else what the challenge read.
@@ -184,7 +186,8 @@ local ICON = "Interface\\Icons\\Ability_DualWield"
 local RACE_NAMES = { Scourge = "Undead" }
 
 -- The opponent as far as known: "Level 24 Orc Warrior <Blood Moon>", or "";
--- without the level with noLevel.
+-- without the level with noLevel. An "hk" event keeps the player killed in
+-- the same places (WorldPvP.lua), so it describes them too.
 local function Opponent(e, noLevel)
     local parts = {}
     if e[10] and not noLevel then parts[#parts + 1] = "Level " .. e[10] end
@@ -196,6 +199,7 @@ local function Opponent(e, noLevel)
     if type(e[12]) == "string" and e[12] ~= "" then who = (who ~= "" and who .. " " or "") .. "<" .. e[12] .. ">" end
     return who
 end
+Duels.Opponent = Opponent
 
 -- History's and the map's line for a duel: title, detail, icon. The
 -- detail is the opponent as far as known and who challenged.
@@ -226,6 +230,7 @@ local function ClassIcon(class)
     return ("|TInterface\\TargetingFrame\\UI-Classes-Circles:14:14:0:0:256:256:%d:%d:%d:%d|t "):format(
         coords[1] * 256, coords[2] * 256, coords[3] * 256, coords[4] * 256)
 end
+Duels.ClassIcon = ClassIcon
 
 local GREY = { 0.6, 0.6, 0.6 }
 

@@ -1710,9 +1710,9 @@ local function FillLife(w)
     Add("GUILD", nil, nil, true)
     Add(life.guild and ("<%s>"):format(life.guild) or "|cff999999None|r")
 
-    -- Duels only once there are some (#88), and last, so on a short pane
-    -- they are what is cut off: an opponent fleeing is a win, the player
-    -- fleeing a loss.
+    -- Duels only once there are some (#88), and last with world PvP, so on
+    -- a short pane they are what is cut off: an opponent fleeing is a win,
+    -- the player fleeing a loss.
     local duels = life.duels
     if duels and duels.count > 0 then
         Add("DUELS", nil, nil, true)
@@ -1724,6 +1724,20 @@ local function FillLife(w)
             local r, g, b = ns.ClassColor(rival.class)
             Add(("Most with |cff%02x%02x%02x%s|r"):format(r * 255, g * 255, b * 255, rival.name),
                 ("|cff999999%d duels|r"):format(rival.count))
+        end
+    end
+
+    -- Players killed in the open world, the same way: only once there are some.
+    local pvp = life.worldPvP
+    if pvp and pvp.count > 0 then
+        Add("WORLD PVP", nil, nil, true)
+        Add(("%d player%s killed"):format(pvp.count, pvp.count == 1 and "" or "s"),
+            pvp.honor > 0 and ("|cff999999%s honor|r"):format(ns.Commas(pvp.honor)) or nil)
+        local victim = pvp.victim
+        if victim and victim.count > 1 then
+            local r, g, b = ns.ClassColor(victim.class)
+            Add(("Most often |cff%02x%02x%02x%s|r"):format(r * 255, g * 255, b * 255, victim.name),
+                ("|cff999999%d kills|r"):format(victim.count))
         end
     end
 

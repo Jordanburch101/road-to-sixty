@@ -17,8 +17,45 @@ local WORLD_MAP = 947
 -- tint = { r, g, b }, crop = cut a spell or item icon's border,
 -- overlay = { kind, name, tint, blend, scale } drawn on top }. kind is
 -- "atlas", "file" or "none" (just the number). Empty while no icon choice
--- is open (level ups now use the player frame's level badge).
-local SECTIONS = {}
+-- is open; open now: world PvP's two markers, a death by a player and a
+-- player killed.
+local RED = { 1, 0.3, 0.25 }
+local SECTIONS = {
+    -- A death by a player (Style.lua's diePvP; the plain death is DungeonSkull).
+    { "Killed by a player", {
+        { "atlas", "DungeonSkull", label = "Skull (now)" },
+        { "atlas", "DungeonSkull", label = "Red skull", tint = RED },
+        { "atlas", "DungeonSkull", label = "Skull, swords",
+            overlay = { "file", "Interface\\TargetingFrame\\UI-PVP-FFA", scale = 0.7 } },
+        { "file", "Interface\\TargetingFrame\\UI-PVP-FFA", label = "FFA flag" },
+        { "atlas", "questlog-questtypeicon-pvp", label = "Quest PvP" },
+        { "atlas", "worldquest-icon-pvp-ffa", label = "WQ PvP" },
+        { "file", "Interface\\Icons\\Ability_Rogue_FeignDeath", label = "Feign Death", crop = true },
+        { "file", "Interface\\Icons\\Spell_Shadow_DeathScream", label = "Death Scream", crop = true },
+    } },
+    -- An enemy player killed in the open world (Style.lua's hk).
+    { "Player killed", {
+        { "file", "Interface\\Icons\\Ability_Warrior_Challange", label = "Challenge (now)", crop = true },
+        { "file", "Interface\\Icons\\INV_BannerPVP_01", label = "Horde banner", crop = true },
+        { "file", "Interface\\Icons\\INV_BannerPVP_02", label = "Alliance banner", crop = true },
+        { "file", "Interface\\Icons\\Ability_Rogue_Eviscerate", label = "Eviscerate", crop = true },
+        { "file", "Interface\\Icons\\Ability_Warrior_Decisivestrike", label = "Decisive Strike", crop = true },
+        { "file", "Interface\\Icons\\INV_Sword_48", label = "Sword", crop = true },
+        { "file", "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01", label = "Skull icon", crop = true },
+        { "atlas", "questlog-questtypeicon-pvp", label = "Quest PvP" },
+    } },
+    -- A battle on the zoomed-out map (Battles.lua's ICON), in the item frame.
+    { "Battle, zoomed out", {
+        { "file", "Interface\\Icons\\Ability_Warrior_BattleShout", label = "Battle Shout (now)", crop = true },
+        { "file", "Interface\\Icons\\Ability_DualWield", label = "Dual Wield", crop = true },
+        { "file", "Interface\\Icons\\Ability_Warrior_WarCry", label = "War Cry", crop = true },
+        { "file", "Interface\\Icons\\Ability_Warrior_Rampage", label = "Rampage", crop = true },
+        { "file", "Interface\\Icons\\INV_Sword_27", label = "Sword", crop = true },
+        { "file", "Interface\\Icons\\INV_BannerPVP_01", label = "Horde banner", crop = true },
+        { "file", "Interface\\Icons\\INV_BannerPVP_02", label = "Alliance banner", crop = true },
+        { "file", "Interface\\CharacterFrame\\UI-StateIcon", label = "Combat state" },
+    } },
+}
 
 -- Replay timeline candidates, four cells wide, each a still bar 60% played
 -- with level bands and ticks. fill: texture for the bands (flat colour if

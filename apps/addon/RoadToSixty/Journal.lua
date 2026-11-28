@@ -43,6 +43,8 @@ local addonName, ns = ...
 --   grp, grpa, grpx                group joined, member joined, group ended, see Groups.lua
 --   ench                           an enchant put on gear, see Enchants.lua
 --   gath                           mining, herb or fishing gather, see Gathering.lua
+--   duel                           a duel fought, see Duels.lua
+--   hk                             an enemy player killed in the open world, see WorldPvP.lua
 -- Events inside instances use the last outdoor position.
 
 local Journal = {}

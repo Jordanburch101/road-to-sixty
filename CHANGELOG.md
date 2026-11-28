@@ -6,6 +6,35 @@ is none. Write for players: what they can now do or see, and what was
 broken and now works. Leave out internal changes. Sections are
 `### New` and `### Fixed`; skip one that would be empty.
 
+## 1.21.0
+
+### New
+- Players of the other faction you kill in the open world are now part of
+  your journey. Each honorable kill shows on the journey map and in History
+  with the player's name, their rank and the honor it gave, and their
+  level, race, class and guild when you saw them before the kill. Hover
+  over one to see how often you killed them and they killed you. The Stats
+  screen counts your kills and names the player you killed most. Kills in
+  battlegrounds are still counted in the battleground's own entry.
+- Deaths at the hands of another player, or their pet, have their own
+  marker on the journey map and in History, and their own "Killed by
+  players" filter under Deaths, so you can show or hide them apart from
+  your other deaths.
+- Zoomed out, the journey map shows where your battles with other players
+  took place: the kills and deaths in one place gather into one marker with
+  their count, over a glow that grows with the fighting, amber where you
+  won more and red where you lost more. Hover over one to see how many you
+  killed, how often they killed you, the honor, when you fought there and
+  who you met most, and click it to zoom in on each kill and death.
+- The journey map no longer draws a line from where you died to the
+  graveyard, nor from a dungeon's door when you died inside: the skull
+  marks the death, and your ghost's run back starts at the graveyard.
+
+### Fixed
+- A death from your own explosive backfiring, such as Ez-Thro Dynamite,
+  no longer reads as being killed by yourself. It now shows as "Died:"
+  with what blew up.
+
 ## 1.20.13
 
 ### New
