@@ -14,7 +14,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/api/package.json packages/api/
 COPY packages/ui/package.json packages/ui/
 RUN bun install --frozen-lockfile --filter @road-to-sixty/web
-COPY public public
+COPY tsconfig.base.json ./
 COPY packages packages
 COPY apps/web apps/web
 ARG PUBLIC_SITE_URL
