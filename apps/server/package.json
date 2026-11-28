@@ -10,10 +10,10 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@better-auth/core": "1.7.7",
+    "@better-auth/core": "1.7.27",
     "@road-to-sixty/api": "workspace:*",
     "@road-to-sixty/ui": "workspace:*",
-    "better-auth": "1.7.7",
+    "better-auth": "1.7.27",
     "drizzle-orm": "0.45.4",
     "elysia": "1.4.32"
   },
