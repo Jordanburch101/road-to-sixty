@@ -37,8 +37,7 @@
     "image": "oven/bun:1.4.2",
     "env": {
       "PUBLIC_SITE_URL": "https://example.test",
-      "PUBLIC_ADDON_URL": "https://example.test/addon",
-      "PUBLIC_DOWNLOADS": "https://example.test/downloads"
+      "PUBLIC_ADDON_URL": "https://example.test/addon"
     },
     "steps": [
       {
@@ -82,7 +81,8 @@
       "port": 80,
       "ready": "/",
       "failOnLog": [
-        "[emerg]"
+        "\\[emerg\\]",
+        "\\[crit\\]"
       ],
       "smoke": [
         {
