@@ -1,4 +1,4 @@
-// Build settings, from Vercel's environment (or .env locally). The build
+// Build settings, from the Docker build args (or .env locally). The build
 // stops when one is missing, rather than shipping an empty link.
 export function need(name: string, value: string | undefined): string {
   if (!value) throw new Error(`${name} isn't set: see apps/web/.env.example`);
