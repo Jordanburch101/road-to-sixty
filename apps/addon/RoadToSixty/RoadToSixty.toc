@@ -40,6 +40,7 @@ Gathering.lua
 Battlegrounds.lua
 Deaths.lua
 Duels.lua
+WorldPvP.lua
 Groups.lua
 Enchants.lua
 Sources.lua
@@ -69,6 +70,7 @@ GuildPop.lua
 LevelPop.lua
 KillPop.lua
 KillMarks.lua
+Battles.lua
 MarkerPiles.lua
 MinimapButton.lua
 Options.lua

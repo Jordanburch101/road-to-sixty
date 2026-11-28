@@ -226,6 +226,8 @@ local function CreateHistoryRow(parent)
             ns.Rares:ShowCard(self, item.rare, item.where, "left")
         elseif item.duel then
             ns.Duels:ShowTooltip(self, item.duel, item.where, "ANCHOR_LEFT")
+        elseif item.hk then
+            ns.WorldPvP:ShowTooltip(self, item.hk, item.where, "ANCHOR_LEFT")
         elseif item.run then
             ns.Parties:ShowRunCard(self, item.run, item.entered, "left")
         elseif item.lines then
@@ -259,6 +261,7 @@ end
 local TITLE_COLORS = {
     lvl = { 1, 0.82, 0 },
     die = { 0.9, 0.45, 0.45 },
+    diePvP = { 1, 0.35, 0.3 },
     ["in"] = { 1, 0.6, 0.2 },
     run = { 1, 0.6, 0.2 },
     hearth = { 0.55, 0.85, 1 },
@@ -361,7 +364,7 @@ end
 -- markers follow the same keys.
 local HISTORY_FILTERS = {
     { "Levels", { "lvl", 10 }, { { "levels", "Levels" } } },
-    { "Deaths", { "die" }, { { "deaths", "Deaths" } } },
+    { "Deaths", { "die" }, { { "deaths", "Deaths" }, { "pvpDeaths", "Killed by players" } } },
     { "Rare mobs", { "rare" }, { { "rares", "Rare mobs killed" } } },
     { "Dungeons", { "run" }, { { "dungeons", "Dungeons" }, { "battlegrounds", "Battlegrounds" } } },
     { "Travel", { "flight" }, {
@@ -381,6 +384,7 @@ local HISTORY_FILTERS = {
     } },
     { "Social", { atlas = "socialqueuing-icon-group" }, {
         { "groups", "Groups" }, { "guilds", "Guild" }, { "duels", "Duels" },
+        { "worldPvP", "World PvP kills" },
     } },
 }
 -- Buttons are spread evenly across the pane; every icon is drawn the same
@@ -567,7 +571,9 @@ local function BuildHistory()
         if kind == "lvl" then
             Add({ kind = kind, level = e[6], title = "Reached level " .. e[6] }, t, c, x, y, where)
         elseif kind == "die" then
-            Add({ kind = kind, title = ns.Deaths:Title(e) }, t, c, x, y, ("Level %s - %s"):format(level or "?", where))
+            -- A death by a player is its own kind here, for its icon and filter.
+            Add({ kind = ns.Deaths.Look(e), title = ns.Deaths:Title(e) }, t, c, x, y,
+                ("Level %s - %s"):format(level or "?", where))
         elseif kind == "in" then
             instanceNames[e[6]] = e[7]
             entered[e[6]] = t
@@ -656,6 +662,10 @@ local function BuildHistory()
             local title, detail, icon = ns.Duels:Describe(e)
             Add({ kind = kind, title = title, iconFile = icon, color = { ns.Duels:Color(e) },
                 duel = e, where = where }, t, c, x, y, detail .. " - " .. where)
+        elseif kind == "hk" then
+            local title, detail, icon = ns.WorldPvP:Describe(e)
+            Add({ kind = kind, title = title, iconFile = icon, color = { ns.WorldPvP:Color() },
+                hk = e, where = where }, t, c, x, y, detail .. " - " .. where)
         elseif kind == "gath" and ns.Range:Has(t) then
             -- (checked before Add does: describing asks for each item, and there can be thousands)
             local title, detail, icon, lines = ns.Gathering:Describe(e)

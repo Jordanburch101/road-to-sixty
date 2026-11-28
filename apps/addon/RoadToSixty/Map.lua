@@ -159,6 +159,7 @@ local MARKER_ZOOM = {
     mount = 1,                  -- riding is a milestone, like a dungeon
     rare = 2.5,
     duel = 2.5,
+    hk = 6,                     -- players killed in the open world, WorldPvP.lua: below, Battles.lua groups them (its HIDE_ZOOM)
     group = 2.5,
     gather = 5,                 -- gathering nodes, Gathering.lua
 }
@@ -624,12 +625,12 @@ end
 local function GetMarker(i)
     local m = markers[i]
     -- A marker reused for another kind of event loses a guild banner it had,
-    -- and what a group, rare, node or duel left on it.
+    -- and what a group, rare, node, duel or kill left on it.
     if m and m.badge then
         m.badge:Hide()
         m.icon:Show()
     end
-    if m then m.rare, m.node, m.duel, m.group = nil, nil, nil, nil end
+    if m then m.rare, m.node, m.tip, m.group = nil, nil, nil, nil end
     if m then
         Style.Unframe(m)
         ns.MarkerPiles:Reset(m)
@@ -664,8 +665,9 @@ local function GetMarker(i)
             ns.Rares:ShowCard(self, self.rare[1], self.rare[2])
             return
         end
-        if self.duel then
-            ns.Duels:ShowTooltip(self, self.duel[1], self.duel[2], "ANCHOR_RIGHT")
+        -- A duel or a player killed: { source, e, where }.
+        if self.tip then
+            self.tip[1]:ShowTooltip(self, self.tip[2], self.tip[3], "ANCHOR_RIGHT")
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -745,11 +747,13 @@ local function BuildMarkers()
                 m.detail = ("%s\n%s\n%s"):format(table.concat(names, "\n"), Where(inside, zone), FormatTime(visit.first))
             end
         elseif toContent and (kind == "prof" or kind == "rec" or kind == "gj" or kind == "gl" or kind == "gr"
-            or kind == "rep" or kind == "ride" or kind == "mount" or kind == "rare" or kind == "duel") then
+            or kind == "rep" or kind == "ride" or kind == "mount" or kind == "rare" or kind == "duel"
+            or kind == "hk") then
             local guild = kind == "gj" or kind == "gl" or kind == "gr"
             local mount = kind == "ride" or kind == "mount"
             local source = guild and ns.Guilds or kind == "rep" and ns.Reputation or mount and ns.Mounts
-                or kind == "rare" and ns.Rares or kind == "duel" and ns.Duels or ns.Crafts
+                or kind == "rare" and ns.Rares or kind == "duel" and ns.Duels or kind == "hk" and ns.WorldPvP
+                or ns.Crafts
             local title, detail, icon, tabard = source:Describe(e)
             if title then
                 count = count + 1
@@ -768,7 +772,7 @@ local function BuildMarkers()
                 m.category = Style.CATEGORY[kind]
                 m.minZoom = guild and MARKER_ZOOM.guild or kind == "rep" and MARKER_ZOOM.reputation
                     or mount and MARKER_ZOOM.mount or kind == "rare" and MARKER_ZOOM.rare
-                    or kind == "duel" and MARKER_ZOOM.duel
+                    or kind == "duel" and MARKER_ZOOM.duel or kind == "hk" and MARKER_ZOOM.hk
                     or kind == "prof" and MARKER_ZOOM.profession or MARKER_ZOOM.recipe
                 local size, art = ns.SetEventIcon(m.icon, m.text, kind, nil, icon)
                 m:SetSize(size, size)
@@ -776,7 +780,7 @@ local function BuildMarkers()
                 if art and not guild then Style.Frame(m, art, Style.MARKER_ICON) end
                 -- Rares show a card with their portrait when hovered.
                 m.rare = kind == "rare" and { e, Where(inside, zone) } or nil
-                m.duel = kind == "duel" and { e, Where(inside, zone) } or nil
+                m.tip = (kind == "duel" or kind == "hk") and { source, e, Where(inside, zone) } or nil
                 m.title = title
                 m.detail = ("%s\n%s\n%s"):format(detail, Where(inside, zone), FormatTime(t))
             end
@@ -798,9 +802,11 @@ local function BuildMarkers()
             local m = GetMarker(count)
             m.t, m.popping = t, nil
             m.x, m.y = toContent(x, y)
-            m.category = kind == "in" and ns.Battlegrounds.IsPvP(e[8]) and "battlegrounds" or Style.CATEGORY[kind]
+            -- (a death by a player has its own look and filter, Deaths.Look)
+            local look = kind == "die" and ns.Deaths.Look(e) or kind
+            m.category = kind == "in" and ns.Battlegrounds.IsPvP(e[8]) and "battlegrounds" or Style.CATEGORY[look]
             m.level = kind == "lvl" and e[6] or nil  -- for the gear card
-            local size = ns.SetEventIcon(m.icon, m.text, kind, e[6])
+            local size = ns.SetEventIcon(m.icon, m.text, look, e[6])
             m:SetSize(size, size)
             if kind == "lvl" then
                 local l = e[6]
@@ -823,6 +829,8 @@ local function BuildMarkers()
     end
     -- Gathering nodes, one marker each, after the events' (Gathering.lua).
     count = ns.Gathering:AddMarkers(count, GetMarker, state.toContent, MARKER_ZOOM.gather)
+    -- World PvP battles, zoomed out, drawn apart from the markers (Battles.lua).
+    ns.Battles:Rebuild(state.toContent)
     for i = count + 1, #markers do
         markers[i]:Hide()
     end
@@ -2559,6 +2567,7 @@ local function UpdateMarkers()
         end
     end
     ns.MarkerPiles:Place(shown, overlay, state.W, state.H)
+    ns.Battles:Place(now, z, ToCanvas)
 end
 
 -- Other characters ---------------------------------------------------------------
@@ -3894,6 +3903,7 @@ local function CreateWindow()
     overlay:SetAllPoints()
     -- (over the path layer's jump arcs and portals, JumpSet)
     overlay:SetFrameLevel(content:GetFrameLevel() + 12)
+    ns.Battles:Attach(overlay)
 
     canvas:SetScript("OnMouseWheel", function(_, delta)
         local factor = delta > 0 and ZOOM_STEP or 1 / ZOOM_STEP

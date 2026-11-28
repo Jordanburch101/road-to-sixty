@@ -13,7 +13,7 @@ local _, ns = ...
 --     and flown (the path segments, counted as the recorder counts them:
 --     flight paths are flown, the rest walked), the play sessions ("on" and
 --     "off"), level ups (the level snapshots), zones entered ("zone"), epics
---     looted ("loot"), duels ("duel") and gold held (each snapshot's, each login's and
+--     looted ("loot"), duels ("duel"), players killed in the open world ("hk") and gold held (each snapshot's, each login's and
 --     logout's from #86, then money, the gold held now, when given). now is the journey's end: ns.Now() for the
 --     character playing, its last event for another's copy.
 --   Stats.Window(index, from, to) -> totals
@@ -74,6 +74,10 @@ local _, ns = ...
 --       duels         { count, won, lost, fled, theyFled, rival }: the duels
 --                     inside the window (#88), rival { name, class, count }
 --                     the player fought most there, nil without any
+--       worldPvP      { count, honor, victim }: the players killed in the
+--                     open world inside the window and the honor they gave,
+--                     victim { name, class, count } the one killed most
+--                     there, nil without any
 --   Stats.Levels(journey, current, now) -> rows
 --     One row per level with a snapshot, its numbers the change from
 --     reaching it to reaching the next; the level now (current, with now's
@@ -185,7 +189,7 @@ local WEEK = 7 * 86400
 
 function Stats.Index(journey, now, money)
     local quests, deaths, runs, zones, gathers, places, purses, epics, raidsLeft = {}, {}, {}, {}, {}, {}, {}, {}, {}
-    local skills, reps, guilds, duels = {}, {}, {}, {}
+    local skills, reps, guilds, duels, pvpKills = {}, {}, {}, {}, {}
     local first, last
     for _, e in ipairs(journey.events or {}) do
         local t, kind = e[1], e[2]
@@ -215,6 +219,8 @@ function Stats.Index(journey, now, money)
             gathers[#gathers + 1] = { t = t, item = e[7], c = e[3], x = e[4], y = e[5] }
         elseif kind == "duel" and e[6] then
             duels[#duels + 1] = { t = t, name = e[6], result = e[7], class = e[9] }
+        elseif kind == "hk" and e[6] then
+            pvpKills[#pvpKills + 1] = { t = t, name = e[6], honor = tonumber(e[8]) or 0, class = e[9] }
         elseif kind == "lvl" and e[6] then
             places[e[6]] = e
         elseif kind == "out" and type(e[7]) == "table" and e[7].type == "raid" then
@@ -260,10 +266,11 @@ function Stats.Index(journey, now, money)
     for _, list in pairs(reps) do table.sort(list, function(a, b) return a.t < b.t end) end
     table.sort(guilds, function(a, b) return a.t < b.t end)
     table.sort(duels, function(a, b) return a.t < b.t end)
+    table.sort(pvpKills, function(a, b) return a.t < b.t end)
 
     local index = {
         start = first or now, finish = now, levels = levels, gold = gold, zones = zones, gathers = gathers, epics = epics,
-        raidsLeft = raidsLeft, duels = duels,
+        raidsLeft = raidsLeft, duels = duels, pvpKills = pvpKills,
         skills = skills, reps = reps, repsNow = journey.reps or {}, guilds = guilds,
         sessions = ns.GearTimeline.Sessions(journey.events or {}, now),
         kills = Build({ "kills", "killXP" }, Kills(journey.kills)),
@@ -687,6 +694,22 @@ function Stats.Life(index, from, to)
     end
     duels.rival = Most(byName)
     life.duels = duels
+
+    -- The players killed in the open world inside the window, and the one
+    -- killed most there.
+    local pvp = { count = 0, honor = 0 }
+    byName = {}
+    for _, k in ipairs(index.pvpKills or {}) do
+        if k.t > to then break end
+        if k.t >= from then
+            pvp.count, pvp.honor = pvp.count + 1, pvp.honor + k.honor
+            local victim = byName[k.name] or { name = k.name, count = 0, first = k.t }
+            victim.count, victim.class = victim.count + 1, k.class or victim.class
+            byName[k.name] = victim
+        end
+    end
+    pvp.victim = Most(byName)
+    life.worldPvP = pvp
     return life
 end
 

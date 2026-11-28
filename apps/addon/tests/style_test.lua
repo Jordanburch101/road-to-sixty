@@ -46,7 +46,12 @@ check(not Style.Instant(Style.Jump("h"), 0, 0, 40, 0), "a short hearthstone is t
 check(Style.Instant(Style.Jump("b"), 0, 0, 0, 300), "a long boat trip passes at once")
 check(not Style.Instant(Style.Jump("b"), 0, 0, 20, 20), "a short boat ride is travelled")
 check(Style.Instant(Style.Jump("l"), 0, 0, 1, 0), "a login is always instant")
-check(not Style.Instant(Style.Jump("d"), 0, 0, 900, 0), "a death's run to the graveyard is never skipped")
+-- A death's jump to the graveyard is not drawn, from the open world or an
+-- instance's door, so the arrow doesn't glide over nothing.
+for _, reason in ipairs({ "d", "di" }) do
+    check(Style.Instant(Style.Jump(reason), 0, 0, 40, 0) and Style.Jump(reason).style == "none",
+        reason .. ": a death's jump to the graveyard is not drawn and passes at once")
+end
 
 -- Where the client lacks the kind's own atlas (Era, Anniversary), its classic
 -- stand-in is used; where it has it (Forever), its own.

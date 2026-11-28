@@ -198,6 +198,9 @@ local lj = {
         { 820, "duel", 0, 0, 0, "Gorehowl", "lost", "me", "WARRIOR", 24 },
         { 830, "duel", 0, 0, 0, "Thrall", "theyFled" },
         { 840, "duel", 0, 0, 0, "Gorehowl", "fled" },
+        { 850, "hk", 0, 0, 0, "Zuljin", "Scout", 50, "HUNTER", 30 },
+        { 860, "hk", 0, 0, 0, "Rexxar", nil, 12 },
+        { 870, "hk", 0, 0, 0, "Zuljin", "Scout", 40, "HUNTER", 31 },
         { 900, "off", 0, 0, 0 },
     },
     levels = { [10] = { t = 0, skills = { Mining = { 1, 75 } } } },
@@ -230,6 +233,12 @@ check(duels.rival and duels.rival.name == "Gorehowl" and duels.rival.count == 3 
     "the player fought most")
 check(Stats.Life(li, 815, 835).duels.count == 2 and Stats.Life(li, nil, 350).duels.rival == nil,
     "only the duels inside the window")
+local pvp = life.worldPvP
+check(pvp.count == 3 and pvp.honor == 102, ("the players killed in the open world: %d, %d honor"):format(pvp.count, pvp.honor))
+check(pvp.victim and pvp.victim.name == "Zuljin" and pvp.victim.count == 2 and pvp.victim.class == "HUNTER",
+    "the player killed most")
+check(Stats.Life(li, 855, 865).worldPvP.count == 1 and Stats.Life(li, nil, 350).worldPvP.victim == nil,
+    "only the kills inside the window")
 
 -- 8d. Zones keep where they were first entered in the window.
 check(all.zones[1][3] and all.zones[1][3].t == 1500, "a zone's first entry")

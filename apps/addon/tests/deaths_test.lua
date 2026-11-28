@@ -130,6 +130,36 @@ check(e[6] == nil, "a recap that errors when read is left alone")
 check(pcall(handlers.PLAYER_LOGIN), "and logging in with one raises nothing")
 C_DeathRecap = { GetRecapEvents = function() return recap end }
 
+-- A death by a player or a player's pet has its own look; any other, the plain one.
+check(Deaths.Look({ 0, "die", 0, 0, 0, "Gorehowl", "p" }) == "diePvP"
+    and Deaths.Look({ 0, "die", 0, 0, 0, "Yshaarj", "pet" }) == "diePvP", "a death by a player looks its own")
+check(Deaths.Look({ 0, "die", 0, 0, 0, "Defias Pillager" }) == "die" and Deaths.Look({ 0, "die", 0, 0, 0, "Falling", "e" }) == "die"
+    and Deaths.Look({ 0, "die", 0, 0, 0 }) == "die", "other deaths look plain")
+
+-- The player's own explosive backfiring: no player's kill, saved before 1.21
+-- as "p" with the player's own name, from then on as "self".
+local me = Deaths.OwnNames({ rosterKey = "Hollow Grimtusk-Some Realm" })
+check(me["Hollow Grimtusk"], "the journey's own name")
+-- A friend's journey has no roster key: its entry's name; a key saved
+-- before the surname loaded has the first name only, the entry the full one.
+check(Deaths.OwnNames({}, { name = "Ann Smith" })["Ann Smith"], "a friend's journey, by its entry")
+local both = Deaths.OwnNames({ rosterKey = "Hollow-Some Realm" }, { name = "Hollow Grimtusk" })
+check(both.Hollow and both["Hollow Grimtusk"], "both names")
+local backfire = { 0, "die", 0, 0, 0, "Hollow Grimtusk", "p", "Dynamite Backfire" }
+check(not Deaths.ByPlayer(backfire, me) and Deaths.BySelf(backfire, me), "an old death by the player's own blow")
+check(Deaths.ByPlayer({ 0, "die", 0, 0, 0, "Gorehowl", "p" }, me), "another player's still counts")
+check(not Deaths.ByPlayer({ 0, "die", 0, 0, 0, "Hollow Grimtusk", "self", "Dynamite Backfire" }, me), "a self death")
+ns.view = { rosterKey = "Hollow Grimtusk-Some Realm" }
+check(Deaths.Look(backfire) == "die" and Deaths:Title(backfire) == "Died: Dynamite Backfire",
+    "it looks plain, by the spell: " .. Deaths:Title(backfire))
+ns.view = nil
+UnitGUID = function() return "Player-4395-0SELF" end
+recap = { { timestamp = now + 120, event = "SPELL_DAMAGE", sourceName = "Hollow Grimtusk", sourceGUID = "Player-4395-0SELF",
+    spellName = "Dynamite Backfire" } }
+e = Die(120)
+check(e[7] == "self" and e[8] == "Dynamite Backfire", "a new one is saved as the player's own: " .. tostring(e[7]))
+UnitGUID = function() return "Player-4395-0OTHER" end
+
 -- A seeded journey is left alone.
 ns.char.seeded = true
 recap = { { timestamp = now + 60, event = "SWING_DAMAGE", sourceName = "Hogger" } }

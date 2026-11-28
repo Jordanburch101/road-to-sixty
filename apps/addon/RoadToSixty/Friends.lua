@@ -255,7 +255,7 @@ local EVENT_FIELDS = {
     on = "nn", off = "n", lvl = "N", die = "s", qa = "n", qd = "Nnns", zone = "N",
     ["in"] = "Nss", out = "nt", loot = "Sn", eq = "Nns.t", prof = "Snn", skill = "Snn",
     rec = "Sns", craft = "sn", gj = "ssbt", gl = "ss", gr = "ssb", rep = "NNs.",
-    ride = "ns", mount = "nsn.", rare = "ssn..", duel = "ssssnss", gath = "SN.s",
+    ride = "ns", mount = "nsn.", rare = "ssn..", duel = "ssssnss", hk = "Ssnsnss", gath = "SN.s",
     ench = "NNn.ssns",
     grp = "stbn", grpa = "T", grpl = "sn", grps = ".n", grpk = "s", grpx = "T",
 }
