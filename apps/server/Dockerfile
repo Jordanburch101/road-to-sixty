@@ -1,7 +1,7 @@
 # The sync server's image (#1): Bun, standard Lua 5.1 for the merge, and
 # the addon's shared Lua files. Dokploy builds it from the repo root:
 #   docker build -f apps/server/Dockerfile .
-FROM oven/bun:1.4.2
+FROM oven/bun:1.4.5
 RUN apt-get update && apt-get install -y --no-install-recommends lua5.1 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # The package.json of every workspace the server uses, so the frozen
