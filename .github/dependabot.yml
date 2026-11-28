@@ -1,0 +1,147 @@
+# Dependency updates, opened weekly against main and handled by the
+# Dependabot sweep. Minor and patch updates come grouped, one pull request a
+# group; a major comes on its own, to be read and tried before it merges.
+# Every update waits a few days after its release (cooldown), so a bad or
+# hijacked release is usually pulled before it reaches us; security updates
+# (on in the repo's settings) skip the wait.
+#
+# Rules that bite here:
+# - Tauri is pinned exactly and its Rust crates and @tauri-apps packages must
+#   match (tauri 2.12.3 with @tauri-apps/api 2.12.3, each plugin with its
+#   JS half): the "tauri" groups in cargo and bun come as two pull requests
+#   and merge together, or `tauri build` refuses the mismatch. Majors by hand.
+# - Bun's version is pinned in package.json (packageManager), CI
+#   (oven-sh/setup-bun) and the server's Dockerfile, and a minor can change
+#   bun.lock's format: oven/bun takes patches only, the rest by hand.
+# - The test Postgres in docker-compose.yml stays on production's major.
+# - The addon (apps/addon) has no dependencies: Lua, shipped as is.
+version: 2
+
+updates:
+  # The Bun workspace: the server, website, the app's window and packages/.
+  - package-ecosystem: "bun"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    open-pull-requests-limit: 8
+    labels: ["dependencies", "javascript"]
+    commit-message:
+      prefix: "Deps"
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+        update-types: ["minor", "patch"]
+      astro:
+        patterns: ["astro", "@astrojs/*"]
+        update-types: ["minor", "patch"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom", "@vitejs/plugin-react"]
+        update-types: ["minor", "patch"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+        update-types: ["minor", "patch"]
+      # The server's database and sign-in: drizzle-orm and drizzle-kit
+      # move together, as better-auth and @better-auth/* do.
+      server:
+        patterns: ["drizzle-orm", "drizzle-kit", "better-auth", "@better-auth/*", "elysia"]
+        update-types: ["minor", "patch"]
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # The desktop app's Rust workspace (engine and src-tauri).
+  - package-ecosystem: "cargo"
+    directory: "/apps/desktop"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "rust"]
+    commit-message:
+      prefix: "Deps"
+    ignore:
+      - dependency-name: "tauri*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+        update-types: ["minor", "patch"]
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Workflow actions: supply-chain relevant, all in one pull request.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "CI"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The server's image (oven/bun): patches only, see above.
+  - package-ecosystem: "docker"
+    directory: "/apps/server"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "Server"
+    ignore:
+      - dependency-name: "oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # The server's test and local services (Postgres, SeaweedFS for S3).
+  - package-ecosystem: "docker-compose"
+    directory: "/apps/server"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "Server"
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+    groups:
+      services:
+        patterns: ["*"]

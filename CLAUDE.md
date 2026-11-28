@@ -197,6 +197,18 @@ anything new is ours to fix.
 The CurseForge description and screenshots are not synced; they are
 edited on CurseForge by hand.
 
+## Dependencies
+
+Dependabot (`.github/dependabot.yml`, its rules in its header) opens grouped
+minor and patch updates weekly against `main` for the Bun workspace, the
+desktop's Cargo workspace, workflow actions and the server's images; a
+major comes on its own. Security updates are on in the repo's settings. The
+Dependabot sweep reviews and merges them. Tauri's crates and its
+`@tauri-apps` packages are pinned to matching versions: their two "tauri"
+pull requests merge together, and majors are done by hand, as are Bun's
+version (`packageManager`, CI, the server's Dockerfile) and the Rust
+toolchain (`rust-toolchain.toml`).
+
 ## Work tracking: GitHub issues
 
 Features, bugs and their context live in GitHub issues on this repo (`gh`).
