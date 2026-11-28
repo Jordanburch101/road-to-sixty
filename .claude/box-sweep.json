@@ -1,0 +1,124 @@
+{
+  "$comment": "Profile for the global /dependabot-sweep skill (~/.claude/skills/dependabot-sweep). Read by its verify.py; the notes are for whoever runs the sweep. Dependabot's own rules are in .github/dependabot.yml's header.",
+  "lockfile": {
+    "regenerate": "npx -y bun@1.4.2 install",
+    "check": "npx -y bun@1.4.2 install --frozen-lockfile",
+    "why": "package.json's packageManager, CI (oven-sh/setup-bun) and the server's Dockerfile pin Bun 1.4.2; bun.lock is lockfile v2, and another Bun can write another format that fails --frozen-lockfile there."
+  },
+  "generated": [],
+  "holdList": [
+    "better-auth",
+    "@better-auth/*",
+    "drizzle-orm",
+    "drizzle-kit",
+    "elysia",
+    "astro",
+    "@astrojs/*",
+    "typescript",
+    "@tauri-apps/*",
+    "tauri",
+    "tauri-*",
+    "zip",
+    "minisign-verify"
+  ],
+  "notes": [
+    "Merging to main deploys both Dokploy apps (autoDeploy, by watch paths): sync-server (apps/server/**, packages/**, apps/addon/RoadToSixty/*.lua, package.json, bun.lock) and web-production (apps/web/**, packages/**, bun.lock, package.json, tsconfig.base.json). A bun.lock change redeploys both. The website's build args (PUBLIC_SITE_URL, PUBLIC_DOWNLOADS, PUBLIC_ADDON_URL) live in Dokploy, never in the repo.",
+    "The server migrates its database and starts the merge worker and pruning on startup (apps/server/src/index.ts), so it is build-only here. GitHub CI's server job runs its tests against Postgres and S3 and the image's smoke script (`bun apps/server/scripts/smoke.ts`, a merge under Lua 5.1 inside the image): wait for it green.",
+    "Tauri: its crates (apps/desktop, Cargo) and its @tauri-apps packages are pinned exactly and must match (tauri with @tauri-apps/api, each plugin with its JS half, @tauri-apps/cli on the same minor), or `tauri build` refuses. Bump both sides in one sweep. Majors by hand.",
+    "The desktop app can't be built on the box (Tauri needs a desktop toolchain on three systems): Cargo bumps rely on GitHub's Desktop CI (desktop-ci.yml, runs on pull requests touching apps/desktop or bun.lock). Wait for it green.",
+    "zip and minisign-verify (apps/desktop/engine) unpack and check the signature of the addon release the app downloads (src/addon.rs): read their release notes, and keep the signature checked before anything is unpacked. zip was pinned exactly at 4.6.1 with open alerts (fixed in 9.0.5) as of 2026-11-28.",
+    "better-auth and @better-auth/core are pinned to one exact version together (Battle.net sign-in, apps/server/src/auth.ts). After a bump, sign in with Battle.net on the deployed server and link a PC before calling it done: Deploy Forge's 1.7.28 made every auth request 500.",
+    "drizzle-orm / drizzle-kit: `cd apps/server && bunx drizzle-kit generate` must make no new migration. Never `push`.",
+    "Bun's own version (packageManager, CI, oven/bun in the server's and website's Dockerfiles), the website's nginx stable line (1.28) and the Rust toolchain (apps/desktop/rust-toolchain.toml) are moved by hand, not in a sweep. The test Postgres in apps/server/docker-compose.yml stays on production's major (sync-postgres is postgres:17).",
+    "The addon (apps/addon) has no dependencies; its pure Lua files (Packed, Tidy, Parse, Tally, Merge) run inside the server image under Lua 5.1.",
+    "No changelog note for a sweep: CHANGELOG.md is the addon's players' changelog."
+  ],
+  "ci": {
+    "image": "oven/bun:1.4.2",
+    "env": {
+      "PUBLIC_SITE_URL": "https://example.test",
+      "PUBLIC_ADDON_URL": "https://example.test/addon"
+    },
+    "steps": [
+      {
+        "name": "install",
+        "run": "bun install --frozen-lockfile"
+      },
+      {
+        "name": "typecheck",
+        "run": "bun run typecheck"
+      },
+      {
+        "name": "ui-tests",
+        "run": "cd packages/ui && bun test"
+      },
+      {
+        "name": "web-tests",
+        "run": "cd apps/web && bun test"
+      },
+      {
+        "name": "web-build",
+        "run": "cd apps/web && bun run build"
+      },
+      {
+        "name": "desktop-window-tests",
+        "run": "cd apps/desktop && bun test scripts src"
+      },
+      {
+        "name": "desktop-window-build",
+        "run": "cd apps/desktop && bun run build"
+      }
+    ]
+  },
+  "apps": {
+    "sync-server": {
+      "run": false,
+      "why": "It migrates the production database and starts the merge worker and pruning on startup: a second copy would work on real journeys. GitHub CI's server job runs the image's smoke script instead."
+    },
+    "web-production": {
+      "run": true,
+      "why": "Static pages served by nginx: no database, no secrets, nothing it writes.",
+      "port": 80,
+      "ready": "/",
+      "failOnLog": [
+        "\\[emerg\\]",
+        "\\[crit\\]"
+      ],
+      "smoke": [
+        {
+          "path": "/",
+          "status": 200
+        },
+        {
+          "path": "/download",
+          "status": 200
+        },
+        {
+          "path": "/download/windows",
+          "status": 200
+        },
+        {
+          "path": "/download/mac",
+          "status": 200
+        },
+        {
+          "path": "/download/linux",
+          "status": 200
+        },
+        {
+          "path": "/privacy",
+          "status": 200
+        },
+        {
+          "path": "/terms",
+          "status": 200
+        },
+        {
+          "label": "an unknown page gets the 404 page",
+          "path": "/no-such-page",
+          "status": 404
+        }
+      ]
+    }
+  }
+}
