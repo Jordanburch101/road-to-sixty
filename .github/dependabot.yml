@@ -11,8 +11,11 @@
 #   JS half): the "tauri" groups in cargo and bun come as two pull requests
 #   and merge together, or `tauri build` refuses the mismatch. Majors by hand.
 # - Bun's version is pinned in package.json (packageManager), CI
-#   (oven-sh/setup-bun) and the server's Dockerfile, and a minor can change
-#   bun.lock's format: oven/bun takes patches only, the rest by hand.
+#   (oven-sh/setup-bun) and the server's and website's Dockerfiles, and a
+#   minor can change bun.lock's format: oven/bun takes patches only, the
+#   rest by hand.
+# - The website's nginx stays on its stable line (even minors, 1.28):
+#   patches only, a new stable line by hand.
 # - The test Postgres in docker-compose.yml stays on production's major.
 # - The addon (apps/addon) has no dependencies: Lua, shipped as is.
 version: 2
@@ -123,6 +126,30 @@ updates:
     ignore:
       - dependency-name: "oven/bun"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # The website's image (#173): Bun builds it, nginx serves it. Patches only.
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "Website"
+    ignore:
+      - dependency-name: "oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "nginx"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      images:
+        patterns: ["*"]
 
   # The server's test and local services (Postgres, SeaweedFS for S3).
   - package-ecosystem: "docker-compose"
