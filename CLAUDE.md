@@ -9,7 +9,18 @@ recorder matters most: journey data lost at launch cannot be recreated.
 
 Public repo (since 2026-10-15) under MIT (LICENSE); outside contributions
 come as pull requests to `main` (CONTRIBUTING.md), which Jordan reviews and
-tests in game. Never commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
+tests in game. Only Jordan merges outside contributions.
+
+Jordan's own agents (working as his account) may merge their own pull
+requests with `gh pr merge <n> --merge --admin` once the change is verified
+and CI's `build`, `web` and `server` checks are green. Two rulesets on
+`main` back this: "Protect main" requires those checks and blocks force
+pushes and deletion for everyone, admins included; "Require review" asks
+for the code owner's approval, which admins may skip, but only by merging
+a pull request. Anything that can only be checked in game still waits for
+Jordan to try it.
+
+Never commit secrets, personal paths or email addresses. User-facing name is "Road to Sixty", command `/rts`.
 
 ## Layout
 
